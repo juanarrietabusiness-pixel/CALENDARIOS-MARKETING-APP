@@ -30,7 +30,8 @@ function buscar(clients, item) {
   return null;
 }
 
-export default function PorProgramar({ clients = [], pulso = 0, onAbrir, onCalendarioGuardado, soltarPendiente, onProgramado }) {
+/** `onCuenta(n)`: cuántas hay por programar y por producir (la pestaña «Por producir» de Producción lo enseña). */
+export default function PorProgramar({ clients = [], pulso = 0, onAbrir, onCalendarioGuardado, soltarPendiente, onProgramado, onCuenta = null }) {
   const [datos, setDatos] = useState(null);
   const [cuentas, setCuentas] = useState([]);
   const [marcadas, setMarcadas] = useState(() => new Set());
@@ -39,6 +40,7 @@ export default function PorProgramar({ clients = [], pulso = 0, onAbrir, onCalen
 
   const cargar = useCallback(() => db.listarAprobadas().then(setDatos).catch((e) => setMensaje({ tipo: "error", texto: e.message })), []);
   useEffect(() => { void cargar(); }, [cargar, pulso]);
+  useEffect(() => { if (datos) onCuenta?.((datos.porProgramar?.length ?? 0) + (datos.porProducir?.length ?? 0)); }, [datos, onCuenta]);
   useEffect(() => { db.estadoRedes().then((r) => setCuentas(r?.cuentas ?? [])).catch(() => setCuentas([])); }, []);
 
   // Cada una con su revisión: las MISMAS reglas que el panel.

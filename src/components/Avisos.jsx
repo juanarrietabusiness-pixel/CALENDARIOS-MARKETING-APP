@@ -83,7 +83,8 @@ export default function Avisos({ pulso = 0, onAbrirPublicacion }) {
     const post = u.searchParams.get("publicacion");
     const [, , clientId, calendarId] = u.pathname.split("/").map(decodeURIComponent);
     if (post && clientId && calendarId && onAbrirPublicacion) onAbrirPublicacion({ clientId, calendarId, postId: post });
-    else navegar(u.pathname);
+    // Con lo que trae detrás: el «rinde 3×» de Inspiración lleva `?pieza=<clave>` y la tarjeta se señala con eso.
+    else navegar(u.pathname + u.search);
   };
 
   const pedirPermiso = async () => {

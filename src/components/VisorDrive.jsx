@@ -2,6 +2,7 @@ import { useEffect, useId, useRef } from "react";
 import Icon from "./Icon";
 import * as db from "../lib/db";
 import { useDialogA11y } from "../hooks/useDialogA11y";
+import "./Drive.css";
 
 // ============================================================
 // El visor grande de la carpeta de Drive de un cliente

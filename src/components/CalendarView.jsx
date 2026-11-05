@@ -809,10 +809,10 @@ export default function CalendarView({
     cerrarCapa();
   };
 
-  // «Crear lo que falta»: el Estudio de este cliente, en «Producir en lote» → «Mes completo» con ESTE mes.
+  // «Crear lo que falta»: Crear → Galería de este cliente, en «Producir en lote» → «Mes completo» con ESTE mes.
   const producirEnLote = () => {
     const ruta = analizarRuta();
-    navegar(`${construirRuta({ cliente: ruta.cliente, pestana: "estudio" })}?lote=mes&mes=${mesDelCal}`);
+    navegar(`${construirRuta({ cliente: ruta.cliente, pestana: "crear", seccion: "galeria" })}?lote=mes&mes=${mesDelCal}`);
   };
 
   const generateScripts = async () => {
@@ -1048,8 +1048,8 @@ export default function CalendarView({
         <OverflowMenu
           items={[
             { icon: "pencil", label: "Editar el mes", onClick: () => abrirMeta("general") },
-            { icon: "calendar", label: "Fechas especiales", onClick: () => abrirCapa("fechas") },
-            puedeEditarPlan && { icon: "grid", label: "Plan semanal de la empresa", onClick: () => { setDiaPlan(null); abrirCapa("plan"); } },
+            // El plan semanal y las fechas especiales son de la MARCA (fase 7): viven en Marca. Aquí quedan sus accesos
+            // directos de siempre: la barra de los días (el plan) y la tarjeta de la campaña (las fechas del mes).
             // Revisar las ideas, diseñar las que ya hay, los guiones para grabar, completar los textos y revisar el mes
             // viven en el asistente del mes («Producir el mes»): el menú se queda con lo que no es el flujo del mes.
             client?.driveFolder && !virtual && { icon: "upload", label: "Guardar el mes en Drive", onClick: () => abrirCapa("drive") },

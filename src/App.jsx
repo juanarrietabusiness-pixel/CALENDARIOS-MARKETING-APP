@@ -61,9 +61,9 @@ const Informe = lazy(() => import("./pages/Informe"));
 const InformeAnuncios = lazy(() => import("./pages/InformeAnuncios"));
 const AuditoriaPublica = lazy(() => import("./pages/AuditoriaPublica"));
 const Auditorias = lazy(() => import("./pages/Auditorias"));
-const Biblioteca = lazy(() => import("./pages/Biblioteca"));
 const LoMejor = lazy(() => import("./pages/LoMejor"));
-const Campanas = lazy(() => import("./pages/Campanas"));
+// «Anuncios»: las campañas y la Biblioteca, como dos pestañas (cada una con su dirección de siempre).
+const Anuncios = lazy(() => import("./pages/Anuncios"));
 const ConectarClaude = lazy(() => import("./pages/ConectarClaude"));
 const PublicarAMano = lazy(() => import("./pages/PublicarAMano"));
 const TaskPanel = lazy(() => import("./components/TaskPanel"));
@@ -1317,6 +1317,7 @@ function Workspace({ session, ruta }) {
     else if (a.tipo === "subir") setShowSubir(true);
     else if (a.tipo === "nuevo-cliente") openNewClient();
     else if (a.tipo === "nuevo-calendario") abrirAsistenteDelMes();
+    else if (a.tipo === "pestana" && selectedClientId) navegar(construirRuta({ cliente: slugsCliente.get(selectedClientId) ?? selectedClientId, pestana: a.pestana }));
     else if (a.tipo === "cliente") irA(a.clienteId);
     else if (a.tipo === "calendario") irA(a.clienteId, a.calId);
     else if (a.tipo === "publicacion") {
@@ -1541,17 +1542,13 @@ function Workspace({ session, ruta }) {
               <Suspense fallback={<Cargando />}>
                 <Auditorias clients={clients} pulso={pulso} />
               </Suspense>
-            ) : ruta.vista === "biblioteca" ? (
-              <Suspense fallback={<Cargando />}>
-                <Biblioteca clients={clients} pulso={pulso} />
-              </Suspense>
             ) : ruta.vista === "lo-mejor" ? (
               <Suspense fallback={<Cargando />}>
                 <LoMejor clients={clients} pulso={pulso} yo={yo} />
               </Suspense>
-            ) : ruta.vista === "campanas" ? (
+            ) : ruta.vista === "campanas" || ruta.vista === "biblioteca" ? (
               <Suspense fallback={<Cargando />}>
-                <Campanas clients={clients} pulso={pulso} yo={yo} onClienteNuevo={async (datos) => {
+                <Anuncios vista={ruta.vista} clients={clients} pulso={pulso} yo={yo} onClienteNuevo={async (datos) => {
                   // El estratega guarda como cliente a alguien de fuera: se crea y se mete en la lista (el eco propio se ignora).
                   const guardado = await db.saveClient({ ...datos, calendars: [] }, ownerId);
                   setClients((prev) => (prev.some((x) => x.id === guardado.id) ? prev : [...prev, guardado]));

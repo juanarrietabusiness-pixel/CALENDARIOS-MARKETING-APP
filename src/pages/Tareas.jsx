@@ -49,12 +49,17 @@ const leerVista = () => {
   try { const v = localStorage.getItem("midia-vista"); return VISTAS.includes(v) ? v : "semana"; } catch { return "semana"; }
 };
 
+// «Tareas» de un cliente (su cabecera, fase 7: ya no es una pestaña) llega con `?empresa=<id>`: la vista por empresa
+// con la suya sola, hasta «Ver todas». No se recuerda como vista del navegador: es una visita.
+const empresaPedida = () => { try { return new URLSearchParams(window.location.search).get("empresa") ?? ""; } catch { return ""; } };
+
 export default function Tareas({
   clients = [], pulso = 0, onSelectClient, yo = null, presentes = [], foco = null, onFoco, onDiasEmpresa,
 }) {
   const acciones = useTareas(pulso);
   const { todas, loading, error, alternarHecha, actualizar, alternarHoy, moverA, crear: crearTarea, reordenar } = acciones;
-  const [vista, setVistaEstado] = useState(leerVista);
+  const [soloEmpresa, setSoloEmpresa] = useState(empresaPedida);
+  const [vista, setVistaEstado] = useState(() => (empresaPedida() ? "empresa" : leerVista()));
   const setVista = (v) => {
     setVistaEstado(v);
     try { localStorage.setItem("midia-vista", v); } catch { /* sin almacenamiento */ }
@@ -223,7 +228,11 @@ export default function Tareas({
       )}
 
       {!loading && vista === "empresa" && (
-        <PorEmpresa todas={visibles} nombreDe={nombreDe} filaProps={filaProps} hoy={hoy} />
+        <PorEmpresa
+          todas={visibles} nombreDe={nombreDe} filaProps={filaProps} hoy={hoy}
+          soloEmpresa={soloEmpresa}
+          onTodas={() => { setSoloEmpresa(""); navegar("/tareas", { reemplazar: true }); }}
+        />
       )}
     </div>
   );
@@ -405,10 +414,13 @@ function Foco({ clients, foco, onFoco, presentes, yo, nombreDe }) {
   );
 }
 
-/** La vista de antes: todo agrupado por empresa, las rápidas primero. */
-function PorEmpresa({ todas, nombreDe, filaProps, hoy }) {
+/**
+ * La vista de antes: todo agrupado por empresa, las rápidas primero. Con `soloEmpresa` (se llegó desde un cliente),
+ * sólo las suyas, con la salida a todas y a su lista entera (las que se repiten, las plantillas).
+ */
+function PorEmpresa({ todas, nombreDe, filaProps, hoy, soloEmpresa = "", onTodas }) {
   const [filtro, setFiltro] = useState("pending");
-  const pasa = (t) => filtro === "all" || (filtro === "pending" ? !hecha(t) : hecha(t));
+  const pasa = (t) => (!soloEmpresa || t.client_id === soloEmpresa) && (filtro === "all" || (filtro === "pending" ? !hecha(t) : hecha(t)));
   const grupos = new Map();
   for (const t of todas.filter(pasa)) {
     const nombre = t._rapida ? "Sin empresa" : (nombreDe(t.client_id) || "Empresa sin nombre");
@@ -420,6 +432,16 @@ function PorEmpresa({ todas, nombreDe, filaProps, hoy }) {
 
   return (
     <>
+      {soloEmpresa && (
+        <div className="notice" role="note" style={{ display: "flex", alignItems: "center", gap: "var(--sp-2)", flexWrap: "wrap", marginBottom: "var(--sp-3)" }}>
+          <Icon name="building" size={16} />
+          <span style={{ flex: "1 1 220px" }}>Sólo las de <strong>{nombreDe(soloEmpresa) || "esta empresa"}</strong>.</span>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={() => navegar(`/cliente/${encodeURIComponent(soloEmpresa)}/tareas`)}>
+            Su lista entera (las que se repiten)
+          </button>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={onTodas}>Ver todas las empresas</button>
+        </div>
+      )}
       <div className="filter-bar" role="group" aria-label="Filtrar tareas" style={{ marginBottom: "var(--sp-4)" }}>
         {[["pending", "Pendientes"], ["completed", "Completadas"], ["all", "Todas"]].map(([k, label]) => (
           <button key={k} className={`filter-chip ${filtro === k ? "active" : ""}`} aria-pressed={filtro === k} onClick={() => setFiltro(k)}>

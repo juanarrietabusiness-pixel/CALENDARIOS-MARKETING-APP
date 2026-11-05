@@ -5,6 +5,7 @@ import { idDeCarpeta, enlaceCarpeta } from "../lib/drive";
 import { navegar } from "../lib/rutas";
 import ExploradorDrive from "./ExploradorDrive";
 import ContentBankPanel from "./ContentBankPanel";
+import "./PestanaContenido.css";
 
 // ============================================================
 // La pestaña «Contenido» de un cliente: su carpeta de Google Drive
