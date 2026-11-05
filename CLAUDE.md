@@ -246,6 +246,16 @@ src/
                           el motor de ideas y «Crear con IA» / «Crear la imagen aquí» no esperan a «Mejorar idea» (puro)
     ideaPublicacion.js    «Generar» la idea de UNA publicación vacía por el camino del lote (modo «publicacion»): el pedido y
                           `rellenarConIdea` (sólo lo vacío)
+    reglasFormato.js      QUÉ LLEVA CADA FORMATO, una sola regla (historia: ni guion, ni caption, ni hashtags; reel: sin texto en
+                          la pieza; hashtags siempre aparte): la leen el motor, la completitud y el panel (puro, carga inicial)
+    camposTexto.js        Lo que le FALTA a una publicación por el motor (modo «campos»): la casilla, el pedido, su lectura y
+                          ponerlo (sólo rellena; el campo de su botón se reescribe) (puro; también el Worker)
+    escribirTextos.js     El cliente del modo «campos»: un campo («IA» del panel y del banco), lo que falta del mes
+                          («Completar», «Generar con IA» de la lista, «Planificar mes») (en diferido)
+    planMes.js            «Planificar mes» sin trampas: semanas = filas de la rejilla, el borrador por cliente y mes, los días
+                          ocupados y la publicación que sale del plan con la ficha de diseño ya pagada (puro)
+    embudo.js             Los objetivos del mes, las etapas del embudo y la estrategia guardada (pequeño: lo lee la tarjeta de
+                          la campaña; estrategiaMes.js lo reexporta) (puro)
     control.js            El CONTROL DE CALIDAD de una pieza: el pedido a la IA (que la mira), comparar el texto palabra por
                           palabra (con tildes), el veredicto, la corrección quirúrgica del texto (puro; también el Worker)
     controlEstudio.js     Controlar y corregir: la pieza al terminar (lote, carrusel, «Producir el mes», compositor), editar
@@ -1708,9 +1718,10 @@ son del servidor.
   con IA: van al calendario como idea con su guion (`conRostro` en EstudioLote). El servidor sólo acepta el booleano
   (`limpiarCasillas`; también en el modo «publicacion», que ahora lo recibe). En el panel (`GuionUgc.jsx`), la tabla, la
   duración, «Copiar la voz» y «Copiar la lista de tomas» y los ganchos; el texto se edita en su campo de siempre.
-  · **El botón «IA» del guion aplica la regla UGC** (`reglaUgc` + `LINEA_GANCHOS` por `generateFieldForPost(…, {
-  reglaGuion })`: ugc.js NO va al arranque, la regla la pasa el panel). Sin idea, primero el motor de ideas (que ya trae
-  el guion para grabar); con idea, el guion sobre ella, y lo que la idea cita entre comillas se dice TAL CUAL.
+  · **El botón «IA» del guion aplica la regla UGC** (en el SERVIDOR: el modo «campos» del motor pone `reglaUgc` en la
+  duración de la publicación, pide 3 `ganchos`, la fórmula escogida o las de la agencia y la voz UGC; ver «Un solo motor
+  de texto»). Sin idea, primero el motor de ideas (que ya trae el guion para grabar); con idea, el guion sobre ella, y lo
+  que la idea cita entre comillas se dice TAL CUAL.
   · **«Extraer guion y adaptar»** (`ExtraerUgc.jsx`, `POST /api/mercado/<c>/ugc`, `extraerUgc` en worker/lib/mercado.js):
   Gemini VE el video (de la galería por `archivoId` o puesto en la publicación por `clave`, siempre de ESE cliente) y lo
   transcribe —voz palabra por palabra y tomas— (`pedidoDeTranscripcion`); la IA de texto lo ADAPTA a la marca con el
@@ -1902,10 +1913,11 @@ son del servidor.
   post» sin decir qué es un post: salían ideas planas, y para un post a veces un carrusel o un reel. Ahora es UNA casilla
   de `darForma` con lo que ya trae la publicación (tipo, producto, nivel, deseo, perfil, la fecha especial de su día), la
   campaña y la semana como `nota`, y lo que ya hay en el mes en `usados`; el estudio de mercado, el catálogo y el cerebro,
-  como el lote. `REGLA_FORMATO` (loteAnuncios.js) dice con todas sus letras qué es cada formato, también en el lote, y
-  `instruccionIdea` (api.js, el camino de una idea ya escrita y del banco) nombra el formato y prohíbe cambiarlo.
+  como el lote. `REGLA_FORMATO` (loteAnuncios.js) dice con todas sus letras qué es cada formato, también en el lote y en
+  el modo «campos» (el camino de una idea ya escrita, del banco y de un directo), que pide «mejórala conservando su tema…;
+  no la cambies por otra idea ni por otro formato».
   `rellenarConIdea` SÓLO rellena: título, idea (el brief), qué se ve, el texto de la pieza (no en carrusel ni en reel) y
-  el guion (sólo carrusel y reel); el producto va con su nombre o no va. Un directo sigue por el camino de siempre.
+  el guion (sólo carrusel y reel); el producto va con su nombre o no va. Un directo va por el modo «campos».
 - **El motor de ideas busca en el cerebro según los TIPOS de la tanda y dice qué material falta** (`src/lib/materialTipo.js`,
   `produccionDeLote` en worker/lib/estudio/lote.js). Antes la consulta era siempre «beneficios objeciones público
   contenido»: un educativo y un testimonio recibían los mismos pasajes. Ahora `consultaDelPlan` junta las palabras de los
@@ -2208,7 +2220,7 @@ son del servidor.
   escribe un guion con la misma forma para un producto del catálogo; «Recrear con mi marca» (captura) y «Seguir
   este video con mi marca» abren el Estudio con la referencia puesta y un pedido armado SIN IA
   (`ideaParaRecrear`, `ideaParaSeguirVideo`). En «Planificar mes», un reel o carrusel puede llevar «Estructura del
-  guion: como el video de…» (`post.estructuraRef`, el texto; `buildScriptPrompt` lo lee).
+  guion: como el video de…» (`post.estructuraRef`, el texto; el motor lo lee en los modos «plan» y «campos»).
   · **El Estudio ofrece los ganchos del estudio** con el preset de anuncio (`angulos` en GET /api/estudio):
   la idea pide el gancho y el precio EXACTOS del catálogo. El kit de marca lee el estudio aprobado.
   · **Los siete elementos** son genéricos (`ELEMENTOS_MERCADO`); si la agencia usa otros nombres, se cambian
@@ -2224,8 +2236,7 @@ son del servidor.
 - **«Mejorar» no pisa lo que escribió una persona.** En «Planificar mes» el prompt pedía «si ya hay idea, mejórala»
   y el código se quedaba con la de la persona: la mejora se pagaba y se tiraba. Ahora la de la IA queda en
   `sugerencia` al lado («Usar esta» / «Quedarme con la mía»); `sugerencia` no viaja al calendario. «Escribir guiones
-  y descripciones» manda reel, carrusel, historia y directo sin guion por `buildScriptPrompt` y lo demás por
-  `buildDescripcionesPrompt`, y sólo rellena.
+  y descripciones» y «Mejorar» van por el modo «campos» del motor (lib/escribirTextos.js) y sólo rellenan.
 - **Antes de enviar al cliente: revisar y producir** (`lib/revisionMes.js`, `calendario/RevisionMes.jsx`,
   `calendario/ProducirMes.jsx`). Las REGLAS no cuestan nada y salen al abrir; la IA (función «revisión de textos»)
   y la revisión de las imágenes contra el kit (`POST /api/estudio/<c>/revisar` con `{ clave }`: la imagen de una
@@ -2239,7 +2250,7 @@ son del servidor.
   catálogo entero de modelos y no puede entrar en `CalendarView`.
 - **El texto en la pieza y las fotos del producto** (`post.textoPieza`, `fotos` de cada producto del catálogo).
   · **`textoPieza` es lo que va ESCRITO encima del diseño, no el caption.** La IA lo escribe con el estudio delante
-  (`REGLA_TEXTO_PIEZA` en api.js: titular, apoyo y el precio EXACTO del catálogo) junto con guiones y descripciones,
+  (el motor: titular, apoyo y el precio EXACTO del catálogo; `"textoPieza"` en camposTexto.js) junto con guiones y descripciones,
   y tiene su botón en el panel; se escribe a mano igual. Sólo RELLENA, como lo demás. En un carrusel no existe (va
   lámina por lámina en el guion) y a un VIDEO no se le pide (`promptDePublicacion(post, { conTexto: false })`: los
   modelos de video escriben mal). Al motor va entre comillas y «exacto» (`textoDeLaPieza`). El cliente lo ve en su
@@ -4425,6 +4436,65 @@ son del servidor.
   · **Nada de esto se ha probado contra Kie real** (los tests hablan con un `fetch` de mentira): los nombres de los campos
   de v3 y v2, si la voz va por id o por nombre (`vozParaKie`), si devuelven tiempos y en qué forma, y el redondeo real de
   los créditos salen de la documentación pública y se comprueban con la primera toma de verdad.
+
+- **UN solo motor de texto: todo texto de una publicación va por el motor del servidor** (decisión de la agencia, fase 2
+  de docs/propuesta-lo-mejor-y-creacion.md). Había siete caminos y no todos pasaban por el mismo motor: los botones «IA»
+  de cada campo del panel y del banco, «Completar los textos que faltan», «Generar con IA» de la vista Lista y «Escribir
+  guiones y descripciones» / «Mejorar» de «Planificar mes» usaban pedidos propios de api.js (`buildScriptPrompt`,
+  `buildDescripcionesPrompt`, `generateSinglePost`, `generateFieldForPost`, `instruccionIdea`), con OTRAS reglas: el
+  guion del reel en «Hook → Desarrollo → CTA», los hashtags dentro del caption, un caption a la historia. Se QUITARON.
+  Ahora van por el modo «campos» de `POST /api/estudio/<c>/lote/ideas` (src/lib/camposTexto.js, worker/lib/estudio/lote.js;
+  el cliente, src/lib/escribirTextos.js, en diferido). Cosas que no se ven:
+  · **Cada publicación viaja con lo que YA tiene escrito** (`escrito`: manda; lo nuevo encaja con eso) y los `campos` que
+  se le piden (sólo los que su formato lleva). Un campo pedido que ya tenía texto va en `antes` («escribe una versión
+  mejor que conserve su intención»): es el botón «IA» de ese campo (y «Completar» de la idea escrita). La respuesta es
+  `{ textos: [{ clave, campos, ganchos?, formulaUgc? }] }`; `aplicarCampos` sólo RELLENA lo vacío salvo el campo del botón.
+  · **Pasa por todo lo del motor**: el catálogo (precio exacto), el estudio de mercado, el cerebro por tipo, «Saber del
+  rubro», las fechas especiales, la nota fija del día, la matriz (lo que la publicación no trae lo pone `asignarMatriz`,
+  sólo para el pedido), la estructura del carrusel y la forma que ya tiene (composición, gancho), la estructura de un
+  video de la competencia (`estructuraRef`) y, en una UGC, su duración, la fórmula ESCOGIDA (`formulaLinea`) o las de la
+  agencia para que escoja, la voz UGC y 3 ganchos. El botón de un caption sin hashtags pide también los hashtags.
+  · **La ficha del cliente va en TODOS los modos** (`textoDelCliente` en loteAnuncios.js: instrucciones obligatorias —
+  mandan—, estilo de los textos y de la locución, hashtags de la marca, WhatsApp, Instagram, teléfono y sucursales). El
+  motor bueno no los leía y los caminos viejos sí.
+  · **La estrategia del mes también en todos**: la que manda la pantalla («Planificar mes» la tiene sin guardar) o, si no
+  la manda (el lote del Estudio, una publicación suelta), la GUARDADA en el calendario de ese mes (`estrategiaGuardada`, una
+  consulta sin los días; `estrategiaDelCalendario` vive ahora en estrategiaMes.js para que la lea el Worker).
+  · «Generar con IA» de la lista con un archivo subido primero lo MIRA (`escribirDesdeContenido`: el motor no ve
+  imágenes) y luego el motor completa lo que siga vacío. «Reintentar» lo incompleto es «Completar» otra vez.
+  · La carga inicial bajó de 180,5 a ~175 kB al salir esos pedidos de api.js: lo nuevo va EN DIFERIDO. Nada de esto se ha
+  probado contra Anthropic real (los tests usan un `fetch` de mentira).
+- **Qué lleva cada formato es UNA regla** (`src/lib/reglasFormato.js`, en la carga inicial y sin dependencias): post
+  (caption, texto en la pieza, hashtags), carrusel (guion por láminas, caption, hashtags), reel (guion por planos —una
+  sola forma—, caption, hashtags; SIN texto en la pieza), historia (sólo el texto en la pieza: ni guion, ni caption, ni
+  hashtags) y directo (temas, caption, hashtags). La leen el motor (pedido y lectura: `captionYHashtags`), la completitud
+  (`camposDe`, `faltaParaEnviar`: ya no se le exige guion ni caption a una historia), «Completar» (`camposQueFaltan`),
+  `rellenarConIdea` y el panel (un campo que el formato no lleva no se enseña ni tiene botón «IA», salvo que ya tenga
+  texto: no se esconde lo escrito). **Los hashtags van SIEMPRE aparte** (`hashtagsFinales`): los que la IA deja al final
+  del caption se pasan a su campo (`separarHashtags`; también en `publicacionDeUgc`), porque `textoPara` los junta al
+  publicar y salían dos veces. Los hashtags de antes, dentro de un caption, cuentan como puestos (`tieneHashtags`).
+- **La semana es UNA: la FILA de la rejilla** (lunes a domingo, `semanaDelMes`/`semanasDelMes`). «Planificar mes»
+  numeraba bloques de siete días desde el 1 (`getWeekNumber`): en noviembre de 2026 su «Semana 1» tenía siete días y la
+  de la rejilla, uno, y el concepto de la semana caía en otros días. Ahora la usan el asistente de planificar (un concepto
+  por fila: 5 o 6), la lista por semanas (`agruparPorSemana` ya no lee `weekNumber`), el filtro de semana del calendario,
+  `conceptoDeSemana`, `casillasSinIdea`, `ponerEnDia`, el calendario que lee el asistente y `editar_publicaciones_lote`
+  (lib/lote.js), que tienen que coincidir. Lo guardado de antes se sigue leyendo: el `weekNumber` de los días se ignora y
+  `weekConcepts` se lee por fila.
+- **«Planificar mes» sin trampas** (PlanWizard.jsx, src/lib/planMes.js):
+  · **Las Ofertas van ANTES de la Estrategia** (pasos Plan · Fechas y ritmo · Ofertas · Estrategia · Conceptos · Ideas,
+  `PASO`): «Proponer la estrategia con IA» las lee y antes le llegaban vacías.
+  · **Borrador por cliente y mes** (`plan-mes-borrador:<cliente>:<AAAA-MM>`, 7 días, como el del lote): lo escrito y las
+  ideas ya PAGADAS se guardan en cada cambio y se recuperan al abrir («Seguimos donde lo dejaste» · «Empezar de cero»).
+  Al cambiar de mes se recupera el de ese mes, y el guardado espera a pintarlo (`restaurando`): si no, guardaría lo del
+  otro mes con su clave. Se borra sólo si el calendario se creó (`handleWizardGenerate` devuelve true/false).
+  · **No se pone encima**: los días del mes que ya tienen publicaciones (`diasOcupados` sobre `client.calendars`) no
+  reciben nuevas, salvo «Añadir también en los días que ya tienen publicaciones».
+  · **La ficha de diseño ya pagada llega al calendario** (`publicacionDelPlan`: `promptImagen`, su huella y quién la
+  escribió, más la fórmula UGC): antes `handleGenerate` la tiraba y «Crear la imagen aquí» la volvía a pagar.
+- **La estrategia del mes se ve y se edita después** (la tarjeta de la campaña: «Estrategia: Vender · foco: …» y la etapa
+  de cada semana; «Editar el mes» → Estrategia, `EditorEstrategia` en EstrategiaMes.jsx, en su chunk). Se guarda en
+  `opciones.estrategia` como la de «Planificar mes», y el motor la lee. La tarjeta lee `embudo.js` (pequeño) y no
+  estrategiaMes.js, que arrastra pilares: va en la carga inicial.
 
 ## Documentos relacionados
 

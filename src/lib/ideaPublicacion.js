@@ -102,6 +102,7 @@ export function casillasDelPlan(dias = [], { matriz = new Map(), semanas = [], i
         ...(semanas[(d.wk ?? 1) - 1] ? { semana: semanas[(d.wk ?? 1) - 1] } : {}),
         ...(d.impDate?.name ? { especial: d.impDate.name } : {}),
         ...(String(previa.idea ?? "").trim() ? { idea: String(previa.idea).trim() } : {}),
+        ...(String(previa.estructuraRef ?? "").trim() ? { estructuraRef: String(previa.estructuraRef).trim() } : {}),
         ...(formato === "reel" && f.rostro ? { rostro: true } : {}),
       });
     });

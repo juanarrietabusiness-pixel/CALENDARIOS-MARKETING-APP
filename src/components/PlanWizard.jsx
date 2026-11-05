@@ -1118,7 +1118,7 @@ Formato: una linea por semana, solo el concepto. ${numWeeks} lineas exactas.`;
                   <option value="mes">Todo el mes — {allDays.length} días</option>
                   {semanas.map((w) => (
                     <option key={w} value={String(w)}>
-                      Semana {w}{weekConcepts[w - 1] ? ` · ${weekConcepts[w - 1]}` : ""} — {diasDeSemana(w)} días
+                      Semana {w}{weekConcepts[w - 1] ? ` · ${weekConcepts[w - 1]}` : ""} — {diasDeSemana(w)} {diasDeSemana(w) === 1 ? "día" : "días"}
                     </option>
                   ))}
                 </select>
@@ -1267,7 +1267,7 @@ Formato: una linea por semana, solo el concepto. ${numWeeks} lineas exactas.`;
                 })()}
               </div>
               <p role="status" className="hint" style={{ marginBottom: "var(--sp-4)" }}>
-                {Object.values(ideas).flat().filter((p) => p?.idea).length} ideas definidas de {isCustom ? allDays.reduce((t, d) => t + (formatConfig[d.getDay()] || []).length, 0) : allDays.length * postsPerDay} publicaciones
+                {Object.values(ideas).flat().filter((p) => p?.idea).length} ideas definidas de {estructuraDelMes().reduce((t, d) => t + d.formats.length, 0)} publicaciones
                 {" · "}
                 {Object.values(ideas).flat().filter((p) => p?.descripcion).length} con descripción escrita
                 {Object.values(ideas).flat().some((p) => p?.guion) ? ` · ${Object.values(ideas).flat().filter((p) => p?.guion).length} con guion` : ""}.

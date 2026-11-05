@@ -284,6 +284,7 @@ export function lineaDePieza(r, productos = {}) {
     r.especial ? `   fecha especial ese día: ${corto(r.especial, 120)}` : "",
     r.notaDia ? `   ${lineaDeNotaDelDia(r.notaDia)}` : "",
     r.ideaPersona ? `   idea de la agencia (desarróllala conservando su intención, su tema y su producto): «${corto(r.ideaPersona, 400)}»` : "",
+    r.estructuraRef ? `   estructura a seguir en el guion (de una referencia de la competencia: la MISMA forma, tramos y ritmo; el contenido es de la marca y no se copia nada): ${corto(r.estructuraRef, 900)}` : "",
     r.antes ? `   la que había y NO sirvió (escribe OTRA distinta, con otro enfoque): «${corto(r.antes, 200)}»` : "",
     r.pide ? `   lo que pide la agencia para esta: ${corto(r.pide, 300)}` : "",
     r.cambio ? `   ojo: ${r.cambio}` : "",

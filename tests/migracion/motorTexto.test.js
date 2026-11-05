@@ -215,4 +215,12 @@ describe("modo «campos»: lo que le falta a una publicación ya en el calendari
     // Con la fórmula escogida no se ofrecen las demás para escoger.
     expect(t).not.toMatch(/FÓRMULAS DE LA AGENCIA/);
   });
+
+  it("el guion que sigue un video de la competencia («Estructura del guion» de «Planificar mes») lleva su estructura", async () => {
+    anthropic(JSON.stringify({ textos: [{ n: 1, guion: "[0–2 s] …" }] }));
+    await lote({ modo: "campos", publicaciones: [
+      { clave: "r1", formato: "reel", estructuraRef: "[0–3 s] pregunta · [3–8 s] demostración · [8–10 s] precio", escrito: { idea: "x" }, campos: ["guion"] },
+    ] });
+    expect(textoDe(peticiones[0])).toMatch(/estructura a seguir en el guion \(de una referencia de la competencia[^)]*\): \[0–3 s\] pregunta · \[3–8 s\] demostración/);
+  });
 });

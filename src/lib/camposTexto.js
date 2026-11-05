@@ -74,6 +74,8 @@ export function casillaDeCampos(post = {}, day = {}, { campos = [], semana = "",
     ...(especial || day?.specialDate ? { especial: especial || day.specialDate } : {}),
     ...(formato === "reel" && post.rostro ? { rostro: true, duracionUgc: duracionUgc(post.duracionUgc), ...(post.formulaUgc ? { formulaUgc: String(post.formulaUgc) } : {}) } : {}),
     ...(String(pide).trim() ? { pide: String(pide).trim().slice(0, 300) } : {}),
+    // La estructura de un video de la competencia que sigue su guion (la escoge «Planificar mes»).
+    ...(pedidos.includes("guion") && lleno(post.estructuraRef) ? { estructuraRef: String(post.estructuraRef).trim().slice(0, 900) } : {}),
     escrito, campos: pedidos, antes,
   };
 }
