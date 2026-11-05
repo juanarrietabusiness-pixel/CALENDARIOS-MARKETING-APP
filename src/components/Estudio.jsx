@@ -1277,7 +1277,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
       )}
       {poner && (
         <Suspense fallback={null}>
-          <PonerEnPublicacion cliente={client} archivoIds={poner} descripcion={`las ${poner.length} escogidas, en el orden en que las tocaste`} onCerrar={() => { setPoner(null); setSeleccion(null); }} />
+          <PonerEnPublicacion cliente={client} archivoIds={poner} descripcion={poner.length === 1 ? "la escogida" : `las ${poner.length} escogidas, en el orden en que las tocaste`} onCerrar={() => { setPoner(null); setSeleccion(null); }} />
         </Suspense>
       )}
       {visor && (
