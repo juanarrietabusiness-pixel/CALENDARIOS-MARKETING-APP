@@ -62,7 +62,7 @@ Container (fase 2) lo consume **tal cual**. Se guarda en `videos_proyectos.guion
 | `estilo` | Paleta, fuentes, grano, ritmo, ilustración (abajo) | lo del kit |
 | `escenas` | 1 a 40 escenas | — (obligatorio) |
 | `subtitulos` | `activo`, `pos` (abajo/centro/arriba), `maxPalabras` (1–4), `maxCaracteres` (10–30), `acento` | `true`, `abajo`, `4`, `23`, `acento` |
-| `musica` | `{ clave, volumen 0–1, bajarConVoz }` o `null` (la mezcla es de la fase 2) | `null` |
+| `musica` | `{ estilo, instrumental, clave, volumen 0–1, bajarConVoz }` o `null`. `estilo` (≤ 300) dice QUÉ música lleva («acústica alegre con ukelele, 100 bpm»): lo usa `generar_musica` (Suno). `clave` es un archivo de la galería; la música escogida en «Sonido» del video manda sobre ella | `null` |
 
 Duración total: **de 5 s a 150 s**.
 

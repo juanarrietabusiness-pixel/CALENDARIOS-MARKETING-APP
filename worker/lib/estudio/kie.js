@@ -23,6 +23,7 @@
 // ============================================================
 
 import { ErrorMotor } from "./gemini.js";
+import { cuerpoSuno, pistasDeSuno } from "../../../src/lib/musica.js";
 
 const BASE = (env) => (env.KIE_URL || "https://api.kie.ai").replace(/\/$/, "");
 const SUBIDAS = (env) => (env.KIE_UPLOAD_URL || "https://kieai.redpandaai.co").replace(/\/$/, "");
@@ -363,9 +364,16 @@ export const MODELOS_VOZ_KIE = Object.freeze({
   }),
 });
 
+/**
+ * La MÚSICA de Suno (src/lib/musica.js; docs/kie/suno.md): todo va por `createTask` con `model: "ai-music-api/generate"`
+ * y el modelo de Suno dentro de `input`. `ajustes.pedido` es el pedido ya limpio (`limpiarPedidoMusica`).
+ */
+const suno = ({ ajustes }) => cuerpoSuno(ajustes.pedido ?? {});
+export const MODELOS_MUSICA_KIE = Object.freeze({ "suno-v6-kie": suno, "suno-v6-mini-kie": suno, "suno-v6-wild-kie": suno });
+
 /** El pedido a Kie: { model, input } para ese modelo, o lanza si no lo conoce. Pura. */
 export function pedidoKie(modelo, { prompt, ajustes = {}, refs = [], inicio = [], fin = [], videos = [], audios = [] }) {
-  const armar = MODELOS_KIE[modelo.id] ?? MODELOS_VOZ_KIE[modelo.id];
+  const armar = MODELOS_KIE[modelo.id] ?? MODELOS_VOZ_KIE[modelo.id] ?? MODELOS_MUSICA_KIE[modelo.id];
   if (!armar) throw new ErrorMotor(`El Estudio no sabe pedir «${modelo.nombre}» a Kie.ai.`, 500);
   return armar({ prompt, ajustes, refs, inicio, fin, videos, audios });
 }
@@ -493,7 +501,7 @@ export const MOTOR_KIE = {
     });
     const id = d?.taskId ?? d?.task_id;
     if (!id) throw new ErrorMotor("Kie.ai no devolvió el número de la tarea.", 502);
-    return { id: String(id), cada: esVideo ? 10_000 : modelo.tipo === "audio" ? 3000 : 4000 };
+    return { id: String(id), cada: esVideo ? 10_000 : modelo.musica ? 20_000 : modelo.tipo === "audio" ? 3000 : 4000 };
   },
 
   async sondear(env, { modelo, item }) {
@@ -510,7 +518,13 @@ export const MOTOR_KIE = {
     if (estado === "fail" || estado === "failed") {
       return { estado: "fallido", error: `${modelo.nombre}: Kie.ai no pudo hacerlo${d?.failMsg ? ` (${String(d.failMsg).slice(0, 180)})` : ""}.` };
     }
-    if (estado !== "success") return { estado: "pendiente", nota: NOTAS[estado] ?? "Kie.ai lo está preparando…", cada: esVideo ? 10_000 : 4000 };
+    if (estado !== "success") return { estado: "pendiente", nota: NOTAS[estado] ?? "Kie.ai lo está preparando…", cada: esVideo ? 10_000 : modelo.musica ? 6000 : 4000 };
+    // La música de Suno: las pistas (normalmente dos) van en `response.data[]`, no en `resultUrls`.
+    if (modelo.musica) {
+      const pistas = pistasDeSuno(d);
+      if (!pistas.length) return { estado: "fallido", error: `${modelo.nombre}: Kie.ai terminó sin ninguna pista.` };
+      return { estado: "listo", url: pistas[0].url, pistas, resultado: d };
+    }
     const [url] = urlsDelResultado(d);
     const nada = esVideo ? "ningún video" : modelo.tipo === "audio" ? "ningún audio" : "ninguna imagen";
     if (!url) return { estado: "fallido", error: `${modelo.nombre}: Kie.ai terminó sin ${nada}.` };

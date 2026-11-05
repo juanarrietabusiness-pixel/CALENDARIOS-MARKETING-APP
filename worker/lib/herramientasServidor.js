@@ -375,6 +375,7 @@ export function describirUso(nombre, entrada = {}) {
     case "listar_voces": return `Miró las voces${entrada.cliente ? ` de ${entrada.cliente}` : ""}`;
     case "previsualizar_voz": return `Pidió la muestra de una voz${entrada.confirmado === true ? "" : " (sin confirmar)"}`;
     case "generar_locucion": return `Pidió la locución de un video animado${entrada.confirmado === true ? "" : " (sin confirmar)"}`;
+    case "generar_musica": return `Pidió una música de fondo con Suno${entrada.confirmado === true ? "" : " (sin confirmar)"}`;
     case "formato_video": return "Leyó el formato de escenas del video animado";
     case "listar_videos": return `Miró los videos animados${entrada.cliente ? ` de ${entrada.cliente}` : ""}`;
     case "ver_video": return "Miró un video animado";
