@@ -158,6 +158,17 @@ describe("otra versión y recrear, en la publicación", () => {
     expect(pedidos[0].prompt).not.toContain("el borrador del redactor");
   });
 
+  it("«Generar en 4:5 con IA»: la MISMA pieza recompuesta, por el servidor con el control (ya no por /api/generar-imagen)", async () => {
+    const { recomponerEnProporcion } = await import("./otraVersion.js");
+    const r = await recomponerEnProporcion({ clienteId: "c1", src: "/api/media/clientes/c1/posts/flow.png", proporcion: "4:5" });
+    expect(r.src).toBe("/api/media/clientes/c1/estudio/n.png");
+    expect(pasos[0].controlar).toBe(true);
+    expect(pasos[0].navegador).toBeNull();
+    expect(pedidos[0].prompt).toMatch(/Recompón esta MISMA pieza en formato 4:5/);
+    expect(pedidos[0].medios.reference[0]).toBe("clientes/c1/posts/flow.png");
+    expect(pedidos[0].ajustes.aspectRatio).toBe("4:5");
+  });
+
   it("«Recrear un anuncio» del Estudio en imagen: por el director y el servidor, sin el anuncio en el motor", async () => {
     const nueva = await recrearAnuncioConLaMarca({ client, archivo: { src: "/api/media/clientes/c1/estudio/anuncio.png" }, version: { idea: "El sofá en una sala luminosa", texto: "Desde 399 $" }, productoId: "s" });
     expect(nueva.id).toBe("a2");

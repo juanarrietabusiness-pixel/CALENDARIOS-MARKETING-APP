@@ -27,7 +27,8 @@
 // ============================================================
 
 import * as api from "./estudio";
-import { ajustesDe, estimar, modeloPorId, modeloQueRespeta, porPrecio, MODELOS, CONFIRMAR_DESDE } from "./estudioCatalogo";
+import { ajustesDe, estimar, modeloPorId, modeloQueRespeta, porPrecio, MODELOS, CONFIRMAR_DESDE, respetaProporcion, relevoPara, pedidoDeRecomponer } from "./estudioCatalogo";
+import { modeloParaCorregir } from "./edicion";
 import { ideaDelPedido, nombreDePreset, referenciaDePlantilla, lineaDePlantillaEnPedido } from "./kitMarca";
 import { apoyosDePieza, pedidoDePieza, lineaDeTexto } from "./pieza";
 import { presetDePilar, productosDelPost } from "./pilares";
@@ -366,4 +367,39 @@ export async function recrearAnuncioConLaMarca({ client, archivo, version = {}, 
   if (costo >= CONFIRMAR_DESDE && !confirmar(costo)) return null;
   alProgresar(`Creando la imagen con ${modelo.nombre}…`);
   return crearPorElServidor({ clienteId, pedido, texto, kit: g?.kit ?? {}, post, calendarId: null, alProgresar, titulo: "Anuncio recreado con la marca" });
+}
+
+// ------------------------------------------------------------
+// «Generar en 4:5 (o 9:16) con IA» de una imagen que no cabe en la red
+// ------------------------------------------------------------
+
+/** Los motores que se pueden escoger para esta vez en el ajuste de imagen (calendario/ajusteImagen.jsx). */
+const DEL_MOTOR = Object.freeze({ meta: "muse-image", google: "nano-banana" });
+
+/**
+ * La MISMA pieza recompuesta en la proporción de la red (sin recortar ni acercar; el texto no se encoge:
+ * `pedidoDeRecomponer`), con el motor escogido para esta vez o, si no, el modelo del CLIENTE si edita y hace esa
+ * proporción (si no, el que lo releva), por el SERVIDOR con el control de calidad. Antes iba por su propio camino
+ * (/api/generar-imagen), sin el modelo del cliente ni el control. → { src, modelo } (queda en la galería: no se descarta).
+ */
+export async function recomponerEnProporcion({ clienteId, src, proporcion, motor = "", alProgresar = () => {} }) {
+  const ref = api.archivoDesdeSrc(src, clienteId);
+  if (!ref) throw new Error("Esa imagen no está en el almacén de este cliente: súbela otra vez a la publicación.");
+  const { g, activos } = await leerTodo(clienteId);
+  const kit = g?.kit ?? {};
+  const escogido = modeloEscogido(DEL_MOTOR[motor] ?? "", activos, { referencias: true });
+  const delCliente = api.modeloPreferido(activos, "imagen", kit.modelos?.imagen);
+  const sirve = (m) => m && m.referencias > 0 && m.motor !== "prueba" && respetaProporcion(m, proporcion, true);
+  const m = escogido ?? (sirve(delCliente) ? delCliente : null) ?? relevoPara(activos, proporcion, 1) ?? modeloParaCorregir(activos, "", proporcion);
+  if (!m) throw new Error("No hay ningún modelo que edite imágenes con llave puesta (Ajustes → IA).");
+  const { prompt, medios } = api.pedidoDeCorreccion({ clave: ref.clave, instruccion: pedidoDeRecomponer(proporcion), modelo: m });
+  const original = (g?.archivos ?? []).find((a) => a.src === src || a.clave === ref.clave);
+  const texto = original ? String(original.ajustes?.control?.texto ?? "") || textoDeLaFicha(ideaDelPedido(original.prompt)) : "";
+  const paso = pasoListo({
+    titulo: `En ${proporcion}`, texto, estampar: false,
+    pedido: { modelo: m.id, prompt, n: 1, ajustes: ajustesDe(m, { aspectRatio: proporcion }, medios), medios },
+  });
+  const nueva = await crearUnaEnServidor({ clienteId, paso, kit, alProgresar });
+  if (!nueva) throw new Error("La imagen nueva no llegó. Prueba otra vez.");
+  return { src: nueva.src, modelo: nueva.modelo || m.id };
 }

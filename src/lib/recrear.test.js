@@ -27,13 +27,15 @@ describe("recrear un anuncio", () => {
     const p = pedidoParaElCompositor({ archivo, fotos, version: { idea: "El sofá cama abierto en una sala.", texto: "«Duerme mejor»" } });
     expect(p.tipo).toBe("imagen");
     expect(p.preset).toBe("anuncio");
-    expect(p.referencias.map((r) => r.clave)).toEqual(["clientes/c1/sofa.jpg", "clientes/c1/anuncio.jpg"]);
-    expect(p.referencias[1]).toMatchObject({ toma: TOMA_DE_OTRA_MARCA, nota: NOTA_OTRA_MARCA });
+    // El anuncio de otra marca NO va al motor de imagen (lo mira el director): sólo las fotos del producto.
+    expect(p.referencias.map((r) => r.clave)).toEqual(["clientes/c1/sofa.jpg"]);
+    expect(TOMA_DE_OTRA_MARCA).toEqual(["composicion", "estilo"]);
+    expect(NOTA_OTRA_MARCA).toMatch(/otra marca/);
     expect(p.prompt).toBe('El sofá cama abierto en una sala. Texto en la imagen, exacto y legible: "Duerme mejor".');
     // Lo que el compositor dirá de cada una:
     const lineas = lineasDeReferencias(p.referencias, { cliente: "Dcasa" });
     expect(lineas).toMatch(/Imagen de referencia 1: es la foto REAL del producto «Sofá cama»/);
-    expect(lineas).toMatch(/Imagen de referencia 2: toma SÓLO su composición y su encuadre y su estilo, su luz y sus colores; lo demás de esa imagen \(su producto, su texto, sus logos\) no se copia\. Nota: es un anuncio de otra marca/);
+    expect(lineas).not.toMatch(/Imagen de referencia 2/);
   });
 
   it("en video, «mismo»: edita el video original, con las fotos del producto (5 como mucho), limpio y sin voz", () => {

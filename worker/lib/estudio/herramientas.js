@@ -104,6 +104,8 @@ export const DEFINICIONES_ESTUDIO = Object.freeze([
     description:
       "Pide una IMAGEN o un VIDEO al Estudio de un cliente. NO espera el resultado: queda en cola, se hace solo (un video tarda de 1 a 10 minutos) " +
       "y aparece en la galería del cliente. Devuelve el ID del pedido para consultarlo con estado_trabajo. " +
+      "Una IMAGEN sale como las del lote: con el modelo fijado del cliente (si no pides otro), diseñada por el director de arte " +
+      "de la agencia si el prompt no es ya una ficha de diseño, revisada por el control de calidad y con el logo del kit. " +
       "Para una imagen suelta que deba verse aquí mismo en el chat, usa generar_imagen; esta es para video, para varias variantes, para elegir modelo " +
       "o para partir de imágenes de la galería. Cuesta dinero: si el pedido sale caro, la respuesta trae el costo y NO se crea nada hasta confirmarlo. " +
       "Entonces pregúntale al usuario, con la cifra, y sólo si dice que sí vuelve a llamarla con confirmado=true. Nunca pongas confirmado=true por tu cuenta. " +

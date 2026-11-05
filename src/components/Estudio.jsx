@@ -547,10 +547,14 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
     galeriaRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
-  /** «Recrear un anuncio» terminado: la versión entra en el compositor (con el anuncio y las fotos del producto) para revisar y crear. */
+  /**
+   * «Recrear un anuncio» terminado: una imagen ya viene CREADA (por el director y el servidor) y se abre; un video entra
+   * en el compositor (con las fotos del producto) para revisar y crear.
+   */
   const desdeRecrear = (pedido) => {
     setRecrear(null);
     cargar();
+    if (pedido?.creada) { setVisor(pedido.creada); avisar(true, "Lista: recreada con tu marca, ya revisada."); return; }
     if (!motores) return;
     setConfirmando(null);
     setVisor(null);
@@ -559,9 +563,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
     setForm(formularioInicial(motores, pedido, [], fijados));
     setPreset(pedido.preset ?? "anuncio");
     setIdeaAnterior(null);
-    avisar(true, pedido.tipo === "video"
-      ? `Lista para recrear el video con tu marca${pedido.referencias?.length ? " y las fotos del producto" : ""}. Revisa el pedido y pulsa «Crear video».`
-      : "Lista para recrear con tu marca: el anuncio va de referencia sólo por su composición y su estilo, con las fotos del producto. Revisa y pulsa «Crear imagen».");
+    avisar(true, `Lista para recrear con tu marca${pedido.referencias?.length ? " y las fotos del producto" : ""}. Revisa el pedido y pulsa «Crear».`);
     enfocarPrompt();
   };
 
