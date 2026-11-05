@@ -24,6 +24,8 @@ export const VERSION_VISTA = 1;
 /** Las herramientas cuyo resultado se enseña en la vista previa del chat. */
 export const CON_VISTA = Object.freeze([
   "ver_pieza", "estado_trabajo", "estado_encargo", "crear_en_estudio", "corregir_pieza", "disenar_piezas", "ver_cuadro", "ver_escenas",
+  // El reel del servidor: su storyboard se ve en el chat según sale.
+  "crear_reel", "estado_reel", "continuar_reel", "montar_reel",
 ]);
 /** Las que sólo llama la página (`visibility: ["app"]`): claude.ai no se las da al modelo. */
 export const SOLO_DE_LA_VISTA = Object.freeze(["vista_encargo", "vista_trabajo", "me_gusta_pieza"]);
