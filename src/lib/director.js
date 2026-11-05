@@ -550,7 +550,7 @@ const REGLA_SERIE = "Un carrusel es UNA serie: el titular en la MISMA zona, del 
  * Lo que se le pide al director para un carrusel: con el guion (`laminas`: las de partirGuion) o sólo un tema, de 5 a 7
  * láminas. Devuelve el sistema de la serie y la ficha de cada lámina con su texto exacto. Pura.
  */
-export function pedidoDeCarrusel({ cliente = "la marca", rubro = "", laminas = [], tema = "", tipo = "", estilo = "", producto = "", personajes = [], marca = "", conLogo = true, guia = "", plantillas = [], manual = null, correcciones = [], vistas = 0, estructura = "", catalogo = "", sobreLaMarca = "" }) {
+export function pedidoDeCarrusel({ cliente = "la marca", rubro = "", laminas = [], tema = "", tipo = "", estilo = "", producto = "", personajes = [], marca = "", conLogo = true, guia = "", plantillas = [], manual = null, correcciones = [], vistas = 0, estructura = "", catalogo = "", sobreLaMarca = "", indicacion = "" }) {
   const conGuion = laminas.length >= 2;
   const deCarrusel = plantillas.filter((p) => p.uso === "portada" || p.uso === "lamina");
   return [
@@ -561,6 +561,8 @@ export function pedidoDeCarrusel({ cliente = "la marca", rubro = "", laminas = [
       ? `EL GUION (respeta su orden y sus datos; puedes acortar un texto que no quepa, sin cambiar precios ni cifras):\n${laminas.map((l) => `${l.n}. (${l.rol}) ${String(l.texto).replace(/\s+/g, " ").slice(0, 400)}`).join("\n")}`
       : `No hay guion: escribe ${estructura ? "las láminas" : "de 5 a 7 láminas"} sobre este tema: ${corto(tema, 400)}${estructura ? `\nSigue esta ${corto(estructura, 400)} (la portada promete algo concreto de esa estructura, no un título genérico).` : ""}`,
     conGuion && tema ? `Tema: ${corto(tema, 300)}` : "",
+    // «¿Qué quieres?» de la publicación: manda sobre lo demás, como en la pieza suelta.
+    indicacion ? `LO QUE PIDE LA AGENCIA (manda sobre todo lo demás): ${corto(indicacion, 300)}` : "",
     tipo ? `Tipo de contenido: ${tipo}.` : "",
     estilo ? `Estilo visual: ${corto(estilo, 300)}` : "",
     producto ? (producto.includes("\n") ? `Productos de este carrusel (reales, precio exacto si se nombra):\n${largo(producto, 900)}` : `Producto (real, precio exacto si se nombra): ${corto(producto, 300)}`) : "",

@@ -100,7 +100,7 @@ export default function FlujoCarrusel({ client, estudio, inicial = {}, onPoner =
     setProponiendo(true);
     setAviso(null);
     try {
-      const r = await api.proponerCarrusel(clienteId, { guion, tema, preset, estilo, productoId: productoId || undefined, productoIds, personajes });
+      const r = await api.proponerCarrusel(clienteId, { guion, tema, preset, estilo, productoId: productoId || undefined, productoIds, personajes, indicacion: inicial.indicacion ?? "" });
       setHilo(r.hilo ?? "");
       setLaminas(r.laminas);
       setPaso("propuesta");

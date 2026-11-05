@@ -542,7 +542,7 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
         )}
         {carrusel && (
           <Suspense fallback={null}>
-            <CarruselIA client={client} post={post} cal={cal} onPoner={ponerCarrusel} onCerrar={() => setCarrusel(false)} />
+            <CarruselIA client={client} post={post} cal={cal} onPoner={ponerCarrusel} onCerrar={() => setCarrusel(false)} indicacion={indicacion} />
           </Suspense>
         )}
         {reel && (

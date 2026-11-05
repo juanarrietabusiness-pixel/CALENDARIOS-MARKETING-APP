@@ -29,3 +29,14 @@ describe("el modelo de las historias", () => {
     expect(limpiarKit({ modelos: { imagen: "nano-banana", historias: "muse-image", raro: "x" } }).modelos).toEqual({ imagen: "nano-banana", historias: "muse-image" });
   });
 });
+
+// El costo de las 3 con IA se enseña ANTES de crear (es la confirmación).
+describe("lo que cuestan las 3 historias con IA", () => {
+  it("tres veces una historia 9:16 con el modelo escogido", async () => {
+    const { costoDeHistorias } = await import("./historiasEstudio");
+    const { modeloPorId, estimar, ajustesDe } = await import("./estudioCatalogo");
+    const m = modeloPorId("nano-banana");
+    expect(costoDeHistorias(m)).toBeCloseTo(estimar(m, 1, ajustesDe(m, { aspectRatio: "9:16", imageSize: "2K" }, { reference: ["x"] })) * 3, 3);
+    expect(costoDeHistorias(null)).toBe(0);
+  });
+});
