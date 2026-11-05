@@ -485,11 +485,15 @@ describe("dibujar un fotograma", () => {
     expect(textos(pintar(g, 2))).toContain("¿Piel roja?");
   });
 
-  it("lo que el motor aún no dibuja sale como marcador con su nombre; una imagen sin cargar, también", () => {
+  it("una imagen sin cargar sale como marcador; el teléfono y el antes y después ya se dibujan de verdad", () => {
     const g = validarGuion({ escenas: [{ tipo: "gancho", habla: QUINCE, capas: [
-      { tipo: "telefono" }, { tipo: "imagen", archivo: "x1" }, { tipo: "antes_despues", textoAntes: "a", textoDespues: "b" },
+      { tipo: "telefono", pantalla: "notificacion", notificacion: "Tu pedido llegó" }, { tipo: "imagen", archivo: "x1" }, { tipo: "antes_despues", textoAntes: "a", textoDespues: "b" },
     ] }] }).guion;
-    expect(textos(pintar(g, 2))).toEqual(expect.arrayContaining(["Teléfono", "Imagen", "Antes / después"]));
+    const t = textos(pintar(g, 2));
+    expect(t).toContain("Imagen");
+    expect(t).not.toContain("Teléfono");
+    expect(t).not.toContain("Antes / después");
+    expect(t).toEqual(expect.arrayContaining(["ANTES", "DESPUÉS", "a", "b", "9:41"]));
   });
 
   it("con la imagen cargada la dibuja, y el logo del kit también", () => {

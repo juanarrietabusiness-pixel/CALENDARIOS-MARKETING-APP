@@ -106,9 +106,17 @@ export const avanceDeCuenta = (vida, contar = true) => (!contar || !Number.isFin
  * Un número como se escribe en español: coma decimal y punto de miles desde 10 000 («1500», «12.500», «4,5»). Sin
  * `toLocaleString`, que depende de lo que traiga cada entorno: el Container y la pantalla tienen que dar lo mismo. Pura.
  */
-export function formatearCifra(valor, decimales = 0) {
+export function formatearCifra(valor, decimales = 0, { abreviar = false } = {}) {
   const n = Number(valor) || 0;
   const signo = n < 0 ? "-" : "";
+  // ABREVIADA («412K», «3,2M»): desde mil. Con un decimal sólo por debajo de 10 («4,5K»), y sin «,0».
+  const a = Math.abs(n);
+  if (abreviar && a >= 1000) {
+    const [div, letra] = a >= 1e9 ? [1e9, "B"] : a >= 1e6 ? [1e6, "M"] : [1e3, "K"];
+    const x = a / div;
+    const texto = x < 10 ? x.toFixed(1).replace(/\.0$/, "").replace(".", ",") : String(Math.round(x));
+    return `${signo}${texto}${letra}`;
+  }
   const [ent, dec] = Math.abs(n).toFixed(Math.max(0, Math.min(2, decimales | 0))).split(".");
   const entero = ent.length >= 5 ? ent.replace(/\B(?=(\d{3})+(?!\d))/g, ".") : ent;
   return `${signo}${entero}${dec ? `,${dec}` : ""}`;

@@ -155,3 +155,20 @@ describe("la revisión de las escenas", () => {
     expect(instanteLleno(g, l, 0)).toBeGreaterThan(l.escenas[0].palabras[5].desde);
   });
 });
+
+describe("la zona estricta del texto esencial y lo que entra por partes", async () => {
+  const { fueraDeLaZonaEstricta, tardaEnLlenarse, ZONA_ESTRICTA_916 } = await import("./revisionEscenas.js");
+  it("en 9:16 el texto esencial va del 13,5 al 76 % del alto y del 5,5 al 91 % del ancho", () => {
+    expect(ZONA_ESTRICTA_916).toEqual({ arriba: 0.135, abajo: 0.76, izq: 0.055, der: 0.91 });
+    expect(fueraDeLaZonaEstricta({ x: 100, y: 400, w: 800, h: 300 }, 1080, 1920)).toBe(false);
+    // Pegado abajo (lo tapa la descripción) o a la derecha (los botones).
+    expect(fueraDeLaZonaEstricta({ x: 100, y: 1400, w: 800, h: 200 }, 1080, 1920)).toBe(true);
+    expect(fueraDeLaZonaEstricta({ x: 200, y: 400, w: 820, h: 200 }, 1080, 1920)).toBe(true);
+  });
+  it("la lista, el chat y el antes y después tardan en estar enteros; lo demás, no", () => {
+    expect(tardaEnLlenarse({ tipo: "lista", items: ["a", "b", "c"], cada: 0.5 })).toBeCloseTo(1.65, 5);
+    expect(tardaEnLlenarse({ tipo: "telefono", pantalla: "chat", mensajes: [{}, {}] })).toBeCloseTo(1.35, 5);
+    expect(tardaEnLlenarse({ tipo: "antes_despues", modo: "secuencia" })).toBeCloseTo(1.65, 5);
+    expect(tardaEnLlenarse({ tipo: "texto" })).toBe(0);
+  });
+});

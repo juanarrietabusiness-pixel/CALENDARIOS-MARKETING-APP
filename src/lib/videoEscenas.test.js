@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import {
   validarGuion, lineaDeTiempo, tiempoDeCapa, palabrasDe, sinEtiquetas, etiquetasDe, textoDeLocucion,
-  puedePasar, estadoTrasEditar, puedeGenerarVoz, ESTADOS_VIDEO, NOMBRE_TIPO_ESCENA, TIPOS_ESCENA, COMPONENTES, VERSION_GUION, MIN_ESCENA, COLA_FINAL, FPS,
+  puedePasar, estadoTrasEditar, puedeGenerarVoz, ESTADOS_VIDEO, NOMBRE_TIPO_ESCENA, TIPOS_ESCENA, COMPONENTES, VERSION_GUION, MIN_ESCENA, COLA_FINAL, FPS, ANTICIPO,
 } from "./videoEscenas.js";
 
 // ============================================================
@@ -198,9 +198,13 @@ describe("la línea de tiempo", () => {
     const rapida = Array.from({ length: 10 }, (_, i) => ({ desde: i * 0.3, hasta: i * 0.3 + 0.2 }));
     const [sello, logo] = g.escenas[0].capas;
     const e = (pal) => lineaDeTiempo(g, pal).escenas[0];
-    expect(tiempoDeCapa(sello, e(lenta)).desde).toBeCloseTo(3.2, 3);
-    expect(tiempoDeCapa(sello, e(rapida)).desde).toBeCloseTo(1.2, 3);
+    // Entra ANTICIPO (0,12 s) antes de la palabra: es cuando el ojo la espera. La salida no se adelanta.
+    expect(tiempoDeCapa(sello, e(lenta)).desde).toBeCloseTo(3.2 - ANTICIPO, 3);
+    expect(tiempoDeCapa(sello, e(rapida)).desde).toBeCloseTo(1.2 - ANTICIPO, 3);
     expect(tiempoDeCapa(logo, e(lenta))).toEqual({ desde: 1, hasta: 4.8 });
+    // Nunca antes de que empiece su escena (la palabra 0 de la primera).
+    const primera = validarGuion(minimo([escena(DIEZ, { capas: [{ tipo: "sello", texto: "¡Ya!", entra: { palabra: 0 } }] })])).guion;
+    expect(tiempoDeCapa(primera.escenas[0].capas[0], lineaDeTiempo(primera, lenta).escenas[0]).desde).toBe(0);
   });
 });
 

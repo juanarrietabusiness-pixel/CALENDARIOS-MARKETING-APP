@@ -168,6 +168,8 @@ src/
                           comparten la vista previa y el render del Container
     motorPiezas.js        Las PIEZAS del motor: iconos dibujados, cifra que cuenta, el dibujo libre (formas), los fondos de
                           estrellas y líneas, quitar el fondo liso del logo y su tono (puro: navegador y Container)
+    motorComponentes.js   Los componentes del video animado que eran marcador: lista (escalonada), burbuja, reloj, antes y
+                          después, teléfono (puro: navegador y Container; el motor le pasa sus ayudantes)
     personajeVideo.js     El PERSONAJE del video animado dibujado con código (bebé, niño, adulto; 5 expresiones, 6 poses) y su
                           aspecto por cliente (`kit.personajeVideo`) (puro: navegador y Container)
     motorVideoNavegador.js  Lo que ese motor necesita en el navegador: las imágenes de la galería, el logo, la letra del kit
@@ -4332,6 +4334,12 @@ son del servidor.
   una). «Editar los textos» cambia lo que se dice y se lee sin tocar el JSON. «La voz» pide la locución con el 409 de
   siempre (ver el costo → «Generar por …»). En el panel de un reel o una historia, «Video animado» abre todo esto
   (`ReelIA` con `forma="animado"`). Función «guion de video»: texto, sin confirmación, como «Dame ideas».
+  · **Todo componente del formato se dibuja** (`motorComponentes.js`): lista con sus ítems ESCALONADOS (`cada`), burbuja,
+  reloj (esfera, contador, cuenta atrás), antes y después (lado, deslizador, secuencia) y teléfono (chat con los mensajes
+  uno tras otro, imagen, color, notificación). El «instante lleno» de la revisión y de la hoja espera a que entren todos
+  (`tardaEnLlenarse`). Una capa anclada a una palabra entra `ANTICIPO` (0,12 s) antes. La cifra puede ir `abreviada`
+  («412K», «3,2M»). En 9:16 la revisión avisa del texto esencial fuera de la zona estricta (`ZONA_ESTRICTA_916`: del 13,5
+  al 76 % del alto y del 5,5 al 91 % del ancho).
   · **Nada de esto se ha probado contra Kie real** (los tests hablan con un `fetch` de mentira): los nombres de los campos
   de v3 y v2, si la voz va por id o por nombre (`vozParaKie`), si devuelven tiempos y en qué forma, y el redondeo real de
   los créditos salen de la documentación pública y se comprueban con la primera toma de verdad.

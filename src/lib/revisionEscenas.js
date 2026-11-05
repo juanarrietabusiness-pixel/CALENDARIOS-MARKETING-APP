@@ -47,6 +47,28 @@ const seVenALaVez = (a, b) => a && b && a.desde < b.hasta && b.desde < a.hasta;
  * El instante «lleno» de una escena: cuando ya entró todo lo que entra (lo mejor para mirar un cuadro de ella).
  * Segundos del video. Pura.
  */
+/** Lo que es texto que hay que leer sí o sí (en 9:16 va en la zona estricta). */
+const ESENCIAL = new Set(["texto", "llamado", "sello", "cifra"]);
+/** La zona estricta del texto esencial en 9:16, en fracciones del cuadro. */
+export const ZONA_ESTRICTA_916 = Object.freeze({ arriba: 0.135, abajo: 0.76, izq: 0.055, der: 0.91 });
+/** ¿La caja se sale de la zona estricta? (con la misma tolerancia que el resto de la revisión). Pura. */
+export function fueraDeLaZonaEstricta(caja, ancho, alto, z = ZONA_ESTRICTA_916) {
+  return caja.y < alto * z.arriba - TOLERANCIA || caja.y + caja.h > alto * z.abajo + TOLERANCIA
+    || caja.x < ancho * z.izq - TOLERANCIA || caja.x + caja.w > ancho * z.der + TOLERANCIA;
+}
+
+/** Lo que tarda una capa en estar ENTERA después de entrar (las que entran por partes; las demás, 0). Pura. */
+export function tardaEnLlenarse(capa) {
+  // +0,3: en el gancho el motor deja entrar primero el texto principal (tiemposDeEscena), así que una lista puede empezar
+  // un poco después de su `desde`.
+  if (capa.tipo === "lista") return Math.max(0, (capa.items?.length ?? 1) - 1) * (capa.cada ?? 0.4) + 0.65;
+  if (capa.tipo === "telefono" && capa.pantalla === "chat") return Math.max(0, (capa.mensajes?.length ?? 1) - 1) * 0.7 + 0.65;
+  if (capa.tipo === "telefono" && capa.pantalla === "notificacion") return 0.65;
+  if (capa.tipo === "antes_despues") return { lado: 0.85, deslizador: 1.25, secuencia: 1.65 }[capa.modo] ?? 0.85;
+  if (capa.tipo === "reloj" && capa.modo !== "reloj") return DURACION_CUENTA + 0.05;
+  return 0;
+}
+
 export function instanteLleno(guion, linea, indice) {
   const m = linea?.escenas?.[indice];
   if (!m) return 0;
@@ -60,6 +82,9 @@ export function instanteLleno(guion, linea, indice) {
     if (desde >= m.hasta) continue;
     ultimo = Math.max(ultimo, desde);
     if (["cifra", "anillo"].includes(capa.tipo) && capa.contar !== false) cuenta = Math.max(cuenta, desde + DURACION_CUENTA + 0.05);
+    // Lo que entra por partes también: la lista ítem a ítem, los mensajes del teléfono, el «después».
+    const resto = tardaEnLlenarse(capa);
+    if (resto) cuenta = Math.max(cuenta, desde + resto);
   }
   return Math.round(Math.min(m.hasta - 0.05, Math.max(m.desde, ultimo + dEntra + 0.1, cuenta)) * 100) / 100;
 }
@@ -101,6 +126,12 @@ export function revisarEscenas(ctx, { guion, linea, formato, recursos = {}, fuen
       // 2. Fuera del área segura: lo tapan la barra de la red, el texto del post o los botones.
       if (caja.x < area.x - TOLERANCIA || caja.y < area.y - TOLERANCIA || caja.x + caja.w > area.x + area.w + TOLERANCIA || caja.y + caja.h > area.y + area.h + TOLERANCIA) {
         de(caja, "zona_segura", `${nombre} queda fuera de la zona segura (en ${f}, ahí lo tapan la barra de la red o los botones). Usa una zona (arriba, centro, abajo) en vez de x/y.`, CON_LETRAS.has(caja.tipo) || caja.tipo === "logo");
+      }
+      // 2b. En 9:16, el texto ESENCIAL (titular, llamado, sello, cifra) dentro de la zona estricta: entre el 13,5 y el 76 %
+      //     del alto y el 5,5 y el 91 % del ancho (a la derecha van los botones de la red). Aviso: el reparto ya lo deja
+      //     casi siempre dentro; esto caza una posición x/y o un tamaño que lo empuja.
+      else if (f === "9:16" && ESENCIAL.has(caja.tipo) && fueraDeLaZonaEstricta(caja, ancho, alto)) {
+        de(caja, "zona_esencial", `${nombre} es texto esencial y queda fuera de la zona estricta de 9:16 (del 13,5 al 76 % del alto y del 5,5 al 91 % del ancho): ahí lo tapan la descripción o los botones de la red.`, false);
       }
       // 3. Encima de los subtítulos.
       if (banda && cruce(caja, banda) > 0 && CON_LETRAS.has(caja.tipo)) {
