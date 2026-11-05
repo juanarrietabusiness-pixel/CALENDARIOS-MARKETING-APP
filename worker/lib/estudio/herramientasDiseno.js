@@ -24,7 +24,7 @@
 // Sólo existen en el MCP: el asistente de la aplicación tiene las suyas, con el mismo nombre, en el navegador.
 // ============================================================
 
-import { crearEncargo, encargoPublico } from "./encargos.js";
+import { crearEncargo } from "./encargos.js";
 import { crearTrabajo, ErrorEstudio } from "./trabajos.js";
 import { estadoMotores } from "./motores.js";
 import { kitDe } from "./kit.js";
@@ -32,7 +32,7 @@ import { leerMercado } from "../mercado.js";
 import { archivoPublico, carpetaPublica, crearCarpeta, marcarUso } from "./galeria.js";
 import { manualDelEspacio, correccionesDelCliente } from "./fichas.js";
 import { catalogoParaDisenar } from "./catalogoDiseno.js";
-import { miniaturaDe, miniaturasDe, MAX_PIEZAS_VISTAS } from "./miniaturas.js";
+import { miniaturaDe, MAX_PIEZAS_VISTAS } from "./miniaturas.js";
 import { NULO } from "../acceso.js";
 import { fotosDelCatalogo } from "../../../src/lib/estudioMercado.js";
 import { modeloPorId, modeloPorDefecto, estimar, textoCosto, ajustesDe, nombreDelModelo } from "../../../src/lib/estudioCatalogo.js";
@@ -46,6 +46,8 @@ import {
 import { ESCENA } from "../../../src/lib/encargos.js";
 import { pedidoDeCorreccion, modeloParaCorregir, proporcionDeMedidas } from "../../../src/lib/edicion.js";
 import { conHistoriaEncajada } from "../redesServidor.js";
+import { vistaDeEncargo, vistaDeTrabajo } from "./vistaEstudio.js";
+import { vistaDe } from "../mcpVista/modelo.js";
 
 /** Un error de lo pedido: vuelve a Claude como resultado con `isError`, no como fallo del servidor. */
 export class ErrorDiseno extends Error {}
@@ -152,6 +154,23 @@ export function textoDelPlan(plan, { carrusel = false, cliente = "" } = {}) {
       : `${p.n}. ${p.titulo} · ${PROPORCION[p.formato]} · ${nombreDelModelo(p.modelo.id)} · ${textoCosto(p.costo)} · ${p.ficha ? "con tu ficha" : "la diseña el director de la agencia"}${p.postId ? ` · para la publicación ${p.postId}` : ""}`)),
     "Dile a la persona el plan y la cifra. Sólo si dice que sí, repite la MISMA llamada con confirmado=true.",
   ].join("\n");
+}
+
+/** El plan como VISTA PREVIA del chat (MCP Apps): cada pieza con su formato, su modelo y su costo; «Crear» es el sí. Pura. */
+export function vistaDelPlan(plan, { carrusel = false, cliente = null } = {}) {
+  const total = plan.filter((p) => !p.error).reduce((t, p) => t + (p.costo || 0), 0);
+  return vistaDe({
+    tipo: "plan", titulo: `Plan ${carrusel ? "del carrusel" : "de diseño"}${cliente?.nombre ? ` · ${cliente.nombre}` : ""}`, cliente,
+    subtitulo: `${plan.filter((p) => !p.error).length} ${carrusel ? "láminas" : "piezas"} · nada se ha creado todavía`,
+    plan: {
+      costo: textoCosto(total),
+      piezas: plan.map((p) => ({
+        titulo: `${p.n}. ${p.titulo}`,
+        detalle: p.error ? "" : `${PROPORCION[p.formato]} · ${nombreDelModelo(p.modelo.id)} · ${textoCosto(p.costo)} · ${p.ficha ? "con la ficha de Claude" : "la diseña el director de la agencia"}${p.postId ? ` · para la publicación ${p.postId}` : ""}`,
+        error: p.error ?? "",
+      })),
+    },
+  });
 }
 
 /** Las plantillas del kit y lo que le gustó a la agencia, como imágenes de 512 px: lo que el director mira. */
@@ -312,12 +331,20 @@ export function crearHerramientasDiseno({ env, acceso, resolverCliente, usuario,
       const modeloCarrusel = esCarrusel ? (buenas[0]?.modelo ?? modeloDelCliente(ctx.activos, ctx.kit)) : null;
       if (esCarrusel && !modeloCarrusel) throw new ErrorDiseno("No hay ningún modelo de imagen con llave (Ajustes → IA).");
 
+      const quien = { id: c.id, nombre: c.name };
       if (confirmado !== true) {
         if (esCarrusel && !buenas.length) {
           const una = estimar(modeloCarrusel, 1, ajustesDe(modeloCarrusel, { aspectRatio: "4:5" }, {}));
-          return `NO SE CREÓ NADA TODAVÍA. Un carrusel de ${c.name} sobre «${texto(tema, 120)}» que diseña el director (de 5 a 8 láminas): unos ${textoCosto(una * 6)} (${textoCosto(una)} por lámina, ${nombreDelModelo(modeloCarrusel.id)}). Dile la cifra a la persona y, sólo si dice que sí, repite la llamada con confirmado=true.`;
+          return {
+            texto: `NO SE CREÓ NADA TODAVÍA. Un carrusel de ${c.name} sobre «${texto(tema, 120)}» que diseña el director (de 5 a 8 láminas): unos ${textoCosto(una * 6)} (${textoCosto(una)} por lámina, ${nombreDelModelo(modeloCarrusel.id)}). Dile la cifra a la persona y, sólo si dice que sí, repite la llamada con confirmado=true.`,
+            imagenes: [],
+            vista: vistaDe({
+              tipo: "plan", titulo: `Plan del carrusel · ${c.name}`, cliente: quien, subtitulo: "Nada se ha creado todavía",
+              plan: { costo: textoCosto(una * 6), piezas: [{ titulo: `Carrusel sobre «${texto(tema, 120)}»`, detalle: `De 5 a 8 láminas que diseña el director · ${textoCosto(una)} por lámina · ${nombreDelModelo(modeloCarrusel.id)}` }] },
+            }),
+          };
         }
-        return textoDelPlan(plan, { carrusel: esCarrusel, cliente: c.name });
+        return { texto: textoDelPlan(plan, { carrusel: esCarrusel, cliente: c.name }), imagenes: [], vista: vistaDelPlan(plan, { carrusel: esCarrusel, cliente: quien }) };
       }
 
       // ¿De qué calendario es cada publicación? (la pieza queda unida a ella en la galería)
@@ -346,12 +373,16 @@ export function crearHerramientasDiseno({ env, acceso, resolverCliente, usuario,
               ? { laminas: buenas.map((p, i) => ({ n: i + 1, rol: i === 0 ? "portada" : i === ultima && buenas.length >= 3 ? "cierre" : "contenido", texto: textoDeLaFicha(p.ficha), ficha: p.ficha })) }
               : { propuesta: { guion: "", tema: texto(tema, 400), preset: buenas[0]?.estilo ?? "", estilo: "", productoId: lista(productos, 1)[0] }, laminas: [] }),
           }, { usuario });
-          return [
-            `Carrusel en marcha para ${c.name}: encargo ${fila.id} (carpeta ${carpeta.id}, que es su carrusel_id).`,
-            "Se hace en el servidor, lámina a lámina y en orden (cada una con la anterior y la portada de referencia), con el control de calidad.",
-            `Mira cómo va con estado_encargo (encargo_id ${fila.id}); al terminar te devuelve cada lámina para que la revises.`,
-            postId ? `Cuando esté bien, ponlo en la publicación con poner_en_publicacion (post_id ${postId}, carrusel_id ${carpeta.id}).` : "",
-          ].filter(Boolean).join("\n");
+          return {
+            texto: [
+              `Carrusel en marcha para ${c.name}: encargo ${fila.id} (carpeta ${carpeta.id}, que es su carrusel_id).`,
+              "Se hace en el servidor, lámina a lámina y en orden (cada una con la anterior y la portada de referencia), con el control de calidad.",
+              `Mira cómo va con estado_encargo (encargo_id ${fila.id}); al terminar te devuelve cada lámina para que la revises. La vista previa del chat enseña las láminas según salen.`,
+              postId ? `Cuando esté bien, ponlo en la publicación con poner_en_publicacion (post_id ${postId}, carrusel_id ${carpeta.id}).` : "",
+            ].filter(Boolean).join("\n"),
+            imagenes: [],
+            vista: (await vistaDeEncargo(env, acceso, fila)).vista,
+          };
         }
         const vistas = buenas.some((p) => !p.ficha) ? await vistasDelCliente(env, acceso, c, ctx.kit).catch(() => []) : [];
         const fila = await crearEncargo(env, acceso, c, {
@@ -359,13 +390,17 @@ export function crearHerramientasDiseno({ env, acceso, resolverCliente, usuario,
           pasos: buenas.map((p) => pasoDelPlan(p, { calendarioDePost, productos: ctx.productos, estampa })),
         }, { usuario });
         const total = buenas.reduce((t, p) => t + (p.costo || 0), 0);
-        return [
-          `En marcha para ${c.name}: encargo ${fila.id}, ${buenas.length} pieza${buenas.length === 1 ? "" : "s"} (unos ${textoCosto(total)}).`,
-          plan.some((p) => p.error) ? `No van: ${plan.filter((p) => p.error).map((p) => `${p.n} (${p.error})`).join("; ")}.` : "",
-          "Se hacen en el servidor, de dos en dos, con el control de calidad (corrige sola una letra mal escrita y se queda con la mejor).",
-          `Mira cómo va con estado_encargo (encargo_id ${fila.id}); al terminar te devuelve cada imagen para que la revises.`,
-          estampa ? "El logo de este cliente lo ESTAMPA la aplicación: queda puesto cuando alguien abra el Estudio." : "",
-        ].filter(Boolean).join("\n");
+        return {
+          texto: [
+            `En marcha para ${c.name}: encargo ${fila.id}, ${buenas.length} pieza${buenas.length === 1 ? "" : "s"} (unos ${textoCosto(total)}).`,
+            plan.some((p) => p.error) ? `No van: ${plan.filter((p) => p.error).map((p) => `${p.n} (${p.error})`).join("; ")}.` : "",
+            "Se hacen en el servidor, de dos en dos, con el control de calidad (corrige sola una letra mal escrita y se queda con la mejor).",
+            `Mira cómo va con estado_encargo (encargo_id ${fila.id}); al terminar te devuelve cada imagen para que la revises. La vista previa del chat enseña las piezas según salen.`,
+            estampa ? "El logo de este cliente lo ESTAMPA la aplicación: queda puesto cuando alguien abra el Estudio." : "",
+          ].filter(Boolean).join("\n"),
+          imagenes: [],
+          vista: (await vistaDeEncargo(env, acceso, fila)).vista,
+        };
       } catch (e) {
         if (e instanceof ErrorEstudio) throw new ErrorDiseno(e.message);
         throw e;
@@ -375,31 +410,27 @@ export function crearHerramientasDiseno({ env, acceso, resolverCliente, usuario,
     async estado_encargo({ encargo_id: id }) {
       const fila = await acceso.leerUno("estudio_encargos", { id: String(id ?? "") });
       if (!fila) throw new ErrorDiseno(`No encontré el encargo «${id}».`);
-      const e = encargoPublico(fila);
-      const ids = [...new Set(e.pasos.flatMap((p) => (p.fase === "hecho" ? (p.finales?.length ? p.finales : p.opciones.map((o) => o.id)) : [])))].filter(Boolean);
-      const filas = ids.length ? await acceso.leerVarios("estudio_archivos", ["id", "clave", "mime", "tipo", "ajustes", "client_id"], "id", ids) : [];
-      const porId = new Map(filas.filter((f) => f.client_id === fila.client_id).map((f) => [f.id, f]));
+      // La vista previa del chat (MCP Apps) lleva las mismas piezas; las imágenes son las mismas que mira Claude.
+      const { e, porId, imagenes, vista } = await vistaDeEncargo(env, acceso, fila);
       const FASE = { nuevo: "esperando", generando: "creándose", opciones: "revisándose", hecho: "lista", fallido: "no salió" };
+      const finalesDe = (p) => (p.fase === "hecho" ? (p.finales?.length ? p.finales : p.opciones.map((o) => o.id)) : []);
       const lineas = e.pasos.map((p, i) => {
-        const finales = p.fase === "hecho" ? (p.finales?.length ? p.finales : p.opciones.map((o) => o.id)) : [];
+        const finales = finalesDe(p);
         const control = p.opciones?.[0]?.control;
         const nota = control ? ` · control: ${control.estado === "ok" ? "bien" : "revisar"}${control.puntajeDiseno ? `, diseño ${control.puntajeDiseno}/10` : ""}${p.opciones?.[0]?.corregida ? " (corregida)" : ""}` : "";
         return `${i + 1}. ${p.titulo || p.id} — ${FASE[p.fase] ?? p.fase}${finales.length ? ` · archivo ${finales.join(", ")}` : ""}${nota}${p.error ? ` · ${p.error}` : ""}${p.deDirector ? " · ficha del director" : ""}`;
       });
       const vivo = e.estado === "en_marcha";
-      const listas = ids.map((x) => porId.get(x)).filter((f) => f && String(f.mime ?? "").startsWith("image/"));
-      const aVer = listas.slice(0, MAX_PIEZAS_VISTAS);
-      const vistas = aVer.length ? await miniaturasDe(env, aVer) : [];
-      const imagenes = vistas.filter(Boolean);
+      const listas = [...new Set(e.pasos.flatMap(finalesDe))].map((x) => porId.get(x)).filter((f) => f && String(f.mime ?? "").startsWith("image/"));
       const textoEstado = [
         `Encargo ${e.id} (${e.tipo === "carrusel" ? "carrusel" : "piezas"}): ${vivo ? "en marcha" : e.estado === "hecho" ? "terminado" : e.estado}. ${e.nota ?? ""}`.trim(),
         e.error ? `Motivo: ${e.error}` : "",
         ...lineas,
         imagenes.length ? `Van ${imagenes.length === 1 ? "la imagen lista" : `las ${imagenes.length} imágenes listas`}, en el orden de arriba: MÍRALAS antes de darlas por buenas.` : "",
-        listas.length > aVer.length ? `Hay ${listas.length - aVer.length} más: míralas con ver_pieza.` : "",
-        vivo ? "Sigue en el servidor: vuelve a mirar en un minuto." : "",
+        listas.length > MAX_PIEZAS_VISTAS ? `Hay ${listas.length - MAX_PIEZAS_VISTAS} más: míralas con ver_pieza.` : "",
+        vivo ? "Sigue en el servidor: vuelve a mirar en un minuto (la vista previa del chat se pone al día sola)." : "",
       ].filter(Boolean).join("\n");
-      return imagenes.length ? { texto: textoEstado, imagenes } : textoEstado;
+      return { texto: textoEstado, imagenes, vista };
     },
 
     async corregir_pieza({ cliente, archivo_id: archivoId, indicacion = "", igual_a: igualA = "" }) {
@@ -421,7 +452,11 @@ export function crearHerramientasDiseno({ env, acceso, resolverCliente, usuario,
           modelo: m.id, prompt, n: 1, ajustes: ajustesDe(m, { aspectRatio: aspecto }, medios), medios, confirmado: true,
           ...(a.carpetaId ? { carpetaId: a.carpetaId } : {}),
         }, { usuario, origen: "claude", por });
-        return `Corrigiendo la pieza ${a.id} con ${nombreDelModelo(m.id)} (unos ${textoCosto(estimar(m, 1, {}))}): pedido ${t.id}. Sale una NUEVA y la de antes se queda en la galería. Mírala con estado_trabajo (trabajo_id ${t.id}) y, si va en una publicación, ponla con poner_en_publicacion.`;
+        const { vista } = await vistaDeTrabajo(env, acceso, t, { titulo: "Versión corregida" });
+        return {
+          texto: `Corrigiendo la pieza ${a.id} con ${nombreDelModelo(m.id)} (unos ${textoCosto(estimar(m, 1, {}))}): pedido ${t.id}. Sale una NUEVA y la de antes se queda en la galería. Mírala con estado_trabajo (trabajo_id ${t.id}) y, si va en una publicación, ponla con poner_en_publicacion.`,
+          imagenes: [], vista,
+        };
       } catch (e) {
         if (e instanceof ErrorEstudio) throw new ErrorDiseno(e.message);
         throw e;
