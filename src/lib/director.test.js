@@ -210,3 +210,38 @@ describe("el oficio: lo que separa una pieza profesional de una genérica", () =
     expect(OFICIO_VISUAL).toMatch(/nunca «espacio negativo», «hueco» ni una franja plana/);
   });
 });
+
+describe("una ficha que no cabe en el pedido", async () => {
+  const { ajustarFicha } = await import("./director.js");
+  const ficha = [
+    "Pieza: post 4:5 — servicio: el examen gratis con tu compra.",
+    `Composición: ${"titular arriba, del 6 al 20 % de la altura; ".repeat(6)}`,
+    `Fondo: ${"la consulta, pared crema #F2EDE4; ".repeat(5)}`,
+    `Imagen principal: ${"una mujer en el autorrefractómetro; ".repeat(6)}`,
+    `Fotografía: ${"panel suave a 45° desde la derecha, 5000 K, 50 mm a f/2.2; ".repeat(5)}`,
+    "Texto (exacto, sin cambiar una letra): titular «Examen computarizado gratis» (9 %); apoyo «Incluido con tu compra» (4 %).",
+    `Marca: ${"logo abajo a la derecha, 12 % del ancho; ".repeat(4)}`,
+    `Evitar: ${"caras deformadas; ".repeat(8)}`,
+  ].join("\n");
+
+  it("quita primero lo prescindible (Marca, Evitar, Fondo) y nunca el texto exacto ni la pieza", () => {
+    const f = ajustarFicha(ficha, ficha.length - 120);
+    expect(f.length).toBeLessThanOrEqual(ficha.length - 120);
+    expect(f).not.toMatch(/^Marca:/m);
+    expect(f).toMatch(/^Evitar:/m);
+    expect(f).toContain("«Examen computarizado gratis»");
+    expect(f).toMatch(/^Pieza:/);
+  });
+
+  it("si aun así no cabe, recorta lo más largo por una palabra; el texto sigue entero", () => {
+    const f = ajustarFicha(ficha, 700);
+    expect(f.length).toBeLessThanOrEqual(700);
+    expect(f).toContain("titular «Examen computarizado gratis» (9 %); apoyo «Incluido con tu compra» (4 %).");
+    expect(f).not.toMatch(/^(Evitar|Marca|Fondo):/m);
+  });
+
+  it("lo que cabe no se toca, y una escena que no es ficha se corta por el final", () => {
+    expect(ajustarFicha(ficha, 5000)).toBe(ficha.trim());
+    expect(ajustarFicha("Una sala luminosa con un sofá gris y plantas", 10)).toBe("Una sala l");
+  });
+});

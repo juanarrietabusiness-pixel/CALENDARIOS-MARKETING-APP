@@ -233,6 +233,30 @@ describe("crear_en_estudio", () => {
     expect(r.error).toBe(true);
   });
 
+  it("una ficha que con la marca no cabe en el pedido se acorta (lo prescindible primero) en vez de rechazarse, y se dice", async () => {
+    db.sqlite.prepare("update clients set kit_marca = ? where id = 'c1'").run(JSON.stringify({
+      paleta: [{ hex: "#1E2A5A", nombre: "azul" }], estilo: "Fotografía cálida y cercana, luz natural, ".repeat(12),
+      reglas: Array.from({ length: 12 }, (_, i) => `Regla ${i + 1}: el titular siempre en mayúsculas y con el azul de la marca, nunca sobre la cara.`),
+    }));
+    const ficha = [
+      "Pieza: post 4:5 — anuncio.",
+      `Composición: ${"titular arriba del 6 al 20 %; ".repeat(24)}`,
+      `Fondo: ${"pared crema #F2EDE4; ".repeat(20)}`,
+      `Imagen principal: ${"una sala luminosa; ".repeat(24)}`,
+      `Fotografía: ${"ventana a la izquierda, 4500 K, 85 mm a f/2.8; ".repeat(16)}`,
+      "Texto (exacto, sin cambiar una letra): titular «Duerme mejor desde hoy» (11 %).",
+      `Marca: ${"logo abajo a la derecha; ".repeat(6)}`,
+      `Evitar: ${"manos raras; ".repeat(10)}`,
+    ].join("\n");
+    const { texto, error } = await usar(asistente(), "crear_en_estudio", { cliente: "Dcasa", prompt: ficha, modelo: "prueba" });
+    expect(error).toBe(false);
+    expect(texto).toMatch(/se acortó quitando primero «Marca»/);
+    const [t] = trabajos();
+    expect(t.prompt.length).toBeLessThanOrEqual(4000);
+    expect(t.prompt).toContain("«Duerme mejor desde hoy»");
+    expect(t.prompt).not.toMatch(/^Evitar:/m);
+  });
+
   it("en el asistente de un cliente, el cliente se puede omitir", async () => {
     const c1 = await acceso.leerUno("clients", { id: "c1" });
     const { error } = await usar(asistente({}, c1), "crear_en_estudio", { prompt: "una cuna", modelo: "prueba" });

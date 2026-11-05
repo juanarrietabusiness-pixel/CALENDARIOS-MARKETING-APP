@@ -177,6 +177,42 @@ export function textoDeLaFicha(ficha = "") {
   return citas.length ? lineasDelTexto(citas.join("\n")).join("\n") : "";
 }
 
+/**
+ * Lo que se quita primero de una ficha que no cabe: «Marca» (la paleta la dice el kit y el sitio del logo, la
+ * composición), «Evitar» (lo general lo dice el acabado) y, al final, «Fondo».
+ */
+const PRESCINDIBLES = ["Marca", "Evitar", "Fondo"];
+/** Lo que no se toca nunca al acortar: de qué es la pieza y su texto exacto. */
+const INTOCABLES = /^(Pieza|Texto)/;
+
+/**
+ * La ficha que CABE en `max` caracteres: con la marca, el acabado, las referencias y el logo detrás, una ficha completa
+ * puede pasar del tope del pedido (MAX_PROMPT) y antes se cortaba por el final —perdiendo el texto exacto o la marca— o
+ * se rechazaba el pedido entero. Primero se quitan las líneas prescindibles (Marca, Evitar, Fondo), luego se recorta la
+ * más larga que no sea la pieza ni el texto, por una palabra; el texto exacto se queda siempre. Una escena que no es
+ * ficha se corta por el final, como antes. Pura.
+ */
+export function ajustarFicha(ficha, max) {
+  const f = String(ficha ?? "").trim();
+  if (f.length <= max) return f;
+  if (!esFicha(f)) return f.slice(0, Math.max(0, max));
+  let lineas = f.split("\n");
+  const largo = () => lineas.join("\n").length;
+  for (const pref of PRESCINDIBLES) {
+    if (largo() <= max) break;
+    lineas = lineas.filter((l) => !l.startsWith(`${pref}:`));
+  }
+  for (let vuelta = 0; vuelta < 8 && largo() > max; vuelta++) {
+    const i = lineas.reduce((m, l, j) => (!INTOCABLES.test(l) && l.length > (lineas[m]?.length ?? -1) ? j : m), -1);
+    if (i < 0) break;
+    const sobra = largo() - max;
+    const quedan = Math.max(60, lineas[i].length - sobra - 1);
+    const corte = lineas[i].slice(0, quedan);
+    lineas[i] = `${corte.slice(0, Math.max(40, corte.lastIndexOf(" "))).replace(/[,;:\s]+$/, "")}.`;
+  }
+  return lineas.join("\n").slice(0, Math.max(0, max));
+}
+
 /** ¿Es una ficha de diseño (y no una escena de una o dos frases)? Pura. */
 export const esFicha = (t) => /(^|\n)\s*Pieza: /.test(String(t ?? "")) && /\nComposición: /.test(String(t ?? ""));
 

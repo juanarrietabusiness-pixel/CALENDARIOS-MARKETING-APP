@@ -14,6 +14,10 @@
 //   POST /miniatura { imagen (base64), lado? }  → JSON { datos (base64), mime, ancho, alto, original }: una COPIA
 //                                              reducida en JPEG (lado mayor ≤ `lado`, 768 por defecto) para que Claude
 //                                              VEA una pieza del Estudio por MCP sin mandarle la de 2K. No lleva guion.
+//   POST /acabado   { imagen, mime?, texto? { texto, plantilla, colores, familia?, fuente? }, logo? { datos, posicion } }
+//                                            → JSON { datos, mime, ancho, alto }: el texto de la plantilla y/o el logo
+//                                              estampado encima de una pieza del Estudio (src/lib/acabadoLienzo.js, el
+//                                              mismo dibujo que el navegador). No lleva guion.
 //
 // Todo pedido del video lleva { guion, palabras, formato, paleta, imagenes, logo, fuentes } (ver recursos.mjs). El
 // guion se valida aquí también: lo que no valida no se dibuja.
@@ -26,7 +30,8 @@ import { createCanvas, loadImage } from "@napi-rs/canvas";
 import { validarGuion, lineaDeTiempo, FORMATOS_VIDEO } from "../src/lib/videoEscenas.js";
 import { dibujarFrame, paletaDelGuion, escenaEn } from "../src/lib/motorVideo.js";
 import { revisarEscenas, textoDeRevision, instanteLleno } from "../src/lib/revisionEscenas.js";
-import { prepararRecursos, registrarRespaldo } from "./recursos.mjs";
+import { prepararRecursos, registrarRespaldo, registrarFuente } from "./recursos.mjs";
+import { dibujarTextoPlantilla, dibujarLogo, letraDe } from "../src/lib/acabadoLienzo.js";
 import { renderizar } from "./render.mjs";
 
 const PUERTO = Number(process.env.PORT || 8080);
@@ -101,8 +106,48 @@ async function miniatura(p) {
   return { cuerpo: Buffer.from(json), tipo: "application/json", cabeceras: {} };
 }
 
+const COLOR = /^#[0-9a-f]{6}$/i;
+const PLANTILLAS = new Set(["banda", "arriba", "centro", "degradado"]);
+
+/**
+ * El ACABADO de una pieza ya hecha, sin pantalla: el texto de la plantilla encima y/o el logo estampado, con el MISMO
+ * dibujo que el navegador (src/lib/acabadoLienzo.js). Lo pide el Worker cuando un encargo del Estudio termina una pieza
+ * que necesitaba lienzo. → { datos (base64), mime, ancho, alto }.
+ */
+async function acabado(p) {
+  if (typeof p.imagen !== "string" || !p.imagen) throw new ErrorPedido("Falta la imagen.");
+  let img;
+  try { img = await loadImage(Buffer.from(p.imagen, "base64")); } catch { throw new ErrorPedido("No es una imagen que se pueda leer."); }
+  const ancho = img.width;
+  const alto = img.height;
+  const lienzo = createCanvas(ancho, alto);
+  const ctx = lienzo.getContext("2d");
+  ctx.drawImage(img, 0, 0, ancho, alto);
+  if (p.texto) {
+    const t = p.texto;
+    const colores = t.colores ?? {};
+    if (![colores.fondo, colores.texto, colores.acento].every((c) => COLOR.test(String(c ?? "")))) throw new ErrorPedido("Los colores de la plantilla no son #RRGGBB.");
+    const familia = registrarFuente(t.fuente) || String(t.familia ?? "");
+    dibujarTextoPlantilla(ctx, {
+      ancho, alto, texto: String(t.texto ?? "").slice(0, 600), plantilla: PLANTILLAS.has(t.plantilla) ? t.plantilla : "banda",
+      colores, letra: letraDe(familia, "Roboto, sans-serif"),
+    });
+  }
+  if (p.logo) {
+    let logo;
+    try { logo = await loadImage(Buffer.from(String(p.logo.datos ?? ""), "base64")); } catch { throw new ErrorPedido("El logo no es una imagen que se pueda leer."); }
+    dibujarLogo(ctx, logo, { ancho, alto, posicion: p.logo.posicion ?? {} });
+  }
+  // PNG si se pidió (la pieza original lo era y puede tener transparencia); si no, JPEG de calidad alta, como el navegador.
+  const png = p.mime === "image/png";
+  const bytes = png ? await lienzo.encode("png") : await lienzo.encode("jpeg", p.texto ? 92 : 94);
+  const json = JSON.stringify({ datos: bytes.toString("base64"), mime: png ? "image/png" : "image/jpeg", ancho, alto });
+  return { cuerpo: Buffer.from(json), tipo: "application/json", cabeceras: {} };
+}
+
 async function atender(ruta, p) {
   if (ruta === "/miniatura") return miniatura(p);
+  if (ruta === "/acabado") return acabado(p);
   const base = await preparar(p);
   const total = base.linea.total;
   if (ruta === "/cuadro") {

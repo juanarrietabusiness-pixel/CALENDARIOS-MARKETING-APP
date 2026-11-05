@@ -252,6 +252,8 @@ src/
     zip.js                Un ZIP sin comprimir hecho en el navegador («Descargar el carrusel»), con su CRC-32 (puro)
     logoEncima.js         El logo ESTAMPADO: modos, esquinas, `posicionLogo` (puro, también lo lee el kit) y el lienzo
     logoEstudio.js        Estampar el logo y subir la pieza nueva a la galería; `conLogoSiToca` para lote, carrusel y mes
+    acabadoLienzo.js      El texto de la plantilla y el logo ENCIMA de una pieza, dibujados en un contexto ya creado (puro: lo
+                          comparten la pantalla y el Container, POST /acabado)
     recrear.js            «Recrear un anuncio»: el análisis en pocas líneas, la versión de partida y lo que va al
                           compositor (el anuncio sólo por su forma, las fotos del producto delante) (puro)
     otraVersion.js        «Otra versión» y «Recrear con mi marca» de un medio de la PUBLICACIÓN: se hacen ahí y ocupan
@@ -577,6 +579,7 @@ worker/
                           miniaturas.js (la copia reducida que VE Claude, por el Container),
                           herramientasDiseno.js (el DIRECTOR por MCP: guía, diseñar, estado del encargo, corregir, poner en
                           un post), catalogoDiseno.js (el catálogo para quien diseña: chat y MCP),
+                          acabado.js (el texto de la plantilla y el logo estampado por el Container, sin pantalla),
                           higgsfield-schemas.json (SU documentación: campos, valores, obligatorios), elevenlabs.js (la voz
                           directo con la llave oficial), ideas.js
                           («Dame ideas»), lote.js (la producción en lote: niveles, matriz, tipos y mes), encargos.js
@@ -1560,8 +1563,12 @@ son del servidor.
   · **El permiso** es `bloqueado_hasta` (4 min: el director con razonamiento tarda), reservado con el valor leído como
   condición, como en los trabajos. Los `finales` que pone la pantalla también lo toman (si no, un paso a la vez se
   llevaría lo escrito): ocupado → 409 y la pantalla reintenta.
-  · **Lo que necesita lienzo lo hace la pantalla al volver**: el texto de la plantilla y el logo estampado
-  (`terminarPieza`, una vez por pieza; `finales`). Mientras, la pieza se ve cruda.
+  · **Lo que necesita lienzo lo hace el CONTAINER** (`acabarPieza` en worker/lib/estudio/acabado.js → POST /acabado, con el
+  MISMO dibujo de src/lib/acabadoLienzo.js que la pantalla): el texto de la plantilla y el logo estampado, una pieza por
+  paso, subida como la sube la pantalla (`origenId`, su `plantilla`). Un paso así (`porAcabar`) no deja cerrar el encargo
+  hasta intentarlo; si no hay Container (en local) o falla, queda `acabadoIntentado` y lo pone la pantalla al volver
+  (`terminarPaso`, `finales`), como antes. Con alguna opción terminada, las otras quedan en su cruda (si no, la pantalla
+  pondría el texto otra vez). Un encargo cerrado por plazo no espera al Container.
   · **La plantilla que escoge el director** (o la de su tipo) se suma al pedido EN EL SERVIDOR (`conPlantillaDelDirector`
   en encargos.js): su imagen detrás de las que ya iban, con su línea numerada y su sistema escrito, como `pedidoDeLote` en
   la pantalla. Si ya llevaba una, si no cabe en el modelo o si la plantilla ya no está, el pedido no cambia.
@@ -3450,7 +3457,16 @@ son del servidor.
   director.js): «deja libre», «limpio y despejado» y «espacio negativo» hacían que el motor dibujara una franja de color
   plana encima. Ningún estilo de la casa dice «espacio negativo» ni «luz pareja» (un test lo recorre).
   · **El acabado va en toda IMAGEN con el kit puesto** (`oficio` en `componerPedido`, detrás del estilo): sin el kit, la
-  idea va tal cual (lo decidió la persona), y en video no (va limpio). No prohíbe la placa o la banda que pida el diseño.
+  idea va tal cual (lo decidió la persona), y en video no (va limpio). No prohíbe la placa o la banda que pida el diseño,
+  NO impone una luz (el kit de Feria del Lente pide «luz uniforme, pareja, sin foco dirigido» y «fondo plano en crema»:
+  la marca manda; si se quiere otra luz, se cambia el kit) y dice que las medidas no se escriben (Muse escribió un «10%»
+  sacado de «logo … 10 % del ancho»).
+  · **Una ficha que no cabe se ACORTA, no se corta ni se rechaza** (`ajustarFicha`): el bloque de la marca de un kit
+  completo, el tipo, el estilo, el acabado y el logo ocupan ~2.400 de los 4.000 caracteres del pedido (MAX_PROMPT), y una
+  ficha con su «Fotografía» pasa de 1.600. Antes el pedido se cortaba por el FINAL (la marca, el logo) o, por
+  `crear_en_estudio`, se rechazaba entero. Ahora se quita primero «Marca» (la paleta la dice el kit; el sitio del logo,
+  la composición), luego «Evitar» y «Fondo», y después se recorta la línea más larga por una palabra; la pieza y el texto
+  exacto nunca. Lo usan `pedidoDePieza`, `conEscena` (encargos) y `crear_en_estudio` (que además lo dice).
   · **Las fotos del producto se ENDEREZAN** (una línea, una vez, si va alguna): las del catálogo suelen ser del celular,
   inclinadas o desde arriba, y el motor copiaba ese ángulo y ese fondo; lo impreso, tal cual y sin traducir.
   `crear_en_estudio` (asistente y MCP) ya las nombra como el producto REAL (`refsDelCatalogo`): antes iban sin línea.

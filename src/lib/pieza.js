@@ -24,7 +24,7 @@ import { deMisGustos } from "./aprendizajeVisual.js";
 import { ajustesDe, MAX_PROMPT, modeloQueRespeta } from "./estudioCatalogo.js";
 import { pedidoConMarca, ponerLogo, limpiarKit, referenciasDePreset, estiloDeLaPieza, referenciaDeTipografia, referenciasDePersonajes } from "./kitMarca.js";
 import { lineasDeReferencias } from "./referencias.js";
-import { lineaSinTexto } from "./director.js";
+import { lineaSinTexto, ajustarFicha } from "./director.js";
 
 const limpio = (t) => String(t ?? "").trim();
 
@@ -112,11 +112,18 @@ function armarPedido({
   const logo = Boolean(usarKit && conLogo && !video && ponerLogo({ kit, tipo: video ? "video" : "imagen", modelo, referencias: claves }));
   const reference = [...claves, ...(logo ? [limpiarKit(kit).logo] : [])];
   const medios = reference.length ? { reference } : {};
-  const escena = [limpio(idea), limpio(extra)].filter(Boolean).join(" ");
-  const prompt = pedidoConMarca({
+  const armar = (escena) => pedidoConMarca({
     kit, idea: escena, preset, estilo, marca, rubro, usarKit, logo, video,
     referencias: lineasDeReferencias(usados, { cliente: marca }),
-  }).slice(0, MAX_PROMPT);
+  });
+  let escena = [limpio(idea), limpio(extra)].filter(Boolean).join(" ");
+  let completo = armar(escena);
+  // Si no cabe, se acorta la ESCENA (de una ficha, lo prescindible primero) y no el final, donde van la marca y el logo.
+  if (completo.length > MAX_PROMPT && escena) {
+    escena = ajustarFicha(escena, Math.max(200, escena.length - (completo.length - MAX_PROMPT)));
+    completo = armar(escena);
+  }
+  const prompt = completo.slice(0, MAX_PROMPT);
   const base = { ...entrada, ...(aspectRatio ? { aspectRatio } : {}) };
   const ajustes = ajustesDe(modelo, altaResolucion ? conAltaResolucion(modelo, base) : base, medios);
   return { modelo: modelo.id, prompt, n: Math.max(1, Math.min(8, Math.floor(n) || 1)), medios, ajustes };
