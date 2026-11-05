@@ -365,11 +365,13 @@ export function crearHerramientasMCP({ env, acceso, usuario }) {
       if (acciones[nombre]) {
         const r = await acciones[nombre](entrada ?? {});
         // Las que MIRAN piezas devuelven { texto, imagenes, vista? }: las imágenes van como bloques de imagen del MCP y
-        // la vista, como `structuredContent` (lo lee la vista previa del chat, no el modelo).
+        // la vista, como `structuredContent` (la lee la vista previa del chat). El texto va TAMBIÉN dentro de la vista:
+        // hay clientes (Claude Code) que al modelo le dan el `structuredContent` EN LUGAR del texto, y sin él Claude no
+        // sabría el modelo, el pedido ni qué hacer después.
         if (r && typeof r === "object" && (Array.isArray(r.imagenes) || r.vista)) {
           return {
             content: [{ type: "text", text: r.texto ?? "" }, ...(r.imagenes ?? []).map((i) => ({ type: "image", data: i.datos, mimeType: i.mime }))],
-            ...(r.vista ? { structuredContent: r.vista } : {}),
+            ...(r.vista ? { structuredContent: { texto: r.texto ?? "", ...r.vista } } : {}),
           };
         }
         return { content: [{ type: "text", text: r }] };

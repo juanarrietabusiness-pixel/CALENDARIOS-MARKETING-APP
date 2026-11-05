@@ -248,6 +248,9 @@ describe("el conector sirve la vista", () => {
     expect(r.content.some((b) => b.type === "image")).toBe(true);
     expect(r.structuredContent).toMatchObject({ vista: 1, tipo: "piezas", cliente: { id: "c1", nombre: "Feria del Lente", enlace: `${ORIGEN}/cliente/c1/estudio` } });
     expect(r.structuredContent.piezas[0]).toMatchObject({ id: "a1", imagen: 0, archivo: true });
+    // El texto va también dentro de la vista: un cliente que le da al modelo la vista en vez del texto no lo pierde.
+    expect(r.structuredContent.texto).toBe(r.content.find((b) => b.type === "text").text);
+    expect(r.structuredContent.texto).toMatch(/a1 · imagen/);
   });
 });
 

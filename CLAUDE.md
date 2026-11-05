@@ -3527,8 +3527,10 @@ son del servidor.
   estado_trabajo, estado_encargo, crear_en_estudio, corregir_pieza, disenar_piezas, ver_cuadro, ver_escenas) lo nombran en
   `_meta.ui.resourceUri` (y en la clave plana de antes), y claude.ai pinta esa página junto al resultado. Cosas que no se ven:
   · **Las imágenes NO van dos veces:** siguen como bloques de imagen en `content` (las mira Claude) y la vista
-  (`structuredContent`, `vistaDe`/`piezaDe`) sólo dice qué pieza es cada una por su índice (`imagen`). El
-  `structuredContent` no lo lee el modelo: el texto de siempre se queda.
+  (`structuredContent`, `vistaDe`/`piezaDe`) sólo dice qué pieza es cada una por su índice (`imagen`). **El texto va
+  TAMBIÉN dentro de la vista** (`texto`, en `llamar` de worker/lib/mcp.js): según la especificación el modelo no lee el
+  `structuredContent`, pero Claude Code se lo da al modelo EN LUGAR del texto (se vio en producción: llegaban la imagen y el
+  JSON, sin el modelo, el pedido ni las instrucciones).
   · **Se pone al día sola:** con `seguir`, la página llama cada pocos segundos una herramienta SÓLO SUYA (`vista_encargo`,
   `vista_trabajo`: `_meta.ui.visibility: ["app"]`, claude.ai no se la da al modelo) con `ya` = las que ya enseña, y el
   servidor sólo manda las imágenes nuevas (seis por vuelta como mucho; si quedan, `cada: 1`). Para a las 300 vueltas o a los
