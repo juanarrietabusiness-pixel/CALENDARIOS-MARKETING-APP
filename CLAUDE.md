@@ -570,6 +570,9 @@ worker/
     anuncios.js           Meta Ads: cuentas publicitarias, campañas e /insights, subir el medio
                           (/adimages, /advideos por file_url), crear en pausa, activar y pausar
     mcp.js                Las herramientas de Claude por MCP (consulta + escritura)
+    mcpVista/             La VISTA PREVIA en el chat de Claude (MCP Apps): modelo.js (qué herramientas la llevan, el
+                          `structuredContent`, cómo la página lee un resultado; puro), navegador.js (la página del iframe),
+                          estilos.css y pagina.generada.js (GENERADA: `node scripts/mcp/generar-vista.mjs`)
     competencia.js        `business_discovery` de un competidor (sus últimas publicaciones) y «traer» su archivo del CDN de Meta
                           a la galería («Competencia»), también desde un enlace de Instagram SIN @ (memoria, cuentas fijas,
                           página pública) y la miniatura de un reel con música
@@ -3517,6 +3520,35 @@ son del servidor.
   `maquetacion` y las que se titulan «Prompt maestro», «Meta AI» o «Nano Banana vN» (`esDelPromptMaestro`), y
   `buildClientContext` ya no tiene `{ maquetacion }`: el ADN de antes llega siempre sin esa capa. Las notas siguen en la
   pestaña Cerebro para borrarlas. Si vuelve a aparecer «prompt maestro» en un pedido, es una regresión.
+- **La VISTA PREVIA en el chat de Claude (MCP Apps): las piezas se ven DENTRO del chat, en la web y en el teléfono, como
+  con Higgsfield** (`worker/lib/mcpVista/`, `worker/lib/estudio/vistaEstudio.js` y `vistaTrabajo.js`; especificación de
+  MCP Apps 2026-01-26). El conector declara `resources` y sirve UN recurso `ui://juancito-ads/vista-1.html` (`resources/list`,
+  `resources/read`, tipo `text/html;profile=mcp-app`); las herramientas que crean o miran piezas (`CON_VISTA`: ver_pieza,
+  estado_trabajo, estado_encargo, crear_en_estudio, corregir_pieza, disenar_piezas, ver_cuadro, ver_escenas) lo nombran en
+  `_meta.ui.resourceUri` (y en la clave plana de antes), y claude.ai pinta esa página junto al resultado. Cosas que no se ven:
+  · **Las imágenes NO van dos veces:** siguen como bloques de imagen en `content` (las mira Claude) y la vista
+  (`structuredContent`, `vistaDe`/`piezaDe`) sólo dice qué pieza es cada una por su índice (`imagen`). El
+  `structuredContent` no lo lee el modelo: el texto de siempre se queda.
+  · **Se pone al día sola:** con `seguir`, la página llama cada pocos segundos una herramienta SÓLO SUYA (`vista_encargo`,
+  `vista_trabajo`: `_meta.ui.visibility: ["app"]`, claude.ai no se la da al modelo) con `ya` = las que ya enseña, y el
+  servidor sólo manda las imágenes nuevas (seis por vuelta como mucho; si quedan, `cada: 1`). Para a las 300 vueltas o a los
+  tres fallos («Actualizar»). `me_gusta_pieza` es el «Me gusta» de la galería.
+  · **Lo que toca la persona no se salta la confirmación:** «Cambiar» y «Crear» del plan ESCRIBEN en el chat (`ui/message`:
+  «En la pieza a2 de …: …», «Sí, créalo (vi el costo: unos …)») y Claude sigue con sus herramientas; «Abrir en el Estudio»
+  es `ui/open-link` con la dirección que pone `conEnlace` (rutas/mcp.js) con el origen del conector.
+  · **La página va ENTERA dentro del recurso** (el iframe de claude.ai no deja cargar nada de fuera: `resourceDomains`
+  vacío): navegador.js + modelo.js empaquetados con esbuild y estilos.css, en `pagina.generada.js`. Un test la regenera y
+  compara; si se toca cualquiera de los tres, `node scripts/mcp/generar-vista.mjs`. El protocolo (JSON-RPC por
+  `postMessage`: `ui/initialize`, `ui/notifications/tool-result`, `size-changed`…) va escrito a mano, sin el SDK (pesa
+  418 kB): se probó contra el `AppBridge` OFICIAL de `@modelcontextprotocol/ext-apps` 2.0.3 en Chromium (el anfitrión que
+  usa claude.ai): el saludo, el resultado, la vuelta con `ya`, «Me gusta», «Cambiar», el enlace, el tema oscuro y el
+  ancho del teléfono. **No se ha probado en claude.ai de verdad hasta que se despliega.** Si la versión de la página cambia
+  de forma, se sube el número de `URI_VISTA` (claude.ai puede guardar la de antes).
+  · `herramientas.js` (la comparte el asistente de la aplicación) importa `vistaTrabajo.js` y NO `vistaEstudio.js`:
+  éste lee encargos.js, que por fichas.js → mercado.js → herramientasServidor.js vuelve a herramientas.js (el ciclo deja
+  `DEFINICIONES_ESTUDIO` sin iniciar). El asistente de la aplicación recibe sólo el texto cuando no hay imágenes.
+  · Los videos (el mp4 del render) aún no se reproducen en la vista: las direcciones de R2 van con sesión y la firmada de
+  Meta no contesta por trozos (el iPhone no la reproduciría). Pendiente.
 - **El DIRECTOR también por MCP: Claude en claude.ai diseña en lote, ve, corrige y pone en el post**
   (`worker/lib/estudio/herramientasDiseno.js`; sólo en el MCP: el asistente de la aplicación tiene las suyas con el mismo
   nombre, en el navegador). `guia_de_diseno` da lo que el chat recibe en su sistema (el manual, la ficha, el kit, el

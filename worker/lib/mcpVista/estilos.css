@@ -1,0 +1,83 @@
+/* La vista previa en el chat de Claude. Toma los colores, la letra y los radios que pasa claude.ai (variables de MCP
+   Apps: --color-*, --font-*, --border-radius-*); sin ellas, los de respaldo, claros u oscuros según el tema. */
+:root {
+  --r-fondo: #ffffff; --r-fondo-2: #f4f4f5; --r-texto: #18181b; --r-texto-2: #52525b; --r-borde: #e4e4e7;
+  --r-acento: #2563eb; --r-acento-texto: #ffffff; --r-ok: #15803d; --r-revisar: #b45309; --r-error: #b91c1c;
+  color-scheme: light;
+}
+:root[data-tema="dark"] {
+  --r-fondo: #1f1f23; --r-fondo-2: #2a2a30; --r-texto: #f4f4f5; --r-texto-2: #a1a1aa; --r-borde: #3f3f46;
+  --r-acento: #60a5fa; --r-acento-texto: #0b1220; --r-ok: #4ade80; --r-revisar: #fbbf24; --r-error: #f87171;
+  color-scheme: dark;
+}
+:root {
+  --fondo: var(--color-background-primary, var(--r-fondo));
+  --fondo-2: var(--color-background-secondary, var(--r-fondo-2));
+  --texto: var(--color-text-primary, var(--r-texto));
+  --texto-2: var(--color-text-secondary, var(--r-texto-2));
+  --borde: var(--color-border-primary, var(--r-borde));
+  --acento: var(--r-acento);
+  --radio: var(--border-radius-md, 10px);
+  --radio-chico: var(--border-radius-sm, 6px);
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--fondo); color: var(--texto);
+  font-family: var(--font-sans, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif);
+  font-size: var(--font-text-sm-size, 14px); line-height: 1.4;
+}
+#vista { padding: 12px; display: grid; gap: 10px; }
+h1 { margin: 0; font-size: var(--font-heading-xs-size, 15px); font-weight: var(--font-weight-semibold, 600); line-height: 1.3; }
+p { margin: 0; }
+.cabecera { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.titulos { display: grid; gap: 2px; min-width: 0; }
+.sub, .nota, .estado, .costo { color: var(--texto-2); font-size: var(--font-text-xs-size, 12px); }
+.estado:empty { display: none; }
+.espera { padding: 8px 0; }
+.pastilla {
+  flex: none; font-size: 12px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--borde); color: var(--texto-2);
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.pastilla.viva::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--acento); animation: latir 1.2s ease-in-out infinite; }
+@keyframes latir { 50% { opacity: .3; } }
+.rejilla { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+.rejilla.una { grid-template-columns: 1fr; }
+.tarjeta { border: 1px solid var(--borde); border-radius: var(--radio); background: var(--fondo); overflow: hidden; display: grid; align-content: start; }
+.imagen { display: block; width: 100%; padding: 0; border: 0; background: var(--fondo-2); cursor: zoom-in; }
+.imagen img, .grande img { display: block; width: 100%; height: auto; }
+.hueco { aspect-ratio: 4 / 5; display: grid; place-items: center; background: var(--fondo-2); color: var(--texto-2); font-size: 12px; text-align: center; padding: 8px; }
+.hueco.en_marcha, .hueco.esperando { animation: latir 1.6s ease-in-out infinite; }
+.pie { padding: 8px; display: grid; gap: 6px; }
+.nombre { font-weight: var(--font-weight-medium, 500); overflow-wrap: anywhere; }
+.insignia { justify-self: start; font-size: 11px; padding: 1px 7px; border-radius: 999px; border: 1px solid currentColor; }
+.insignia.ok { color: var(--r-ok); }
+.insignia.revisar, .insignia.fallida { color: var(--r-revisar); }
+.insignia.en_marcha, .insignia.esperando { color: var(--texto-2); }
+.acciones, .fila { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.acciones button { flex: 1 1 auto; }
+button {
+  font: inherit; font-size: 13px; min-height: 36px; padding: 6px 12px; border-radius: var(--radio-chico);
+  border: 1px solid var(--borde); background: var(--fondo); color: var(--texto); cursor: pointer;
+}
+button:hover { background: var(--fondo-2); }
+button:focus-visible, textarea:focus-visible { outline: 2px solid var(--acento); outline-offset: 2px; }
+button.chico { min-height: 32px; padding: 4px 10px; font-size: 12px; }
+button.primario { background: var(--acento); color: var(--r-acento-texto); border-color: var(--acento); }
+button.activo { border-color: var(--acento); color: var(--acento); }
+button.imagen:hover { background: var(--fondo-2); }
+.cambio { display: grid; gap: 6px; }
+.cambio label { font-size: 12px; color: var(--texto-2); }
+textarea {
+  width: 100%; font: inherit; font-size: 16px; padding: 8px; border-radius: var(--radio-chico);
+  border: 1px solid var(--borde); background: var(--fondo); color: var(--texto); resize: vertical;
+}
+.grande { display: grid; gap: 8px; }
+.grande img { border-radius: var(--radio); background: var(--fondo-2); }
+.plan ol { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+.plan .no-va .nombre { text-decoration: line-through; color: var(--texto-2); }
+.plan { display: grid; gap: 10px; }
+.error { color: var(--r-error); }
+.aviso { color: var(--r-revisar); font-size: 12px; }
+.texto { white-space: pre-line; color: var(--texto-2); }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; } }

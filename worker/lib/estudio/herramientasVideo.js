@@ -49,6 +49,7 @@ import { textoDeSubtitulo } from "../../../src/lib/subtitulos.js";
 import { instanteLleno } from "../../../src/lib/revisionEscenas.js";
 import { pedidoConClips, alContenedor, respuestaEnBase64 } from "./cuadros.js";
 import { pedirRender, renderAlDia, ligarAPublicacion } from "./render.js";
+import { vistaDe, piezaDe } from "../mcpVista/modelo.js";
 
 const clienteParam = { cliente: { type: "string", description: "Nombre del cliente. En el asistente de un cliente se puede omitir: es ese cliente." } };
 const videoParam = { video_id: { type: "string", description: "ID del proyecto de video (de listar_videos o crear_video)." } };
@@ -494,9 +495,14 @@ export function crearHerramientasVideo({ env, acceso, resolverCliente, usuario, 
         }
         const r = await alContenedor(env, "/cuadro", { ...pedido, t, ancho: 540 });
         const cual = r.headers.get("X-Escena");
+        const segundoVisto = Number(r.headers.get("X-Segundo") ?? t);
         return {
+          vista: vistaDe({
+            tipo: "cuadros", titulo: fila.titulo || "Video animado", cliente: { id: c.id, nombre: c.name },
+            piezas: [piezaDe({ id: "cuadro", titulo: `Escena ${cual ?? ""} · segundo ${segundoVisto.toFixed(1)} de ${linea.total.toFixed(1)}`, imagen: 0, archivo: false })],
+          }),
           texto: [
-            `Cuadro de «${fila.titulo}» en el segundo ${Number(r.headers.get("X-Segundo") ?? t).toFixed(1)} de ${linea.total.toFixed(1)} (escena ${cual}, ${pedido.formato}${palabras ? "" : ", tiempos estimados: aún no hay voz"}).`,
+            `Cuadro de «${fila.titulo}» en el segundo ${segundoVisto.toFixed(1)} de ${linea.total.toFixed(1)} (escena ${cual}, ${pedido.formato}${palabras ? "" : ", tiempos estimados: aún no hay voz"}).`,
             faltan.length ? `OJO: estas imágenes o clips no están en la galería del cliente (o no se pudieron cargar) y salen como marcador: ${faltan.join(", ")}.` : "",
           ].filter(Boolean).join("\n"),
           imagenes: [{ mime: r.headers.get("Content-Type") ?? "image/jpeg", datos: await respuestaEnBase64(r) }],
@@ -511,6 +517,10 @@ export function crearHerramientasVideo({ env, acceso, resolverCliente, usuario, 
         const { pedido, guion, palabras, faltan } = await pedidoConClips(env, acceso, c, fila, { formato });
         const r = await alContenedor(env, "/hoja", { ...pedido, ancho: 1080 });
         return {
+          vista: vistaDe({
+            tipo: "cuadros", titulo: fila.titulo || "Video animado", cliente: { id: c.id, nombre: c.name },
+            piezas: [piezaDe({ id: "hoja", titulo: `Las ${guion.escenas.length} escenas (${pedido.formato})`, imagen: 0, archivo: false })],
+          }),
           texto: [
             `Las ${guion.escenas.length} escenas de «${fila.titulo}» (${pedido.formato}), cada una ya llena, con su número, id y segundo${palabras ? "" : " (tiempos estimados: aún no hay voz)"}.`,
             faltan.length ? `OJO: estas imágenes o clips no están en la galería y salen como marcador: ${faltan.join(", ")}.` : "",

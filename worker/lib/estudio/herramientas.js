@@ -58,6 +58,8 @@ import { DURACION_MUSICA } from "../../../src/lib/musica.js";
 import { MODELOS_VOZ } from "../../../src/lib/voces.js";
 import { DEFINICIONES_VIDEO, crearHerramientasVideo } from "./herramientasVideo.js";
 import { miniaturasDe, MAX_PIEZAS_VISTAS } from "./miniaturas.js";
+import { vistaDeTrabajo } from "./vistaTrabajo.js";
+import { vistaDe, piezaDe } from "../mcpVista/modelo.js";
 
 /** Lo más que puede pedir una IA de una vez. La pantalla admite más (8 imágenes, 2 videos): ahí lo ve una persona. */
 // 15 s: lo que dura un clip de MiniMax H3 o Kling 3.0 (la receta «Video del producto»). El gasto lo frena la confirmación.
@@ -471,7 +473,7 @@ export function crearHerramientasEstudio({ env, acceso, resolverCliente, usuario
       }
 
       const t = trabajoPublico(fila);
-      return [
+      const texto = [
         acortada ? `Ojo: con la marca y el logo del kit tu ficha no cabía en ${MAX_PROMPT} caracteres; se acortó quitando primero «Marca», «Evitar» y «Fondo» (el texto exacto va entero). Para la próxima, cada línea más corta.` : "",
         `Pedido creado: ${t.id} (${modelo.nombre}, ${n} ${tipo === "video" ? `video${n > 1 ? "s" : ""}` : `imagen${n > 1 ? "es" : ""}`}, costo ${textoCosto(t.costoEstimado)}${modelo.estimado ? ", aprox." : ""}).`,
         tipo === "video"
@@ -479,6 +481,9 @@ export function crearHerramientasEstudio({ env, acceso, resolverCliente, usuario
           : "Las imágenes tardan unos segundos a un par de minutos. Siguen solas: no hace falta esperar aquí.",
         `Va a la galería de ${c.name} (pestaña Estudio). Para saber cómo va: estado_trabajo con el ID ${t.id}.`,
       ].filter(Boolean).join("\n");
+      // La vista previa del chat de Claude (MCP Apps) lo enseña según sale; el asistente de la aplicación sólo lee el texto.
+      const { vista } = await vistaDeTrabajo(env, acceso, fila, { titulo: tipo === "video" ? "Video" : "Imagen" });
+      return { texto, imagenes: [], vista };
     },
 
     async estado_trabajo({ trabajo_id: id }) {
@@ -497,12 +502,13 @@ export function crearHerramientasEstudio({ env, acceso, resolverCliente, usuario
         fichas.length ? `Archivos:\n${fichas.map((f) => `· ${f.id} · ${f.tipo} · /api/media/${f.clave}`).join("\n")}` : "",
         estaVivo(t.estado) ? "Sigue en marcha: se hace solo." : "",
       ].filter(Boolean).join("\n");
-      // Terminado: las imágenes van para que el modelo las MIRE (lo que se pide en curso no se enseña a medias).
-      const imagenes = estaVivo(t.estado) ? [] : fichas.filter((f) => String(f.mime ?? "").startsWith("image/"));
-      if (!imagenes.length) return texto;
-      const vistas = (await miniaturasDe(env, imagenes)).filter(Boolean);
-      if (!vistas.length) return `${texto}\n(No pude enseñarte las imágenes ahora; están en la galería.)`;
-      return { texto: `${texto}\nVan ${vistas.length === 1 ? "la imagen" : `las ${vistas.length} imágenes`} (copia reducida), en el orden de arriba: míralas.`, imagenes: vistas };
+      // Terminado: las imágenes van para que el modelo las MIRE (lo que se pide en curso no se enseña a medias). Son las
+      // mismas que enseña la vista previa del chat.
+      const { imagenes, vista } = await vistaDeTrabajo(env, acceso, fila);
+      const conImagen = estaVivo(t.estado) ? [] : fichas.filter((f) => String(f.mime ?? "").startsWith("image/"));
+      if (!conImagen.length) return { texto, imagenes: [], vista };
+      if (!imagenes.length) return { texto: `${texto}\n(No pude enseñarte las imágenes ahora; están en la galería.)`, imagenes: [], vista };
+      return { texto: `${texto}\nVan ${imagenes.length === 1 ? "la imagen" : `las ${imagenes.length} imágenes`} (copia reducida), en el orden de arriba: míralas.`, imagenes, vista };
     },
 
     async ver_pieza({ cliente, archivo_ids: ids = [] }) {
@@ -522,13 +528,19 @@ export function crearHerramientasEstudio({ env, acceso, resolverCliente, usuario
       const vistas = await miniaturasDe(env, fichas);
       const imagenes = [];
       const sinVer = [];
-      fichas.forEach((f, i) => { if (vistas[i]) imagenes.push(vistas[i]); else sinVer.push(f.id); });
+      const piezas = [];
+      fichas.forEach((f, i) => {
+        if (vistas[i]) imagenes.push(vistas[i]); else sinVer.push(f.id);
+        const control = leerJSON(f.ajustes, {})?.control ?? null;
+        piezas.push(piezaDe({ id: f.id, titulo: `Pieza ${i + 1}`, imagen: vistas[i] ? imagenes.length - 1 : null, control, gusta: Boolean(f.favorito), sinImagen: !vistas[i] }));
+      });
       const texto = [
         `${fichas.length === 1 ? "La pieza" : `Las ${fichas.length} piezas`} de ${c.name}, en este orden:`,
         ...lineas,
         sinVer.length ? `Sin imagen que enseñar (video, o no se pudo reducir): ${sinVer.join(", ")}.` : "",
       ].filter(Boolean).join("\n");
-      return imagenes.length ? { texto, imagenes } : texto;
+      const vista = vistaDe({ tipo: "piezas", titulo: fichas.length === 1 ? "La pieza" : `${fichas.length} piezas`, cliente: { id: c.id, nombre: c.name }, piezas });
+      return imagenes.length ? { texto, imagenes, vista } : texto;
     },
 
     async listar_voces({ cliente }) {

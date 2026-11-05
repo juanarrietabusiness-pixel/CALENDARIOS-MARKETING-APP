@@ -344,6 +344,8 @@ export function crearEjecutor({ env, acceso, clienteActual = null, estudio = nul
       const contenido = await accion(bloque.input ?? {});
       // Las que MIRAN el video devuelven { texto, imagenes }: el modelo recibe la imagen en el mismo tool_result.
       if (contenido && typeof contenido === "object" && Array.isArray(contenido.imagenes)) {
+        // Sin imágenes (lo que sólo trae la vista del chat de Claude), el texto a secas, como antes.
+        if (!contenido.imagenes.length) return { type: "tool_result", tool_use_id: bloque.id, content: contenido.texto ?? "" };
         return {
           type: "tool_result", tool_use_id: bloque.id,
           content: [
