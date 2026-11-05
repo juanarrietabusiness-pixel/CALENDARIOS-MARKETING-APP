@@ -1,10 +1,15 @@
 # Propuesta: lo que Higgsfield hace «con Claude», dentro del calendario
 
-Estado a 2026-11-04: **investigación hecha, nada implementado.** Se leyó el MCP de Higgsfield entero en modo sólo
-lectura: herramientas, sus 15 flujos (cada uno un SKILL.md con sus archivos de referencia), 80 recetas, sus
-galerías, su única app y unos 130 modelos. **No se gastó ningún crédito.** La cuenta de Higgsfield tiene 5,28
-créditos en plan gratuito, y ninguna herramienta que genere, suba, cree o publique se llamó. Esta propuesta dice qué
-de eso puede hacer el calendario con lo que ya tiene, qué no, y en qué orden construirlo.
+Estado a 2026-11-05: **investigación hecha; de esta propuesta sólo está construido el video animado** (render a mp4
+en el Container, subtítulos, música, efectos, personaje, ver un cuadro por MCP: entregas #202–#214, hechas en otra
+sesión). Lo que falta, en orden y con su porqué, está en el §10, comparado contra el código de `main` de ese día. Se
+leyó el MCP de Higgsfield entero en modo sólo lectura: herramientas, sus 15 flujos (cada uno un SKILL.md con sus
+archivos de referencia), 80 recetas, sus galerías, su única app y unos 130 modelos. **No se gastó ningún crédito.** La
+cuenta de Higgsfield tiene 5,28 créditos en plan gratuito, y ninguna herramienta que genere, suba, cree o publique se
+llamó. Esta propuesta dice qué de eso puede hacer el calendario con lo que ya tiene, qué no, y en qué orden construirlo.
+
+El objetivo, dicho por la agencia: **producir en lote, que se vea profesional y que sea fácil**, como se hace por MCP
+en Higgsfield.
 
 La conclusión en tres líneas:
 
@@ -15,8 +20,8 @@ La conclusión en tres líneas:
 2. **El calendario sabe más del cliente que Higgsfield.** Kit de marca, catálogo con precios y fotos, cerebro, estudio
    de mercado, resultados reales. Una receta del calendario puede ser mejor que la suya con los mismos modelos.
 3. **Lo que falta es la ESTRUCTURA**, no los motores: recetas como dato, el botón que las lleva a Claude (en la
-   aplicación o en claude.ai), y que Claude VEA por MCP lo que crea. Y para el video, el render con ffmpeg en el
-   Container, del que dependen casi todas las mejoras de video.
+   aplicación o en claude.ai), y que Claude pueda producir EN LOTE por MCP y VER lo que crea. Hoy el lote y el director
+   sólo existen dentro de la aplicación; por MCP, Claude pide pieza a pieza y a ciegas (salvo en el video animado).
 
 ---
 
@@ -98,7 +103,8 @@ Antes de proponer nada, lo que ya existe (y por qué no hay que repetirlo):
 | Reel con fotogramas, storyboard | Reel IA (`reel.js`, `FlujoReel.jsx`) |
 | Ad Multiplier «Recrear» | «Recrear un video» con sus dos modos (`recrear.js`, `motorRecrear.js`) |
 | video-review, brand-consistency | «¿Está listo este video?» (`revisionVideo.js`) y «Las piezas juntas» (`piezasJuntas.js`) |
-| /content-factory, motion graphics | El video animado: formato de escenas v1, motor Canvas 2D, voz de ElevenLabs con tiempos por palabra y herramientas MCP (`videoEscenas.js`, `motorVideo.js`, `voces.js`, `herramientasVideo.js`). Falta el render |
+| /content-factory, motion graphics, video-montage (en parte) | **El video animado, entero**: guion de escenas v1, motor Canvas 2D, voz de ElevenLabs con tiempos por palabra, subtítulos por palabra, efectos sintetizados, música (de la galería o Suno por Kie) con ducking, personaje dibujado con el aspecto del cliente, revisión del diseño, historial de versiones y **render a mp4 en el Container** (ffmpeg, -14 LUFS) que va solo a su publicación. Se crea desde la pantalla («Video nuevo») o lo hace Claude por MCP de principio a fin, VIENDO los cuadros (`ver_cuadro`, `ver_escenas`, `revisar_video`) |
+| El asistente que diseña, ve y corrige | El director de la aplicación (`disenar_piezas`, `corregir_pieza`, `poner_en_publicacion`): plan con costo, crea de 3 en 3, ve cada pieza y la corrige. **Sólo dentro de la aplicación**: no está en el MCP |
 | Personaje consistente | Los personajes del kit como referencia |
 | Análisis escena por escena | Gemini en `verVideo` |
 
@@ -154,16 +160,17 @@ La misma receta se abre desde tres sitios:
 
 ### 4.3 Lo que le falta al MCP del calendario
 
-Hoy (`worker/rutas/mcp.js`, `worker/lib/mcp.js`) sólo expone herramientas y **sólo devuelve texto**. Para que
-«Crear con Claude» funcione como el de Higgsfield:
+Hoy (`worker/rutas/mcp.js`, `worker/lib/mcp.js`) sólo expone herramientas. **Ya sabe devolver imágenes** (las
+herramientas del video animado devuelven `{ texto, imagenes }` y `llamar` las pasa como bloques `image`), pero las
+del Estudio (`crear_en_estudio`, `estado_trabajo`) siguen devolviendo sólo texto, y **el director y el lote no están
+en el MCP**. Para que «Crear con Claude» funcione como el de Higgsfield:
 
 | Cambio | Por qué |
 |---|---|
 | `ver_recetas` y `receta` (con `handoff_id`) | El equivalente de `get_preset_instructions`. Sin ellas Claude no sabe la receta |
 | `INSTRUCCIONES` del servidor: «un mensaje que empieza por `/receta` o trae `HANDOFF:` se resuelve con `receta` antes de nada» | Es como Higgsfield enruta sus comandos: con las instrucciones del servidor, sin `prompts` de MCP |
-| **Devolver la imagen** en `estado_trabajo` y una `ver_pieza` nueva (contenido `image` de MCP, base64) | Hoy Claude en claude.ai crea a ciegas: pide la pieza y recibe «hecho». Sin verla no puede corregir, que es el corazón de «diseña todo en la misma sesión». El Worker ya manda imágenes de hasta 3,5 MB a la IA en «Revisar marca»; para las más grandes, una copia reducida con la API de imágenes de Cloudflare (**a comprobar su costo en el plan**) o desde el Container |
-| `crear_en_estudio` con `receta` y `publicacion_id` | Que la pieza quede en su publicación y apunte su uso, como hace el director en la aplicación |
-| `poner_en_publicacion` también por MCP | Hoy sólo existe en el asistente de la aplicación |
+| **Devolver la imagen** en `estado_trabajo` y una `ver_pieza` nueva | Hoy Claude en claude.ai crea imágenes a ciegas: pide la pieza y recibe «hecho». El camino ya existe (el del video animado); falta la copia reducida (768 px), que ahora puede hacer el Container, que tiene lienzo |
+| **El director por MCP**: `disenar_piezas` (plan con costo → `confirmado` → fichas, control, corrección), `corregir_pieza`, `poner_en_publicacion` | Es la diferencia entre «Claude pide 12 imágenes sueltas» y «Claude produce el mes»: sin esto, en claude.ai no hay ficha de diseño, ni control de calidad, ni corrección, ni la pieza llega a su publicación |
 | Más adelante: widgets de MCP Apps (la galería del cliente, el plan con su costo y «Crear») | Es lo que en Higgsfield se ve dentro de claude.ai. No es imprescindible: con imágenes en el resultado, Claude ya ve |
 
 ---
@@ -181,7 +188,9 @@ Van en el director, en `pedidoDePieza` (`src/lib/pieza.js`) y en el control. Afe
 3. **La regla del texto en tres casos.** (a) Hay texto exacto: va integrado en la escena, con estilo, sitio y
    contraste dichos. (b) Lo pone la aplicación después (modo plantilla): se pide «una zona de tono uniforme DENTRO de
    la escena» (cielo, fondo desenfocado, una superficie), **nunca «espacio negativo» ni «hueco»**, que dibuja franjas
-   planas. (c) No hay texto: no se nombra. El caso (b) cambia lo que hoy pide el modo plantilla.
+   planas. (c) No hay texto: no se nombra. El caso (b) cambia lo que hoy se pide en dos sitios: la ficha del director
+   con `sinTexto` dice «deja la zona libre» (`director.js`) y el estilo editorial del kit pide «mucho espacio negativo»
+   (`ESTILOS_VISUALES` en `kitMarca.js`).
 4. **Dos frases cuando van fotos del producto**: «si la foto está inclinada o tomada desde arriba, endereza el
    producto, no copies ese punto de vista» y «reproduce cada elemento impreso tal cual, sin traducirlo; lo que no se
    lee, como forma fiel».
@@ -211,7 +220,7 @@ Por valor para una agencia de pymes en Panamá (orgánico + anuncios de Meta). C
 | **Pack de anuncios con sistema visual fijo** | 5 variantes por defecto con ángulos de gancho distintos (aspiración, zoom a una característica, transformación, prueba social, curiosidad…), una proporción por ubicación (4:5 feed, 9:16 historia, 1:1) y UN sistema visual copiado igual en todas | El lote ya tiene la matriz; falta el sistema fijo y el **esquema de una línea por variante que se confirma antes de gastar** |
 | **Texto de anuncio por creativo** | Titular, texto principal, CTA y destino de cada pieza del pack, que pasan a «Nueva campaña» | Texto: `anuncios.js` y el asistente de campaña ya existen |
 | **Ficha de producto desde un enlace** | Leer la página de un producto (o la web o el Instagram de una marca) y PROPONER su ficha de catálogo: fotos, precio, puntos de venta, diferenciador; y del kit, paleta y letra | Es lo único de Ads Studio que vale la pena. Con la regla suya: no se generan anuncios de un producto sin puntos de venta |
-| **«Otro gancho»** de un anuncio ganador | Cambiar SÓLO los primeros 3–5 s de un video que ya funciona, para una prueba A/B en Meta | Gemini dice dónde termina el gancho; un clip nuevo con un fotograma del original como imagen inicial; se une. **Necesita el render con ffmpeg** (§7) |
+| **«Otro gancho»** de un anuncio ganador | Cambiar SÓLO los primeros 3–5 s de un video que ya funciona, para una prueba A/B en Meta | Gemini dice dónde termina el gancho; un clip nuevo con un fotograma del original como imagen inicial; se une. **Necesita que el render acepte video** (fase F del §10) |
 
 ### Valor medio
 
@@ -234,67 +243,43 @@ de ediciones tipo Katana.
 
 ---
 
-## 7. El video animado (motion graphics): lo que conviene llevarse
+## 7. El video animado (motion graphics): lo hecho y lo que falta
 
-El calendario ya está por delante en lo esencial: un motor puro y determinista, escenas ancladas a palabras y voz con
-tiempos por palabra. Higgsfield usa tres motores (Higgsedit, un CLI privado; un motor HTML con Chrome sin pantalla; y
-páginas de efectos fijas) y de ellos se puede aprender:
+**Hecho (entregas #202–#214):** render a mp4 en el Container (H.264, voz con sus silencios insertados, -14 LUFS),
+subtítulos por palabra (grupos cortos que no cruzan una coma), efectos sintetizados (whoosh y pop, por debajo de la
+voz), música de la galería o de Suno por Kie con ducking, personaje dibujado con el aspecto del cliente, cifra que
+cuenta, anillo, 22 iconos, dibujo libre y fondos, revisión del diseño antes de renderizar (texto pequeño, espacio vacío,
+desequilibrio, zona segura, capas encimadas, sello partido), historial de versiones, la voz que sigue valiendo si lo
+dicho no cambia, «Video nuevo» desde la pantalla y el mp4 directo a su publicación. Por MCP, Claude lo hace todo y VE
+los cuadros (`ver_cuadro`, `ver_escenas`, `revisar_video`): es la parte del calendario que ya funciona como Higgsfield.
+Las salidas ya se anclan al final de la escena por defecto.
 
-**Para el formato v1 y el motor (`videoEscenas.js`, `motorVideo.js`):**
+**Falta en el motor y el formato** (lo aprendido de /shorts, Higgsedit y reel-effects):
 
-1. **Anticipar las anclas:** una entrada anclada a una palabra arranca 0,10–0,15 s antes de ella.
-2. **Salidas ancladas al FINAL de la escena** (no a un tiempo) y un **escalonado** con «cada».
-3. **Ayudas de movimiento deterministas:** llegada con rebote y desenfoque que se despeja, muelle que se asienta,
-   sacudida por tabla fija con la escala justa para no enseñar el borde, flotación sembrada distinta por capa, escala
-   lenta en las pausas, revelado y trazo. Todas leen sólo `t`.
-4. **`cifra` que entienda «412K» o «$3.2M»** (prefijo, sufijo, decimales) y **`lista` con cada ítem anclado a su
-   palabra**.
-5. **«Texto detrás del producto»** con las fotos del catálogo en PNG con alfa: el texto entre el fondo y el producto,
-   sin pagar un recorte.
-6. **Zonas más estrictas para el texto esencial en 9:16:** al menos 32 px, entre el 13,5 y el 76 % del alto y el 5,5 y
-   el 91 % del ancho (el margen derecho es mayor por los botones de la red), medido sobre la caja ya rotada.
-7. **Subtítulos:** N palabras por línea configurable (3 por defecto), partir en fin de oración o en pausas de más de
-   0,6 s, nunca cruzar una escena, al menos 0,25 s en pantalla, sostener en huecos cortos, unir la palabra suelta, un
-   solo tamaño en todo el video (al menos el 2 % del alto) y la palabra que se está diciendo resaltada.
-8. **Validaciones nuevas:** una imagen a pantalla completa que por desplazamiento o sacudida deja ver el borde;
-   escenas QUIETAS (diferencia de luma entre fotogramas a baja resolución: gratis, porque el motor es puro); la misma
-   entrada repetida en todo el video.
-9. **Reglas de diseño en `formato_video`** (lo que Claude lee): cuentan como defecto un fondo con texto y nada que
-   mirar sin sonido, todo centrado a un solo tamaño, la misma entrada en todas las capas y la tipografía genérica.
-10. **Efectos de sonido con punto de sincronía:** un catálogo propio (categoría, uso, duración, punto de sincronía,
-    volumen; CC0) del que salen eventos solos por tipo de capa: un «whoosh» al entrar, un golpe en un sello, un tic
-    por paso de una cifra, clics en el texto que se escribe. Rotan dentro de su categoría y quedan bajo la voz.
+1. **Anticipar las anclas:** hoy una capa entra justo en el `desde` de su palabra (`tiempoDeCapa`); conviene 0,10–0,15 s
+   antes, que es cuando el ojo la espera.
+2. **Escalonado** («cada»): varios elementos que entran uno tras otro sin escribir un ancla por cada uno.
+3. **Más movimiento con propósito:** llegada con desenfoque que se despeja, sacudida por tabla fija con la escala justa
+   para no enseñar el borde, escala lenta en las pausas. Hoy hay 9 entradas, 4 salidas y 4 bucles.
+4. **Cifra abreviada** («412K», «$3,2M») en `formatearCifra`.
+5. **Los componentes que siguen como marcador:** lista (con cada ítem anclado a su palabra), teléfono, burbuja, reloj y
+   antes y después (`COMPONENTES_LISTOS`).
+6. **Texto detrás del producto** con las fotos del catálogo en PNG con alfa: el titular entre el fondo y el producto.
+7. **Zonas más estrictas para el texto esencial en 9:16:** al menos 32 px, entre el 13,5 y el 76 % del alto y el 5,5 y
+   el 91 % del ancho (el margen derecho mayor por los botones de la red).
+8. **Escenas quietas** en la revisión: diferencia de luma entre cuadros a baja resolución (gratis: el motor es puro).
 
-**Para la voz (`voces.js`, la locución):**
+**Falta en la voz:** medir el HABLA y no el archivo (como mucho 2,9 palabras por segundo, ninguna pausa interna de 0,8 s
+o más) y, si no cabe, REESCRIBIR el texto en vez de acelerar (`palabrasMudas` ya detecta el final comido, que es un
+caso); una frase de dirección fija en cada toma para que el timbre no cambie; y regenerar sólo 1–2 frases cambiadas y
+empalmarlas (crossfade de 10 ms) en vez de pagar la toma entera.
 
-- **Se mide el HABLA, no el archivo:** con los tiempos por palabra, duración del habla, como mucho 2,9 palabras por
-  segundo y ninguna pausa interna de 0,8 s o más.
-- **Si no cabe, se reescribe el texto; nunca se acelera.** Como mucho 3 intentos, y una toma aprobada no se toca.
-- **Una sola toma** para todo el guion, con la dirección entre corchetes al principio y sólo donde cambia; una frase
-  de dirección fija para que el timbre no cambie; mayúsculas en una palabra por oración como mucho; números en letras;
-  nunca pedir «lento» (alarga la toma un 20 %).
-- **Si cambian 1–2 frases, se regeneran sólo esas** y se empalman (crossfade de 10 ms, la pausa de ~0,25 s); con 3 o
-  más, la toma entera. ElevenLabs deja un clic al final del archivo que hay que recortar.
-
-**Para el render del Container (lo pendiente, y de lo que depende casi todo el video):**
-
-- Fotograma a fotograma desde `t`, en **trozos de al menos 2 s en paralelo** que se unen sin recodificar; el audio se
-  mezcla UNA vez.
-- H.264, CRF 18 **con techo de bitrate** (el grano por fotograma dispara el tamaño), BT.709 de rango limitado.
-- **Audio:** voz a −14 LUFS, pico real ≤ −1 dBTP; música 16 LU por debajo, entrada de 0,1 s y salida de 1,5 s, y el
-  último sonido de la canción en el final del video (se pierde la intro, no el cierre). Música instrumental con
-  ElevenLabs Music (**a comprobar** que el plan de la agencia la incluye y su licencia comercial).
-- **Comprobación final:** duración dentro de 2 fotogramas, flujos, decodificación completa, sonoridad.
-- **Una hoja de contacto** (inicio, pico y final de cada escena) que vuelve a Claude por `ver_video` como imagen: es
-  como Higgsfield deja que Claude revise lo que hizo.
-- Con ffmpeg ahí, salen también: unir clips de más de 15 s, el «Otro gancho», subtítulos quemados sobre un video
-  generado y el modo «imágenes narradas» (una imagen generada por frase, con movimiento de cámara, cronometrada por la
-  voz).
+**Lo grande que falta: que el render acepte VIDEO de entrada.** Hoy el Container sólo dibuja las escenas del guion; no
+puede poner un clip debajo ni unir clips. Ver la fase F del §10.
 
 **No conviene:** Higgsedit (privado; sus efectos GLSL piden GPU), cambiar el lienzo por DOM y Chrome (rompería el
-contrato puro y probado del motor; sólo vale su técnica de render), After Effects y Blender (de escritorio), el grano a
-pantalla completa por defecto (Higgsfield lo trata como defecto salvo que el estilo lo pida) y los recortes de persona
-pagados.
+contrato puro y probado del motor), After Effects y Blender (de escritorio), el grano a pantalla completa por defecto y
+los recortes de persona pagados.
 
 ---
 
@@ -328,19 +313,30 @@ reconstruirla.
 
 ---
 
-## 10. Orden de trabajo
+## 10. Lo que falta, en orden (contra `main` del 2026-11-05)
 
-Cada fase deja algo usable y no gasta créditos de Higgsfield.
+El circuito de Higgsfield tiene tres partes: **escoger** (una galería de recetas con ejemplos), **pedir** (un botón que
+lleva el pedido a Claude) y **producir viendo** (Claude crea en lote, mira cada pieza, corrige y entrega). El calendario
+tiene la tercera DENTRO de la aplicación (el director) y, en el video animado, también por MCP. Le faltan las dos
+primeras, llevar la tercera al MCP para las imágenes, y que lo que se produce se vea más profesional.
 
-| Fase | Qué | Depende de | Costo de construir |
-|---|---|---|---|
-| **0** | §5 entero: ficha fotográfica, bloques «Evitar», regla del texto en tres casos, las dos frases del producto, anti-clichés, refinamiento por categoría, compuerta de verdad | Nada | Sólo prompt y tests |
-| **1** | Recetas como dato (código + D1 + editor), «Crear aquí» con el director, las 4–5 primeras recetas (movimientos de producto, tarjetas informativas, pack de anuncios) | Nada | Medio |
-| **2** | MCP: `ver_recetas`, `receta`, `handoffs`, imágenes en el resultado (`ver_pieza`), `poner_en_publicacion`; el botón «Crear con Claude» | Fase 1 | Medio. Comprobar `?q=` en claude.ai el primer día |
-| **3** | Render del video animado en el Container con ffmpeg (§7) y las mejoras del formato v1 | Lo que ya está en marcha | Alto: es el cuello de botella |
-| **4** | Lo que cuelga del render: «Otro gancho», unir clips, subtítulos quemados, imágenes narradas, música | Fase 3 | Medio |
-| **5** | Ficha de producto desde un enlace, texto de anuncio por creativo, UGC con presentador IA (tras probar la voz), retención calibrada | Fases 1 y 3 | Medio |
-| **6** | Widgets de MCP Apps en claude.ai, hojas de personaje, mockups, estéticas | Fase 2 | Bajo–medio |
+| Fase | Qué | Para qué le sirve a la agencia | Tamaño | Depende de |
+|---|---|---|---|---|
+| **A. Calidad** | Todo el §5: ficha fotográfica (luz, Kelvin, lente, apertura, sombra), la regla del texto en tres casos (y quitar «espacio negativo» y «deja la zona libre»), bloques «Evitar» por caso, las dos frases del producto, anti-clichés, refinamiento por categoría visual en el control, compuerta de verdad | Mejora TODO lo que ya sale (lote, mes, carruseles, director, historias) sin pantalla nueva ni costo por pieza. Es lo que hace que las recetas de Higgsfield se vean profesionales. Ninguna está hecha | Pequeño: prompt y tests | Nada |
+| **B. Claude produce en lote por MCP** | `estado_trabajo` y `ver_pieza` con la imagen (copia de 768 px en el Container); el director por MCP (`disenar_piezas` con `carrusel`, `corregir_pieza`, `poner_en_publicacion`) con la confirmación del costo de siempre; un pedido de lote que lance un encargo del servidor (`estudio_encargos` ya existe) | «Diséñame los 12 posts de diciembre de D'CASA» en una conversación de claude.ai, viendo cada pieza, con ficha, control y corrección, y que quede puesta en el calendario. El razonamiento lo paga la suscripción de Claude | Medio: las piezas ya existen en la aplicación; es llevarlas al Worker | Mejor con E |
+| **C. Recetas y «Crear con Claude»** | Recetas como dato (de la casa en el código, propias en D1); una galería de recetas con ejemplos de la galería real; «Crear aquí» (el director de la aplicación) y «Crear con Claude» (claude.ai con `/receta` y `HANDOFF`); `ver_recetas` y `receta` en el MCP; desde el post, el lote, Inspiración y la Biblioteca | El «fácil»: hoy hay que saber qué pantalla hace qué (lote, compositor, Reel IA, carrusel, recrear, video animado). Una receta empaqueta el CÓMO y la agencia sólo escoge el QUÉ; la agencia escribe sus propias recetas sin tocar el código | Medio | B (para «Crear con Claude») |
+| **D. Recetas nuevas** | Las de valor alto del §6: movimientos de producto, tarjetas informativas de una imagen, pack de anuncios con sistema fijo y un esquema que se confirma antes de gastar, texto de anuncio por creativo hacia «Nueva campaña», ficha de producto desde un enlace | Contenido que hoy no se puede hacer o sale por caminos largos: tomas de apoyo de producto, piezas para guardar, anuncios de Meta listos con su texto | Pequeño cada una | C |
+| **E. Terminar en el servidor** | El Container ya tiene lienzo (`@napi-rs/canvas`): el texto de la plantilla, el logo estampado, el JPEG y la copia 4:5 de Instagram, la de 1080p de TikTok y la historia encajada pueden hacerse ahí | El lote sin pantalla de verdad. Hoy los encargos esperan a que alguien abra la aplicación para poner sus `finales` (`terminarPendientes`) y «Programar al aprobar» depende de que el navegador prepare las piezas. Pedir el mes desde el teléfono o desde claude.ai y que quede listo para programar | Medio: cómputo del Container, sin IA | Nada |
+| **F. El render acepta VIDEO** | Una capa `video` en el formato v1: un clip de la galería (de Kie, de Drive o grabado por el cliente) que el Container decodifica con ffmpeg y el motor dibuja como una imagen, con su audio mezclado. En la vista previa, un `<video>` dibujado en el lienzo | La mitad de video de Higgsfield: montar lo que graba el cliente (los UGC de «Guiones para grabar»: cortes, subtítulos, música, gancho escrito), unir clips de Kie de más de 15 s, «Otro gancho» para una prueba A/B en Meta, UGC con presentador IA en varios clips, gráficos animados sobre un video real | Grande | Nada (el render ya existe) |
+| **G. Pulir el video animado** | Lo que falta del §7: anticipar anclas, escalonado, movimiento, cifra abreviada, lista y los otros marcadores, texto detrás del producto, zonas estrictas, escenas quietas, la compuerta de la voz | Que cada video animado se vea de agencia sin retocarlo | Pequeño cada uno | Nada |
+| **H. Más adelante** | Lote de videos animados (varios a la vez desde las publicaciones del mes); retención calibrada (§8); widgets de MCP Apps en claude.ai; hoja de personaje para imágenes; mockups, estéticas, conceptual; logos para prospectos | | | |
+
+Hasta la fase E, lo que Claude cree por MCP con texto de plantilla o logo estampado se termina cuando alguien abre la
+aplicación, como hoy los encargos del lote.
+
+**Por dónde empezar:** A, porque mejora todo lo que ya existe sin construir nada nuevo; luego B y E juntas, que son las
+que convierten «Claude en claude.ai» en una mesa de producción; después C y D. La F es la más grande y la que más abre
+en video: puede ir en paralelo si la otra sesión sigue con el video.
 
 ---
 
@@ -356,10 +352,12 @@ Cada fase deja algo usable y no gasta créditos de Higgsfield.
 
 ## 12. Sin comprobar
 
+- **Confirmado por la agencia (2026-11-04):** Kie tiene Recraft V4.1 y Kling 4.0. La cuenta ya está en Workers Paid
+  (los Containers del video animado lo exigen), así que la fase E no cambia de plan.
 - La dirección exacta que abre «Crear con Claude» y si `claude.ai/new?q=` sigue prellenando.
-- Qué devuelve claude.ai si un resultado de MCP lleva una imagen grande (tope de tamaño).
-- Si están en Kie o fal: Recraft V4.1, Kling 4.0, Sync Lipsync, la variante «sunburst» de GPT Image 2.5.
-- La voz nativa de Seedance 2.5 en español.
-- El costo de la API de imágenes de Cloudflare en el plan de la cuenta, y si ElevenLabs Music entra en el plan de la
-  agencia con uso comercial.
+- Si claude.ai tiene un tope de tamaño para las imágenes de un resultado de MCP (`ver_cuadro` ya las manda; falta verlo
+  con una pieza de 2K).
+- La voz nativa de Seedance 2.5 en español: la agencia cree que sí; el CLAUDE.md dice que Seedance «la inventa mal». Una
+  prueba barata antes del UGC con presentador IA.
+- Si está en Kie: Sync Lipsync y la variante «sunburst» de GPT Image 2.5 (Kie lista «Flare»).
 - Los precios de las recetas de Higgsfield: no se cotizó nada.

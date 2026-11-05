@@ -4280,8 +4280,10 @@ son del servidor.
   herramienta más, junto al bot y la tienda que ya están en Cloudflare.
 - `docs/propuesta-higgsfield-con-claude.md` — lo que el MCP de Higgsfield hace «con Claude» (recetas, flujos,
   galerías, modelos), qué es exclusivo suyo, qué ya tiene el calendario y la estructura para hacerlo aquí: recetas como
-  dato, «Crear con Claude» con handoff, imágenes en el resultado del MCP y el render del video animado. Investigación
-  hecha (sólo lectura, sin gastar créditos); nada implementado.
+  dato, «Crear con Claude» con handoff, el director y el lote por MCP con imágenes en el resultado, terminar en el
+  Container lo que hoy necesita la pantalla y que el render acepte video. Investigación hecha (sólo lectura, sin gastar
+  créditos). Hecho: el video animado (render, música, subtítulos, ver un cuadro por MCP). Lo que falta, por fases A–H
+  y comparado con `main` del 2026-11-05, en su §10.
 - `docs/propuesta-cerebro-por-cliente.md` — un cerebro por cliente (notas en D1, índice
   en R2, ficha técnica y cifras, búsqueda por pasajes) en lugar de volcar el ADN entero
   en cada llamada. Fases 0 y 1 implementadas; memoria de decisiones, visualización,
