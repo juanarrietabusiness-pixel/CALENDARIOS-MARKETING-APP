@@ -65,8 +65,13 @@ export async function crearConClaudeLoMejor(clave, clienteId, recetaId = "recrea
   }
 }
 
-/** El tope de créditos de Scrape Creators por semana y lo gastado → { semana, tope, manual, auto, total, releidoAt, sc }. */
+/**
+ * El tope de créditos de Scrape Creators por semana, lo gastado y lo que espera su lectura → { semana, tope, manual,
+ * auto, total, libres, releidoAt, tendencias, lleno, espera: { tiktok, palabras, anuncios, busquedas }, sc }.
+ */
 export const leerCreditosSC = () => pedir("/lo-mejor/creditos");
 export const guardarTopeSC = (tope) => pedir("/lo-mejor/creditos", { method: "PUT", body: JSON.stringify({ tope }) });
+/** Enciende o apaga las tendencias de TikTok del espacio (las palabras de cada cliente). */
+export const guardarTendenciasSC = (activas) => pedir("/lo-mejor/creditos", { method: "PUT", body: JSON.stringify({ tendencias: activas === true }) });
 /** Releer YA los anuncios de las búsquedas guardadas (dentro del tope). */
 export const releerAnunciosSC = () => pedir("/lo-mejor/anuncios", post({}));

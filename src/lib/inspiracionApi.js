@@ -12,11 +12,21 @@ import { pedir } from "./db";
 const base = (clienteId) => `/inspiracion/${encodeURIComponent(clienteId)}`;
 const post = (cuerpo) => ({ method: "POST", body: JSON.stringify(cuerpo ?? {}) });
 
-/** El feed guardado → { cuentas, faltan, publicaciones }. Sólo lee. */
+/** El feed guardado → { cuentas, faltan, publicaciones, tendencias, sc }. Sólo lee. */
 export const leerInspiracion = (clienteId) => pedir(base(clienteId));
 
-/** Leer otra vez las cuentas (todas, o las claves «red:usuario» de `cuentas`) → el feed, con `errores` y `avisos`. */
+/**
+ * Leer otra vez las cuentas (todas, o las claves «red:usuario» de `cuentas`) → el feed, con `errores`, `avisos` y
+ * `avisoSC` (lo que gastó TikTok en Scrape Creators, o qué cuentas esperan al tope).
+ */
 export const actualizarInspiracion = (clienteId, cuentas = null) => pedir(`${base(clienteId)}/actualizar`, post(cuentas?.length ? { cuentas } : {}));
+
+/**
+ * Las palabras o #hashtags de las tendencias de TikTok del cliente (la lista entera) → { activas, palabras }. Se leen
+ * una vez por semana por Scrape Creators, dentro del tope de créditos.
+ */
+export const guardarTendencias = (clienteId, palabras) =>
+  pedir(`${base(clienteId)}/tendencias`, { method: "PUT", body: JSON.stringify({ palabras }) });
 
 /** El archivo de una publicación del feed a la galería («Competencia») → { archivo, publicacion, usuario }. */
 export const traerDeInspiracion = (clienteId, id, { miniatura = false } = {}) =>

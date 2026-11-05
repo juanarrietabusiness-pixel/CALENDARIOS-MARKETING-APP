@@ -13,6 +13,8 @@
 .inspiracion-aviso { margin: var(--sp-2) var(--sp-3) 0; }
 .inspiracion-errores { list-style: none; margin: var(--sp-2) var(--sp-3) 0; padding: var(--sp-2); border-radius: var(--radius-sm); background: var(--danger-soft); font-size: var(--fs-3xs); display: flex; flex-direction: column; gap: 2px; }
 .inspiracion-errores a { font-weight: 700; color: inherit; }
+.inspiracion-notas { list-style: none; margin: var(--sp-2) var(--sp-3) 0; padding: var(--sp-2); border-radius: var(--radius-sm); background: var(--surface-2); font-size: var(--fs-3xs); display: flex; flex-direction: column; gap: 2px; }
+.inspiracion-notas a { font-weight: 700; color: inherit; }
 .inspiracion-resumen { padding: var(--sp-2) var(--sp-3) 0; }
 .inspiracion-resumen-nota { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-2); border-radius: var(--radius-sm); background: var(--surface-2); }
 

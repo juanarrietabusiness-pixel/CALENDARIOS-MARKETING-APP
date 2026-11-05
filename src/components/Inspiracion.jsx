@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import Icon from "./Icon";
 import CuentasReferencia from "./CuentasReferencia";
+import TendenciasTikTok from "./TendenciasTikTok";
 import LoMejorTarjetas from "./LoMejorTarjetas";
 import { useLoMejor } from "../hooks/useLoMejor";
 import { leerInspiracion, actualizarInspiracion, proponerResumen } from "../lib/inspiracionApi";
@@ -61,7 +62,12 @@ export default function Inspiracion({ client, clientes = null, modo = "panel", l
       if (d.faltan?.length && !lectura && !pidioFaltan.current) {
         pidioFaltan.current = true;
         setActualizando(true);
-        try { setFeed(await actualizarInspiracion(clienteId, d.faltan)); setPulsoLocal((n) => n + 1); } catch (e) { setError(e.message); }
+        try {
+          const leido = await actualizarInspiracion(clienteId, d.faltan);
+          setFeed(leido);
+          setPulsoLocal((n) => n + 1);
+          if (leido.avisoSC) setAviso(leido.avisoSC);
+        } catch (e) { setError(e.message); }
         setActualizando(false);
       }
     } catch (e) {
@@ -86,7 +92,7 @@ export default function Inspiracion({ client, clientes = null, modo = "panel", l
       const d = await actualizarInspiracion(clienteId);
       setFeed(d);
       setPulsoLocal((n) => n + 1);
-      setAviso(d.errores?.length ? `Puesto al día, salvo ${d.errores.length === 1 ? "una cuenta" : `${d.errores.length} cuentas`} (abajo dice por qué).` : "Puesto al día.");
+      setAviso([d.errores?.length ? `Puesto al día, salvo ${d.errores.length === 1 ? "una cuenta" : `${d.errores.length} cuentas`} (abajo dice por qué).` : "Puesto al día.", d.avisoSC].filter(Boolean).join(" "));
     } catch (e) {
       setError(e.message);
     }
@@ -143,6 +149,10 @@ export default function Inspiracion({ client, clientes = null, modo = "panel", l
           {onPersistClient && !lectura
             ? <CuentasReferencia client={client} onGuardar={(competidores) => onPersistClient({ ...client, competidores })} />
             : !cuentas.length && <p className="hint" style={{ margin: 0 }}>Las cuentas se añaden en la pestaña Resultados del cliente.</p>}
+          {feed && (
+            <TendenciasTikTok clienteId={clienteId} tendencias={feed.tendencias} sc={Boolean(feed.sc)} lectura={lectura || !onPersistClient}
+              onCambio={(tendencias) => setFeed((f) => ({ ...f, tendencias }))} />
+          )}
         </div>
       )}
 
@@ -171,6 +181,13 @@ export default function Inspiracion({ client, clientes = null, modo = "panel", l
         <ul className="inspiracion-errores">
           {cuentas.filter((c) => c.error).map((c) => (
             <li key={c.clave}><a href={enlaceDePerfil(c)} target="_blank" rel="noopener noreferrer">@{c.usuario}</a>: {c.error}</li>
+          ))}
+        </ul>
+      )}
+      {cuentas.some((c) => c.nota && !c.error) && (
+        <ul className="hint inspiracion-notas">
+          {cuentas.filter((c) => c.nota && !c.error).map((c) => (
+            <li key={c.clave}><a href={enlaceDePerfil(c)} target="_blank" rel="noopener noreferrer">@{c.usuario}</a> (TikTok): {c.nota}</li>
           ))}
         </ul>
       )}

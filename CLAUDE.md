@@ -394,7 +394,9 @@ src/
                           también lo importa el Worker)
     bibliotecaApi.js      Cliente de /api/biblioteca (buscar y filtros guardados; también Scrape Creators)
     scrapeCreators.js     La Biblioteca por Scrape Creators: la consulta limpia, la ruta y los parámetros de cada endpoint,
-                          cada anuncio como tarjeta, los errores dichos para la persona (puro; también el Worker)
+                          cada anuncio como tarjeta, los errores dichos para la persona; y TikTok (los pedidos de una cuenta, una
+                          palabra o #hashtag y un video, leer su respuesta «aweme» con tolerancia, las palabras de tendencia,
+                          `cifraCorta`) (puro; también el Worker)
     meses.js              Calendario siempre activo: mes virtual (sin cajón), recorrer meses,
                           fusionar lo escrito en un mes vacío, días de los meses vecinos (puro)
     bandeja.js            Cliente de /api/bandeja (comentarios, hilos, interruptor, acciones)
@@ -470,7 +472,9 @@ src/
                           para [cliente]», guardar en ideas, extraer guion, fórmula, «Crear con Claude», llevar a un día
     RecrearLoMejor.jsx    «Recrear para [cliente]»: UN recreador (también el del estudio de mercado): camino, producto, el costo
                           y el día antes de crear (lazy)
-    SeccionScrapeCreators.jsx  Ajustes → Integraciones: la llave de Scrape Creators, el tope de créditos por semana y lo gastado
+    SeccionScrapeCreators.jsx  Ajustes → Integraciones: la llave de Scrape Creators, el tope de créditos por semana, lo gastado, lo
+                          que espera su lectura (cuentas de TikTok, palabras, anuncios) y el interruptor de las tendencias de TikTok
+    TendenciasTikTok.jsx  Las palabras o #hashtags de las tendencias de TikTok de un cliente (en Inspiración → Cuentas)
     CuentasReferencia.jsx Las cuentas fijas de un cliente (red, @, tipo, nota): en Resultados y en Inspiración
     BibliotecaSC.jsx      La Biblioteca por Scrape Creators: empresa o palabra, filtros, cada anuncio con analizar, traer,
                           al banco de ideas y transcribir (lazy)
@@ -615,7 +619,10 @@ worker/
     informeAnuncios.js    El informe de anuncios: leer el mes de Meta, incrustar las imágenes, generar, el del día 1
     auditorias.js         Leer un perfil (cuenta propia o business_discovery) y auditarlo
     biblioteca.js         Una búsqueda en /ads_archive (una llamada, con topes) y sus errores
-    scrapeCreators.js     Scrape Creators: la llamada con la llave, un reintento, la caché en D1 y traer un anuncio a la galería
+    scrapeCreators.js     Scrape Creators: la llamada con la llave, un reintento, la caché en D1 y traer un anuncio a la galería;
+                          el TOPE semanal de créditos (lo comparten anuncios y TikTok) y TikTok: leer una cuenta, buscar una
+                          palabra y traer un video a la galería (sólo de sus dominios, sin la llave, sin pagar dos veces)
+    tendencias.js         Las tendencias de TikTok de cada cliente: sus palabras, leer una (los videos con más vistas) y guardarlas
     anuncios.js           Meta Ads: cuentas publicitarias, campañas e /insights, subir el medio
                           (/adimages, /advideos por file_url), crear en pausa, activar y pausar
     mcp.js                Las herramientas de Claude por MCP (consulta + escritura)
@@ -625,8 +632,8 @@ worker/
     competencia.js        `business_discovery` de un competidor (sus últimas publicaciones) y «traer» su archivo del CDN de Meta
                           a la galería («Competencia»), también desde un enlace de Instagram SIN @ (memoria, cuentas fijas,
                           página pública) y la miniatura de un reel con música
-    inspiracion.js        Inspiración: leer las cuentas de un cliente (Instagram y YouTube), guardar lo que publican con su
-                          «rinde», borrar lo que ya no está, avisar de lo que rinde 3×, el cron y el resumen con IA
+    inspiracion.js        Inspiración: leer las cuentas de un cliente (Instagram, YouTube y TikTok por Scrape Creators), guardar lo
+                          que publican con su «rinde», borrar lo que ya no está, avisar de lo que rinde 3×, el cron y el resumen
     loMejor.js            «Lo mejor»: reunir las cuatro fuentes sin repetir, clasificar (la IA barata, una vez), releer los anuncios de
                           las búsquedas guardadas cada semana con su tope de créditos, traer el original sin pagar dos veces,
                           recrear para un cliente (la publicación en su próximo día libre + el encargo, el guion animado o para
@@ -733,7 +740,7 @@ container/                El Container del video animado (Node + @napi-rs/canvas
                           /render (render.mjs) con el MISMO motor de src/lib; los clips de video (clips.mjs, PUT /clip/<id>);
                           probar.mjs, probarAudio.mjs y probarClips.mjs son sus pruebas (job «contenedor»)
 migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales, 0033 kit de marca, 0034 estudio de mercado, 0035 ritmo de contenido, 0036 inventario, 0037 plantillas de plan, 0038 campañas con varios conjuntos y anuncios, 0039 estratega, 0040 historial de anuncios, 0041 informe de anuncios, 0042 galería agrupada y repetidos, 0043 conversaciones del asistente, 0044 banco de ideas único, 0045 fórmulas UGC, 0046 inspiración, 0047 conversaciones de diseño, 0048 historias automáticas, 0049 encargos del Estudio: lote y carrusel, 0050 historias apartadas, 0051 notas fijas de los días, 0052 programar al aprobar por cliente, 0053 qué se le cambió a una nota, 0054 qué redes entran en el informe, 0055 hasta 5 historias automáticas al día, 0056 los días fijos de cada empresa, 0057 la lista aplicada de una auditoría, 0058 la caché de Scrape Creators, 0059 proyectos de video animado, 0060 sonido e historial de los videos, 0061 recetas y «Crear con Claude», 0062 «Lo mejor del momento»)
-migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales, 0033 kit de marca, 0034 estudio de mercado, 0035 ritmo de contenido, 0036 inventario, 0037 plantillas de plan, 0038 campañas con varios conjuntos y anuncios, 0039 estratega, 0040 historial de anuncios, 0041 informe de anuncios, 0042 galería agrupada y repetidos, 0043 conversaciones del asistente, 0044 banco de ideas único, 0045 fórmulas UGC, 0046 inspiración, 0047 conversaciones de diseño, 0048 historias automáticas, 0049 encargos del Estudio: lote y carrusel, 0050 historias apartadas, 0051 notas fijas de los días, 0052 programar al aprobar por cliente, 0053 qué se le cambió a una nota, 0054 qué redes entran en el informe, 0055 hasta 5 historias automáticas al día, 0056 los días fijos de cada empresa, 0057 la lista aplicada de una auditoría, 0058 la caché de Scrape Creators, 0059 proyectos de video animado, 0060 sonido e historial de los videos, 0061 recetas y «Crear con Claude», 0063 de dónde sale un video animado, 0066 el plan semanal único)
+migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales, 0033 kit de marca, 0034 estudio de mercado, 0035 ritmo de contenido, 0036 inventario, 0037 plantillas de plan, 0038 campañas con varios conjuntos y anuncios, 0039 estratega, 0040 historial de anuncios, 0041 informe de anuncios, 0042 galería agrupada y repetidos, 0043 conversaciones del asistente, 0044 banco de ideas único, 0045 fórmulas UGC, 0046 inspiración, 0047 conversaciones de diseño, 0048 historias automáticas, 0049 encargos del Estudio: lote y carrusel, 0050 historias apartadas, 0051 notas fijas de los días, 0052 programar al aprobar por cliente, 0053 qué se le cambió a una nota, 0054 qué redes entran en el informe, 0055 hasta 5 historias automáticas al día, 0056 los días fijos de cada empresa, 0057 la lista aplicada de una auditoría, 0058 la caché de Scrape Creators, 0059 proyectos de video animado, 0060 sonido e historial de los videos, 0061 recetas y «Crear con Claude», 0063 de dónde sale un video animado, 0066 el plan semanal único, 0068 TikTok y tendencias por Scrape Creators)
 scripts/migracion/        Volcado desde Supabase, conversión e importación
 tests/
   utils/                  Lector de wrangler.jsonc y _headers, fallos e informe
@@ -2228,8 +2235,8 @@ son del servidor.
   un viral dejaba a las demás por debajo. Lo nuevo (7 días) que rinde 3× o más AVISA al equipo una vez (`avisado`, tope 3 por lectura).
   · **YouTube por la Data API** con el token de un canal conectado del espacio o `YOUTUBE_API_KEY` (`canalPublicoYouTube`,
   `forHandle`); su video NO se baja (sus condiciones): el guion lo saca Gemini POR EL ENLACE (`verVideo({ youtube })`,
-  `extraerUgc({ youtube })`; con Meta como motor de video, 409). **TikTok no deja ver lo de otros**: la cuenta queda con su
-  error y se abre su perfil.
+  `extraerUgc({ youtube })`; con Meta como motor de video, 409). **TikTok no deja ver lo de otros por su API**: va por Scrape
+  Creators (ver «TikTok y las tendencias por Scrape Creators»); sin la llave, la cuenta queda con su aviso y se abre su perfil.
   · **Un enlace de Instagram sin @** (`traerEnlace`): la API no busca por enlace. Se busca en este orden y se para en el primero:
   el @ del enlace o el escrito, la memoria (`instagram_enlaces`) y el feed guardado, las cuentas fijas del cliente (una llamada
   por cuenta, y esa lectura sirve para bajarlo), la página pública de «insertar» (`/p/<código>/embed/captioned/`,
@@ -2267,13 +2274,14 @@ son del servidor.
   el texto, de 6 en 6. Los tipos NO se limitan: lo que no encaja va como «otro» con su nombre (`etiqueta`). La pantalla pide
   clasificar lo que ve sin tipo (una vez por ventana abierta) y el cron, lo de la inspiración y los anuncios. Lo que falla
   queda apuntado con su motivo (sin `clasificada_at`): el cron no lo repite cada minuto y la pantalla lo reintenta pasadas 6 h.
-  · **El cron va ÚLTIMO y sólo si nada más hizo algo** (`loMejorPendiente`, detrás de Inspiración): primero los anuncios de un
-  espacio que lleva una semana sin releerlos; si no, una tanda de clasificación.
+  · **El cron va ÚLTIMO y sólo si nada más hizo algo** (`loMejorPendiente`, detrás de Inspiración): primero UNA tarea de la cola
+  de Scrape Creators (los anuncios de un espacio, una cuenta de TikTok o una palabra de tendencia; ver «TikTok y las
+  tendencias»); si no, una tanda de clasificación.
   · **Anuncios por Scrape Creators una vez por semana, con TOPE** (`lo_mejor_ajustes.sc_tope_semana`, 10 por defecto, en
   Ajustes → Integraciones; 0 la apaga): se releen las búsquedas guardadas con `fuente: "sc"` (una página por búsqueda, lo
   de la caché no gasta). CADA crédito gastado se apunta en `creditos_sc` (`apuntarCredito` en worker/lib/scrapeCreators.js),
-  también lo buscado a mano: el automático se para antes. Sin créditos, la relectura se apunta igual (no se repite cada
-  minuto). Instagram NO gasta créditos: sigue por la API de Meta (la inspiración).
+  también lo buscado a mano: el automático se para antes. Sin créditos, el espacio se marca lleno hasta el lunes (`sc_lleno`,
+  no se mira cada minuto). Instagram NO gasta créditos: sigue por la API de Meta (la inspiración).
   · **«Recrear para [cliente]» es UN recreador** (`recrear`, `RecrearLoMejor.jsx`; también lo usan las referencias del
   estudio de mercado, cuyo «Seguir este video» fijaba Kling Omni de Higgsfield —sin llave— y cuyo «Recrear con mi marca»
   mandaba la imagen de otra marca al motor). Primero el costo: sin `confirmado: true`, 409 `codigo: "confirmar"` con el
@@ -2291,7 +2299,7 @@ son del servidor.
   galería.
   · **La cifra viaja**: al banco van `cifra`, `rinde`, la miniatura y el archivo como referencia (`ideaDeLoMejor`; también
   desde la Biblioteca); «Guardar en el banco» de «Extraer guion» guarda el enlace y el video.
-  · **El video se reproduce por un proxy** (`GET /api/lo-mejor/video?u=`, sólo `cdninstagram.com`/`fbcdn.net`, pasa el
+  · **El video se reproduce por un proxy** (`GET /api/lo-mejor/video?u=`, sólo `cdninstagram.com`/`fbcdn.net` y el CDN de TikTok, pasa el
   `Range`: sin trozos el iPhone no lo reproduce; con `sandbox` y `nosniff`). La dirección del video de un reel la guarda la
   inspiración (`inspiracion_publicaciones.video`, la `media_url` que caduca: el feed se relee cada 20 h).
   · **El aviso «rinde 3×» lleva a la TARJETA** (`/cliente/<id>/inspiracion?pieza=<clave>`): va primero y se señala.
@@ -2299,6 +2307,49 @@ son del servidor.
   las demás); «Crear con Claude» desde una tarjeta guarda en el handoff la pieza (`referencia`: enlace, cuenta, cifra, tipo,
   por qué funciona) y el original de la galería, y `receta` se lo da a Claude.
   · **Nada de esto se ha probado contra Scrape Creators, Meta ni la IA reales**: los tests usan `fetch` de mentira.
+- **TikTok y las tendencias por Scrape Creators, dentro del MISMO tope que los anuncios** (decisión de la agencia: Scrape
+  Creators sólo para anuncios y para TikTok; `src/lib/scrapeCreators.js`, `worker/lib/scrapeCreators.js`,
+  `worker/lib/tendencias.js`, `TendenciasTikTok.jsx`, 0068). Cosas que no se ven en la pantalla:
+  · **Una cola, lo más viejo primero, una tarea por vuelta** (`tareasScPendientes` en acceso.js, `loMejorPendiente`): los
+  anuncios de las búsquedas guardadas de un espacio (`sc_releido_at`), cada cuenta de TikTok de cada cliente
+  (`inspiracion_cuentas.leida_sc_at`) y cada palabra de tendencia (`tendencias_palabras.leida_at`), lo que lleve una semana
+  (`DIAS_SC`) o nunca se leyó. Antes de leer se mira el tope de la semana (`creditosDeLaSemana`, lunes a domingo de Panamá):
+  si no cabe, el espacio queda `sc_lleno` = ese lunes y la consulta no lo vuelve a ver hasta la semana siguiente (sin eso el
+  cron lo miraría cada minuto). Cambiar el tope suelta la marca. Sin la primera búsqueda intentada, los anuncios NO cuentan
+  como releídos (van primero el lunes). Va detrás de todo el cron, y la clasificación de lo leído en las vueltas siguientes.
+  Lo buscado a mano en la Biblioteca también suma y NO se bloquea: su respuesta trae `semana` ({ total, tope }) y la
+  pantalla avisa si se pasó.
+  · **Una cuenta de TikTok se lee como mucho una vez por semana** (`tiktokLeToca`). Quién la lee: el cron de «Lo mejor»
+  (`tiktok: "auto"`), la primera lectura de una cuenta recién añadida (la pantalla pide las que `faltan`: también «auto», sólo
+  si cabe en el tope; si no, espera y se dice) y «Actualizar» a mano (`manual`: cuenta para el tope y NO se bloquea; la
+  respuesta trae `avisoSC` si se pasó). El cron de cada 20 h de Inspiración NO la lee (`no`): conserva lo leído, su fecha y
+  sus publicaciones (`leidas`: sólo se borra lo de las cuentas leídas ahora). La lectura semanal de una cuenta no mueve su
+  `actualizada_at`, que es lo que mira el cron de 20 h (si no, retrasaría el Instagram y el YouTube del cliente).
+  · **«rinde» de TikTok va por VISTAS** contra la mediana de su cuenta (`conRendimiento(…, { campo })`,
+  `campoDeRendimiento`); la tarjeta dice «rinde 36× en vistas». La clave es «tt:<video>» (`claveDeInspiracion`, igual que su
+  enlace y las tendencias): la misma pieza seguida, en tendencia y guardada en el banco es UNA. La consulta del cron que
+  clasifica (`espaciosPorClasificar`) arma las claves de TikTok con la misma regla.
+  · **Las tendencias** son otra fuente de «Lo mejor» (`fuente: "tendencia"`, percentil por VISTAS dentro de su fuente, «1,2 M
+  de vistas» con `cifraCorta`). Su fecha es la de la última búsqueda (como un anuncio: es «del momento» mientras sale en
+  ella); se guardan las `POR_PALABRA` (12) con más vistas y lo que lleva 35 días sin aparecer se borra. Un #hashtag va por la
+  búsqueda de hashtag; una palabra, por la de palabra clave con `date_posted: this-week` y, si la API no entiende la fecha o
+  el orden (400, que no cobra), UNA vez sin ellos. Hasta 5 palabras por cliente, en su tabla (no en la ficha: `clientToRow`
+  no las pisa), con `PUT /api/inspiracion/<c>/tendencias`. El interruptor del espacio (`tiktok_tendencias`, encendido) las
+  saca de la cola y de «Lo mejor».
+  · **El archivo de un video de TikTok** (`traerTikTok`): SIN la llave y sólo de los dominios de TikTok (`HOSTS_TIKTOK`;
+  `bajarALaGaleria` acepta ahora `hosts`, `red` y `cabeceras`, y comprueba el dominio también tras una redirección), hasta
+  50 MB, y lo ya bajado no se baja ni se paga otra vez (`yaBajado`, por el nombre: la cuenta y el id). Sus direcciones caducan
+  en horas: si la guardada ya no vale, el detalle del video (`/v2/tiktok/video`, un crédito a mano) da otra. Si TikTok no lo
+  da, 409 `codigo: "sin_archivo"` y la pantalla lo dice: se recrea con IA (el director mira la miniatura) o se guarda desde el
+  teléfono. Un video de fotos de TikTok es un carrusel sin archivo. El proxy de videos de la tarjeta acepta TikTok, y si no se
+  reproduce la tarjeta vuelve a la miniatura.
+  · **Las rutas y la forma de la respuesta salen de la documentación pública** (`/v3/tiktok/profile/videos?handle=`,
+  `/v1/tiktok/search/keyword?query=`, `/v1/tiktok/search/hashtag?hashtag=`, `/v2/tiktok/video?url=`; la respuesta «aweme» de
+  la app de TikTok) y se leen con TOLERANCIA (`videoTikTok`, `videosDeRespuesta`: `aweme_list` o
+  `search_item_list[].aweme_info`, `statistics` o `stats`, `url_list` o la dirección suelta). **Nada de esto se ha probado
+  contra Scrape Creators real**: los tests (tests/migracion/tiktok.test.js) usan un `fetch` de mentira. Lo primero con la
+  llave: leer UNA cuenta de TikTok desde «Actualizar» y mirar en `biblioteca_cache` qué contestó; si la forma es otra, se
+  arregla en `videoTikTok` y nada más.
 - **El estudio de mercado: catálogo, estudio y competencia, por cliente** (`mercado_clientes`, 0034; lo puro
   en `src/lib/estudioMercado.js`, lo que toca base/IA/Drive en `worker/lib/mercado.js`). Va en su TABLA y no
   en `clients`: pesa decenas de miles de caracteres y `clients` viaja entero en cada carga y cada aviso.
