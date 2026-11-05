@@ -3,7 +3,7 @@ import Icon from "./Icon";
 import Compositor, { QueCrear } from "./EstudioCompositor";
 import Visor, { Pieza } from "./EstudioVisor";
 import {
-  kitVacio, limpiarKit, textoPreset, bloqueDeMarca, presetActual, ponerLogo, ideaDelPedido, conOtraEscena, nombreDePreset,
+  kitVacio, limpiarKit, textoPreset, bloqueDeMarca, presetActual, ponerLogo, ideaDelPedido, nombreDePreset,
   estiloDeLaPieza, lineaDeEstilo, nombreDeEstilo, estiloValido, TIPOS_PRESET, referenciaDePlantilla, lineaDePlantillaEnPedido,
 } from "../lib/kitMarca";
 import { presetDePilar, nombreDePilar } from "../lib/pilares";
@@ -24,7 +24,7 @@ import {
 } from "../lib/estudioCatalogo";
 import {
   filtrarArchivos, contarFiltros, trabajosVisibles, fraseDeTrabajo, hace, nombreDeDescarga,
-  proporcionDeMedidas, modeloDeEdicion, originalDe, FILTROS_GALERIA, agruparGaleria, esGrupo, estaUsado, textoDeGrupo,
+  proporcionDeMedidas, originalDe, FILTROS_GALERIA, agruparGaleria, esGrupo, estaUsado, textoDeGrupo,
   modeloDeLaPieza,
 } from "../lib/estudio";
 import { FiltroDeModelo } from "./SelectorModelo";
@@ -119,10 +119,6 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
   const claveGustos = `estudio-gustos:${client.id}`;
   const [conGustos, setConGustosEstado] = useState(() => { try { return localStorage.getItem(claveGustos) === "1"; } catch { return false; } });
   const setConGustos = (v) => { setConGustosEstado(v); try { localStorage.setItem(claveGustos, v ? "1" : "0"); } catch { /* sin almacenamiento */ } };
-  // El kit va en TODA pieza mientras esto esté encendido (se recuerda por cliente), y el estilo visual («» = el del tipo).
-  const claveUsarKit = `estudio-usar-kit:${client.id}`;
-  const [usarKit, setUsarKitEstado] = useState(() => { try { return localStorage.getItem(claveUsarKit) !== "0"; } catch { return true; } });
-  const setUsarKit = (v) => { setUsarKitEstado(v); try { localStorage.setItem(claveUsarKit, v ? "1" : "0"); } catch { /* sin almacenamiento */ } };
   // El estilo visual escogido se recuerda por cliente («» = el del tipo); el «acabado» de antes tenía los mismos ids.
   const claveEstilo = `estudio-estilo:${client.id}`;
   const [estiloEscogido, setEstiloEstado] = useState(() => {
@@ -229,7 +225,8 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
   const estiloVigente = estiloValido(estiloEscogido, kit) ? estiloEscogido : "";
   const estiloDeEsta = estiloDeLaPieza(kit, presetVigente, estiloVigente);
   const lineaDelEstilo = lineaDeEstilo(kit, estiloDeEsta);
-  const conKit = usarKit && kitListo;
+  // El kit va en TODA pieza si el cliente lo tiene (decisión de la agencia: ya no es una casilla recordada por navegador).
+  const conKit = kitListo;
   const bloqueMarca = conKit ? bloqueDeMarca(kit) : "";
   const puedeLogo = Boolean(conKit && form && modelo && ponerLogo({ kit, tipo: form.tipo, modelo, referencias: clavesDe(form.medios).reference }));
   // Con el logo estampado (kit), el modelo no lo recibe: la aplicación lo pega encima al terminar.
@@ -334,7 +331,10 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
       const r = await api.mejorarIdea(client.id, {
         idea: antes, tipo: form.tipo, pieza: presetVigente ? nombreDePreset(presetVigente, kit) : "",
         proporcion: form.ajustes?.aspectRatio ?? "", productoId: inicial?.post?.productoId ?? "", productoIds: inicial?.post?.productoIds,
+        // «¿Qué quieres?» de la publicación manda; y la plantilla que escoja el director va de referencia (enviar).
+        indicacion: inicial?.abrir ? "" : inicial?.indicacion ?? "", plantilla: form.tipo === "imagen" ? plantillaSel : "",
       });
+      if (form.tipo === "imagen" && r.plantilla && !plantillaSel) setPlantillaSel(r.plantilla);
       setConfirmando(null);
       setIdeaAnterior(antes);
       setForm((f) => ({ ...f, prompt: r.idea.slice(0, MAX_PROMPT) }));
@@ -380,15 +380,11 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
     enfocarPrompt();
   };
 
-  // «Mejorar idea» SOLO al abrir desde una publicación: su idea + el texto de la pieza + el contexto llegan juntos y
-  // largos, y el motor los entiende mucho mejor resumidos en una o dos frases (el texto exacto entre comillas se
-  // conserva). Una vez por apertura, apagable, y «Volver a mi idea» lo deshace. Es texto: no gasta en el motor.
-  const claveAuto = "estudio-mejorar-solo";
-  const [mejorarSolo, setMejorarSoloEstado] = useState(() => { try { return localStorage.getItem(claveAuto) !== "0"; } catch { return true; } });
-  const setMejorarSolo = (v) => { setMejorarSoloEstado(v); try { localStorage.setItem(claveAuto, v ? "1" : "0"); } catch { /* sin almacenamiento */ } };
+  // Al abrir desde una publicación, el DIRECTOR la diseña sola (siempre: ya no se apaga por navegador): su idea + el texto
+  // de la pieza + el contexto llegan juntos y largos. Una vez por apertura, y «Volver a mi idea» lo deshace. Es texto.
   const yaMejorado = useRef(false);
   useEffect(() => {
-    if (yaMejorado.current || !desdePost || !mejorarSolo || lectura || !form?.prompt?.trim()) return;
+    if (yaMejorado.current || !desdePost || lectura || !form?.prompt?.trim()) return;
     yaMejorado.current = true;
     // El pedido ya llega listo (lo escribió el motor de ideas): mejorarlo otra vez sólo haría esperar.
     if (inicial?.listo) return;
@@ -431,30 +427,6 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
     setForm((f) => ({ ...f, prompt: ideaAnterior }));
     setIdeaAnterior(null);
     enfocarPrompt();
-  };
-
-  /** «Editar»: la imagen va de referencia a un modelo que edita, con la indicación y la orden de no tocar lo demás. */
-  const editar = async (a, instruccion, ejemplos = [], escogido = "") => {
-    if (!String(instruccion ?? "").trim() || !motores) return;
-    const proporcion = a.ajustes?.aspectRatio ?? proporcionDeMedidas(a.ancho, a.alto);
-    // El que escogió la persona en el visor (si edita); si no, el de editar. Si no hace la proporción, el que sí.
-    const m = modeloDeEdicion(activos, escogido, proporcion);
-    // La imagen primero; los ejemplos de la galería detrás, los que quepan en el modelo.
-    const { prompt, medios } = api.pedidoDeCorreccion({ clave: a.clave, instruccion, ejemplos, modelo: m });
-    try {
-      const { trabajo } = await api.pedirImagenes(client.id, {
-        modelo: m.id, prompt, n: 1, ajustes: ajustesDe(m, { aspectRatio: proporcion }, medios),
-        medios, confirmado: true,
-        ...(a.carpetaId ? { carpetaId: a.carpetaId } : {}),
-      });
-      setVisor(null);
-      setEnPapelera(false);
-      setDatos((d) => (d ? { ...d, trabajos: reemplazar(d.trabajos, trabajo) } : d));
-      seguir(trabajo.id);
-      avisar(true, `Editando con ${m.nombre}: sale como una imagen NUEVA y la original no se toca.`);
-    } catch (e) {
-      avisar(false, e.message);
-    }
   };
 
   const enviar = async (confirmado = false) => {
@@ -629,64 +601,26 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
   };
   const [versionando, setVersionando] = useState(false);
   /**
-   * Una pieza con el texto de la plantilla encima (del lote): la nueva sale cruda y aquí se le pone el MISMO texto, en
-   * el mismo sitio, con los colores del kit. Corre sola: la persona sigue trabajando mientras tanto.
+   * «Otra igual», «Otra versión distinta» y «Editar» del visor (también la versión desde la tarjeta): salen YA, sin pasar
+   * por el compositor, y por el SERVIDOR con las mismas reglas que el lote —la proporción, el control con su corrección,
+   * el logo estampado y la marca de hoy— (lib/visorEstudio.js, aparte: el chunk del Estudio está en su tope). La
+   * versión la diseña el director mirando la original, con el mismo texto.
    */
-  const conTextoEncima = async (a, trabajo) => {
-    try {
-      // En diferido: el lienzo y el texto de la plantilla sólo hacen falta aquí, y el chunk del Estudio tiene tope.
-      const [{ esperarArchivo }, { ponerTexto }] = await Promise.all([import("../lib/carruselEstudio"), import("../lib/loteEstudio")]);
-      const crudo = await esperarArchivo(client.id, trabajo, { seguir: () => montado.current });
-      const p = a.ajustes.plantilla;
-      await ponerTexto({ clienteId: client.id, crudo, texto: p.texto, plantilla: p.plantilla, kit, carpetaId: a.carpetaId ?? null, nombre: "version" });
-      if (montado.current) await cargar();
-    } catch (e) {
-      if (montado.current) avisar(false, `La nueva salió, pero sin el texto encima: ${e.message}`);
-    }
-  };
-  const pedirOtras = async (a, prompts, otro = "") => {
-    const p = pedidoDe(a, otro);
-    if (p.error) throw new Error(p.error);
-    for (const prompt of prompts) {
-      const { trabajo } = await api.pedirImagenes(client.id, {
-        modelo: p.modelo.id, prompt: prompt.slice(0, MAX_PROMPT), n: 1, ajustes: p.ajustes, medios: p.medios, confirmado: true,
-        ...(p.carpetaId ? { carpetaId: p.carpetaId } : {}),
-        ...(uso ? { calendarId: uso.calendarId, postId: uso.postId } : {}),
-      });
-      setDatos((d) => (d ? { ...d, trabajos: reemplazar(d.trabajos, trabajo) } : d));
-      if (a.ajustes?.plantilla?.texto) conTextoEncima(a, trabajo);
-      else seguir(trabajo.id);
-    }
-    return p.modelo.nombre;
-  };
-  /** «Otra igual»: el mismo pedido otra vez (el motor no repite la imagen: sale otra con lo mismo). */
-  const otraIgual = async (a, otro = "") => {
-    try {
-      const con = await pedirOtras(a, [a.prompt], otro);
-      setVisor(null);
-      setEnPapelera(false);
-      avisar(true, `Pedida otra igual con ${con}: aparece en la galería en unos segundos.`);
-    } catch (e) {
-      setVisor(null);
-      avisar(false, e.message);
-    }
-  };
-  /**
-   * «Otra versión distinta»: la IA escribe 1–3 escenas nuevas con la misma información (con una ficha, el director
-   * mirando la original y con el mismo texto); el tipo, la marca y las referencias se quedan. Sale YA, sin pasar por el compositor (también desde la tarjeta de la galería). Lo que la
-   * escena manda sobre el texto («NO escribas…», «Texto en la imagen…») no se le da a reescribir: se vuelve a poner.
-   */
-  const otrasVersiones = async (a, n, otro = "") => {
-    if (versionando) return;
+  const delVisor = async (que, a, extra = {}) => {
+    if (versionando || !motores) return;
+    const p = que === "edicion" ? null : pedidoDe(a, extra.otro ?? "");
     setVersionando(true);
-    avisar(true, n === 1 ? "Escribiendo otra versión con la misma información…" : `Escribiendo ${n} versiones con la misma información…`);
+    if (que === "versiones") avisar(true, "El director está diseñando la versión con la misma información…");
     try {
-      const { escena, cola } = api.partirEscena(ideaDelPedido(a.prompt));
-      const r = await api.versionesDeIdea(client.id, { idea: escena, n, tipo: a.tipo, original: a.src });
-      const con = await pedirOtras(a, r.versiones.map((v) => conOtraEscena(a.prompt, [v, cola].filter(Boolean).join(" "))), otro);
-      setVisor(null);
+      if (p?.error) throw new Error(p.error);
+      const v = await import("../lib/visorEstudio");
+      const comun = { clienteId: client.id, a, p, kit, uso, seguir: () => montado.current, alFallo: (t) => montado.current && avisar(false, t) };
+      const r = await (que === "igual" ? v.pedirOtraIgual(comun) : que === "versiones" ? v.pedirVersiones({ ...comun, n: extra.n })
+        : v.pedirEdicion({ ...comun, instruccion: extra.instruccion, ejemplos: extra.ejemplos, escogido: extra.otro, activos }));
+      for (const t of r.trabajos ?? []) { setDatos((d) => (d ? { ...d, trabajos: reemplazar(d.trabajos, t) } : d)); seguir(t.id); }
       setEnPapelera(false);
-      avisar(true, [`${r.versiones.length === 1 ? "Pedida 1 versión distinta" : `Pedidas ${r.versiones.length} versiones distintas`} con ${con}: aparecen en la galería.`, r.aviso ?? ""].filter(Boolean).join(" "));
+      avisar(true, r.texto);
+      cargar();
     } catch (e) {
       avisar(false, e.message);
     } finally {
@@ -1049,10 +983,9 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
           onDrive={client.driveFolder ? (rol) => setDriveRol(rol) : null}
           onGaleria={escogerDeLaGaleria}
           mejorando={mejorando} onMejorar={mejorarConIA} onVolverIdea={ideaAnterior != null ? volverAMiIdea : null}
-          mejorarSolo={desdePost ? { activo: mejorarSolo, onCambiar: setMejorarSolo } : null}
           estilo={{
             preset: presetVigente, onPreset: setPreset, kitListo, kit: limpiarKit(kit), marca: client.name, textoPreset: textoDelPreset, refsTipo, sinIdea: !form.prompt.trim(),
-            bloqueMarca, usarKit, onUsarKit: setUsarKit,
+            bloqueMarca,
             estilo: estiloVigente, estiloResuelto: estiloDeEsta, nombreEstilo: nombreDeEstilo(kit, estiloDeEsta), lineaEstilo: lineaDelEstilo, onEstilo: setEstilo,
             fijadoTipo: limpiarKit(kit).estiloPorTipo[presetVigente.split("-")[0]] ?? "", onFijarEstilo: lectura ? null : fijarEstilo,
             conLogo, onConLogo: setConLogo, puedeLogo, estampa,
@@ -1285,7 +1218,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
                           type="button" className="btn-icon" disabled={versionando}
                           aria-label={`Otra versión: la misma información con otra escena${costoDeOtra(a) != null ? ` (${textoCosto(costoDeOtra(a))})` : ""}`}
                           title={`Otra versión: la misma información con otra escena${costoDeOtra(a) != null ? ` · ${textoCosto(costoDeOtra(a))}` : ""}`}
-                          onClick={() => otrasVersiones(a, 1)}
+                          onClick={() => delVisor("versiones", a, { n: 1 })}
                         >
                           <Icon name="sparkles" size={18} />
                         </button>
@@ -1358,12 +1291,12 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
           onMover={(c) => moverA(visor, c)}
           onRecrear={dialogo && !inicial?.abrir ? null : () => { const a = visor; setVisor(null); setRecrear({ archivo: a }); }}
           costoOtra={costoDeOtra(visor)}
-          onOtraIgual={(otro) => otraIgual(visor, otro)}
-          onOtrasVersiones={(n, otro) => otrasVersiones(visor, n, otro)}
+          onOtraIgual={(otro) => delVisor("igual", visor, { otro })}
+          onOtrasVersiones={(n, otro) => delVisor("versiones", visor, { n, otro })}
           versionando={versionando}
           onReferencia={() => { const a = visor; setVisor(null); usarComoMedio(a); }}
           onAnimar={() => animar(visor)}
-          onEditar={(instruccion, ejemplos, otro) => editar(visor, instruccion, ejemplos, otro)}
+          onEditar={(instruccion, ejemplos, otro) => delVisor("edicion", visor, { instruccion, ejemplos, otro })}
           activos={activos}
           desdePost={inicial?.abrir?.id === visor.id ? inicial : null}
           galeria={datos?.archivos ?? []}

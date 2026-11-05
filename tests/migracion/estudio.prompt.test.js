@@ -259,9 +259,9 @@ describe("POST /api/estudio/<cliente>/fichas", () => {
 describe("POST /api/estudio/<cliente>/versiones", () => {
   const versiones = (datos) => pedir("/api/estudio/c1/versiones", { method: "POST", body: datos });
 
-  it("devuelve N escenas en texto; no crea ningún trabajo y apunta el gasto", async () => {
+  it("de un VIDEO devuelve N escenas cortas en texto; no crea ningún trabajo y apunta el gasto", async () => {
     anthropic("- Un sofá cama abierto en un estudio pequeño.\n- El sofá cama visto desde arriba.");
-    const res = await versiones({ idea: "Un sofá cama en una sala", n: 2 });
+    const res = await versiones({ idea: "Un sofá cama en una sala", n: 2, tipo: "video" });
     expect(res.status).toBe(200);
     const r = await res.json();
     expect(r.versiones).toEqual(["Un sofá cama abierto en un estudio pequeño.", "El sofá cama visto desde arriba."]);
@@ -284,6 +284,20 @@ describe("POST /api/estudio/<cliente>/versiones", () => {
     expect(t).toMatch(/texto EXACTO de la pieza: «Desde \$399»/);
     expect(t).toMatch(/LA IMAGEN 1 ES LA PIEZA ORIGINAL/);
     expect(peticiones[0].messages[0].content[0].type).toBe("image");
+  });
+
+  it("una IMAGEN SIN ficha (de antes del director) también la diseña el director, mirando la original", async () => {
+    anthropic(JSON.stringify({ concepto: "x", piezas: [{ n: 1, ficha: "Pieza: post 4:5.\nComposición: el sofá a la izquierda.\nTexto (exacto): titular «Desde $399»." }] }));
+    const data = Buffer.from("x".repeat(60)).toString("base64");
+    const res = await versiones({ idea: "Un sofá cama en una sala con el texto «Desde $399»", n: 1, tipo: "imagen", texto: "Desde $399", original: { media_type: "image/jpeg", data } });
+    expect(res.status).toBe(200);
+    const r = await res.json();
+    expect(r.ficha).toBe(true);
+    expect(r.versiones[0]).toMatch(/^Pieza: post 4:5\./);
+    const t = textoDe(peticiones[0]);
+    expect(t).toMatch(/LA ESCENA DE LA PIEZA ORIGINAL:\s*Un sofá cama en una sala/);
+    expect(t).toMatch(/LA IMAGEN 1 ES LA PIEZA ORIGINAL/);
+    expect(db.sqlite.prepare("select funcion from consumo_ia").get().funcion).toBe("director de arte");
   });
 
   it("de 1 a 3, y sin escena no se llama a nadie", async () => {

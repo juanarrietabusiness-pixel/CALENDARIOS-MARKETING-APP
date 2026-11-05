@@ -133,41 +133,47 @@ const EJES_DE_VERSION = Object.freeze([
 ]);
 
 /**
- * El encargo del director para la versión k de una ficha: el mismo mensaje y el MISMO texto exacto, otra composición
- * moderada. `texto`: el de la pieza (si no llega, el de la ficha). Pura.
+ * El encargo del director para la versión k de una pieza: el mismo mensaje y el MISMO texto exacto, otra composición
+ * moderada. `ficha`: la ficha de la original o, si no la tenía (de antes del director, a mano), su escena. `texto`: el de
+ * la pieza (si no llega, el de la ficha). Pura.
  */
 export function encargoDeVersion(ficha, { k = 0, n = 1, texto = "", indicacion = "", productoIds = [], formato = "", proporcion = "" } = {}) {
   return {
     n: k + 1, formato, proporcion,
     idea: [
       `OTRA VERSIÓN de esta pieza: el mismo mensaje, el mismo producto y el MISMO texto exacto (no cambies, quites ni añadas una palabra), con la misma marca y el mismo nivel de acabado; que se reconozca como de la misma campaña. ${n > 1 ? EJES_DE_VERSION[k % EJES_DE_VERSION.length] : "Cambia la composición de forma moderada: otro encuadre, otra distribución o otro fondo."}`,
-      `LA FICHA DE LA PIEZA ORIGINAL:\n${String(ficha).slice(0, MAX_IDEA)}`,
+      `${esFicha(ficha) ? "LA FICHA" : "LA ESCENA"} DE LA PIEZA ORIGINAL:\n${String(ficha).slice(0, MAX_IDEA)}`,
     ].join("\n"),
     texto: texto || textoDeLaFicha(ficha), productoIds, indicacion,
   };
 }
 
 /**
- * N escenas distintas con la misma información. `datos`: { idea, n, tipo, original?, texto?, productoIds? }. Si la
- * pieza se pidió con una FICHA DE DISEÑO, la versión la escribe el director (mirando la original, si llega) con el mismo
- * texto: antes la IA la resumía en una frase de 60 palabras y la versión salía sin texto y sin el diseño. Texto: no
- * gasta en el motor.
+ * N escenas distintas con la misma información. `datos`: { idea, n, tipo, original?, texto?, productoIds? }. En una
+ * IMAGEN la versión la escribe el DIRECTOR (mirando la original, si llega) con el mismo texto, se pidiera la original con
+ * ficha o no: antes, sin ficha, la IA la resumía en una frase de 60 palabras y la versión salía sin texto y sin el
+ * diseño. Un video (o el director caído) sigue con las escenas cortas. Texto: no gasta en el motor.
  */
 export async function versionesDeIdea(env, acceso, cliente, datos = {}) {
   const idea = String(datos.idea ?? "").trim();
   if (!idea) throw Object.assign(new Error("Esta pieza no tiene escena de la que partir."), { estado: 400 });
   const n = Number(datos.n ?? 1);
   if (!(Number.isInteger(n) && n >= 1 && n <= MAX_VERSIONES)) throw Object.assign(new Error(`De 1 a ${MAX_VERSIONES} versiones.`), { estado: 400 });
-  if (datos.tipo !== "video" && esFicha(idea)) {
+  if (datos.tipo !== "video") {
     const opciones = { n, texto: String(datos.texto ?? "").slice(0, 400), indicacion: String(datos.indicacion ?? "").slice(0, 400), productoIds: Array.isArray(datos.productoIds) ? datos.productoIds : [] };
-    const r = await fichasDeDiseno(env, acceso, cliente, {
-      piezas: Array.from({ length: n }, (_, k) => encargoDeVersion(idea, { ...opciones, k })),
-      // Las versiones no son una serie entre sí: cada una parte de la original.
-      concepto: "Versiones de una misma pieza: cada una parte de la original.",
-      especiales: datos.original ? [{ papel: "original", ...datos.original }] : [],
-    });
-    const versiones = Array.from({ length: n }, (_, k) => r.fichas[k + 1]?.ficha).filter(Boolean);
-    if (versiones.length) return { versiones, modelo: r.modelo, aviso: r.aviso, ficha: true };
+    try {
+      const r = await fichasDeDiseno(env, acceso, cliente, {
+        piezas: Array.from({ length: n }, (_, k) => encargoDeVersion(idea, { ...opciones, k })),
+        // Las versiones no son una serie entre sí: cada una parte de la original.
+        concepto: "Versiones de una misma pieza: cada una parte de la original.",
+        especiales: datos.original ? [{ papel: "original", ...datos.original }] : [],
+      });
+      const versiones = Array.from({ length: n }, (_, k) => r.fichas[k + 1]?.ficha).filter(Boolean);
+      if (versiones.length) return { versiones, modelo: r.modelo, aviso: r.aviso, ficha: true };
+    } catch (e) {
+      // Sin presupuesto, lo de abajo fallaría igual; con el director caído, las escenas cortas de siempre.
+      if (e?.estado === 402 || e?.codigo === "presupuesto") throw e;
+    }
   }
   const r = await llamarIA(env, acceso, cliente, {
     prompt: pedidoDeVersiones({ idea, n, tipo: datos.tipo === "video" ? "video" : "imagen", cliente }),

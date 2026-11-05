@@ -19,7 +19,6 @@ import {
 import { pedidoDeLote, crearReelDeIdea } from "../lib/loteEstudio";
 import { lanzarLote, lanzarCarruselDeIdea, resultadoDePaso } from "../lib/loteServidor";
 import { seguirEncargo, terminarEncargo, cancelarEncargo, resultadoDeCarrusel } from "../lib/encargosApi";
-import { controlEncendido, encenderControl } from "../lib/controlEstudio";
 import { resumenControl } from "../lib/control";
 import { modelosParaCarrusel, modeloParaCarrusel } from "../lib/carruselEstudio";
 import { modelosParaReel, modeloRecomendadoParaReel } from "../lib/reelEstudio";
@@ -129,7 +128,8 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
   // Una plantilla del kit para toda la tanda ("" = la que escoja el director, si alguna encaja).
   const [plantillaLote, setPlantillaLote] = useState("");
   // El control de calidad de cada pieza (y corregir el texto solo): se recuerda por navegador.
-  const [controlar, setControlar] = useState(controlEncendido);
+  // El control de calidad va SIEMPRE (decisión de la agencia): ya no es una casilla recordada por navegador.
+  const controlar = true;
   // Los personajes de la marca que salen en el lote (van de referencia: salen iguales).
   const [personajesSel, setPersonajesSel] = useState([]);
   // En un reel: el modelo del video (los fotogramas, con el de imagen).
@@ -766,10 +766,6 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
                   {limpiarKit(kit).estilos.map((e) => <option key={e.id} value={e.id}>{e.nombre} (propio)</option>)}
                 </select>
               </div>
-              <label className="est-logo-casilla">
-                <input type="checkbox" checked={controlar} onChange={(e) => { setControlar(e.target.checked); encenderControl(e.target.checked); }} />
-                {" "}Revisar cada pieza al terminar y corregir solo el texto mal escrito (recomendado: la IA la mira y, si sólo falla una letra, edita la misma imagen; céntimos por pieza)
-              </label>
               <label className="est-logo-casilla">
                 <input type="checkbox" checked={mejorar} onChange={(e) => setMejorar(e.target.checked)} /> Que el director de arte diseñe la tanda antes de crear (recomendado: una ficha de diseño por pieza, todas como una serie; las que ya traen su pedido listo no esperan; costo de texto mínimo)
               </label>

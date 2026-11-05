@@ -13,7 +13,6 @@ import { modeloParaCarrusel } from "../../lib/carruselEstudio";
 import { crearEncargo, lanzarCarrusel, seguirEncargo, terminarEncargo } from "../../lib/encargosApi";
 import { ESCENA } from "../../lib/encargos";
 import { estampaSola } from "../../lib/logoEstudio";
-import { controlEncendido, encenderControl } from "../../lib/controlEstudio";
 import { resumenControl } from "../../lib/control";
 import { referenciaDeTipografia } from "../../lib/kitMarca";
 import { aprobadaPorDentro } from "../../lib/revisionIdeas";
@@ -78,7 +77,8 @@ export default function ProducirMes({ client, cal, onPoner, onClose }) {
   // El director de arte diseña cada imagen (la ficha de diseño), como «Crear con IA» desde una publicación.
   const [mejorar, setMejorar] = useState(true);
   // El control de calidad de cada pieza al llegar (y corregir el texto solo): se recuerda por navegador.
-  const [controlar, setControlar] = useState(controlEncendido);
+  // El control de calidad va SIEMPRE (decisión de la agencia): ya no es una casilla recordada por navegador.
+  const controlar = true;
   // Cuántas versiones de cada imagen (para escoger).
   const [versiones, setVersiones] = useState(2);
   const [modoTexto, setModoTexto] = useState("ia");
@@ -332,9 +332,6 @@ export default function ProducirMes({ client, cal, onPoner, onClose }) {
               )}
               <label className="est-logo-casilla">
                 <input type="checkbox" checked={mejorar} onChange={(e) => setMejorar(e.target.checked)} /> Que el director diseñe cada imagen y cada carrusel antes de crear (recomendado: una ficha de diseño por pieza o lámina, todas como una serie; las que ya la tienen no esperan; costo de texto mínimo)
-              </label>
-              <label className="cerebro-casilla">
-                <input type="checkbox" checked={controlar} onChange={(e) => { setControlar(e.target.checked); encenderControl(e.target.checked); }} /> Revisar cada pieza al llegar y corregir solo el texto mal escrito (recomendado; céntimos por pieza)
               </label>
               <div className="produccion-filtro" role="group" aria-label="Versiones de cada imagen">
                 <span className="hint">Versiones</span>

@@ -19,22 +19,24 @@
 // guarde—, sin abrir el Estudio. Las tres aceptan `indicacion`: lo que la
 // persona escribió en «¿Qué quieres?» encima de la imagen.
 //
-// Pasa por el control de calidad y el logo estampado como cualquier pieza
-// del Estudio. Se carga aparte: arrastra el catálogo.
+// TODAS van por el SERVIDOR (lib/piezaServidor.js), como el lote: la
+// proporción, el control de calidad con su corrección y el logo estampado si el
+// kit lo pide, aunque se cierre la pantalla. La versión de una pieza del Estudio
+// se rehace con la MARCA DE HOY (lib/marcaDeHoy.js), no con el kit que tenía la
+// original, y nunca se corta por el final. Se carga aparte: arrastra el catálogo.
 // ============================================================
 
 import * as api from "./estudio";
-import { ajustesDe, estimar, modeloPorId, modeloQueRespeta, porPrecio, MODELOS, CONFIRMAR_DESDE, MAX_PROMPT } from "./estudioCatalogo";
-import { TOMA_DE_OTRA_MARCA, NOTA_OTRA_MARCA } from "./recrear";
-import { ideaDelPedido, conOtraEscena, nombreDePreset, referenciaDePlantilla, lineaDePlantillaEnPedido } from "./kitMarca";
+import { ajustesDe, estimar, modeloPorId, modeloQueRespeta, porPrecio, MODELOS, CONFIRMAR_DESDE } from "./estudioCatalogo";
+import { ideaDelPedido, nombreDePreset, referenciaDePlantilla, lineaDePlantillaEnPedido } from "./kitMarca";
 import { apoyosDePieza, pedidoDePieza, lineaDeTexto } from "./pieza";
 import { presetDePilar, productosDelPost } from "./pilares";
 import { productosNombrados } from "./referencias";
 import { textoDeLaFicha } from "./director";
 import { promptListo } from "./promptImagen";
 import { esperarArchivos } from "./carruselEstudio";
-import { controlEncendido, controlarYCorregir } from "./controlEstudio";
-import { conLogoSiToca } from "./logoEstudio";
+import { conMarcaDeHoy } from "./marcaDeHoy";
+import { crearUnaEnServidor, pasoListo } from "./piezaServidor";
 
 const PARA_HISTORIA = new Set(["historia", "reel"]);
 
@@ -99,18 +101,28 @@ function proporcionPara(modelo, post, medio = null) {
   return valores.includes(deseada) ? deseada : valores.includes("4:5") ? "4:5" : "";
 }
 
-/** Lo que pasa después de que el motor entrega: el control, el logo estampado y el uso en la publicación. */
-async function terminar({ clienteId, nueva, post, kit, activos, calendarId, alProgresar }) {
-  if (controlEncendido()) {
-    alProgresar("Revisando la imagen…");
-    nueva = (await controlarYCorregir({ clienteId, archivo: nueva, texto: post.format === "carrusel" ? null : (post.textoPieza || null), activos })).archivo;
-  }
-  nueva = await conLogoSiToca({ clienteId, archivo: nueva, kit });
-  if (calendarId) await api.apuntarUso(clienteId, nueva.id, { calendarId, postId: post.id }).catch(() => null);
+/**
+ * La plantilla del kit que escogió el DIRECTOR (o la persona) como apoyo del pedido: su imagen de referencia (sólo por
+ * su diseño) y su sistema escrito. null si no hay o ya no está. Pura.
+ */
+export function plantillaDelPedido(kit, archivos = [], id = "") {
+  const ref = id ? referenciaDePlantilla(kit, id, archivos) : null;
+  return ref ? { ref, linea: lineaDePlantillaEnPedido(kit, id) } : null;
+}
+
+/**
+ * Crea la pieza por el SERVIDOR (proporción, control con su corrección, logo estampado si toca) y apunta su uso en la
+ * publicación. `texto`: lo que tiene que decir (el control lo compara). → el archivo final.
+ */
+async function crearPorElServidor({ clienteId, pedido, texto = "", kit, post, calendarId, alProgresar, titulo = "" }) {
+  const paso = pasoListo({ titulo, pedido: { ...pedido, ...(calendarId && post?.id ? { calendarId, postId: post.id } : {}) }, texto, kit });
+  const nueva = await crearUnaEnServidor({ clienteId, paso, kit, alProgresar });
+  if (!nueva) throw new Error("La imagen nueva no llegó. Prueba otra vez.");
+  if (calendarId && post?.id) await api.apuntarUso(clienteId, nueva.id, { calendarId, postId: post.id }).catch(() => null);
   return nueva;
 }
 
-/** El pedido de la versión nueva, sin crear nada. → { pedido, costo } (pedido listo para `pedirImagenes`). */
+/** El pedido de la versión nueva, sin crear nada. → { pedido, costo, texto } (pedido listo para el servidor). */
 async function prepararVersion({ clienteId, client, post, medio, g, activos, indicacion = "", modeloId = "" }) {
   const kit = g?.kit ?? {};
   // 1. Una pieza del Estudio: su mismo pedido, con otra escena.
@@ -136,13 +148,16 @@ async function prepararVersion({ clienteId, client, post, medio, g, activos, ind
     if (nueva) {
       // Con otro modelo escogido, sus referencias son las que le quepan; si no hace la proporción, el que sí.
       const aspecto = archivo.ajustes?.aspectRatio ?? trabajo.ajustes?.aspectRatio ?? "";
-      const refs = (trabajo.medios?.reference ?? []).length;
-      const usar = escogido ? modeloQueRespeta(escogido, activos, aspecto, refs) : suyo;
-      const medios = Object.fromEntries(Object.entries(trabajo.medios ?? {}).filter(([, l]) => Array.isArray(l) && l.length)
-        .map(([k, l]) => [k, usar !== suyo && k === "reference" ? l.slice(0, usar.referencias || 0) : l]));
+      const claves = trabajo.medios?.reference ?? [];
+      const usar = escogido ? modeloQueRespeta(escogido, activos, aspecto, claves.length) : suyo;
+      // La marca de HOY (no la que tenía el kit el día de la original) y, si no cabe, se acorta la escena, no el final.
+      const { prompt, reference } = conMarcaDeHoy({
+        prompt: archivo.prompt, escena: [conIndicacion(nueva, indicacion), cola].filter(Boolean).join("\n"), kit, modelo: usar, claves,
+      });
+      const otros = Object.fromEntries(Object.entries(trabajo.medios ?? {}).filter(([k, l]) => k !== "reference" && k !== "faltaron" && Array.isArray(l) && l.length));
+      const medios = { ...otros, ...(reference.length ? { reference } : {}) };
       const ajustes = ajustesDe(usar, archivo.ajustes ?? trabajo.ajustes ?? {}, medios);
-      const prompt = conOtraEscena(archivo.prompt, [conIndicacion(nueva, indicacion), cola].filter(Boolean).join("\n")).slice(0, MAX_PROMPT);
-      return { pedido: { modelo: usar.id, prompt, n: 1, ajustes, medios }, costo: estimar(usar, 1, ajustes) };
+      return { pedido: { modelo: usar.id, prompt, n: 1, ajustes, medios }, costo: estimar(usar, 1, ajustes), texto };
     }
   }
 
@@ -159,14 +174,16 @@ async function prepararVersion({ clienteId, client, post, medio, g, activos, ind
   }).catch(() => null);
   const escena = r?.idea || `${base} Otra versión de la imagen que había: el mismo mensaje, con otro encuadre.`;
   const fotos = fotosDeLaPieza(g?.productos ?? [], post, escena);
-  const apoyos = apoyosDePieza({ kit, preset, archivos: g?.archivos ?? [], fotos, modelo });
+  const plantilla = plantillaDelPedido(kit, g?.archivos ?? [], r?.plantilla);
+  const apoyos = apoyosDePieza({ kit, preset, archivos: g?.archivos ?? [], fotos, manuales: plantilla ? [plantilla.ref] : [], modelo });
   const pedido = pedidoDePieza({
     kit, idea: conIndicacion(escena, indicacion), preset, apoyos, modelo, marca: client.name, rubro: client.industry ?? "", aspectRatio,
     proporcion: deseadaPara(post, medio), activos,
-    // Con la ficha del director el texto ya va dentro; sin ella, la línea de siempre.
-    extra: r?.idea || post.format === "carrusel" ? "" : lineaDeTexto(post.textoPieza),
+    // Con la ficha del director el texto ya va dentro; sin ella, la línea de siempre. La plantilla que escogió, detrás.
+    extra: [r?.idea || post.format === "carrusel" ? "" : lineaDeTexto(post.textoPieza), plantilla?.linea ?? ""].filter(Boolean).join(" "),
   });
-  return { pedido, costo: estimar(modeloPorId(pedido.modelo) ?? modelo, 1, pedido.ajustes) };
+  const texto = post.format === "carrusel" ? "" : (post.textoPieza || textoDeLaFicha(escena) || "");
+  return { pedido, costo: estimar(modeloPorId(pedido.modelo) ?? modelo, 1, pedido.ajustes), texto };
 }
 
 /**
@@ -177,13 +194,10 @@ export async function otraVersionDelPost({ client, post, medio, indicacion = "",
   const clienteId = client.dbId || client.id;
   alProgresar("Escribiendo otra escena con la misma información…");
   const { g, activos } = await leerTodo(clienteId);
-  const { pedido, costo } = await prepararVersion({ clienteId, client, post, medio, g, activos, indicacion, modeloId: modelo });
+  const { pedido, costo, texto } = await prepararVersion({ clienteId, client, post, medio, g, activos, indicacion, modeloId: modelo });
   if (costo >= CONFIRMAR_DESDE && !confirmar(costo)) return null;
   alProgresar(`Creando la imagen nueva con ${modeloPorId(pedido.modelo)?.nombre ?? "el modelo"}…`);
-  const { trabajo } = await api.pedirImagenes(clienteId, { ...pedido, confirmado: true, ...(calendarId ? { calendarId, postId: post.id } : {}) });
-  const [nueva] = await esperarArchivos(clienteId, trabajo);
-  if (!nueva) throw new Error("La imagen nueva no llegó. Prueba otra vez.");
-  return terminar({ clienteId, nueva, post, kit: g?.kit ?? {}, activos, calendarId, alProgresar });
+  return crearPorElServidor({ clienteId, pedido, texto, kit: g?.kit ?? {}, post, calendarId, alProgresar, titulo: "Otra versión" });
 }
 
 // ------------------------------------------------------------
@@ -207,7 +221,7 @@ export async function crearImagenDelPost({ client, post, indicacion = "", opcion
   const modelo = escogido && escogido.tipo === "imagen" && (escogido.motor === "prueba" || activos[escogido.motor]) ? escogido : api.modeloPreferido(activos, "imagen", kit.modelos?.imagen);
   if (!modelo) throw new Error("No hay ningún modelo de imagen con llave (Ajustes → IA).");
   const preset = opciones.preset || presetDePilar(post.pilar, post.pilarSub);
-  const plantilla = opciones.plantilla ? referenciaDePlantilla(kit, opciones.plantilla, g?.archivos ?? []) : null;
+  let plantilla = plantillaDelPedido(kit, g?.archivos ?? [], opciones.plantilla);
   // `opciones.proporcion`: la que manda quien llama (la portada de YouTube va en 16:9 aunque el post sea un reel).
   const valores = modelo.ajustes?.aspectRatio?.valores ?? [];
   const aspectRatio = opciones.proporcion && valores.includes(opciones.proporcion) ? opciones.proporcion : proporcionPara(modelo, post);
@@ -222,23 +236,23 @@ export async function crearImagenDelPost({ client, post, indicacion = "", opcion
       idea: base,
     }).catch(() => null);
     idea = r?.idea || base;
+    // La plantilla del kit que escogió el director (si nadie escogió otra): su imagen va de referencia, como en el lote.
+    plantilla ??= plantillaDelPedido(kit, g?.archivos ?? [], r?.plantilla);
     if (r?.idea && !algoCambia) alMejorar(r.idea);
   }
   const fotos = fotosDeLaPieza(g?.productos ?? [], post, idea);
-  const apoyos = apoyosDePieza({ kit, preset, estilo: opciones.estilo || "", archivos: g?.archivos ?? [], fotos, manuales: plantilla ? [plantilla] : [], modelo });
+  const apoyos = apoyosDePieza({ kit, preset, estilo: opciones.estilo || "", archivos: g?.archivos ?? [], fotos, manuales: plantilla ? [plantilla.ref] : [], modelo });
   // El texto exacto ya va dentro de la idea (el pedido listo o la ficha): no se repite.
   const pedido = pedidoDePieza({
     kit, idea: conIndicacion(idea, indicacion), preset, estilo: opciones.estilo || "", apoyos, modelo, marca: client.name, rubro: client.industry ?? "",
-    aspectRatio, proporcion: opciones.proporcion || deseadaPara(post), activos, extra: plantilla ? lineaDePlantillaEnPedido(kit, opciones.plantilla) : "",
+    aspectRatio, proporcion: opciones.proporcion || deseadaPara(post), activos, extra: plantilla?.linea ?? "",
   });
   const usado = modeloPorId(pedido.modelo) ?? modelo;
   const costo = estimar(usado, 1, pedido.ajustes);
   if (costo >= CONFIRMAR_DESDE && !confirmar(costo)) return null;
   alProgresar(`Creando la imagen con ${usado.nombre}…`);
-  const { trabajo } = await api.pedirImagenes(clienteId, { ...pedido, confirmado: true, ...(calendarId ? { calendarId, postId: post.id } : {}) });
-  const [nueva] = await esperarArchivos(clienteId, trabajo);
-  if (!nueva) throw new Error("La imagen no llegó. Prueba otra vez.");
-  return terminar({ clienteId, nueva, post, kit, activos, calendarId, alProgresar });
+  const texto = post.format === "carrusel" ? "" : (post.textoPieza || textoDeLaFicha(idea) || "");
+  return crearPorElServidor({ clienteId, pedido, texto, kit, post, calendarId, alProgresar, titulo: post.title || "Imagen de la publicación" });
 }
 
 // ------------------------------------------------------------
@@ -254,80 +268,102 @@ function modeloQueSigueVideo(activos, fijado) {
 }
 
 /**
- * La referencia que la agencia subió a la publicación (un anuncio que funciona, un video de IA que gustó) rehecha con
- * la marca del cliente: su FORMA (composición, ritmo, planos), el producto y el texto de la publicación, el kit y el
- * logo. Como «Recrear un anuncio» del Estudio (lib/recrear.js), pero sin salir del post: la pieza nueva ocupa el sitio
- * de la referencia. → el archivo nuevo, o null si no se confirmó el costo.
+ * El pedido de una IMAGEN de otra marca recreada para el cliente. El DIRECTOR mira la referencia (`refSrc`, papel
+ * «inspiración») y diseña una versión PROPIA, ligeramente distinta, con el catálogo del cliente; la imagen de la otra
+ * marca NUNCA va al motor de imagen (decisión de la agencia: con ella delante, aunque se le dijera «sólo la
+ * composición», el motor la copiaba casi exacta y la otra marca la habría reconocido). Sin director no hay versión: se
+ * dice por qué, en vez de mandar la referencia al motor. → { pedido, costo, texto, modelo }.
  */
-export async function recrearConLaMarca({ client, post, medio, indicacion = "", modelo: modeloId = "", calendarId = null, confirmar = () => true, alProgresar = () => {} }) {
-  const clienteId = client.dbId || client.id;
-  const ref = api.archivoDesdeSrc(medio.src, clienteId);
-  if (!ref) throw new Error("Esa referencia no está en el almacén de este cliente: súbela otra vez a la publicación.");
-  const video = medio.tipo === "video";
-  alProgresar("Preparando la versión con tu marca…");
-  const { g, activos } = await leerTodo(clienteId);
+async function pedidoDeRecrear({ clienteId, client, post, refSrc, g, activos, indicacion = "", modeloId = "", deseada = "4:5", alProgresar = () => {} }) {
   const kit = g?.kit ?? {};
-  const fotos = api.fotosDelPost(g?.productos ?? [], post);
+  let modelo = modeloEscogido(modeloId, activos) ?? api.modeloPreferido(activos, "imagen", kit.modelos?.imagen);
+  if (!modelo) throw new Error("No hay ningún modelo de imagen con llave (Ajustes → IA).");
+  const preset = presetDePilar(post.pilar, post.pilarSub);
+  const valores = modelo.ajustes?.aspectRatio?.valores ?? [];
   const contexto = api.promptDePublicacion(post, { conTexto: false });
-  const idea = [
-    lineaDeIndicacion(indicacion),
-    `Recrea la idea de la pieza de referencia para ${client.name}: toma su idea y su tipo de composición${video ? ", su ritmo y sus planos" : ""}, pero en una versión propia, ligeramente distinta (otro encuadre, otra distribución, otro escenario), con el producto, la marca y el mensaje de ${client.name}; nada del producto, el texto ni el logo de la referencia.`,
-    contexto ? `De qué va: ${contexto}` : "",
-  ].filter(Boolean).join(" ");
-
-  let pedido;
-  let modelo;
-  if (video) {
-    modelo = modeloQueSigueVideo(activos, kit.modelos?.video);
-    if (!modelo) throw new Error("Ningún modelo con llave sigue un video de referencia (Kling Omni, Seedance o Gemini Omni por Kie).");
-    const base = pedidoDePieza({ kit, idea, apoyos: fotos, modelo, marca: client.name, rubro: client.industry ?? "", video: true, aspectRatio: "9:16" });
-    const medios = { ...base.medios, video: [ref.clave] };
-    pedido = { ...base, medios, ajustes: ajustesDe(modelo, base.ajustes, medios) };
-  } else {
-    modelo = modeloEscogido(modeloId, activos, { referencias: true }) ?? api.modeloPreferido(activos, "imagen", kit.modelos?.imagen);
-    if (!(modelo?.referencias > 0)) modelo = porPrecio(MODELOS.filter((x) => x.tipo === "imagen" && x.referencias > 0 && activos[x.motor]), activos)[0] ?? null;
-    if (!modelo) throw new Error("No hay ningún modelo de imagen con referencias y con llave (Ajustes → IA).");
-    const preset = presetDePilar(post.pilar, post.pilarSub);
-    const deseada = PARA_HISTORIA.has(post.format) ? "9:16" : api.proporcionDeMedidas(medio.ancho, medio.alto) || "4:5";
-    const valores = modelo.ajustes?.aspectRatio?.valores ?? [];
-    // El DIRECTOR mira la referencia y diseña una versión PROPIA, ligeramente distinta, con el catálogo del cliente. La
-    // referencia ya no va al motor de imagen: con ella delante (aunque se le dijera «sólo la composición») el motor la
-    // copiaba casi exacta, y la otra marca la habría reconocido.
-    alProgresar("El director está mirando la referencia…");
-    const r = await api.mejorarIdea(clienteId, {
+  alProgresar("El director está mirando la referencia…");
+  let r;
+  try {
+    r = await api.mejorarIdea(clienteId, {
       ...encargoDelPost(post, { indicacion, pieza: preset ? nombreDePreset(preset, kit) : "", proporcion: valores.includes(deseada) ? deseada : "" }),
       idea: [
         `Recrea para ${client.name} la IDEA de la pieza de otra marca que ves: una versión propia, ligeramente distinta, que no se reconozca como copia.`,
         contexto ? `De qué va la publicación: ${contexto}` : "",
         productosDelPost(post).length ? "" : "La publicación no dice qué producto: escoge del catálogo el que mejor encaje con la idea de la referencia.",
       ].filter(Boolean).join("\n"),
-      especiales: [{ papel: "inspiracion", src: medio.src }],
-    }).catch(() => null);
-    if (r?.idea) {
-      const deLaFicha = fotosDeLaPieza(g?.productos ?? [], post, r.idea);
-      const apoyos = apoyosDePieza({ kit, preset, archivos: g?.archivos ?? [], fotos: deLaFicha, modelo });
-      pedido = pedidoDePieza({
-        kit, idea: conIndicacion(r.idea, indicacion), preset, apoyos, modelo, marca: client.name, rubro: client.industry ?? "",
-        aspectRatio: valores.includes(deseada) ? deseada : "", proporcion: deseada, activos,
-      });
-    } else {
-      // Sin director (sin saldo, sin red): la referencia va al motor, sólo por su idea y con la orden de no copiarla.
-      const deLaReferencia = { clave: ref.clave, toma: [...TOMA_DE_OTRA_MARCA], nota: NOTA_OTRA_MARCA };
-      const apoyos = apoyosDePieza({ kit, preset, archivos: g?.archivos ?? [], fotos: [deLaReferencia, ...fotos], modelo });
-      pedido = pedidoDePieza({
-        kit, idea, preset, apoyos, modelo, marca: client.name, rubro: client.industry ?? "",
-        aspectRatio: valores.includes(deseada) ? deseada : "", proporcion: deseada, activos, extra: post.format === "carrusel" ? "" : lineaDeTexto(post.textoPieza),
-      });
-    }
-    modelo = modeloPorId(pedido.modelo) ?? modelo;
+      especiales: [{ papel: "inspiracion", src: refSrc }],
+    });
+  } catch (e) {
+    throw new Error(`El director no pudo mirar la referencia (${e.message}). Prueba otra vez: sin él no se recrea, para no mandar la pieza de la otra marca al motor.`);
   }
+  if (!r?.idea) throw new Error("El director no devolvió el diseño. Prueba otra vez.");
+  const fotos = fotosDeLaPieza(g?.productos ?? [], post, r.idea);
+  const plantilla = plantillaDelPedido(kit, g?.archivos ?? [], r.plantilla);
+  const apoyos = apoyosDePieza({ kit, preset, archivos: g?.archivos ?? [], fotos, manuales: plantilla ? [plantilla.ref] : [], modelo });
+  const pedido = pedidoDePieza({
+    kit, idea: conIndicacion(r.idea, indicacion), preset, apoyos, modelo, marca: client.name, rubro: client.industry ?? "",
+    aspectRatio: valores.includes(deseada) ? deseada : "", proporcion: deseada, activos, extra: plantilla?.linea ?? "",
+  });
+  modelo = modeloPorId(pedido.modelo) ?? modelo;
+  const texto = post.format === "carrusel" ? "" : (post.textoPieza || textoDeLaFicha(r.idea) || "");
+  return { pedido, costo: estimar(modelo, 1, pedido.ajustes), texto, modelo };
+}
+
+/**
+ * La referencia que la agencia subió a la publicación (un anuncio que funciona, un video de IA que gustó) rehecha con
+ * la marca del cliente: su FORMA (composición, ritmo, planos), el producto y el texto de la publicación, el kit y el
+ * logo. Como «Recrear un anuncio» del Estudio (lib/recrear.js), pero sin salir del post: la pieza nueva ocupa el sitio
+ * de la referencia. Una imagen, por el director y el servidor (`pedidoDeRecrear`); un video, por el camino de video de
+ * siempre. → el archivo nuevo, o null si no se confirmó el costo.
+ */
+export async function recrearConLaMarca({ client, post, medio, indicacion = "", modelo: modeloId = "", calendarId = null, confirmar = () => true, alProgresar = () => {} }) {
+  const clienteId = client.dbId || client.id;
+  const ref = api.archivoDesdeSrc(medio.src, clienteId);
+  if (!ref) throw new Error("Esa referencia no está en el almacén de este cliente: súbela otra vez a la publicación.");
+  alProgresar("Preparando la versión con tu marca…");
+  const { g, activos } = await leerTodo(clienteId);
+  const kit = g?.kit ?? {};
+  if (medio.tipo !== "video") {
+    const deseada = PARA_HISTORIA.has(post.format) ? "9:16" : api.proporcionDeMedidas(medio.ancho, medio.alto) || "4:5";
+    const { pedido, costo, texto, modelo } = await pedidoDeRecrear({ clienteId, client, post, refSrc: medio.src, g, activos, indicacion, modeloId, deseada, alProgresar });
+    if (costo >= CONFIRMAR_DESDE && !confirmar(costo)) return null;
+    alProgresar(`Creando la imagen con ${modelo.nombre}…`);
+    return crearPorElServidor({ clienteId, pedido, texto, kit, post, calendarId, alProgresar, titulo: "Recreada con la marca" });
+  }
+  // Un VIDEO sigue el camino de video de siempre: la referencia va como video a seguir, con un modelo que tenga llave.
+  const fotos = api.fotosDelPost(g?.productos ?? [], post);
+  const contexto = api.promptDePublicacion(post, { conTexto: false });
+  const idea = [
+    lineaDeIndicacion(indicacion),
+    `Recrea la idea de la pieza de referencia para ${client.name}: toma su idea y su tipo de composición, su ritmo y sus planos, pero en una versión propia, ligeramente distinta (otro encuadre, otra distribución, otro escenario), con el producto, la marca y el mensaje de ${client.name}; nada del producto, el texto ni el logo de la referencia.`,
+    contexto ? `De qué va: ${contexto}` : "",
+  ].filter(Boolean).join(" ");
+  const modelo = modeloQueSigueVideo(activos, kit.modelos?.video);
+  if (!modelo) throw new Error("Ningún modelo con llave sigue un video de referencia (Kling Omni, Seedance o Gemini Omni por Kie).");
+  const base = pedidoDePieza({ kit, idea, apoyos: fotos, modelo, marca: client.name, rubro: client.industry ?? "", video: true, aspectRatio: "9:16" });
+  const medios = { ...base.medios, video: [ref.clave] };
+  const pedido = { ...base, medios, ajustes: ajustesDe(modelo, base.ajustes, medios) };
   const costo = estimar(modelo, 1, pedido.ajustes);
   if (costo >= CONFIRMAR_DESDE && !confirmar(costo)) return null;
-  alProgresar(video ? `Creando el video con ${modelo.nombre} (unos minutos)…` : `Creando la imagen con ${modelo.nombre}…`);
+  alProgresar(`Creando el video con ${modelo.nombre} (unos minutos)…`);
   const { trabajo } = await api.pedirImagenes(clienteId, { ...pedido, confirmado: true, ...(calendarId ? { calendarId, postId: post.id } : {}) });
-  let [nueva] = await esperarArchivos(clienteId, trabajo);
+  const [nueva] = await esperarArchivos(clienteId, trabajo);
   if (!nueva) throw new Error("La pieza nueva no llegó. Prueba otra vez.");
-  if (!video) nueva = await conLogoSiToca({ clienteId, archivo: nueva, kit });
   if (calendarId) await api.apuntarUso(clienteId, nueva.id, { calendarId, postId: post.id }).catch(() => null);
   return nueva;
+}
+
+/**
+ * «Recrear un anuncio» del Estudio, en IMAGEN: la versión que se escribió (qué se ve y su texto) para el producto
+ * escogido, por el MISMO camino que la publicación (el director mira el anuncio; el anuncio no va al motor) y el
+ * servidor. → el archivo nuevo de la galería, o null si no se confirmó el costo.
+ */
+export async function recrearAnuncioConLaMarca({ client, archivo, version = {}, productoId = "", confirmar = () => true, alProgresar = () => {} }) {
+  const clienteId = client.dbId || client.id;
+  const { g, activos } = await leerTodo(clienteId);
+  const post = { format: "post", idea: String(version.idea ?? ""), textoPieza: String(version.texto ?? ""), productoId, productoIds: productoId ? [productoId] : [] };
+  const { pedido, costo, texto, modelo } = await pedidoDeRecrear({ clienteId, client, post, refSrc: archivo.src, g, activos, deseada: "4:5", alProgresar });
+  if (costo >= CONFIRMAR_DESDE && !confirmar(costo)) return null;
+  alProgresar(`Creando la imagen con ${modelo.nombre}…`);
+  return crearPorElServidor({ clienteId, pedido, texto, kit: g?.kit ?? {}, post, calendarId: null, alProgresar, titulo: "Anuncio recreado con la marca" });
 }
