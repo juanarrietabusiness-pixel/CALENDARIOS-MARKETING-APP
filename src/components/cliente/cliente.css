@@ -1,0 +1,66 @@
+/* ============================================================
+   Las pestañas Crear, Referencias y Marca de un cliente (fase 7)
+   Va con sus chunks (lazy): el CSS inicial está en su tope.
+   ============================================================ */
+
+/* Las sub-secciones (Referencias, Marca): una fila de píldoras que desplaza en el teléfono. */
+.subseccion { display: flex; flex-direction: column; gap: var(--sp-3); }
+.subpestanas { display: flex; gap: var(--sp-1); overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+.subpestanas::-webkit-scrollbar { display: none; }
+@media (max-width: 719px) {
+  .subpestanas { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); padding-right: 28px; }
+}
+.subpestana {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  min-height: var(--tap-sm);
+  padding: 0 var(--sp-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--text-dim);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  cursor: pointer;
+}
+@media (pointer: coarse) { .subpestana { min-height: var(--tap); } }
+.subpestana:hover { color: var(--text); background: var(--surface-2); }
+.subpestana[aria-selected="true"] { color: var(--text); background: var(--accent-soft); border-color: var(--accent-line); }
+.subpestana[aria-selected="true"] svg { color: var(--accent); }
+.subseccion-panel { min-width: 0; }
+.subseccion .card, .semaforo { padding: var(--sp-4); }
+.subseccion-panel > .card + .card, .marca-kit > * + * { margin-top: var(--sp-3); }
+
+/* Crear: el director arriba (más bajo que en la pestaña Diseño de antes: debajo va la galería) y la galería. */
+.crear { display: flex; flex-direction: column; gap: var(--sp-4); }
+.crear-indice { display: flex; gap: var(--sp-2); flex-wrap: wrap; }
+.crear-indice .filter-chip { display: inline-flex; align-items: center; gap: var(--sp-1); text-decoration: none; }
+.crear-indice .filter-chip[aria-current="location"] { background: var(--accent-soft); border-color: var(--accent-line); color: var(--text); }
+.crear-titulo { font-size: var(--fs-md); margin: 0 0 var(--sp-2); }
+.crear-director, .crear-galeria { scroll-margin-top: calc(var(--header-h) + var(--sp-3)); }
+.crear .chat-incrustado { height: min(64vh, 720px); min-height: 440px; }
+
+/* El semáforo del kit (Marca) y su aviso corto (Crear). */
+.semaforo { display: flex; flex-direction: column; gap: var(--sp-2); }
+.semaforo-titulo { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; font-size: var(--fs-sm); margin: 0; }
+.semaforo-resumen { margin-left: auto; font-size: var(--fs-2xs); font-weight: 600; padding: 2px var(--sp-2); border-radius: var(--radius-pill); background: var(--surface-2); color: var(--text-dim); }
+.semaforo[data-estado="rojo"] .semaforo-resumen { background: var(--danger-soft); color: var(--danger); }
+.semaforo[data-estado="ambar"] .semaforo-resumen { background: var(--alt-soft); color: var(--accent-alt); }
+.semaforo-lista { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: var(--sp-2); }
+.semaforo-punto { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; padding: var(--sp-2) var(--sp-3); background: var(--surface-2); border-radius: var(--radius-sm); border-left: 3px solid var(--success); }
+.semaforo-punto[data-estado="ambar"] { border-left-color: var(--accent-alt); }
+.semaforo-punto[data-estado="rojo"] { border-left-color: var(--danger); }
+.semaforo-luz { flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; color: #06130a; background: var(--success); }
+.semaforo-punto[data-estado="ambar"] .semaforo-luz { background: var(--accent-alt); color: #1a1200; }
+.semaforo-punto[data-estado="rojo"] .semaforo-luz { background: var(--danger); color: #fff; }
+.semaforo-texto { flex: 1 1 160px; display: flex; flex-direction: column; min-width: 0; font-size: var(--fs-xs); }
+.semaforo-texto .hint { margin: 0; }
+.semaforo-aviso { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
+.semaforo-aviso > span { flex: 1 1 240px; }
+
+/* Marca */
+.marca-kit .lote-fila { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--sp-3); }
+.marca-fechas-mes { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; margin-top: var(--sp-3); }
+.marca-fechas-nombre { min-width: 120px; text-align: center; font-weight: 600; font-size: var(--fs-xs); }

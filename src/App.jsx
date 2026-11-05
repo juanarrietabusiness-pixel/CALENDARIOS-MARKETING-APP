@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, useId, lazy, Suspense } from "react";
 import { MONTHS } from "./constants";
 import { useDialogA11y } from "./hooks/useDialogA11y";
 import { useAnchoAmplio } from "./hooks/useAnchoAmplio";
@@ -19,6 +19,8 @@ import MedidorIA from "./components/MedidorIA";
 import Avisos from "./components/Avisos";
 import ContadorAtrasadas from "./components/ContadorAtrasadas";
 import BarraInferior from "./components/BarraInferior";
+import BarraPestanas from "./components/BarraPestanas";
+import { idDePestana, idDelPanel } from "./lib/pestanas";
 import Login from "./pages/Login";
 import Invitacion from "./pages/Invitacion";
 import Presencia, { PresenciaEnCliente } from "./components/Presencia";
@@ -33,7 +35,7 @@ import { resumenCalendario } from "./lib/resumenCliente";
 import { calendarioVirtual, esVirtual, fusionarEnMes, mesDeFecha, mismoMes as esMismoMes } from "./lib/meses";
 import {
   analizarRuta, construirRuta, navegar,
-  porRuta, slugsDeCalendarios, slugsDeClientes, slugDeMes, mesDeSlug, rutaDeOtroCliente,
+  porRuta, slugsDeCalendarios, slugsDeClientes, slugDeMes, mesDeSlug, rutaDeOtroCliente, PESTANAS_DEL_CLIENTE,
 } from "./lib/rutas";
 
 // El asistente sólo se descarga al abrirlo: es la pantalla más pesada y
@@ -46,7 +48,6 @@ const Tareas = lazy(() => import("./pages/Tareas"));
 const Equipo = lazy(() => import("./pages/Equipo"));
 const Ajustes = lazy(() => import("./pages/Ajustes"));
 const Resultados = lazy(() => import("./pages/Resultados"));
-const Inspiracion = lazy(() => import("./components/Inspiracion"));
 const Programacion = lazy(() => import("./pages/Programacion"));
 const Bandeja = lazy(() => import("./pages/Bandeja"));
 const ResumenAgencia = lazy(() => import("./pages/Resultados").then((m) => ({ default: m.ResumenAgencia })));
@@ -65,13 +66,12 @@ const LoMejor = lazy(() => import("./pages/LoMejor"));
 const Campanas = lazy(() => import("./pages/Campanas"));
 const ConectarClaude = lazy(() => import("./pages/ConectarClaude"));
 const PublicarAMano = lazy(() => import("./pages/PublicarAMano"));
-const IdeasBank = lazy(() => import("./components/IdeasBank"));
 const TaskPanel = lazy(() => import("./components/TaskPanel"));
-const PestanaContenido = lazy(() => import("./components/PestanaContenido"));
-const FichaCliente = lazy(() => import("./components/FichaCliente"));
-const Cerebro = lazy(() => import("./components/Cerebro"));
-const Estudio = lazy(() => import("./components/Estudio"));
-const DisenoDirector = lazy(() => import("./components/DisenoDirector"));
+// Las pestañas de un cliente que agrupan lo de antes (fase 7): Crear (Estudio + Diseño), Referencias (Ideas,
+// Inspiración y la competencia) y Marca (ficha, kit y voz, cerebro, plan semanal, fechas y Drive).
+const Crear = lazy(() => import("./components/cliente/Crear"));
+const Referencias = lazy(() => import("./components/cliente/Referencias"));
+const Marca = lazy(() => import("./components/cliente/Marca"));
 const Buscador = lazy(() => import("./components/Buscador"));
 const SubirRapido = lazy(() => import("./components/SubirRapido"));
 const GuardarReferencia = lazy(() => import("./components/GuardarReferencia"));
@@ -79,47 +79,6 @@ const GuardarReferencia = lazy(() => import("./components/GuardarReferencia"));
 const Cargando = () => <p role="status" style={{ color: "var(--text-dim)", fontSize: "var(--fs-xs)" }}>Cargando…</p>;
 
 const NOMBRE_RED = { instagram: "Instagram", facebook: "Facebook", tiktok: "TikTok", youtube: "YouTube" };
-
-/** Las pestañas de un cliente: [id, nombre, icono]. El id va en la dirección. */
-const PESTANAS = [
-  ["calendario", "Calendario", "calendar"],
-  ["tareas", "Tareas", "clipboardCheck"],
-  ["contenido", "Contenido", "cloud"],
-  ["ideas", "Ideas", "bulb"],
-  ["inspiracion", "Inspiración", "eye"],
-  ["resultados", "Resultados", "chart"],
-  ["estudio", "Estudio", "imageAi"],
-  ["diseno", "Diseño", "palette"],
-  ["cerebro", "Cerebro", "brain"],
-  ["ficha", "Ficha", "building"],
-];
-
-/**
- * Las pestañas de un cliente. En el teléfono no caben todas: la barra desplaza, la
- * pestaña activa se trae a la vista al entrar (si no, «Estudio» o «Cerebro» quedaban
- * fuera y no se sabía que existían) y un degradado a la derecha avisa de que hay más.
- */
-function PestanasCliente({ nombre, pestana, onElegir }) {
-  const barra = useRef(null);
-  useEffect(() => {
-    barra.current?.querySelector('[aria-current="page"]')?.scrollIntoView?.({ inline: "center", block: "nearest" });
-  }, [pestana]);
-  return (
-    <nav ref={barra} className="pestanas-cliente" aria-label={`Secciones de ${nombre}`}>
-      {PESTANAS.map(([id, texto, icono]) => (
-        <button
-          key={id}
-          type="button"
-          className="pestana-cliente"
-          aria-current={pestana === id ? "page" : undefined}
-          onClick={() => onElegir(id)}
-        >
-          <Icon name={icono} size={16} /> {texto}
-        </button>
-      ))}
-    </nav>
-  );
-}
 
 /**
  * La dirección actual, y se vuelve a pintar cuando cambia.
@@ -814,6 +773,10 @@ function Workspace({ session, ruta }) {
     return (client.calendars ?? []).find((k) => esMismoMes(k, mesVisto)) ?? calendarioVirtual(mesVisto.year, mesVisto.month);
   }, [client, mesVisto]);
   const selectedCalId = calendar?.id ?? null;
+  // La última sub-sección que se miró de cada pestaña (Marca → Kit…): al volver a la pestaña, se vuelve ahí.
+  const ultimaSeccion = useRef({});
+  useEffect(() => { if (ruta.pestana && ruta.seccion) ultimaSeccion.current[ruta.pestana] = ruta.seccion; }, [ruta]);
+  const idsPestanas = useId();
 
   /**
    * Navega a un cliente, y opcionalmente a uno de sus calendarios.
@@ -1397,7 +1360,12 @@ function Workspace({ session, ruta }) {
 
   const pestana = client ? (ruta.pestana ?? "calendario") : null;
   const slugCliente = client ? slugsCliente.get(client.id) ?? client.id : null;
-  const irAPestana = (p) => navegar(construirRuta({ cliente: slugCliente, pestana: p }));
+  // Las tareas de un cliente ya no son una pestaña: llevan a «Mi día» en su vista por empresa, con la de este cliente
+  // (y desde ahí, a su lista entera, la de siempre, en `/cliente/<slug>/tareas`).
+  const irATareasDelCliente = () => navegar(`/tareas?empresa=${encodeURIComponent(client?.dbId || client?.id || "")}`);
+  const irAPestana = (p, seccion = ultimaSeccion.current[p] ?? null) =>
+    (p === "tareas" ? irATareasDelCliente() : navegar(construirRuta({ cliente: slugCliente, pestana: p, seccion })));
+  const pestanaVisible = PESTANAS_DEL_CLIENTE.some(([id]) => id === pestana);
   // En pantalla ancha el asistente se acopla a la derecha y el contenido
   // se aparta: se trabaja con el calendario a la vista, sin fondo oscuro.
   const chatAcoplado = showChat && anchoAmplio;
@@ -1628,6 +1596,10 @@ function Workspace({ session, ruta }) {
                     </div>
 
                     <div className="page-header-actions">
+                      {/* Sus tareas: ya no son una pestaña. Llevan a Mi día, por empresa, con las de este cliente. */}
+                      <button className="btn-icon" aria-label={`Tareas de ${client.name}, en Mi día`} title="Tareas" onClick={irATareasDelCliente}>
+                        <Icon name="clipboardCheck" />
+                      </button>
                       <button
                         className="btn-icon"
                         aria-label={`Editar cliente ${client.name}`}
@@ -1648,40 +1620,44 @@ function Workspace({ session, ruta }) {
 
                   <ResumenCliente client={client} calendar={calendar} pulso={pulso} onIr={irAPestana} />
 
-                  {/* Las pestañas del cliente. Son direcciones —se
-                      recargan, se comparten, atrás funciona—, así que es
-                      navegación con aria-current, no role="tab". Antes
-                      todo esto iba apilado ENCIMA del calendario, que es
-                      lo que se usa todo el día, y había que bajar para
-                      llegar a él. */}
-                  <PestanasCliente nombre={client.name} pestana={pestana} onElegir={(id) => (id === "calendario" ? irA(client.id, selectedCalId) : irAPestana(id))} />
+                  {/* Las CINCO pestañas del cliente (lib/rutas.js). Cada una es una dirección —se recarga, se comparte,
+                      atrás funciona— y además una pestaña de verdad (BarraPestanas: role="tab", flechas, foco). Las
+                      sub-secciones (Marca → Kit…) las pinta cada pestaña. */}
+                  <BarraPestanas
+                    etiqueta={`Secciones de ${client.name}`}
+                    pestanas={PESTANAS_DEL_CLIENTE}
+                    actual={pestana}
+                    base={idsPestanas}
+                    onElegir={(id) => (id === "calendario" ? irA(client.id, selectedCalId) : irAPestana(id))}
+                  />
                 </div>
 
+                <div
+                  role="tabpanel"
+                  id={idDelPanel(idsPestanas)}
+                  aria-labelledby={pestanaVisible ? idDePestana(idsPestanas, pestana) : undefined}
+                  aria-label={pestanaVisible ? undefined : `Tareas de ${client.name}`}
+                >
+
                 <Suspense fallback={<Cargando />}>
-                {pestana === "tareas" && <TaskPanel client={client} pulso={pulso} />}
-
-                {pestana === "contenido" && (
-                  <PestanaContenido client={client} pulso={pulso} onPersistClient={persistClient} />
+                {pestana === "tareas" && (
+                  <>
+                    <p className="hint" style={{ marginBottom: "var(--sp-3)" }}>
+                      Todas las tareas de {client.name}, con las que se repiten. Las del día a día, junto a las de las demás empresas,{" "}
+                      <a href="/tareas" onClick={(e) => { e.preventDefault(); irATareasDelCliente(); }}>en Mi día, por empresa</a>.
+                    </p>
+                    <TaskPanel client={client} pulso={pulso} />
+                  </>
                 )}
 
-                {pestana === "ideas" && (
-                  <IdeasBank client={client} clientes={clients} pulso={pulso} />
-                )}
-
-                {pestana === "resultados" && (
-                  <Resultados client={client} pulso={pulso} onPersistClient={persistClient} />
-                )}
-
-                {pestana === "inspiracion" && (
-                  <Inspiracion key={client.id} client={client} clientes={clients} modo="pestana" lectura={Boolean(yo.soloLectura)} onPersistClient={persistClient} onLlevar={ideaAlCalendario} />
-                )}
-
-                {pestana === "estudio" && <Estudio key={client.id} client={client} pulso={pulso} onLlevarAlCalendario={llevarAlCalendario} />}
-
-                {pestana === "diseno" && (
-                  <DisenoDirector
+                {pestana === "crear" && (
+                  <Crear
                     key={client.id}
                     client={client}
+                    seccion={ruta.seccion}
+                    pulso={pulso}
+                    onLlevarAlCalendario={llevarAlCalendario}
+                    onIr={(p, seccion) => irAPestana(p, seccion)}
                     asistente={{
                       calendar, calId: selectedCalId, clients, onCrearEnOtroMes: crearEnOtroMes, onCambiarPublicacion: cambiarPublicacion,
                       onUpdateCal: esVirtual(calendar) ? (_id, cambiado) => escribirEnMesVacio(calendar, cambiado) : updateCalendar,
@@ -1689,13 +1665,37 @@ function Workspace({ session, ruta }) {
                   />
                 )}
 
-                {pestana === "cerebro" && <Cerebro client={client} />}
-
-                {pestana === "ficha" && (
-                  <FichaCliente
+                {pestana === "referencias" && (
+                  <Referencias
+                    key={client.id}
                     client={client}
-                    onEditar={() => { setEditingClient(client); setShowClientModal(true); }}
+                    clientes={clients}
+                    seccion={ruta.seccion}
+                    pulso={pulso}
+                    lectura={Boolean(yo.soloLectura)}
+                    onIr={(p, seccion) => irAPestana(p, seccion)}
+                    onPersistClient={persistClient}
+                    onLlevar={ideaAlCalendario}
                   />
+                )}
+
+                {pestana === "marca" && (
+                  <Marca
+                    key={client.id}
+                    client={client}
+                    seccion={ruta.seccion}
+                    pulso={pulso}
+                    lectura={Boolean(yo.soloLectura)}
+                    onIr={(p, seccion) => irAPestana(p, seccion)}
+                    onEditar={() => { setEditingClient(client); setShowClientModal(true); }}
+                    onPersistClient={persistClient}
+                    onGuardarPlan={guardarPlanCliente}
+                    onGuardarFechas={guardarFechasCliente}
+                  />
+                )}
+
+                {pestana === "resultados" && (
+                  <Resultados client={client} pulso={pulso} onPersistClient={persistClient} />
                 )}
                 </Suspense>
 
@@ -1736,6 +1736,7 @@ function Workspace({ session, ruta }) {
                     onPersistClient={persistClient}
                   />
                 ) : null)}
+                </div>
               </>
             ) : (
               <Inicio
@@ -1835,8 +1836,8 @@ function Workspace({ session, ruta }) {
         )}
       </Suspense>
 
-      {/* En «Diseño» el asistente ya está en la página: el botón flotante taparía su botón de enviar. */}
-      {!showChat && pestana !== "diseno" && (
+      {/* En «Crear» el director ya está en la página: el botón flotante taparía su botón de enviar. */}
+      {!showChat && pestana !== "crear" && (
         <button
           className="chat-fab"
           onClick={() => setShowChat(true)}
