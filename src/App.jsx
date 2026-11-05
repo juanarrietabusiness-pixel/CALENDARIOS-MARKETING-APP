@@ -941,18 +941,19 @@ function Workspace({ session, ruta }) {
   };
 
   /**
-   * El plan semanal de un cliente (lib/planSemanal.js): la plantilla personalizada y el ritmo, que es lo que leen el
-   * lote del Estudio, «Planificar mes» y la IA. Deja escapar el error: el diálogo lo dice y se queda abierto.
+   * El plan semanal ÚNICO de un cliente (lib/planSemanal.js): formato, tipo, hora y nota de cada día, y las columnas de
+   * antes derivadas (las lee la IA). Por su ruta (`PUT /api/clientes/<id>/plan-semanal`), no con la ficha entera. Deja
+   * escapar el error: el editor lo dice y se queda abierto. `clienteId`: el de la ficha que se edita (por defecto, el
+   * que se mira).
    */
-  const guardarPlanCliente = async (cambio) => {
-    const id = selectedClientId;
-    const cliente = clientsRef.current.find((c) => c.id === id);
-    if (!cliente) return;
-    // Las notas fijas de los días sólo cambian si vienen: «Volver al estándar» no las trae y no se las lleva.
-    const campos = { planContenido: cambio.planContenido, ritmoContenido: cambio.ritmoContenido, ...("notasSemana" in cambio ? { notasSemana: cambio.notasSemana } : {}) };
-    const nuevo = { ...cliente, ...campos };
-    await db.saveClient(nuevo, ownerId);
-    setClients((prev) => prev.map((c) => (c.id === id ? { ...c, ...campos } : c)));
+  const guardarPlanCliente = async (cambio, clienteId = selectedClientId) => {
+    const cliente = clientsRef.current.find((c) => c.id === clienteId);
+    if (!cliente) return null;
+    const fila = await db.guardarPlanSemanal(cliente.dbId || cliente.id, cambio);
+    const g = rowToClient(fila);
+    const campos = { planSemanal: g.planSemanal, planContenido: g.planContenido, ritmoContenido: g.ritmoContenido, notasSemana: g.notasSemana };
+    setClients((prev) => prev.map((c) => (c.id === clienteId ? { ...c, ...campos } : c)));
+    return campos;
   };
 
   /**
@@ -1812,6 +1813,7 @@ function Workspace({ session, ruta }) {
           <ClientModal
             initial={editingClient}
             onSave={saveClient}
+            onGuardarPlan={guardarPlanCliente}
             onDelete={esAdmin() ? deleteClient : null}
             onClose={() => {
               setShowClientModal(false);

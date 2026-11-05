@@ -1,5 +1,4 @@
-import { useEffect, useId, useState, useRef } from "react";
-import { FORMATS, FORMAT_ICONS, DEFAULT_CATEGORIES } from "../constants";
+import { lazy, Suspense, useEffect, useId, useState, useRef } from "react";
 import { uid, compressImage, createEmptyClient } from "../utils";
 import { fetchGitHubADN, extractClientADN, parseGitHubUrl, imagenDelADN } from "../api";
 import { elegirLogo, tresColores } from "../lib/colores";
@@ -7,140 +6,10 @@ import { loadImageTemplates, saveImageTemplate, deleteImageTemplate, loadImageRe
 import { useDialogA11y } from "../hooks/useDialogA11y";
 import Icon from "./Icon";
 import InterruptorBandeja from "./InterruptorBandeja";
-import PlanDelCliente from "./PlanDelCliente";
 import { idDeCarpeta } from "../lib/drive";
-import { PILARES, limpiarRitmo, RITMO_POR_DEFECTO } from "../lib/pilares";
 
-const DAYS_ORDERED = [
-  { dow: 1, name: "Lunes" },
-  { dow: 2, name: "Martes" },
-  { dow: 3, name: "Miercoles" },
-  { dow: 4, name: "Jueves" },
-  { dow: 5, name: "Viernes" },
-  { dow: 6, name: "Sabado" },
-  { dow: 0, name: "Domingo" },
-];
-
-/**
- * El ritmo de contenido: qué tipo toca cada día. Por defecto el de la agencia (lunes Anuncio … sábado 7 maletas);
- * «Planificar mes» lo usa y sugiere los cambios de temporada.
- */
-function RitmoContenido({ valor, onChange }) {
-  const ids = useId();
-  const ritmo = limpiarRitmo(valor);
-  const esElDeLaAgencia = DAYS_ORDERED.every(({ dow }) => ritmo[dow] === RITMO_POR_DEFECTO[dow]);
-  return (
-    <fieldset className="ritmo-contenido" style={{ border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: "var(--sp-3)", margin: "0 0 var(--sp-4)" }}>
-      <legend className="label" style={{ padding: "0 var(--sp-1)" }}>Ritmo de contenido</legend>
-      <p className="hint" style={{ margin: "0 0 var(--sp-2)" }}>
-        Qué tipo de contenido toca cada día. «Planificar mes» lo sigue y sólo sugiere cambios en las semanas con fechas importantes.
-      </p>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: "var(--sp-2)" }}>
-        {DAYS_ORDERED.map(({ dow, name }) => (
-          <div key={dow} className="field" style={{ margin: 0 }}>
-            <label className="label" htmlFor={`${ids}-${dow}`}>{name}</label>
-            <select id={`${ids}-${dow}`} className="input" value={ritmo[dow]} onChange={(e) => onChange({ ...ritmo, [dow]: e.target.value })}>
-              <option value="">Libre</option>
-              {PILARES.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-            </select>
-          </div>
-        ))}
-      </div>
-      {!esElDeLaAgencia && (
-        <button type="button" className="btn btn-ghost btn-sm" style={{ marginTop: "var(--sp-2)" }} onClick={() => onChange({ ...RITMO_POR_DEFECTO })}>
-          Volver al ritmo de la agencia
-        </button>
-      )}
-    </fieldset>
-  );
-}
-
-function FormatPicker({ value, onChange, label }) {
-  return (
-    <div style={{ display: "flex", gap: "var(--sp-2)", flexWrap: "wrap" }} role="group" aria-label={label}>
-      {Object.entries(FORMATS).map(([k, f]) => (
-        <button
-          key={k}
-          type="button"
-          aria-pressed={value === k}
-          onClick={() => onChange(k)}
-          style={{
-            padding: "var(--sp-2) var(--sp-3)",
-            borderRadius: "var(--radius-xs)",
-            border: `1px solid ${value === k ? f.color : "var(--border)"}`,
-            cursor: "pointer",
-            background: value === k ? f.color + "33" : "var(--card-alt)",
-            color: value === k ? f.color : "var(--text-muted)",
-            fontSize: "var(--fs-2xs)",
-            fontWeight: 600,
-            minHeight: "var(--tap-sm)",
-          }}
-        >
-          <Icon name={FORMAT_ICONS[k]} size={16} /> {f.label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function CategoryTemplates({ savedCategories, onLoad, onSave }) {
-  const [templateName, setTemplateName] = useState("");
-  const [showSave, setShowSave] = useState(false);
-  const inputId = useId();
-
-  return (
-    <div style={{ marginBottom: "var(--sp-3)" }}>
-      <div style={{ display: "flex", gap: "var(--sp-2)", flexWrap: "wrap", marginBottom: "var(--sp-2)" }}>
-        {(savedCategories || []).map((tpl, i) => (
-          <button
-            key={i}
-            type="button"
-            className="filter-chip"
-            style={{ borderColor: "var(--accent)", background: "var(--accent-soft)", color: "var(--accent)" }}
-            onClick={() => onLoad(tpl)}
-          >
-            {tpl.name}
-          </button>
-        ))}
-        <button
-          type="button"
-          className="filter-chip"
-          style={{ borderStyle: "dashed", background: "transparent" }}
-          aria-expanded={showSave}
-          onClick={() => setShowSave(!showSave)}
-        >
-          + Guardar plantilla
-        </button>
-      </div>
-      {showSave && (
-        <div style={{ display: "flex", gap: "var(--sp-2)", alignItems: "flex-end", marginBottom: "var(--sp-2)" }}>
-          <div style={{ flex: 1 }}>
-            <label className="label" htmlFor={inputId}>Nombre de la plantilla</label>
-            <input
-              id={inputId}
-              className="input"
-              value={templateName}
-              onChange={(e) => setTemplateName(e.target.value)}
-              placeholder="Ej: Estructura estándar"
-            />
-          </div>
-          <button
-            type="button"
-            className="btn btn-primary"
-            disabled={!templateName}
-            onClick={() => {
-              onSave(templateName);
-              setTemplateName("");
-              setShowSave(false);
-            }}
-          >
-            Guardar
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
+// El plan semanal ÚNICO (lib/planSemanal.js): el mismo editor que la barra de los días del calendario, en diferido.
+const EditorSemana = lazy(() => import("./calendario/PlanSemanal").then((m) => ({ default: m.EditorSemana })));
 
 /** La receta del prompt maestro puede venir como objeto o como texto JSON. */
 function recetaDe(receta) {
@@ -149,18 +18,12 @@ function recetaDe(receta) {
   try { return JSON.parse(receta); } catch { return null; }
 }
 
-export default function ClientModal({ initial, onSave, onDelete, onClose }) {
+export default function ClientModal({ initial, onSave, onDelete, onClose, onGuardarPlan = null }) {
   const blank = createEmptyClient();
   const [form, setForm] = useState(initial ? { ...initial } : blank);
   const [tab, setTab] = useState("basico");
-  const [weekStructure, setWeekStructure] = useState(() =>
-    DAYS_ORDERED.map(({ dow, name }) => {
-      const existing = initial?.weeklyStructure?.find((s) => s.dayOfWeek === dow);
-      return existing
-        ? { dayOfWeek: dow, dayName: name, active: true, slots: existing.slots || [], categories: existing.categories || [""] }
-        : { dayOfWeek: dow, dayName: name, active: false, slots: [], categories: [""] };
-    })
-  );
+  // Lo que se guardó del plan semanal desde esta ficha (su propia ruta): se suma a la ficha para pintarla al día.
+  const [camposPlan, setCamposPlan] = useState({});
   const [ghStatus, setGhStatus] = useState("");
   const [ghFiles, setGhFiles] = useState([]);
   // El logo que se encontró en el repositorio, si hay uno importable.
@@ -337,9 +200,6 @@ export default function ClientModal({ initial, onSave, onDelete, onClose }) {
       return;
     }
     setNameError("");
-    const ws = weekStructure
-      .filter((s) => s.active && s.slots.length > 0)
-      .map((s) => ({ ...s, categories: (s.categories || [""]).filter((c) => c) }));
 
     // Guardar va a la red: si falla, el diálogo tiene que seguir abierto
     // con los datos dentro. Antes se cerraba a la vez que se enviaba y el
@@ -350,7 +210,8 @@ export default function ClientModal({ initial, onSave, onDelete, onClose }) {
       await onSave({
         ...form,
         id: initial?.id || "client-" + uid(),
-        weeklyStructure: ws,
+        // La estructura semanal de antes (formatos y categorías por día) ya no se edita: el plan semanal único la sustituye.
+        weeklyStructure: initial?.weeklyStructure || [],
         calendars: initial?.calendars || [],
         savedPlans: initial?.savedPlans || [],
         savedCategories: initial?.savedCategories || [],
@@ -359,24 +220,6 @@ export default function ClientModal({ initial, onSave, onDelete, onClose }) {
       setSaveError(e.message || "No se pudo guardar el cliente.");
       setSaving(false);
     }
-  };
-
-  const saveCategoryTemplate = (name) => {
-    const cats = {};
-    weekStructure.forEach((s) => {
-      if (s.active) cats[s.dayOfWeek] = s.categories || [""];
-    });
-    sf("savedCategories", [...(form.savedCategories || []), { name, categories: cats }]);
-  };
-
-  const loadCategoryTemplate = (tpl) => {
-    setWeekStructure((prev) =>
-      prev.map((s) => {
-        const tplCats = tpl.categories[s.dayOfWeek];
-        if (tplCats) return { ...s, active: true, categories: [...tplCats] };
-        return s;
-      })
-    );
   };
 
   const TABS = [
@@ -1126,155 +969,19 @@ export default function ClientModal({ initial, onSave, onDelete, onClose }) {
 
         {tab === "semanal" && (
           <div role="tabpanel" id={`${ids}-panel-semanal`} aria-labelledby={`${ids}-tab-semanal`}>
-            <PlanDelCliente valor={form.planContenido} onChange={(p) => sf("planContenido", p)} nombreCliente={form.name} />
-            <RitmoContenido valor={form.ritmoContenido} onChange={(r) => sf("ritmoContenido", r)} />
-
-            <p style={{ fontSize: "var(--fs-xs)", color: "var(--text-dim)", margin: "0 0 var(--sp-3)" }}>
-              Define los formatos y categorías que se repiten cada semana.
-            </p>
-
-            <CategoryTemplates
-              savedCategories={form.savedCategories}
-              onLoad={loadCategoryTemplate}
-              onSave={saveCategoryTemplate}
-            />
-
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 12 }}>
-              {DEFAULT_CATEGORIES.map((cat) => (
-                <button
-                  key={cat}
-                  type="button"
-                  className="filter-chip"
-                  onClick={() => {
-                    const emptyDay = weekStructure.find((s) => s.active && s.categories.some((c) => !c));
-                    if (emptyDay) {
-                      const idx = weekStructure.indexOf(emptyDay);
-                      setWeekStructure((p) =>
-                        p.map((x, j) => {
-                          if (j !== idx) return x;
-                          const nc = [...x.categories];
-                          const ei = nc.findIndex((c) => !c);
-                          if (ei !== -1) nc[ei] = cat;
-                          return { ...x, categories: nc };
-                        })
-                      );
-                    }
-                  }}
-                >
-                  {cat}
-                </button>
-              ))}
-            </div>
-
-            {weekStructure.map((s, i) => (
-              <div key={s.dayOfWeek} style={{ background: "var(--bg)", borderRadius: 10, padding: 10, marginBottom: 8 }}>
-                <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: s.active ? 8 : 0 }}>
-                  <button
-                    type="button"
-                    onClick={() => setWeekStructure((p) => p.map((x, j) => (j !== i ? x : { ...x, active: !x.active })))}
-                    style={{
-                      width: 32,
-                      height: 36,
-                      borderRadius: "var(--radius-xs)",
-                      border: "none",
-                      cursor: "pointer",
-                      background: s.active ? "var(--accent)" : "var(--card-alt)",
-                      color: "#fff",
-                      fontSize: "var(--fs-xs)",
-                      flexShrink: 0,
-                    }}
-                    aria-pressed={s.active}
-                    aria-label={`${s.active ? "Desactivar" : "Activar"} ${s.dayName}`}
-                  >
-                    {s.active && <Icon name="check" size={18} />}
-                  </button>
-                  <span style={{ fontSize: "var(--fs-xs)", color: s.active ? "#fff" : "var(--text-muted)", fontWeight: s.active ? 700 : 500, width: 80, flexShrink: 0 }}>
-                    {s.dayName}
-                  </span>
-                  {s.active && <span style={{ fontSize: "var(--fs-3xs)", color: "var(--text-muted)" }}>{s.slots.length} publicación{s.slots.length !== 1 ? "es" : ""}</span>}
-                </div>
-                {s.active && (
-                  <>
-                    <div style={{ marginBottom: "var(--sp-3)" }}>
-                      <p className="label">Publicaciones del día</p>
-                      {s.slots.map((slot, si) => (
-                        <div key={si} style={{ display: "flex", gap: "var(--sp-2)", alignItems: "flex-start", marginBottom: "var(--sp-2)", paddingLeft: "var(--sp-2)" }}>
-                          <div style={{ flex: 1 }}>
-                            <FormatPicker
-                              label={`Formato de la publicación ${si + 1} del ${s.dayName}`}
-                              value={slot.format}
-                              onChange={(v) =>
-                                setWeekStructure((p) => p.map((x, j) => (j !== i ? x : { ...x, slots: x.slots.map((ss, k) => (k !== si ? ss : { ...ss, format: v })) })))
-                              }
-                            />
-                          </div>
-                          <button
-                            type="button"
-                            className="btn-remove"
-                            aria-label={`Quitar publicación ${si + 1} del ${s.dayName}`}
-                            onClick={() => setWeekStructure((p) => p.map((x, j) => (j !== i ? x : { ...x, slots: x.slots.filter((_, k) => k !== si) })))}
-                          >
-                            <Icon name="close" size={16} />
-                          </button>
-                        </div>
-                      ))}
-                      <button
-                        type="button"
-                        className="btn btn-secondary btn-sm"
-                        style={{ marginLeft: "var(--sp-2)" }}
-                        onClick={() => setWeekStructure((p) => p.map((x, j) => (j !== i ? x : { ...x, slots: [...x.slots, { format: "post" }] })))}
-                      >
-                        + Publicación
-                      </button>
-                    </div>
-                    <div style={{ borderTop: "1px solid var(--border)", paddingTop: "var(--sp-3)" }}>
-                      <p className="label">Categorías</p>
-                      {(s.categories || [""]).map((cat, ci) => (
-                        <div key={ci} style={{ display: "flex", gap: "var(--sp-2)", marginBottom: "var(--sp-2)", alignItems: "center", paddingLeft: "var(--sp-2)" }}>
-                          <input
-                            className="input"
-                            style={{ flex: 1 }}
-                            value={cat}
-                            aria-label={`Categoría ${ci + 1} del ${s.dayName}`}
-                            placeholder={`Categoría ${ci + 1}`}
-                            onChange={(e) =>
-                              setWeekStructure((p) =>
-                                p.map((x, j) => {
-                                  if (j !== i) return x;
-                                  const nc = [...(x.categories || [""])];
-                                  nc[ci] = e.target.value;
-                                  return { ...x, categories: nc };
-                                })
-                              )
-                            }
-                          />
-                          {ci > 0 && (
-                            <button
-                              type="button"
-                              className="btn-remove"
-                              aria-label={`Quitar categoría ${ci + 1} del ${s.dayName}`}
-                              onClick={() => setWeekStructure((p) => p.map((x, j) => (j !== i ? x : { ...x, categories: x.categories.filter((_, k) => k !== ci) })))}
-                            >
-                              <Icon name="close" size={16} />
-                            </button>
-                          )}
-                        </div>
-                      ))}
-                      {(s.categories || []).length < 3 && (
-                        <button
-                          type="button"
-                          className="btn btn-secondary btn-sm"
-                          style={{ marginLeft: "var(--sp-2)" }}
-                          onClick={() => setWeekStructure((p) => p.map((x, j) => (j !== i ? x : { ...x, categories: [...(x.categories || [""]), ""] })))}
-                        >
-                          + Categoría
-                        </button>
-                      )}
-                    </div>
-                  </>
-                )}
-              </div>
-            ))}
+            {/* El plan semanal ÚNICO (lib/planSemanal.js): el MISMO editor que la barra de los días del calendario. Se
+                guarda en su propia ruta y al momento; el resto de la ficha, con «Guardar». */}
+            {initial?.id && onGuardarPlan ? (
+              <Suspense fallback={<p className="hint" role="status">Cargando el plan semanal…</p>}>
+                <EditorSemana client={{ ...initial, ...camposPlan }} onGuardar={async (cambio) => {
+                  const g = await onGuardarPlan(cambio, initial.id);
+                  // Lo guardado entra en la ficha abierta: si no, «Guardar» escribiría lo de antes encima.
+                  if (g) { setCamposPlan(g); setForm((f) => ({ ...f, ...g })); }
+                }} />
+              </Suspense>
+            ) : (
+              <p className="hint">Guarda el cliente primero: después defines aquí su plan semanal (formato, tipo, hora y nota de cada día).</p>
+            )}
           </div>
         )}
         </div>

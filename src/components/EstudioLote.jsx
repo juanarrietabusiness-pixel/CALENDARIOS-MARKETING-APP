@@ -24,7 +24,8 @@ import { modelosParaCarrusel, modeloParaCarrusel } from "../lib/carruselEstudio"
 import { modelosParaReel, modeloRecomendadoParaReel } from "../lib/reelEstudio";
 import { DIAS_LOTE, diasDelLote, diasConTipo, carpetaDelMes, fechaCortaLote, mesDe, textoMes, diasConPublicacion, casillasConPlantilla, diasConPlantilla } from "../lib/loteMes";
 import { leerPlantillas } from "../lib/plantillasApi";
-import { plantillaDelCliente, configDeFormatos, resumenPlantilla } from "../lib/plantillasPlan";
+import { configDeFormatos, resumenPlantilla } from "../lib/plantillasPlan";
+import { plantillaDeLaSemana, ritmoDelCliente } from "../lib/planSemanal";
 import { estrategiaDelCalendario } from "../lib/ideaPublicacion";
 import { PILARES, presetDePilar, nombreDePilar } from "../lib/pilares";
 import { fechasDelMes } from "../lib/fechasEspeciales";
@@ -249,8 +250,10 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
     }
   }, [encargos, clienteId, kit, onHecho]);
   useEffect(() => {
-    leerPlantillas().then((lista) => setPlantillaPlan(plantillaDelCliente(client.planContenido, lista) ?? null)).catch(() => setPlantillaPlan(null));
-  }, [client.planContenido]);
+    leerPlantillas().then((lista) => setPlantillaPlan(plantillaDeLaSemana(client, lista) ?? null)).catch(() => setPlantillaPlan(null));
+    // Sólo cuando cambia el plan: el resto del cliente cambia a menudo y no lo toca.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [client.planContenido, client.planSemanal]);
   useEffect(() => {
     leerMercado(clienteId)
       .then((m) => setMercado({ catalogo: productosActivos(m.catalogo ?? []), general: limpiarEstudio(m.estudio)?.general ?? null }))
@@ -291,18 +294,18 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
 
   // ---------- Cuántas piezas ----------
   const mesElegido = mesDe(mes);
-  const diasRitmo = esPlan ? diasConPlantilla(formatosPlan) : mesElegido ? diasConTipo(client.ritmoContenido, mesElegido.year, mesElegido.month) : [];
+  const diasRitmo = esPlan ? diasConPlantilla(formatosPlan) : mesElegido ? diasConTipo(ritmoDelCliente(client), mesElegido.year, mesElegido.month) : [];
   const dias = diasSel ?? diasRitmo;
   // Los días que ya tienen publicación se saltan: no se crea una segunda encima de lo que ya hay.
   const ocupados = esMes ? diasConPublicacion(client.calendars, mes) : [];
   const diasDelMesTodos = esMes && mesElegido ? diasDelLote({
-    ...mesElegido, ritmo: client.ritmoContenido, fechas: fechasDelMes(mesElegido.year, mesElegido.month, client.fechasEspeciales),
+    ...mesElegido, ritmo: ritmoDelCliente(client), fechas: fechasDelMes(mesElegido.year, mesElegido.month, client.fechasEspeciales),
     dias, desde: mes === hoy.slice(0, 7) ? hoy : "",
   }) : [];
   const diasDelMes = diasDelMesTodos.filter((d) => !ocupados.includes(d.fecha));
   // Con la plantilla: una casilla por publicación (varias por día, cada una con su formato).
   const casillasPlan = esPlan && mesElegido ? casillasConPlantilla({
-    ...mesElegido, ritmo: client.ritmoContenido, fechas: fechasDelMes(mesElegido.year, mesElegido.month, client.fechasEspeciales),
+    ...mesElegido, ritmo: ritmoDelCliente(client), fechas: fechasDelMes(mesElegido.year, mesElegido.month, client.fechasEspeciales),
     formatos: formatosPlan, dias, desde: mes === hoy.slice(0, 7) ? hoy : "", omitir: ocupados,
   }) : [];
   const saltados = esPlan ? new Set(ocupados).size : diasDelMesTodos.length - diasDelMes.length;

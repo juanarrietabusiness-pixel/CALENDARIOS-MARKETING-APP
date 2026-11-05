@@ -1278,7 +1278,7 @@ export default function CalendarView({
           onDropInspiracion={capa === "inspiracion" ? (id, fecha) => llevarInspiracion.current?.(id, fecha) : undefined}
           ideasBank={banco.ideas}
           semana={semanaPlan}
-          notas={client?.notasSemana}
+          notas={client?.planSemanal?.v === 1 ? client.planSemanal.notas : client?.notasSemana}
           onEditarPlan={puedeEditarPlan ? (dow) => { setDiaPlan(dow); abrirCapa("plan"); } : undefined}
           vecinos={vecinos}
           onVecina={(calVecino, post) => onAbrirVecina?.(calVecino, post.id)}

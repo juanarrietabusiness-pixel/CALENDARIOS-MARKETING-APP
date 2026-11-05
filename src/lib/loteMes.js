@@ -122,6 +122,8 @@ export function casillasConPlantilla({ year, month, ritmo = null, fechas = [], f
         ...(r?.cambio && !h.pilar ? { cambio: r.cambio } : {}),
         // Un video con rostro (UGC): la IA escribe el guion para grabarlo; no se crea con IA.
         ...(formato === "reel" && h.rostro ? { rostro: true } : {}),
+        // La hora del plan semanal (lib/planSemanal.js), si la tiene: la publicación sale con ella.
+        ...(h.hora ? { hora: h.hora } : {}),
       });
     });
   }
