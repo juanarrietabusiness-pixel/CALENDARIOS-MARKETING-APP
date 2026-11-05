@@ -6,6 +6,7 @@ import {
   ruidoDeGrano, semilla, aleatorio, COMPONENTES_LISTOS, framesDe, areaSegura, bandaDeSubtitulos, cajasDeEscena,
   tiemposDeEscena, medirCapa, razonDeContraste, ZONA_SEGURA, PRIMERO_ANTES_DE, colorLegible, partirEquilibrado,
   cajaOpaca, textoPrincipal, capasDe, MIN_LOGO_CIERRE, DESPUES_DEL_GANCHO,
+  ANCHO_COLUMNA_APAISADO, CRECER_POR_FORMATO, CRECER_MAX,
 } from "./motorVideo.js";
 
 // ============================================================
@@ -222,6 +223,35 @@ describe("dónde va cada capa: el motor reparte por zonas", () => {
     const cs = delante(cajas(g, 2, "16:9"));
     const img = cs.find((c) => c.tipo === "imagen"); const txt = cs.find((c) => c.tipo === "texto");
     expect(img.x + img.w).toBeLessThanOrEqual(txt.x);
+  });
+
+  it("en 16:9 también el icono, la lista y el logo van a la izquierda y el texto a la derecha; sólo texto, columna centrada y no tan ancha", () => {
+    const g = guionDelEjemplo();
+    const e2 = delante(cajas(g, 1, "16:9"));
+    const txt = e2.find((c) => c.tipo === "texto");
+    for (const c of e2.filter((x) => x.tipo !== "texto")) expect(c.x + c.w).toBeLessThanOrEqual(txt.x + 0.5);
+    const cierre = delante(cajas(g, 3, "16:9"));
+    expect(cierre.find((c) => c.tipo === "logo").x + cierre.find((c) => c.tipo === "logo").w).toBeLessThanOrEqual(cierre.find((c) => c.tipo === "llamado").x + 0.5);
+    const solo = validarGuion({ escenas: [{ tipo: "dato", habla: QUINCE, capas: [{ tipo: "texto", texto: "Un titular de varias palabras que se lee bien", tam: 0.9 }] }] }).guion;
+    const [t] = cajas(solo, 0, "16:9");
+    const a = areaSegura("16:9", 1920, 1080);
+    expect(t.w).toBeLessThanOrEqual(a.w * ANCHO_COLUMNA_APAISADO + 0.5);
+    expect(t.x + t.w / 2).toBeCloseTo(1920 / 2, 0);
+  });
+
+  it("en 1:1 y 16:9 lo poco que hay crece más que en 9:16 (hay sitio alrededor)", () => {
+    expect(CRECER_POR_FORMATO["9:16"]).toBe(CRECER_MAX);
+    expect(CRECER_POR_FORMATO["1:1"]).toBeGreaterThan(CRECER_MAX);
+    expect(CRECER_POR_FORMATO["16:9"]).toBeGreaterThan(CRECER_POR_FORMATO["1:1"]);
+    for (const f of FORMATOS) {
+      const [w, h] = MEDIDAS[f]; const a = areaSegura(f, w, h);
+      for (let i = 0; i < 4; i++) {
+        for (const c of delante(cajas(guionDelEjemplo(), i, f))) {
+          expect(c.x).toBeGreaterThanOrEqual(a.x - 0.5); expect(c.y).toBeGreaterThanOrEqual(a.y - 0.5);
+          expect(c.x + c.w).toBeLessThanOrEqual(a.x + a.w + 0.5); expect(c.y + c.h).toBeLessThanOrEqual(a.y + a.h + 0.5);
+        }
+      }
+    }
   });
 
   it("dos capas que no se ven a la vez comparten el sitio en vez de apilarse", () => {

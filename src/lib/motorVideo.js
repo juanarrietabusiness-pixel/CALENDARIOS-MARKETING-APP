@@ -258,6 +258,20 @@ function anchoPedido(capa, c, anchoMax = 0) {
  */
 export const LLENADO = 0.68;
 export const CRECER_MAX = 1.35;
+/**
+ * Lo que puede crecer cada formato. En 1:1 y 16:9 el lado corto es el mismo (1080) pero hay más sitio alrededor: con
+ * 1,35 el contenido se quedaba pequeño en medio del cuadro.
+ */
+export const CRECER_POR_FORMATO = Object.freeze({ "9:16": CRECER_MAX, "1:1": 1.55, "16:9": 1.8 });
+
+/**
+ * En 16:9, lo que va en la columna de la IZQUIERDA cuando hay también texto: lo visual y las piezas que se leen de un
+ * vistazo (icono, anillo, dibujo, lista, reloj y el logo). Apilado todo en el centro, en un cuadro apaisado, salía
+ * pequeño con los lados vacíos; el texto va a la derecha.
+ */
+const IZQUIERDA_APAISADO = new Set([...VISUALES, "icono", "anillo", "dibujo", "lista", "reloj", "logo"]);
+/** En 16:9, una columna sola (sólo texto, o sólo piezas) no pasa de esta fracción del ancho: si no, una línea larguísima. */
+export const ANCHO_COLUMNA_APAISADO = 0.68;
 
 /** Hasta dónde se encoge lo visual antes de encoger todo (fracción de su tamaño). */
 const MIN_VISUAL = 0.45;
@@ -333,7 +347,7 @@ function repartirColumna(ctx, items, caja, c, sitio) {
   // 4b. Si sobra mucho alto, todo crece por igual (cada fila, sin pasar de su ancho).
   const ocupadoAntes = alto(filas);
   if (ocupadoAntes > 0 && ocupadoAntes < caja.h * LLENADO) {
-    const crecer = Math.min(CRECER_MAX, (caja.h * LLENADO) / ocupadoAntes);
+    const crecer = Math.min(CRECER_POR_FORMATO[c.formato] ?? CRECER_MAX, (caja.h * LLENADO) / ocupadoAntes);
     for (const f of filas) {
       const tope = Math.min(...f.items.map((it) => f.anchoMax / Math.max(1, it.m.w * f.base * f.escala)));
       f.escala *= Math.max(1, Math.min(crecer, tope));
@@ -386,12 +400,18 @@ export function repartirEscena(ctx, capas, tiempos, c) {
   const repartidas = lista.filter((it) => !(it.capa.pos && typeof it.capa.pos === "object") && it.capa.tipo !== "forma")
     .sort((p, q) => ORDEN_ZONA[p.zona] - ORDEN_ZONA[q.zona] || p.i - q.i);
   const apaisado = c.ancho > c.alto * 1.2;
-  const visuales = repartidas.filter((it) => VISUALES.has(it.capa.tipo));
-  if (apaisado && visuales.length && visuales.length < repartidas.length) {
-    const aire = caja.w * 0.06;
-    const w = (caja.w - aire) / 2;
-    repartirColumna(ctx, visuales, { x: caja.x, y: caja.y, w, h: caja.h }, c, sitio);
-    repartirColumna(ctx, repartidas.filter((it) => !VISUALES.has(it.capa.tipo)), { x: caja.x + w + aire, y: caja.y, w, h: caja.h }, c, sitio);
+  const izquierda = apaisado ? repartidas.filter((it) => IZQUIERDA_APAISADO.has(it.capa.tipo)) : [];
+  if (izquierda.length && izquierda.length < repartidas.length) {
+    // Dos columnas: lo visual a la izquierda, el texto a la derecha (un poco más ancha: el texto necesita líneas).
+    const aire = caja.w * 0.05;
+    const wi = (caja.w - aire) * 0.46;
+    const wd = caja.w - aire - wi;
+    repartirColumna(ctx, izquierda, { x: caja.x, y: caja.y, w: wi, h: caja.h }, c, sitio);
+    repartirColumna(ctx, repartidas.filter((it) => !IZQUIERDA_APAISADO.has(it.capa.tipo)), { x: caja.x + wi + aire, y: caja.y, w: wd, h: caja.h }, c, sitio);
+  } else if (apaisado) {
+    // Una columna sola, centrada y no tan ancha.
+    const w = caja.w * ANCHO_COLUMNA_APAISADO;
+    repartirColumna(ctx, repartidas, { ...caja, x: caja.x + (caja.w - w) / 2, w }, c, sitio);
   } else repartirColumna(ctx, repartidas, caja, c, sitio);
   // Las formas, detrás de lo que acompañan.
   for (const it of lista.filter((x) => x.capa.tipo === "forma" && !sitio.has(x.capa.id))) {
@@ -1183,8 +1203,8 @@ function contextoDe({ guion, formato, paleta, recursos = {}, fuentes = {} }) {
   return {
     ancho, alto, lado: Math.min(ancho, alto), formato: f, paleta: paleta ?? paletaDelGuion(guion),
     ritmo: guion?.estilo?.ritmo ?? "medio", recursos, fuentes, subtitulos: guion?.subtitulos,
-    // Lo más alto que puede ser una imagen: el 62 % del área segura.
-    altoUtil: areaSegura(f, ancho, alto).h * 0.62,
+    // Lo más alto que puede ser una imagen: el 62 % del área segura; en 16:9 lo visual tiene su columna y llega al 82 %.
+    altoUtil: areaSegura(f, ancho, alto).h * (ancho > alto * 1.2 ? 0.82 : 0.62),
   };
 }
 
