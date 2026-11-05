@@ -21,9 +21,10 @@ import { difundir } from "../vivo.js";
 import { ErrorVideo, deFila, publicacionDelCliente, ID_VIDEO } from "../videosProyectos.js";
 import { marcarUso } from "./galeria.js";
 import { resincronizarCalendario } from "../publicador.js";
-import { pedidoDelVideo, aBase64 } from "./cuadros.js";
+import { pedidoDelVideo, aBase64, subirClips } from "./cuadros.js";
 import { claveDeArchivo, claveDelCliente, slugCorto } from "./archivos.js";
 import { puedeRenderizar, esMp4, PLAZO_RENDER_MS } from "../../../src/lib/renderVideo.js";
+import { tieneHabla } from "../../../src/lib/videoEscenas.js";
 import { limpiarSonido } from "../../../src/lib/sonidoVideo.js";
 import { dbDeVolumenGuion } from "../../../src/lib/musica.js";
 
@@ -43,7 +44,7 @@ const avisar = (env, ownerId, clienteId, id, por = SISTEMA) => difundir(env, own
 export async function pedirRender(env, acceso, cliente, fila, { version, usuario, por }) {
   if (!Number.isInteger(version)) throw new ErrorVideo("Falta la versión que tenías abierta.", 400);
   if (version !== fila.version) throw new ErrorVideo("Otra persona cambió este video mientras lo tenías abierto. Vuelve a abrirlo.", 409, { video: deFila(fila) });
-  const puede = puedeRenderizar({ ...fila, locucion: leerJSON(fila.locucion, {}) });
+  const puede = puedeRenderizar({ ...fila, locucion: leerJSON(fila.locucion, {}), guion: leerJSON(fila.guion, null) });
   if (!puede.ok) throw new ErrorVideo(puede.motivo, 409);
   if (!env.RENDER) throw new ErrorVideo("El render no está disponible aquí (en local no hay Container: se prueba con container/probar.mjs).", 503);
 
@@ -148,10 +149,11 @@ export async function ligarAPublicacion(env, acceso, cliente, fila, { calendarId
 }
 
 /**
- * Hace el render encargado (la alarma de `RenderVideo`). `enviar(ruta, cuerpo)` → la Response del Container. Nunca
- * lanza: lo que falla queda escrito en el proyecto («Falló el render» con el motivo).
+ * Hace el render encargado (la alarma de `RenderVideo`). `enviar(ruta, cuerpo)` → la Response del Container (JSON);
+ * `pedir(ruta, init)`, un pedido crudo (los clips de video van por flujo con `subirClips`; sin él, salen con su «Video» de
+ * espera). Nunca lanza: lo que falla queda escrito en el proyecto («Falló el render» con el motivo).
  */
-export async function ejecutarRender(env, { ownerId, clienteId, videoId, intento }, enviar) {
+export async function ejecutarRender(env, { ownerId, clienteId, videoId, intento }, enviar, pedir = null) {
   const acceso = crearAcceso(env.DB, ownerId);
   const fila = await acceso.leerUno("videos_proyectos", { id: videoId, client_id: clienteId }).catch(() => null);
   const render = leerJSON(fila?.render, {});
@@ -160,13 +162,21 @@ export async function ejecutarRender(env, { ownerId, clienteId, videoId, intento
   try {
     const cliente = await acceso.leerUno("clients", { id: clienteId });
     if (!cliente) throw new Error("El cliente ya no existe.");
-    const { pedido } = await pedidoDelVideo(env, acceso, cliente, fila);
-    const locucion = leerJSON(fila.locucion, {});
-    const claveVoz = claveDelCliente(locucion.clave, clienteId);
-    const voz = claveVoz ? await env.MEDIA.get(claveVoz) : null;
-    if (!voz) throw new Error("No encontré el audio de la locución: genérala otra vez.");
-    if (voz.size > TOPE_VOZ) throw new Error("El audio de la locución pesa demasiado.");
-    const audio = aBase64(new Uint8Array(await voz.arrayBuffer()));
+    const { pedido: base, clips, guion } = await pedidoDelVideo(env, acceso, cliente, fila);
+    // Los clips de video, al Container del render por flujo ANTES del pedido. Uno que no sube sale con su «Video» de espera.
+    const fallaron = clips.length && pedir ? await subirClips(env, clips, pedir) : clips.map((c) => c.id);
+    const pedido = { ...base, videos: base.videos.filter((id) => !fallaron.includes(id)) };
+    const sinClips = fallaron.length ? `No se pudo cargar ${fallaron.length === 1 ? "un clip de video" : `${fallaron.length} clips de video`}: ${fallaron.length === 1 ? "salió" : "salieron"} con el cuadro de espera.` : null;
+    // Un montaje sin habla no tiene locución: el audio es el de los clips (y la música).
+    let audio = null;
+    if (tieneHabla(guion)) {
+      const locucion = leerJSON(fila.locucion, {});
+      const claveVoz = claveDelCliente(locucion.clave, clienteId);
+      const voz = claveVoz ? await env.MEDIA.get(claveVoz) : null;
+      if (!voz) throw new Error("No encontré el audio de la locución: genérala otra vez.");
+      if (voz.size > TOPE_VOZ) throw new Error("El audio de la locución pesa demasiado.");
+      audio = aBase64(new Uint8Array(await voz.arrayBuffer()));
+    }
 
     // El sonido de debajo (efectos y música): aparte del guion. Una música que ya no está no tumba el render: va sin ella.
     const sonido = limpiarSonido(leerJSON(fila.sonido, {}));
@@ -187,7 +197,7 @@ export async function ejecutarRender(env, { ownerId, clienteId, videoId, intento
       else musica = { audio: aBase64(new Uint8Array(await obj.arrayBuffer())), volumen: sonido.musica.volumen };
     }
 
-    const r = await enviar("/render", { ...pedido, audio, efectos: sonido.efectos, ...(musica ? { musica } : {}) });
+    const r = await enviar("/render", { ...pedido, ...(audio ? { audio } : {}), efectos: sonido.efectos, ...(musica ? { musica } : {}) });
     if (!r.ok) {
       const j = await r.json().catch(() => ({}));
       throw new Error(j.error || `El Container respondió ${r.status}.`);
@@ -220,7 +230,7 @@ export async function ejecutarRender(env, { ownerId, clienteId, videoId, intento
     const listo = {
       ...render, estado: "listo", clave, archivoId, bytes: bytes.byteLength, ancho, alto, ...datos, terminadoAt: momento,
       adjunto: puesto?.postId ? { calendarId: puesto.calendarId, postId: puesto.postId } : null,
-      aviso: [sinMusica, puesto?.aviso].filter(Boolean).join(" ") || null,
+      aviso: [sinClips, sinMusica, puesto?.aviso].filter(Boolean).join(" ") || null,
     };
     delete listo.anterior;
     await terminar(acceso, clienteId, videoId, intento, "renderizado", listo);

@@ -14,12 +14,15 @@
 //   POST /miniatura { imagen (base64), lado? }  → JSON { datos (base64), mime, ancho, alto, original }: una COPIA
 //                                              reducida en JPEG (lado mayor ≤ `lado`, 768 por defecto) para que Claude
 //                                              VEA una pieza del Estudio por MCP sin mandarle la de 2K. No lleva guion.
+//   PUT  /clip/<id> (el cuerpo: los bytes del VIDEO)  → JSON { ancho, alto, duracion, audio }: guarda un clip de la galería
+//                                              para las capas `video` (clips.mjs). Va por flujo: el Worker no lo carga.
+//   HEAD /clip/<id>  → 200 si ya está (no hace falta subirlo otra vez), 404 si no
 //   POST /acabado   { imagen, mime?, texto? { texto, plantilla, colores, familia?, fuente? }, logo? { datos, posicion } }
 //                                            → JSON { datos, mime, ancho, alto }: el texto de la plantilla y/o el logo
 //                                              estampado encima de una pieza del Estudio (src/lib/acabadoLienzo.js, el
 //                                              mismo dibujo que el navegador). No lleva guion.
 //
-// Todo pedido del video lleva { guion, palabras, formato, paleta, imagenes, logo, fuentes } (ver recursos.mjs). El
+// Todo pedido del video lleva { guion, palabras, formato, paleta, imagenes, logo, fuentes, videos? } (ver recursos.mjs). El
 // guion se valida aquí también: lo que no valida no se dibuja.
 // ============================================================
 
@@ -30,7 +33,8 @@ import { createCanvas, loadImage } from "@napi-rs/canvas";
 import { validarGuion, lineaDeTiempo, FORMATOS_VIDEO } from "../src/lib/videoEscenas.js";
 import { dibujarFrame, paletaDelGuion, escenaEn } from "../src/lib/motorVideo.js";
 import { revisarEscenas, textoDeRevision, instanteLleno } from "../src/lib/revisionEscenas.js";
-import { prepararRecursos, registrarRespaldo, registrarFuente } from "./recursos.mjs";
+import { prepararRecursos, registrarRespaldo, registrarFuente, cuadrosParaUnInstante } from "./recursos.mjs";
+import { guardarClip, tieneClip, ErrorClip } from "./clips.mjs";
 import { dibujarTextoPlantilla, dibujarLogo, letraDe } from "../src/lib/acabadoLienzo.js";
 import { renderizar } from "./render.mjs";
 
@@ -152,6 +156,7 @@ async function atender(ruta, p) {
   const total = base.linea.total;
   if (ruta === "/cuadro") {
     const t = Math.max(0, Math.min(Number(p.t) || 0, Math.max(0, total - 1 / 30)));
+    await cuadrosParaUnInstante(base, t);
     const lienzo = cuadro(base, t, Number(p.ancho) || 540);
     const k = escenaEn(base.linea, t);
     return {
@@ -171,14 +176,15 @@ async function atender(ruta, p) {
     const hoja = createCanvas(columnas * anchoCelda + (columnas + 1) * 8, filas * (altoCelda + rotulo) + (filas + 1) * 8);
     const ctx = hoja.getContext("2d");
     ctx.fillStyle = "#1c1c1c"; ctx.fillRect(0, 0, hoja.width, hoja.height);
-    escenas.forEach((e, i) => {
+    for (const [i, e] of escenas.entries()) {
       const t = instanteLleno(base.guion, base.linea, i);
+      await cuadrosParaUnInstante(base, t);
       const x = 8 + (i % columnas) * (anchoCelda + 8);
       const y = 8 + Math.floor(i / columnas) * (altoCelda + rotulo + 8);
       ctx.drawImage(cuadro(base, t, anchoCelda), x, y, anchoCelda, altoCelda);
       ctx.fillStyle = "#ffffff"; ctx.font = "700 20px Roboto, sans-serif"; ctx.textBaseline = "middle";
       ctx.fillText(`${i + 1} · ${e.id} · ${t.toFixed(1)} s`, x + 4, y + altoCelda + rotulo / 2);
-    });
+    }
     return { cuerpo: await codificar(hoja, p.tipo), tipo: p.tipo === "png" ? "image/png" : "image/jpeg", cabeceras: { "X-Total": total.toFixed(2), "X-Faltan": base.faltan.join(",") } };
   }
   if (ruta === "/render") {
@@ -216,6 +222,14 @@ async function atender(ruta, p) {
 const servidor = createServer(async (req, res) => {
   try {
     if (req.method === "GET" && req.url === "/salud") { res.writeHead(200, { "Content-Type": "text/plain" }); res.end("ok"); return; }
+    const clip = /^\/clip\/([\w-]{1,80})$/.exec(new URL(req.url, "http://x").pathname);
+    if (clip && req.method === "HEAD") { res.writeHead((await tieneClip(clip[1])) ? 200 : 404); res.end(); return; }
+    if (clip && req.method === "PUT") {
+      const info = await guardarClip(clip[1], req);
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(info));
+      return;
+    }
     if (req.method !== "POST") throw new ErrorPedido("Método no permitido.", 405);
     const crudo = await leerCuerpo(req);
     let p;
@@ -225,7 +239,7 @@ const servidor = createServer(async (req, res) => {
     res.writeHead(200, { "Content-Type": r.tipo, "X-Ms": String(Date.now() - inicio), ...r.cabeceras });
     res.end(r.cuerpo);
   } catch (e) {
-    const estado = e instanceof ErrorPedido ? e.estado : 500;
+    const estado = e instanceof ErrorPedido || e instanceof ErrorClip ? e.estado : 500;
     if (estado === 500) console.error("contenedor:", e);
     res.writeHead(estado, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ error: estado === 500 ? `El dibujo falló: ${e?.message ?? e}` : e.message }));

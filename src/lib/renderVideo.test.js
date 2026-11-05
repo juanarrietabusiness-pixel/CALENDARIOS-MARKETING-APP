@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { cuadrosDelVideo, tramosDeAudio, armarPcm, FILTRO_MEDIR, gananciaDe, filtroDeNormalizar, BYTES_MUESTRA, leerLoudnorm, puedeRenderizar, esMp4, RENDER } from "./renderVideo.js";
+import { cuadrosDelVideo, tramosDeAudio, armarPcm, FILTRO_MEDIR, gananciaDe, filtroDeNormalizar, BYTES_MUESTRA, leerLoudnorm, puedeRenderizar, esMp4, RENDER, medidaDeDecodificar, leerSonda, LADO_MAX_CLIP } from "./renderVideo.js";
 
 // ============================================================
 // Lo que se decide antes de dibujar el mp4: los cuadros, el audio con los silencios, el volumen y cuándo se puede.
@@ -116,5 +116,38 @@ describe("a qué publicación va el video", () => {
     expect(publicacionesParaVideo(calendars, { hoy: "2026-11-04", ligada: "vieja" })[0].postId).toBe("vieja");
     // Aunque no quepa en el tope, entra (delante).
     expect(publicacionesParaVideo(calendars, { hoy: "2026-11-04", ligada: "p-post", max: 1 }).map((x) => x.postId)).toEqual(["p-post", "p-antes"]);
+  });
+});
+
+
+describe("un montaje SIN habla y los clips", () => {
+  it("sin habla en ninguna escena se renderiza sin locución; con habla, la sigue pidiendo", () => {
+    const base = { estado: "aprobado", version: 2, aprobada_version: 2, locucion: {} };
+    expect(puedeRenderizar({ ...base, guion: { escenas: [{ habla: "" }] } })).toMatchObject({ ok: true, sinVoz: true });
+    expect(puedeRenderizar({ ...base, guion: { escenas: [{ habla: "Hola a todos" }] } }).ok).toBe(false);
+    // Sin aprobar, ni así.
+    expect(puedeRenderizar({ ...base, estado: "borrador", guion: { escenas: [{ habla: "" }] } }).ok).toBe(false);
+  });
+
+  it("la medida de decodificar: la suya, sin pasar de 1920 de lado ni agrandar, y en pares", () => {
+    expect(medidaDeDecodificar({ ancho: 1080, alto: 1920 })).toEqual({ ancho: 1080, alto: 1920 });
+    expect(medidaDeDecodificar({ ancho: 3840, alto: 2160 })).toEqual({ ancho: LADO_MAX_CLIP, alto: 1080 });
+    expect(medidaDeDecodificar({ ancho: 641, alto: 359 })).toEqual({ ancho: 642, alto: 360 });
+  });
+
+  it("lo que dice ffprobe: un clip grabado de lado se mide girado; la carátula no es el video", () => {
+    const sonda = (extra = {}) => JSON.stringify({
+      streams: [
+        { codec_type: "video", width: 300, height: 300, disposition: { attached_pic: 1 } },
+        { codec_type: "video", width: 1920, height: 1080, duration: "12.5", ...extra },
+        { codec_type: "audio" },
+      ],
+      format: { duration: "12.6" },
+    });
+    expect(leerSonda(sonda())).toEqual({ ancho: 1920, alto: 1080, duracion: 12.5, audio: true });
+    expect(leerSonda(sonda({ side_data_list: [{ rotation: -90 }] }))).toMatchObject({ ancho: 1080, alto: 1920 });
+    expect(leerSonda(sonda({ tags: { rotate: "90" }, duration: undefined }))).toMatchObject({ ancho: 1080, alto: 1920, duracion: 12.6 });
+    expect(leerSonda(JSON.stringify({ streams: [{ codec_type: "audio" }] }))).toBeNull();
+    expect(leerSonda("no es json")).toBeNull();
   });
 });

@@ -411,7 +411,7 @@ export function tiemposQueLlegaron(resultado, quien = "Kie") {
 export function problemaDelTexto(texto, modelo) {
   const m = modeloDeVoz(modelo);
   if (!m) return "Ese modelo de voz no existe.";
-  if (!String(texto ?? "").trim()) return "El guion no tiene nada que decir: escribe el «habla» de las escenas.";
+  if (!String(texto ?? "").trim()) return "El guion no tiene nada que decir: escribe el «habla» de las escenas (un montaje de clips sin habla no necesita locución: se renderiza directo).";
   if (texto.length > m.max) return `La locución tiene ${texto.length} caracteres y ${m.nombre} admite ${m.max}.`;
   return null;
 }

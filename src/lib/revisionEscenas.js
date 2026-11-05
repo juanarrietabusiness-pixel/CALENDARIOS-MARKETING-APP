@@ -17,7 +17,7 @@
 // ============================================================
 
 import {
-  cajasDeEscena, areaSegura, bandaDeSubtitulos, encajarTexto, capasDe, TIPO_POR_ROL, FUENTE_RESPALDO, DURACION_ENTRADA,
+  cajasDeEscena, areaSegura, bandaDeSubtitulos, encajarTexto, capasDe, esVideoCompleto, TIPO_POR_ROL, FUENTE_RESPALDO, DURACION_ENTRADA,
 } from "./motorVideo.js";
 import { FORMATOS_VIDEO, tiempoDeCapa } from "./videoEscenas.js";
 import { DURACION_CUENTA } from "./motorPiezas.js";
@@ -115,6 +115,17 @@ export function revisarEscenas(ctx, { guion, linea, formato, recursos = {}, fuen
       grave, tipo, escena: escena.id, n: i + 1, capa: caja.id, en: Math.round((caja.cuando?.desde ?? linea.escenas[i]?.desde ?? 0) * 10) / 10, mensaje,
     });
     const delante = cajas.filter((c) => !c.detras && c.tipo !== "forma");
+    // Un video a sangre es el fondo: llena el cuadro, pero el texto encima necesita velo o placa para leerse.
+    const aSangre = capas.filter(esVideoCompleto);
+    if (aSangre.length && aSangre.every((v) => (v.oscurecer ?? 0) < 0.2)) {
+      const sinPlaca = capas.find((c) => c.tipo === "texto" && !c.placa);
+      if (sinPlaca) {
+        problemas.push({
+          grave: false, tipo: "video_sin_velo", escena: escena.id, n: i + 1, capa: sinPlaca.id, en: Math.round((linea.escenas[i]?.desde ?? 0) * 10) / 10,
+          mensaje: `El texto «${sinPlaca.id}» va encima del video casi sin velo (oscurecer < 0,2): sobre un fondo movido puede no leerse. Sube «oscurecer» del video (0,3–0,5) o ponle placa al texto.`,
+        });
+      }
+    }
 
     for (const caja of delante) {
       const nombre = `«${caja.id}» (${caja.tipo})`;
@@ -206,7 +217,7 @@ export function revisarEscenas(ctx, { guion, linea, formato, recursos = {}, fuen
       const franja = (abajo - arriba) / (zona.h || 1);
       const primera = vistas[0];
       const enEscena = { cuando: { desde: t }, id: primera.id };
-      if (ocupado < LLENO_MINIMO || (franja < FRANJA_MINIMA && ocupado < LLENO_MINIMO * 2)) {
+      if (!aSangre.length && (ocupado < LLENO_MINIMO || (franja < FRANJA_MINIMA && ocupado < LLENO_MINIMO * 2))) {
         de(enEscena, "espacio_vacio", `La escena se ve vacía: lo que hay ocupa el ${Math.round(ocupado * 100)} % del cuadro${franja < FRANJA_MINIMA ? ` y cabe en una franja del ${Math.round(franja * 100)} % del alto` : ""}. Súmale una pieza visual (una cifra, un icono, un anillo, un dibujo o una imagen) o un texto más grande.`, false);
       }
       // El centro de lo que OCUPA la escena (de lo más alto a lo más bajo, de lo más a la izquierda a lo más a la

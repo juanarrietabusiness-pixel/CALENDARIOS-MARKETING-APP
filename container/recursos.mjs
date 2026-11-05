@@ -18,6 +18,8 @@ import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { ruidoDeGrano, cajaOpaca } from "../src/lib/motorVideo.js";
 import { quitarFondoLiso, tonoDeImagen } from "../src/lib/motorPiezas.js";
+import { videosEnInstante } from "../src/lib/motorVideo.js";
+import { infoDe, cuadroDe } from "./clips.mjs";
 
 /**
  * La letra de RESPALDO (la que usa un kit sin fuente): Roboto, que el motor nombra en `FUENTE_RESPALDO`. Llega por npm
@@ -118,24 +120,48 @@ function texturaDeGrano() {
 }
 
 /**
- * Del pedido a lo que recibe el motor → { recursos, fuentes, faltan }.
+ * Del pedido a lo que recibe el motor → { recursos, fuentes, faltan, cuadros, infoVideos }.
  *   imagenes — { [id de la galería]: base64 }   logo — base64 | null
  *   fuentes  — { titular: { datos }, cuerpo: { datos } } (la del kit, o la que pida el guion)
+ *   videos   — [ids de la galería] de los clips que el Worker ya SUBIÓ (`PUT /clip/<id>`, clips.mjs)
+ * `cuadros` es el Map (uso → lienzo) que `recursos.video` lee: lo llena quien dibuja ANTES de cada cuadro
+ * (`cuadrosParaUnInstante` o el decodificador del render), porque el motor no espera nada.
  */
-export async function prepararRecursos({ imagenes: imgs = {}, logo = null, fuentes: fs = {} } = {}) {
+export async function prepararRecursos({ imagenes: imgs = {}, logo = null, fuentes: fs = {}, videos = [] } = {}) {
   const ids = Object.keys(imgs);
-  const [cargadas, logoImg] = await Promise.all([
+  const vids = (Array.isArray(videos) ? videos : []).filter((v) => typeof v === "string");
+  const [cargadas, logoImg, infos] = await Promise.all([
     Promise.all(ids.map(async (id) => [id, await cargarImagen(imgs[id])])),
     cargarLogo(logo),
+    Promise.all(vids.map(async (id) => [id, await infoDe(id).catch(() => null)])),
   ]);
   const mapa = new Map(cargadas);
+  const infoVideos = new Map(infos.filter(([, i]) => i));
+  const cuadros = new Map();
   const titular = registrarFuente(fs.titular);
   const cuerpo = registrarFuente(fs.cuerpo) || titular;
   // La de respaldo del motor nombra Roboto (registrada al arrancar): el texto sale aunque el kit no tenga letra.
   const familia = (f) => (f ? `"${f}", Roboto, sans-serif` : "");
   return {
-    recursos: { imagen: (id) => mapa.get(id) ?? null, logo: logoImg.img, logoTono: logoImg.tono, grano: texturaDeGrano() },
+    recursos: {
+      imagen: (id) => mapa.get(id) ?? null, logo: logoImg.img, logoTono: logoImg.tono, grano: texturaDeGrano(),
+      video: (uso) => cuadros.get(uso?.id) ?? null, videoInfo: (id) => infoVideos.get(id) ?? null,
+    },
     fuentes: { titular: familia(titular), cuerpo: familia(cuerpo) },
-    faltan: cargadas.filter(([, img]) => !img).map(([id]) => id),
+    faltan: [...cargadas.filter(([, img]) => !img).map(([id]) => id), ...infos.filter(([, i]) => !i).map(([id]) => id)],
+    cuadros, infoVideos,
   };
+}
+
+/**
+ * Pone en `base.cuadros` los cuadros de video que pide el instante `t` (uno a uno, con ffmpeg: para /cuadro, /hoja y
+ * /revisar, que dibujan pocos instantes). El render va con su decodificador (render.mjs).
+ */
+export async function cuadrosParaUnInstante(base, t) {
+  base.cuadros.clear();
+  for (const v of videosEnInstante(base.guion, base.linea, t)) {
+    if (!base.infoVideos.has(v.archivo)) continue;
+    const l = await cuadroDe(v.archivo, v.segundo).catch(() => null);
+    if (l) base.cuadros.set(v.id, l);
+  }
 }

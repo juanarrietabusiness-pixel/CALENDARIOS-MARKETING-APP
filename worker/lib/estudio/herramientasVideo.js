@@ -43,11 +43,11 @@ import {
 } from "../../../src/lib/personajeVideo.js";
 import { VOLUMEN_MUSICA } from "../../../src/lib/sonidoVideo.js";
 import { locucionAlDia } from "./locucion.js";
-import { lineaDeTiempo, NOMBRE_ESTADO_VIDEO, NOMBRE_TIPO_ESCENA, puedeGenerarVoz, sinEtiquetas, palabrasMudas, palabrasDe, textoDeLocucion } from "../../../src/lib/videoEscenas.js";
+import { lineaDeTiempo, NOMBRE_ESTADO_VIDEO, NOMBRE_TIPO_ESCENA, puedeGenerarVoz, sinEtiquetas, palabrasMudas, palabrasDe, textoDeLocucion, tieneHabla } from "../../../src/lib/videoEscenas.js";
 import { formatoParaLaIA } from "../../../src/lib/videoFormatoIA.js";
 import { textoDeSubtitulo } from "../../../src/lib/subtitulos.js";
 import { instanteLleno } from "../../../src/lib/revisionEscenas.js";
-import { pedidoDelVideo, alContenedor, respuestaEnBase64 } from "./cuadros.js";
+import { pedidoConClips, alContenedor, respuestaEnBase64 } from "./cuadros.js";
 import { pedirRender, renderAlDia, ligarAPublicacion } from "./render.js";
 
 const clienteParam = { cliente: { type: "string", description: "Nombre del cliente. En el asistente de un cliente se puede omitir: es ese cliente." } };
@@ -156,7 +156,7 @@ export const DEFINICIONES_VIDEO = Object.freeze([
   },
   {
     name: "renderizar_video",
-    description: "RENDERIZA el video a mp4 (1080 de ancho, 30 cuadros por segundo): las escenas con el mismo motor de la vista previa, la voz con sus silencios, los subtítulos por palabra y el volumen a -14 LUFS. Sólo con el guion aprobado y su locución lista de esa versión. Tarda menos de un minuto: el mp4 queda en la galería del cliente y, si el video va ligado a una publicación, en sus medios (en el sitio del anterior). Mira el resultado después con ver_video. Revisa antes con revisar_video. No gasta IA.",
+    description: "RENDERIZA el video a mp4 (1080 de ancho, 30 cuadros por segundo): las escenas con el mismo motor de la vista previa, la voz con sus silencios, los subtítulos por palabra y el volumen a -14 LUFS. Sólo con el guion aprobado y su locución lista de esa versión (un montaje de clips sin habla no la necesita: sale con el sonido de sus clips). Tarda menos de un minuto (con clips de video, algo más): el mp4 queda en la galería del cliente y, si el video va ligado a una publicación, en sus medios (en el sitio del anterior). Mira el resultado después con ver_video. Revisa antes con revisar_video. No gasta IA.",
     input_schema: {
       type: "object",
       properties: {
@@ -238,6 +238,7 @@ export function siguientePaso(video) {
   switch (video.estado) {
     case "borrador": return "Que la persona revise el guion y lo apruebe (aprobar_video con esta versión, sólo con su sí).";
     case "aprobado":
+      if (video.guion && !tieneHabla(video.guion)) return "Es un montaje sin habla: no lleva locución. Siguiente: revisar_video y, si está bien, renderizar_video.";
       if (vozDeEstaVersion(video)) return "Ya tiene la locución de esta versión. Siguiente: revisar_video y, si está bien, renderizar_video.";
       return video.locucion?.estado === "generando"
         ? "La voz se está generando: vuelve a mirar en un minuto."
@@ -383,6 +384,7 @@ export function crearHerramientasVideo({ env, acceso, resolverCliente, usuario, 
         const fila = await proyectoDe(acceso, c.id, id);
         const r = await aprobarProyecto(acceso, c, fila, { version, usuario });
         avisar(c.id, id);
+        if (!tieneHabla(r.video.guion)) return `Guion aprobado (versión ${r.video.version}). Es un montaje sin habla: no lleva locución. Siguiente: revisar_video y renderizar_video.`;
         if (r.vozReutilizada) return `Guion aprobado (versión ${r.video.version}). Lo que se dice no cambió: la locución que ya tenía sirve para esta versión (no hace falta pagar otra). Siguiente: revisar_video y renderizar_video.`;
         return `Guion aprobado (versión ${r.video.version}). ${puedeGenerarVoz({ ...fila, estado: "aprobado", aprobada_version: r.video.version, version: r.video.version })
           ? "Ya se puede generar la voz con generar_locucion (pide confirmar el costo)." : ""}`.trim();
@@ -482,7 +484,7 @@ export function crearHerramientasVideo({ env, acceso, resolverCliente, usuario, 
       const c = await resolverCliente(cliente);
       return conErrores(async () => {
         const fila = await proyectoDe(acceso, c.id, id);
-        const { pedido, guion, palabras, faltan } = await pedidoDelVideo(env, acceso, c, fila, { formato });
+        const { pedido, guion, palabras, faltan } = await pedidoConClips(env, acceso, c, fila, { formato });
         const linea = lineaDeTiempo(guion, palabras);
         let t = Number.isFinite(Number(segundo)) && segundo !== undefined && segundo !== null ? Number(segundo) : null;
         if (t === null) {
@@ -495,7 +497,7 @@ export function crearHerramientasVideo({ env, acceso, resolverCliente, usuario, 
         return {
           texto: [
             `Cuadro de «${fila.titulo}» en el segundo ${Number(r.headers.get("X-Segundo") ?? t).toFixed(1)} de ${linea.total.toFixed(1)} (escena ${cual}, ${pedido.formato}${palabras ? "" : ", tiempos estimados: aún no hay voz"}).`,
-            faltan.length ? `OJO: estas imágenes no están en la galería del cliente y salen como marcador: ${faltan.join(", ")}.` : "",
+            faltan.length ? `OJO: estas imágenes o clips no están en la galería del cliente (o no se pudieron cargar) y salen como marcador: ${faltan.join(", ")}.` : "",
           ].filter(Boolean).join("\n"),
           imagenes: [{ mime: r.headers.get("Content-Type") ?? "image/jpeg", datos: await respuestaEnBase64(r) }],
         };
@@ -506,12 +508,12 @@ export function crearHerramientasVideo({ env, acceso, resolverCliente, usuario, 
       const c = await resolverCliente(cliente);
       return conErrores(async () => {
         const fila = await proyectoDe(acceso, c.id, id);
-        const { pedido, guion, palabras, faltan } = await pedidoDelVideo(env, acceso, c, fila, { formato });
+        const { pedido, guion, palabras, faltan } = await pedidoConClips(env, acceso, c, fila, { formato });
         const r = await alContenedor(env, "/hoja", { ...pedido, ancho: 1080 });
         return {
           texto: [
             `Las ${guion.escenas.length} escenas de «${fila.titulo}» (${pedido.formato}), cada una ya llena, con su número, id y segundo${palabras ? "" : " (tiempos estimados: aún no hay voz)"}.`,
-            faltan.length ? `OJO: estas imágenes no están en la galería y salen como marcador: ${faltan.join(", ")}.` : "",
+            faltan.length ? `OJO: estas imágenes o clips no están en la galería y salen como marcador: ${faltan.join(", ")}.` : "",
           ].filter(Boolean).join("\n"),
           imagenes: [{ mime: r.headers.get("Content-Type") ?? "image/jpeg", datos: await respuestaEnBase64(r) }],
         };
@@ -522,12 +524,12 @@ export function crearHerramientasVideo({ env, acceso, resolverCliente, usuario, 
       const c = await resolverCliente(cliente);
       return conErrores(async () => {
         const fila = await proyectoDe(acceso, c.id, id);
-        const { pedido, guion, faltan } = await pedidoDelVideo(env, acceso, c, fila);
+        const { pedido, guion, faltan } = await pedidoConClips(env, acceso, c, fila);
         const lista = (Array.isArray(formatos) && formatos.length ? formatos : guion.formatos);
         const j = await (await alContenedor(env, "/revisar", { ...pedido, formatos: lista })).json();
         return [
           ...(j.formatos ?? []).map((f) => f.texto),
-          faltan.length ? `Imágenes que no están en la galería (salen como marcador): ${faltan.join(", ")}.` : "",
+          faltan.length ? `Imágenes o clips que no están en la galería (salen como marcador): ${faltan.join(", ")}.` : "",
         ].filter(Boolean).join("\n\n");
       });
     },

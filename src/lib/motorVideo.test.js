@@ -6,7 +6,7 @@ import {
   ruidoDeGrano, semilla, aleatorio, COMPONENTES_LISTOS, framesDe, areaSegura, bandaDeSubtitulos, cajasDeEscena,
   tiemposDeEscena, medirCapa, razonDeContraste, ZONA_SEGURA, PRIMERO_ANTES_DE, colorLegible, partirEquilibrado,
   cajaOpaca, textoPrincipal, capasDe, MIN_LOGO_CIERRE, DESPUES_DEL_GANCHO,
-  ANCHO_COLUMNA_APAISADO, CRECER_POR_FORMATO, CRECER_MAX,
+  ANCHO_COLUMNA_APAISADO, CRECER_POR_FORMATO, CRECER_MAX, videosEnInstante, usosDeVideo, esVideoCompleto,
 } from "./motorVideo.js";
 
 // ============================================================
@@ -514,5 +514,92 @@ describe("dibujar un fotograma", () => {
   it("todo componente del formato o está listo o sale como marcador", () => {
     expect(COMPONENTES_LISTOS).toEqual(expect.arrayContaining(["texto", "sello", "imagen", "forma", "logo", "llamado"]));
     expect(framesDe(40.2)).toBe(1206);
+  });
+});
+
+
+describe("los CLIPS de video (capas `video`)", () => {
+  const montaje = (extra = {}) => validarGuion({
+    version: 1, formatos: ["9:16"], subtitulos: { activo: false },
+    escenas: [
+      { id: "a", tipo: "gancho", habla: "", capas: [
+        { tipo: "video", id: "v", archivo: "clip1", desde: 1, hasta: 4, oscurecer: 0.4, ...extra },
+        { tipo: "texto", id: "t", texto: "Mira esto", pos: "arriba" }] },
+      { id: "b", tipo: "cierre", habla: "Escríbenos hoy mismo", transicion: { tipo: "fundido", dur: 0.4 }, capas: [
+        { tipo: "video", id: "w", archivo: "clip2", encuadre: "caja", marco: true },
+        { tipo: "texto", id: "t2", texto: "Escríbenos" }] },
+    ],
+  }).guion;
+  /** Un proveedor de mentira que apunta lo que se le pide y da un «cuadro» de 640 × 360. */
+  const proveedor = (pedidos, cuadro = { width: 640, height: 360, cuadro: true }) => ({
+    video: (uso, s) => { pedidos.push([uso.id, uso.archivo, Math.round(s * 100) / 100]); return cuadro; },
+    videoInfo: () => ({ ancho: 640, alto: 360 }),
+  });
+
+  it("a sangre: se dibuja encima del fondo y detrás del texto, con su velo, y no entra en el reparto", () => {
+    const g = montaje();
+    const pedidos = [];
+    const log = pintar(g, 1, { recursos: proveedor(pedidos) });
+    const dibujos = log.filter(([m]) => m === "drawImage");
+    expect(dibujos[0][1]).toMatchObject({ cuadro: true });
+    // El segundo del clip: empieza en su «desde» (1) cuando entra la capa (0) → en t = 1, el 2.
+    expect(pedidos).toEqual([["a/v", "clip1", 2]]);
+    const iVideo = log.findIndex(([m]) => m === "drawImage");
+    const iTexto = log.findIndex(([m, t]) => m === "fillText" && t === "Mira esto");
+    expect(iVideo).toBeLessThan(iTexto);
+    expect(log.some(([m, v]) => m === "=fillStyle" && v === "#000000")).toBe(true); // el velo
+    const { ctx } = lienzo();
+    expect(cajasDeEscena(ctx, { guion: g, linea: lineaDeTiempo(g), indice: 0 }).map((c) => c.id)).toEqual(["t"]);
+    expect(esVideoCompleto(g.escenas[0].capas[0])).toBe(true);
+    expect(esVideoCompleto(g.escenas[1].capas[0])).toBe(false);
+  });
+
+  it("sin cuadro todavía, se ve el «Video» de espera (no un hueco)", () => {
+    const log = pintar(montaje(), 1, { recursos: { video: () => null } });
+    expect(textos(log)).toContain("Video");
+  });
+
+  it("en el gancho NO se retrasa (es el fondo del primer cuadro), y pasado su tramo se queda quieto", () => {
+    const g = montaje();
+    const linea = lineaDeTiempo(g);
+    expect(videosEnInstante(g, linea, 0)).toEqual([{ id: "a/v", archivo: "clip1", segundo: 1 }]);
+    expect(videosEnInstante(g, linea, 2.5)[0].segundo).toBe(3.5);
+    // El tramo es de 3 s (1 → 4): la escena dura eso aunque no diga nada.
+    expect(linea.escenas[0].hasta).toBeCloseTo(3, 2);
+  });
+
+  it("en la transición pide también el de la escena anterior, quieto en su último cuadro", () => {
+    const g = montaje();
+    const linea = lineaDeTiempo(g);
+    const t = linea.escenas[1].desde + 0.1;
+    const pide = videosEnInstante(g, linea, t);
+    expect(pide.map((p) => p.id)).toEqual(["a/v", "b/w"]);
+    expect(pide[0].segundo).toBeCloseTo(4 - 1 / 30, 5); // su último cuadro: el de un cuadro antes de que acabe la escena
+    const fuera = videosEnInstante(g, linea, linea.escenas[1].desde + 0.5);
+    expect(fuera.map((p) => p.id)).toEqual(["b/w"]);
+  });
+
+  it("en su caja, como una imagen: con la forma del clip y su marco", () => {
+    const g = montaje();
+    const linea = lineaDeTiempo(g);
+    const { ctx } = lienzo();
+    const cajas = cajasDeEscena(ctx, { guion: g, linea, indice: 1, recursos: { videoInfo: () => ({ ancho: 1080, alto: 1920 }) } });
+    const v = cajas.find((c) => c.id === "w");
+    expect(v.h).toBeGreaterThan(v.w); // vertical, como el clip
+    const pedidos = [];
+    pintar(g, linea.escenas[1].desde + 0.6, { recursos: proveedor(pedidos) });
+    expect(pedidos.some(([id]) => id === "b/w")).toBe(true);
+  });
+
+  it("usosDeVideo: la ventana de cada uso y su tramo (lo que suena en el render)", () => {
+    const g = montaje({ sonido: true, volumen: 0.5 });
+    const usos = usosDeVideo(g, lineaDeTiempo(g));
+    expect(usos[0]).toMatchObject({ id: "a/v", archivo: "clip1", desde: 0, clipDesde: 1, sonido: true, volumen: 0.5 });
+    expect(usos[0].hasta).toBeCloseTo(3, 2);
+    expect(usos[1]).toMatchObject({ id: "b/w", sonido: false });
+  });
+
+  it("el componente está en la lista de los que se dibujan", () => {
+    expect(COMPONENTES_LISTOS).toContain("video");
   });
 });

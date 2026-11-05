@@ -400,3 +400,88 @@ describe("ligar el video a una publicación cuando se quiera", () => {
     expect(otra.content[0].text).toMatch(/ya está puesto/);
   });
 });
+
+describe("un MONTAJE de clips (capas `video`)", () => {
+  const CLAVE_CLIP = "clientes/bc/estudio/2026-11/ugc.mp4";
+  const MONTAJE = {
+    version: 1, titulo: "Montaje UGC", formatos: ["9:16"],
+    escenas: [
+      { id: "m1", tipo: "gancho", habla: "", capas: [
+        { tipo: "video", id: "c", archivo: "clip1", desde: 0, hasta: 4, sonido: true },
+        { tipo: "texto", id: "t", texto: "Mira esto", pos: "arriba", placa: "oscuro" }] },
+      { id: "m2", tipo: "cierre", habla: "", pausa: 2, capas: [{ tipo: "logo", id: "l" }] },
+    ],
+  };
+
+  /** Un Container de mentira que además recibe los clips (HEAD y PUT), como el de verdad. */
+  function conClips(recibidos, clips) {
+    return async (ruta, init) => {
+      recibidos.push({ ruta, metodo: init.method });
+      const id = ruta.split("/").pop();
+      if (init.method === "HEAD") return new Response(null, { status: clips.has(id) ? 200 : 404 });
+      const b = init.body;
+      clips.set(id, b);
+      return Response.json({ ancho: 1080, alto: 1920, duracion: 12, audio: true });
+    };
+  }
+
+  async function montaje() {
+    const s = db.sqlite;
+    s.prepare("insert into estudio_archivos (id, owner_id, client_id, clave, tipo, mime, origen, created_at, updated_at) values (?,?,?,?,?,?,?,?,?)")
+      .run("clip1", JEFE, "bc", CLAVE_CLIP, "video", "video/mp4", "subida", "2026-11-01T00:00:00Z", "2026-11-01T00:00:00Z");
+    env.MEDIA.objetos.set(CLAVE_CLIP, new Uint8Array([0, 0, 0, 0x18, 0x66, 0x74, 0x79, 0x70, 1, 2, 3]));
+    // El r2 de mentira da también el cuerpo como flujo (así lo sube el Worker: nunca entero en memoria).
+    const get = env.MEDIA.get;
+    env.MEDIA.get = async (k) => { const o = await get(k); return o ? { ...o, body: new Blob([env.MEDIA.objetos.get(k)]).stream() } : null; };
+    const r = await pedir("/videos/bc", { method: "POST", body: JSON.stringify({ guion: MONTAJE }) });
+    const { video: v } = await r.json();
+    expect(v.valido).toBe(true);
+    db.sqlite.prepare("update videos_proyectos set estado = 'aprobado', aprobada_version = 1 where id = ?").run(v.id);
+    return v.id;
+  }
+
+  it("sin habla no pide locución: se encarga directo y sube el clip por flujo antes del pedido", async () => {
+    const id = await montaje();
+    expect((await renderizar(id)).status).toBe(202);
+    const recibidos = [];
+    const crudos = [];
+    const clips = new Map();
+    const listo = await ejecutarRender(env, encargos.at(-1).cuerpo, container(recibidos), conClips(crudos, clips));
+    expect(listo.estado).toBe("listo");
+    expect(crudos.map((c) => `${c.metodo} ${c.ruta}`)).toEqual(["HEAD /clip/clip1", "PUT /clip/clip1"]);
+    expect(clips.get("clip1")).toBeInstanceOf(ReadableStream);
+    const [{ cuerpo }] = recibidos;
+    expect(cuerpo.videos).toEqual(["clip1"]);
+    expect(cuerpo.audio).toBeUndefined();
+    expect(cuerpo.imagenes).toEqual({});
+    expect(listo.aviso).toBeNull();
+  });
+
+  it("un clip que el Container ya tiene no se vuelve a subir; uno que no sube sale con su cuadro de espera y se dice", async () => {
+    const id = await montaje();
+    await renderizar(id);
+    const crudos = [];
+    await ejecutarRender(env, encargos.at(-1).cuerpo, container([]), conClips(crudos, new Map([["clip1", "ya"]])));
+    expect(crudos.map((c) => c.metodo)).toEqual(["HEAD"]);
+
+    db.sqlite.prepare("update videos_proyectos set estado = 'renderizado' where id = ?").run(id);
+    await renderizar(id);
+    const recibidos = [];
+    const malo = async (ruta, init) => new Response(null, { status: init.method === "HEAD" ? 404 : 500 });
+    const listo = await ejecutarRender(env, encargos.at(-1).cuerpo, container(recibidos), malo);
+    expect(listo.estado).toBe("listo");
+    expect(recibidos[0].cuerpo.videos).toEqual([]);
+    expect(listo.aviso).toMatch(/clip de video.*cuadro de espera/);
+  });
+
+  it("un id que no es un video de ESE cliente no se sube (sale en faltan)", async () => {
+    const id = await montaje();
+    db.sqlite.prepare("update estudio_archivos set mime = 'image/png', tipo = 'imagen' where id = 'clip1'").run();
+    await renderizar(id);
+    const crudos = [];
+    const recibidos = [];
+    await ejecutarRender(env, encargos.at(-1).cuerpo, container(recibidos), conClips(crudos, new Map()));
+    expect(crudos).toEqual([]);
+    expect(recibidos[0].cuerpo.videos).toEqual([]);
+  });
+});

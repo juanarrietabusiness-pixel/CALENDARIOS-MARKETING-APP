@@ -70,7 +70,7 @@ import { ErrorMotor } from "../lib/estudio/gemini.js";
 import { escribirGuion, ErrorGuion } from "../lib/estudio/guionAnimado.js";
 import { ErrorIA } from "../lib/cerebro/ia.js";
 import { pedirMusica, ErrorMusica } from "../lib/estudio/musica.js";
-import { pedidoDelVideo, alContenedor } from "../lib/estudio/cuadros.js";
+import { pedidoConClips, alContenedor } from "../lib/estudio/cuadros.js";
 import { pedirRender, renderAlDia, ligarAPublicacion } from "../lib/estudio/render.js";
 import { costoDeVoz, fraseDeMuestra, modeloDeVoz, esIdDeVoz } from "../../src/lib/voces.js";
 
@@ -248,7 +248,7 @@ async function rutasDelCliente(req, env, { acceso, usuario, partes, metodo }) {
   // Ver el video antes de renderizar: un cuadro, la hoja de escenas o la revisión (el Container dibuja; no gasta IA).
   if (["cuadro", "hoja", "revision"].includes(accion) && metodo === "GET") {
     const u = new URL(req.url).searchParams;
-    const { pedido } = await pedidoDelVideo(env, acceso, cliente, fila, { formato: u.get("formato") ?? "" });
+    const { pedido } = await pedidoConClips(env, acceso, cliente, fila, { formato: u.get("formato") ?? "" });
     if (accion === "revision") {
       const formatos = (u.get("formatos") ?? "").split(",").map((x) => x.trim()).filter(Boolean);
       return json(await (await alContenedor(env, "/revisar", { ...pedido, formatos })).json());

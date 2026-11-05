@@ -15,11 +15,15 @@
 //     su tono (`logoTono`: las luces de lo que se ve), para que el motor sepa si necesita una placa detrás.
 //   · La letra es la del kit (`kit.fuente`), registrada con `cargarFuente`; un guion
 //     puede pedir otra con su clave del kit.
+//   · Los CLIPS (capas `video`) son elementos <video> (también por /api/media) que el motor dibuja en el lienzo: el
+//     proveedor (`proveedorDeVideos`) los lleva al segundo que pide cada cuadro. Mientras se reproduce, el clip corre
+//     solo y sólo se corrige si se desfasa; parado, se busca el cuadro y al llegar se repinta (`alCambiar`). Suena si su
+//     capa lleva `sonido` (si el navegador no deja sonar sin un toque, sigue mudo).
 // ============================================================
 
 import { ruidoDeGrano, cajaOpaca } from "./motorVideo";
 import { quitarFondoLiso, tonoDeImagen } from "./motorPiezas";
-import { archivosDelGuion } from "./videoEscenas";
+import { archivosDelGuion, videosDelGuion } from "./videoEscenas";
 import { cargarFuente } from "./muestraFuente";
 
 const imagenes = new Map();
@@ -97,6 +101,67 @@ function cargarImagen(clave, { logo = false } = {}) {
   return imagenes.get(k);
 }
 
+const videos = new Map();
+
+/** Un clip de /api/media/<clave> como <video>, una vez por clave → el elemento ya con sus medidas, o null si no carga. */
+function cargarVideo(clave) {
+  if (!clave || typeof document === "undefined") return Promise.resolve(null);
+  if (!videos.has(clave)) {
+    videos.set(clave, new Promise((resolver) => {
+      const v = document.createElement("video");
+      v.muted = true; v.playsInline = true; v.preload = "auto";
+      let hecho = false;
+      const fin = (ok) => {
+        if (hecho) return;
+        hecho = true;
+        if (!ok) { videos.delete(clave); resolver(null); return; }
+        // El motor mide con `width`/`height`: en un <video> son los atributos (0), no lo que mide el clip.
+        v.width = v.videoWidth; v.height = v.videoHeight;
+        resolver(v);
+      };
+      v.addEventListener("loadeddata", () => fin(v.videoWidth > 0), { once: true });
+      v.addEventListener("error", () => fin(false), { once: true });
+      setTimeout(() => fin(v.videoWidth > 0), 15000);
+      v.src = `/api/media/${clave}`;
+    }));
+  }
+  return videos.get(clave);
+}
+
+/**
+ * El proveedor de cuadros de video para el motor: `(uso, segundo)` → el <video> en ese segundo (o null si aún no tiene
+ * imagen). Si los pedidos de un clip avanzan seguidos (se está reproduciendo), el clip corre solo y sólo se corrige un
+ * desfase de más de 0,35 s; si no (se mueve la barra), se pausa y se busca el cuadro exacto, y `alCambiar` repinta al
+ * llegar. Sin pedidos durante 250 ms, se pausa (deja de sonar).
+ */
+export function proveedorDeVideos(porArchivo, { alCambiar = () => {}, conSonido = new Set() } = {}) {
+  const estado = new Map();
+  for (const [archivo, v] of porArchivo) {
+    v.muted = !conSonido.has(archivo);
+    v.addEventListener("seeked", () => alCambiar());
+  }
+  return (uso, s) => {
+    const v = porArchivo.get(uso?.archivo);
+    if (!v) return null;
+    const ahora = performance.now();
+    const e = estado.get(uso.archivo) ?? {};
+    const sigue = e.ultimo != null && s >= e.ultimo && s - e.ultimo < 0.3 && ahora - e.cuando < 300;
+    clearTimeout(e.parar);
+    const parar = setTimeout(() => { if (!v.paused) v.pause(); }, 250);
+    estado.set(uso.archivo, { ultimo: s, cuando: ahora, parar });
+    const destino = Math.max(0, Math.min(s, (Number.isFinite(v.duration) ? v.duration : Infinity) - 0.05));
+    if (sigue && destino < s) { if (!v.paused) v.pause(); } // pasado su final: quieto en el último cuadro
+    else if (sigue) {
+      if (v.paused) v.play().catch(() => { v.muted = true; v.play().catch(() => {}); });
+      if (Math.abs(v.currentTime - destino) > 0.35) v.currentTime = destino;
+    } else {
+      if (!v.paused) v.pause();
+      if (!v.seeking && Math.abs(v.currentTime - destino) > 0.04) v.currentTime = destino;
+    }
+    return v.readyState >= 2 ? v : null;
+  };
+}
+
 /** Los ids de la galería que nombra un guion: vive en videoEscenas.js (lo usa también el Worker). */
 export { archivosDelGuion };
 
@@ -118,23 +183,33 @@ function texturaDeGrano() {
  * Todo lo que necesita el motor para un guion → { recursos, fuentes, faltan }.
  *   archivos — la galería del cliente (`{ id, clave }`), para pasar del id a la clave
  *   kit      — el kit limpio (`logo`, `fuente`)
+ *   alCambiar — se llama cuando llega el cuadro de un clip que se buscó (para repintar)
  * `faltan` son los ids que no están en la galería (salen como marcador).
  */
-export async function prepararRecursos(guion, { archivos = [], kit = {} } = {}) {
+export async function prepararRecursos(guion, { archivos = [], kit = {}, alCambiar } = {}) {
   const porId = new Map(archivos.map((a) => [a.id, a]));
   const ids = archivosDelGuion(guion);
-  const faltan = ids.filter((id) => !porId.has(id));
-  const [cargadas, logo, titular, cuerpo] = await Promise.all([
+  const idsVideo = videosDelGuion(guion);
+  const faltan = [...ids, ...idsVideo].filter((id) => !porId.has(id));
+  const esVideo = (a) => a && (a.tipo === "video" || String(a.mime ?? "").startsWith("video/"));
+  const [cargadas, logo, titular, cuerpo, clips] = await Promise.all([
     Promise.all(ids.map(async (id) => [id, await cargarImagen(porId.get(id)?.clave)])),
     cargarImagen(kit?.logo || "", { logo: true }),
     familiaDe(guion?.estilo?.fuentes?.titular, kit),
     familiaDe(guion?.estilo?.fuentes?.cuerpo, kit),
+    Promise.all(idsVideo.map(async (id) => [id, esVideo(porId.get(id)) ? await cargarVideo(porId.get(id).clave) : null])),
   ]);
   const mapa = new Map(cargadas);
+  const porArchivo = new Map(clips.filter(([, v]) => v));
+  const conSonido = new Set((guion?.escenas ?? []).flatMap((e) => e.capas ?? []).filter((c) => c.tipo === "video" && c.sonido).map((c) => c.archivo));
   return {
-    recursos: { imagen: (id) => mapa.get(id) ?? null, logo: logo.img, logoTono: logo.tono, grano: texturaDeGrano() },
+    recursos: {
+      imagen: (id) => mapa.get(id) ?? null, logo: logo.img, logoTono: logo.tono, grano: texturaDeGrano(),
+      video: proveedorDeVideos(porArchivo, { alCambiar, conSonido }),
+      videoInfo: (id) => { const v = porArchivo.get(id); return v ? { ancho: v.videoWidth, alto: v.videoHeight } : null; },
+    },
     fuentes: { titular: titular ? `"${titular}", system-ui, sans-serif` : "", cuerpo: cuerpo ? `"${cuerpo}", system-ui, sans-serif` : "" },
-    faltan: [...faltan, ...cargadas.filter(([id, img]) => porId.has(id) && !img).map(([id]) => id)],
+    faltan: [...faltan, ...[...cargadas, ...clips].filter(([id, x]) => porId.has(id) && !x).map(([id]) => id)],
   };
 }
 

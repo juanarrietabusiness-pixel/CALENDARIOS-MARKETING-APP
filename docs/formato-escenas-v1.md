@@ -97,13 +97,13 @@ Todas llevan:
 
 | Campo | Qué es |
 |---|---|
-| `tipo` | Uno de los 16 componentes |
+| `tipo` | Uno de los 17 componentes |
 | `id` | Único dentro de la escena |
 | `pos`, `tam` | Dónde y de qué ancho (ver reglas) — `centro`, `0.6` |
 | `entra`, `sale` | `{ "palabra": n }` (la n-ésima palabra que se dice en la escena, desde 0) o `{ "s": segundos }` desde que empieza. `sale` vacío = hasta el final |
 | `animacion` | `entrada` (aparece, fundido, sube, baja, escala, rebote, escribe, barrido, dibuja), `salida` (ninguna, fundido, baja, escala), `bucle` (ninguno, flota, pulso, gira, late) |
 
-Los 16 componentes de la librería v1 y lo propio de cada uno:
+Los 17 componentes de la librería v1 y lo propio de cada uno:
 
 | Componente | Propiedades |
 |---|---|
@@ -112,6 +112,7 @@ Los 16 componentes de la librería v1 y lo propio de cada uno:
 | `telefono` | `pantalla` (chat/imagen/color/notificacion), `mensajes` [{ `de`: cliente/marca, `texto` }] (≤ 6), `archivo`, `notificacion`, `color` |
 | `burbuja` | `texto`*, `lado` (izq/der), `color` |
 | `imagen` | `archivo`* (id de la galería: la foto REAL del producto), `rol` (producto/foto/persona), `recorte` (contener/cubrir), `marco` |
+| `video` | Un **clip de la galería** (grabado por el cliente, de Kie, de Drive): `archivo`* (id de un VIDEO de la galería), `encuadre` (completo: a sangre, detrás de todo y fuera del reparto; caja: en su zona, como una imagen), `recorte` (cubrir/contener), `desde` (el segundo del clip donde empieza), `hasta` (0 = sigue hasta que acaba la capa; mayor que `desde` = ese tramo, y la escena dura al menos eso), `sonido` (su audio se oye, debajo de la voz si la hay), `volumen` (0–1), `oscurecer` (0–0,85: un velo negro encima para leer el texto; sólo a sangre), `marco`. Ver «El video» abajo |
 | `personaje` | `variante` (adulto/nino/bebe), `pose` (de-pie/saluda/senala/piensa/celebra/preocupado), `expresion` (auto/neutral/feliz/triste/preocupado/dormido; «auto» la toma de la pose), `color` — figura de la casa dibujada con código; su ASPECTO (piel, pelo, ropa, accesorio) es el del kit del cliente (`personaje_video`) o el de `estilo.personaje` |
 | `icono` | `nombre` (check, cruz, corazon, estrella, rayo, reloj, bolsa, carrito, chat, telefono, ubicacion, regalo, escudo, hoja, gota, bebe, casa, flecha, alerta, sonrisa, dinero, camion), `color`, `fondo` (un círculo de ese color detrás; el icono toma el color que más contraste) |
 | `cifra` | La **cifra gigante**: `valor`*, `prefijo` («$»), `sufijo` («%», «años»; más pequeño, al lado), `etiqueta` (≤ 30, debajo), `contar` (sube desde 0 en 1,2 s), `decimales`, `abreviada` («412K», «3,2M»: se lee de un vistazo), `color`. Coma decimal y punto de miles desde 5 cifras; el ancho es el del valor final (no baila mientras cuenta) |
@@ -128,6 +129,20 @@ Los 16 componentes de la librería v1 y lo propio de cada uno:
 
 Todos se dibujan (ninguno sale ya como marcador). Una capa anclada a una palabra (`entra: { palabra: n }`) entra
 **0,12 s antes** de que se diga (`ANTICIPO`): justo en la palabra llega tarde a la vista. La salida no se adelanta.
+
+### El video
+
+Una capa `video` pone un clip de la galería en la escena. Empieza en su segundo `desde` cuando entra la capa y sigue
+a velocidad normal; pasado su final (o su `hasta`) se queda en el último cuadro. A sangre (`encuadre: "completo"`) va
+encima del fondo y detrás de todo lo demás, no ocupa sitio en el reparto y, en el gancho, no se retrasa como las demás
+capas (es el fondo del primer cuadro). Con `hasta` el clip impone su tramo: la escena dura al menos `hasta − desde`
+(como mucho 60 s) y lo que falte se inserta como silencio en la locución, igual que una `pausa`; así una escena sin
+`habla` puede durar lo que dura su clip. Un guion que no dice nada en ninguna escena (un montaje de clips) no necesita
+locución para renderizarse.
+
+Con `sonido`, el audio del tramo se mezcla con la voz (y la música baja también cuando habla el clip). En la vista
+previa el clip se ve (un `<video>` dibujado en el lienzo) y suena sólo mientras se reproduce; en el mp4 lo decodifica
+el Container con ffmpeg cuadro a cuadro.
 
 ### El dibujo
 

@@ -22,10 +22,11 @@ import process from "node:process";
 import { Buffer } from "node:buffer";
 import { createCanvas } from "@napi-rs/canvas";
 import { FORMATOS_VIDEO } from "../src/lib/videoEscenas.js";
-import { dibujarFrame } from "../src/lib/motorVideo.js";
+import { dibujarFrame, videosEnInstante, usosDeVideo } from "../src/lib/motorVideo.js";
 import { RENDER, cuadrosDelVideo, tramosDeAudio, armarPcm, FILTRO_MEDIR, filtroDeNormalizar, leerLoudnorm } from "../src/lib/renderVideo.js";
 import { momentosDeEfectos, mezclarEfectos } from "../src/lib/efectosSonido.js";
-import { mezclarMusica } from "../src/lib/sonidoVideo.js";
+import { mezclarMusica, mezclarClip } from "../src/lib/sonidoVideo.js";
+import { Decodificador, audioDe } from "./clips.mjs";
 
 const FFMPEG = process.env.FFMPEG || "ffmpeg";
 
@@ -74,9 +75,10 @@ async function decodificar(carpeta, nombre, bytes, que) {
  *
  *   1. La toma se DECODIFICA sola, con una cadena simple (MP3 mono a 44,1 kHz → PCM estéreo a 48 kHz). Una cadena simple
  *      sí sabe rehacerse si el archivo cambia de parámetros a la mitad.
- *   2. Los silencios de las escenas se meten copiando muestras (`armarPcm`), hasta el último cuadro exacto; encima, los
- *      EFECTOS (`efectos`: whoosh y pop, src/lib/efectosSonido.js) y la MÚSICA con ducking y fundido (`musica`:
- *      { audio, volumen }, src/lib/sonidoVideo.js).
+ *   2. Los silencios de las escenas se meten copiando muestras (`armarPcm`), hasta el último cuadro exacto; encima, el
+ *      SONIDO de los clips de video que lo llevan (`clips`: los usos de `usosDeVideo` con `sonido`), los EFECTOS
+ *      (`efectos`: whoosh y pop, src/lib/efectosSonido.js) y la MÚSICA con ducking y fundido (`musica`: { audio, volumen },
+ *      src/lib/sonidoVideo.js), que baja también cuando habla un clip.
  *   3. El volumen: loudnorm MIDE, la segunda pasada aplica una ganancia fija (y un limitador si el pico se pasaría) y
  *      una tercera mide lo que quedó.
  *
@@ -84,22 +86,29 @@ async function decodificar(carpeta, nombre, bytes, que) {
  * reinitializing filters! | Failed to inject frame into filter network: Invalid argument» cada vez que no podía ir en
  * lineal y pasaba a su modo dinámico: con una voz de verdad, casi siempre.
  */
-export async function audioDelVideo(carpeta, { audio, linea, total, salida, guion = null, efectos = false, musica = null }) {
+export async function audioDelVideo(carpeta, { audio, linea, total, salida, guion = null, efectos = false, musica = null, clips = [] }) {
   const muestreo = String(RENDER.muestreo);
   const toma = audio?.length ? await decodificar(carpeta, "voz", audio, "No se pudo leer el audio de la locución") : new Uint8Array(0);
   const voz = armarPcm(toma, tramosDeAudio(linea.silencios), total, RENDER.muestreo);
+  // El sonido de los clips va con la voz (lo que «habla»): la música baja también debajo de él.
+  let conClips = 0;
+  const habla = clips.length ? new Uint8Array(voz) : voz;
+  for (const u of clips) {
+    const tramo = await audioDe(u.archivo, u.clipDesde, Math.max(0, u.hasta - u.desde)).catch(() => new Uint8Array(0));
+    if (tramo.length) conClips += mezclarClip(habla, tramo, { en: u.desde, hasta: u.hasta, volumen: u.volumen, muestreo: RENDER.muestreo }) > 0 ? 1 : 0;
+  }
   // Lo que suena debajo, en el mismo PCM y antes del volumen: así guarda su distancia con la voz sea cual sea la toma.
-  const pcm = musica?.audio?.length || efectos ? new Uint8Array(voz) : voz;
+  const pcm = musica?.audio?.length || efectos ? new Uint8Array(habla) : habla;
   if (efectos && guion) mezclarEfectos(pcm, momentosDeEfectos(guion, linea), { muestreo: RENDER.muestreo });
   if (musica?.audio?.length) {
     const fondo = await decodificar(carpeta, "musica", musica.audio, "No se pudo leer la música");
-    mezclarMusica(pcm, fondo, { muestreo: RENDER.muestreo, volumen: musica.volumen ?? 0, voz });
+    mezclarMusica(pcm, fondo, { muestreo: RENDER.muestreo, volumen: musica.volumen ?? 0, voz: habla });
   }
   const pista = join(carpeta, "pista.pcm");
   await writeFile(pista, pcm);
   const leer = ["-f", "s16le", "-ar", muestreo, "-ac", "2", "-i", pista];
   const codificar = ["-c:a", "aac", "-b:a", `${RENDER.kbpsAudio}k`, "-ar", muestreo, salida];
-  if (!toma.length) {
+  if (!toma.length && !conClips) {
     const r = await ffmpeg([...leer, ...codificar]).fin;
     if (r.codigo !== 0) throw falla("No se pudo armar el audio", r);
     return null;
@@ -132,7 +141,9 @@ export async function renderizar(base, { audio = null, musica = null, efectos = 
   const carpeta = await mkdtemp(join(tmpdir(), "render-"));
   try {
     const sonido = join(carpeta, "audio.m4a");
-    const medidas = await audioDelVideo(carpeta, { audio, linea: base.linea, total: duracion, salida: sonido, guion: base.guion, efectos, musica });
+    const usos = usosDeVideo(base.guion, base.linea).filter((u) => base.infoVideos?.has(u.archivo));
+    const clips = usos.filter((u) => u.sonido && base.infoVideos.get(u.archivo)?.audio);
+    const medidas = await audioDelVideo(carpeta, { audio, linea: base.linea, total: duracion, salida: sonido, guion: base.guion, efectos, musica, clips });
     const tAudio = Date.now() - inicio;
 
     const salida = join(carpeta, "video.mp4");
@@ -154,10 +165,28 @@ export async function renderizar(base, { audio = null, musica = null, efectos = 
     const ctx = lienzo.getContext("2d");
     // `data()` devuelve una COPIA de los píxeles: se puede seguir dibujando mientras la tubería la lleva. Si ffmpeg va
     // más lento, se espera a que la tubería se vacíe (no se acumulan cuadros de 8 MB en memoria).
-    for (let i = 0; i < cuadros && !roto; i++) {
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
-      dibujarFrame(ctx, { guion: base.guion, linea: base.linea, t: i / fps, formato: base.formato, paleta: base.paleta, recursos: base.recursos, fuentes: base.fuentes });
-      if (!proc.stdin.write(lienzo.data())) await vaciada(proc);
+    // Los clips: un decodificador por USO (una capa en su escena), abierto al primer cuadro que lo pide y cerrado cuando
+    // deja de verse. Antes de dibujar cada cuadro se pone su cuadro de video en `base.cuadros` (el motor no espera nada).
+    const decos = new Map();
+    try {
+      for (let i = 0; i < cuadros && !roto; i++) {
+        const t = i / fps;
+        if (usos.length) {
+          const pide = videosEnInstante(base.guion, base.linea, t).filter((v) => base.infoVideos.has(v.archivo));
+          for (const [id, d] of decos) if (!pide.some((v) => v.id === id)) { d.cerrar(); decos.delete(id); }
+          base.cuadros.clear();
+          for (const v of pide) {
+            if (!decos.has(v.id)) decos.set(v.id, new Decodificador(v.archivo, base.infoVideos.get(v.archivo), v.segundo, fps));
+            const l = await decos.get(v.id).en(v.segundo);
+            if (l) base.cuadros.set(v.id, l);
+          }
+        }
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        dibujarFrame(ctx, { guion: base.guion, linea: base.linea, t, formato: base.formato, paleta: base.paleta, recursos: base.recursos, fuentes: base.fuentes });
+        if (!proc.stdin.write(lienzo.data())) await vaciada(proc);
+      }
+    } finally {
+      for (const d of decos.values()) d.cerrar();
     }
     proc.stdin.end();
     const r = await fin;

@@ -9,7 +9,7 @@
 import { useEffect, useState } from "react";
 import Icon from "./Icon";
 import { leerVideo, pedirLocucionVideo } from "../lib/videosApi";
-import { puedeGenerarVoz } from "../lib/videoEscenas";
+import { puedeGenerarVoz, tieneHabla } from "../lib/videoEscenas";
 
 const CADA_MS = 4000;
 const dinero = (n) => (n < 0.01 ? "menos de 1 ¢" : `${Number(n).toLocaleString("es-PA", { minimumFractionDigits: 2, maximumFractionDigits: 3 })} $`);
@@ -46,6 +46,8 @@ export default function LocucionVideo({ client, video, sucio, onCambio }) {
   };
 
   if (!["aprobado", "con_voz", "renderizado", "fallido"].includes(video.estado) && !generando && !loc.estado) return null;
+  // Un montaje de clips sin habla no tiene voz que generar: sale con el sonido de los clips.
+  if (video.guion && !tieneHabla(video.guion) && !loc.estado) return null;
   return (
     <div className="va-locucion">
       <strong>La voz</strong>

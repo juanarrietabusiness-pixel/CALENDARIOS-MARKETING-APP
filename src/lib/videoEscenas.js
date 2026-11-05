@@ -90,6 +90,8 @@ export const MAX_PAUSA = 3;
 export const MIN_ESCENA = 0.6;
 /** Lo que queda detrás de la última palabra antes de cortar el audio. */
 export const COLA_FINAL = 0.4;
+/** Lo que dura como mucho el tramo fijo (`hasta − desde`) de una capa de video. */
+export const MAX_TRAMO_VIDEO = 60;
 
 // ------------------------------------------------------------
 // El vocabulario
@@ -182,6 +184,24 @@ export const COMPONENTES = Object.freeze({
   },
   burbuja: { nombre: "Burbuja de chat", props: { texto: T(90, true), lado: E(["izq", "der"], "izq"), color: C("superficie") } },
   imagen: { nombre: "Imagen de la galería", props: { archivo: T(64, true), rol: E(["producto", "foto", "persona"], "producto"), recorte: E(["contener", "cubrir"], "contener"), marco: B(false) } },
+  // Un CLIP de la galería (grabado por el cliente, de Kie, de Drive): `encuadre` «completo» lo pone a sangre detrás de
+  // todo (con `oscurecer`, un velo para leer el texto); «caja», en su zona como una imagen. Empieza en su segundo
+  // `desde` cuando entra la capa y sigue a velocidad normal; `hasta` (> desde) fija el tramo y la escena dura al menos
+  // eso (lo que falte se inserta como silencio en la locución). Pasado su final se queda en el último cuadro. `sonido`:
+  // su audio se oye (debajo de la voz si la hay), a `volumen`.
+  video: {
+    nombre: "Video de la galería",
+    props: {
+      archivo: T(64, true), encuadre: E(["completo", "caja"], "completo"), recorte: E(["cubrir", "contener"], "cubrir"),
+      desde: N(0, 3600, 0), hasta: N(0, 3600, 0), sonido: B(false), volumen: N(0, 1, 1), oscurecer: N(0, 0.85, 0.3), marco: B(false),
+    },
+    comprobar: (p) => {
+      if (!(p.hasta > 0)) return [];
+      if (p.hasta <= p.desde) return [{ campo: "hasta", mensaje: "«hasta» tiene que ser mayor que «desde» (o 0: hasta que acabe la capa)." }];
+      if (p.hasta - p.desde > MAX_TRAMO_VIDEO) return [{ campo: "hasta", mensaje: `Un tramo de video dura como mucho ${MAX_TRAMO_VIDEO} s: parte la escena.` }];
+      return [];
+    },
+  },
   personaje: {
     nombre: "Personaje",
     props: {
@@ -373,7 +393,8 @@ function validarEscena(e, i, errores, avisos, idsEscenas) {
   const nPalabras = palabrasDe(habla).length;
   const pausa = e.pausa === undefined ? 0 : Number(e.pausa);
   if (!(pausa >= 0 && pausa <= MAX_PAUSA)) errores.push({ donde: `${donde}.pausa`, mensaje: `«pausa» son segundos de silencio detrás del habla: entre 0 y ${MAX_PAUSA}.` });
-  if (!nPalabras && !(pausa > 0)) errores.push({ donde, mensaje: "Una escena que no dice nada necesita «pausa» (los segundos que dura en silencio)." });
+  const conTramo = Array.isArray(e.capas) && e.capas.some((c) => c?.tipo === "video" && Number(c.hasta) > Number(c.desde ?? 0));
+  if (!nPalabras && !(pausa > 0) && !conTramo) errores.push({ donde, mensaje: "Una escena que no dice nada necesita «pausa» (los segundos que dura en silencio) o un video con su tramo («desde» y «hasta»)." });
   const pantalla = recorta(e.pantalla);
   if (pantalla.length > MAX_PANTALLA) errores.push({ donde: `${donde}.pantalla`, mensaje: `Pasa de ${MAX_PANTALLA} caracteres.` });
 
@@ -551,7 +572,7 @@ export function lineaDeTiempo(guion, palabras = null) {
     const a = corte(k);
     const b = k === escenas.length - 1 ? finAudio : corte(k + 1);
     const trozo = Math.max(0, b - a);
-    const pausa = Math.max(Number(e.pausa) || 0, MIN_ESCENA - trozo, 0);
+    const pausa = Math.max(Number(e.pausa) || 0, duracionMinimaDeEscena(e) - trozo, 0);
     const desde = reloj;
     const palabrasEscena = porEscena[k].map((texto, i) => {
       const t = tiempos[inicio[k] + i];
@@ -565,13 +586,49 @@ export function lineaDeTiempo(guion, palabras = null) {
   return { total: redondo(reloj), estimado, escenas: salida, silencios };
 }
 
-/** Los ids de la galería que nombra un guion (imágenes, teléfonos, antes y después). Pura. */
+/** Los ids de la galería que nombra un guion como IMAGEN (imágenes, teléfonos, antes y después). Pura. */
 export function archivosDelGuion(guion) {
   const ids = new Set();
   for (const e of guion?.escenas ?? []) {
-    for (const c of e.capas ?? []) for (const k of ["archivo", "archivoAntes", "archivoDespues"]) if (c[k]) ids.add(c[k]);
+    for (const c of e.capas ?? []) {
+      if (c.tipo === "video") continue;
+      for (const k of ["archivo", "archivoAntes", "archivoDespues"]) if (c[k]) ids.add(c[k]);
+    }
   }
   return [...ids];
+}
+
+/** Los ids de la galería que nombra un guion como VIDEO (las capas `video`). Pura. */
+export function videosDelGuion(guion) {
+  const ids = new Set();
+  for (const e of guion?.escenas ?? []) for (const c of e.capas ?? []) if (c.tipo === "video" && c.archivo) ids.add(c.archivo);
+  return [...ids];
+}
+
+/** ¿Se dice algo en el guion? Sin habla en ninguna escena (un montaje de clips) no hay locución que generar. Pura. */
+export const tieneHabla = (guion) => palabrasDe(textoDeLocucion(guion)).length > 0;
+
+/**
+ * Lo que dura como poco una escena: `MIN_ESCENA`, o el TRAMO de su video más largo (`hasta − desde`, más su entrada
+ * si es en segundos: anclada a una palabra no se sabe antes de los tiempos). Pura.
+ */
+export function duracionMinimaDeEscena(escena) {
+  let min = MIN_ESCENA;
+  for (const c of escena?.capas ?? []) {
+    if (c?.tipo !== "video" || !(Number(c.hasta) > Number(c.desde ?? 0))) continue;
+    const entra = Number.isFinite(c.entra?.s) ? c.entra.s : 0;
+    min = Math.max(min, Number(c.hasta) - Number(c.desde ?? 0) + entra);
+  }
+  return min;
+}
+
+/**
+ * El segundo del CLIP de una capa de video en el instante `t` del video, si entró en `entra` (segundos del video):
+ * empieza en su `desde`, va a velocidad normal y, con `hasta`, no pasa de ahí (se queda en ese cuadro). Pura.
+ */
+export function segundoDelClip(capa, entra, t) {
+  const s = (Number(capa?.desde) || 0) + Math.max(0, t - entra);
+  return Number(capa?.hasta) > Number(capa?.desde ?? 0) ? Math.min(s, Number(capa.hasta)) : s;
 }
 
 /** Cuándo se ve una capa, en segundos del video, dentro de su escena ya colocada (`lineaDeTiempo().escenas[k]`). Pura. */

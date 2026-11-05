@@ -13,6 +13,8 @@
 //     hay render: los subtítulos irían con tiempos inventados.
 // ============================================================
 
+import { tieneHabla } from "./videoEscenas.js";
+
 /** Lo fijo del render. -14 LUFS integrados, el pico verdadero a -1,5 dB y el rango que admite la voz hablada. */
 export const RENDER = Object.freeze({ fps: 30, lufs: -14, pico: -1.5, rango: 11, muestreo: 48000, kbpsAudio: 192, crf: 20 });
 
@@ -126,8 +128,9 @@ export function leerLoudnorm(texto) {
 }
 
 /**
- * ¿Se puede renderizar este proyecto? (`p`: la fila con su `locucion` ya leída como objeto) → { ok, motivo }.
- * Hace falta el guion aprobado de esta versión y SU locución lista; no mientras se renderiza. Puro.
+ * ¿Se puede renderizar este proyecto? (`p`: la fila con su `locucion` —y, si se tiene, su `guion`— ya leídos como objetos)
+ * → { ok, motivo, sinVoz? }. Hace falta el guion aprobado de esta versión y SU locución lista; no mientras se renderiza. Un
+ * guion SIN habla (un montaje de clips) no necesita locución: `sinVoz`. Puro.
  */
 export function puedeRenderizar(p) {
   const l = p?.locucion ?? {};
@@ -135,6 +138,8 @@ export function puedeRenderizar(p) {
   if (p?.estado === "borrador" || !Number.isInteger(p?.version) || p.version !== p?.aprobada_version) {
     return { ok: false, motivo: "Primero aprueba el guion." };
   }
+  // Un montaje de clips que no dice nada en ninguna escena no tiene locución que generar: sale con el sonido de los clips.
+  if (p?.guion && !tieneHabla(p.guion)) return { ok: true, motivo: "", sinVoz: true };
   if (l.estado !== "lista" || !l.clave) return { ok: false, motivo: "Primero genera la locución del guion aprobado." };
   if (l.version !== p.version || l.desfasada) return { ok: false, motivo: "La locución es de otra versión del guion: genérala otra vez." };
   return { ok: true, motivo: "" };
@@ -176,4 +181,45 @@ export function publicacionesParaVideo(calendars = [], { hoy = "", ligada = null
   const suya = todas.find((x) => x.postId === ligada);
   if (suya && !lista.includes(suya)) lista.unshift(suya);
   return lista.map(({ video: _, ...x }) => x);
+}
+
+// ------------------------------------------------------------
+// Los CLIPS de video (las capas `video`): lo que el Container decide antes de decodificar
+// ------------------------------------------------------------
+
+/** Lo más que mide de lado un clip decodificado: el lado largo del lienzo más grande (16:9 o 9:16 a 1080). */
+export const LADO_MAX_CLIP = 1920;
+
+/**
+ * La medida a la que se decodifica un clip (`info`: { ancho, alto } ya girados): la suya, sin pasar de `LADO_MAX_CLIP`
+ * de lado y sin agrandarla (un clip de 720 p no gana nada a 1080: el motor lo escala al dibujarlo). Pares. Pura.
+ */
+export function medidaDeDecodificar(info) {
+  const w = Math.max(2, Number(info?.ancho) || 0);
+  const h = Math.max(2, Number(info?.alto) || 0);
+  const k = Math.min(1, LADO_MAX_CLIP / Math.max(w, h));
+  const par = (n) => Math.max(2, Math.round((n * k) / 2) * 2);
+  return { ancho: par(w), alto: par(h) };
+}
+
+/**
+ * Lo que imprime `ffprobe -print_format json -show_streams -show_format` → { ancho, alto, duracion, audio } con el ancho
+ * y el alto como se VEN (un teléfono graba en horizontal y marca un giro de 90°: ffmpeg lo endereza al decodificar), o
+ * null si no hay imagen de video. Pura.
+ */
+export function leerSonda(texto) {
+  let j;
+  try { j = typeof texto === "string" ? JSON.parse(texto) : texto; } catch { return null; }
+  const flujos = Array.isArray(j?.streams) ? j.streams : [];
+  const v = flujos.find((f) => f?.codec_type === "video" && !f?.disposition?.attached_pic && Number(f.width) > 0 && Number(f.height) > 0);
+  if (!v) return null;
+  const giro = Number(v.side_data_list?.find((d) => d && d.rotation !== undefined)?.rotation ?? v.tags?.rotate ?? 0) || 0;
+  const deLado = Math.abs(Math.round(giro)) % 180 === 90;
+  const duracion = Number(v.duration) || Number(j?.format?.duration) || 0;
+  return {
+    ancho: deLado ? Number(v.height) : Number(v.width),
+    alto: deLado ? Number(v.width) : Number(v.height),
+    duracion: Math.round(duracion * 1000) / 1000,
+    audio: flujos.some((f) => f?.codec_type === "audio"),
+  };
 }
