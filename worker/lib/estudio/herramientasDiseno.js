@@ -45,6 +45,7 @@ import {
 } from "../../../src/lib/kitMarca.js";
 import { ESCENA } from "../../../src/lib/encargos.js";
 import { pedidoDeCorreccion, modeloParaCorregir, proporcionDeMedidas } from "../../../src/lib/edicion.js";
+import { conHistoriaEncajada } from "../redesServidor.js";
 
 /** Un error de lo pedido: vuelve a Claude como resultado con `isError`, no como fallo del servidor. */
 export class ErrorDiseno extends Error {}
@@ -451,11 +452,13 @@ export function crearHerramientasDiseno({ env, acceso, resolverCliente, usuario,
         }
       }
       const r = postConPiezas(post, piezas, modo === "anadir" ? "anadir" : "reemplazar");
+      // Si el post RECIBE su primera imagen, su historia encajada (9:16), como hace el panel: en el Container.
+      r.post = await conHistoriaEncajada(env, { antes: post, despues: r.post, clienteId: c.id, colorMarca: c.primary_color });
       dia.posts[indice] = r.post;
       await guardarDias(cal, days);
       for (const a of piezas) await marcarUso(acceso, c.id, a.id, { calendarId: cal.id, postId: post.id }).catch(() => {});
       const n = r.post.medios?.length ?? 0;
-      return `Puesto en la publicación ${post.id} del ${dia.date}: ${n} archivo${n === 1 ? "" : "s"}${r.post.format === "carrusel" ? " (carrusel)" : ""}, ${modo === "anadir" ? "añadido a lo que tenía" : "en lugar de lo que tenía (lo de antes sigue en la galería)"}. Queda lista para revisar y programar.`;
+      return `Puesto en la publicación ${post.id} del ${dia.date}: ${n} archivo${n === 1 ? "" : "s"}${r.post.format === "carrusel" ? " (carrusel)" : ""}${r.post.encajadaDe && r.post.encajadaDe !== post.encajadaDe ? ", con su historia 9:16 (sale también como historia)" : ""}, ${modo === "anadir" ? "añadido a lo que tenía" : "en lugar de lo que tenía (lo de antes sigue en la galería)"}. Queda lista para revisar y programar.`;
     },
   };
 }

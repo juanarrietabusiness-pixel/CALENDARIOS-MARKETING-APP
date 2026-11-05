@@ -14,6 +14,11 @@
 //   POST /miniatura { imagen (base64), lado? }  → JSON { datos (base64), mime, ancho, alto, original }: una COPIA
 //                                              reducida en JPEG (lado mayor ≤ `lado`, 768 por defecto) para que Claude
 //                                              VEA una pieza del Estudio por MCP sin mandarle la de 2K. No lleva guion.
+//   POST /imagen-redes { imagen (base64), salida: { tipo: "medir" } | { tipo: "jpeg" } | { tipo: "encajar", ancho, alto,
+//                    modo, color } | { tipo: "reducir", maxAncho, maxAlto } }  → JSON { datos? (JPEG base64), ancho, alto }:
+//                                              lo que necesita una imagen para salir en cada red (src/lib/prepararRedes.js,
+//                                              el MISMO dibujo que el navegador en encajarLienzo.js). Para «Programar al
+//                                              aprobar» sin pantalla. No lleva guion.
 //   PUT  /clip/<id> (el cuerpo: los bytes del VIDEO)  → JSON { ancho, alto, duracion, audio }: guarda un clip de la galería
 //                                              para las capas `video` (clips.mjs). Va por flujo: el Worker no lo carga.
 //   HEAD /clip/<id>  → 200 si ya está (no hace falta subirlo otra vez), 404 si no
@@ -36,6 +41,8 @@ import { revisarEscenas, textoDeRevision, instanteLleno } from "../src/lib/revis
 import { prepararRecursos, registrarRespaldo, registrarFuente, cuadrosParaUnInstante } from "./recursos.mjs";
 import { guardarClip, tieneClip, ErrorClip } from "./clips.mjs";
 import { dibujarTextoPlantilla, dibujarLogo, letraDe } from "../src/lib/acabadoLienzo.js";
+import { encajarEn, reducirEn } from "../src/lib/encajarLienzo.js";
+import { LADO_PUBLICAR } from "../src/lib/prepararRedes.js";
 import { renderizar } from "./render.mjs";
 
 const PUERTO = Number(process.env.PORT || 8080);
@@ -149,8 +156,40 @@ async function acabado(p) {
   return { cuerpo: Buffer.from(json), tipo: "application/json", cabeceras: {} };
 }
 
+const MODOS_ENCAJE = new Set(["difuminado", "color", "recorte"]);
+const crearLienzo = (w, h) => createCanvas(Math.max(1, Math.round(w)), Math.max(1, Math.round(h)));
+
+/**
+ * Una imagen preparada para una red (ver la cabecera): medir, pasar a JPEG a como mucho `LADO_PUBLICAR`, encajarla en
+ * 4:5 o 9:16, o reducirla a 1080p para TikTok. JPEG de calidad 0,9, como el navegador.
+ */
+async function imagenRedes(p) {
+  if (typeof p.imagen !== "string" || !p.imagen) throw new ErrorPedido("Falta la imagen.");
+  let img;
+  try { img = await loadImage(Buffer.from(p.imagen, "base64")); } catch { throw new ErrorPedido("No es una imagen que se pueda leer."); }
+  const s = p.salida ?? {};
+  if (s.tipo === "medir") return { cuerpo: Buffer.from(JSON.stringify({ ancho: img.width, alto: img.height })), tipo: "application/json", cabeceras: {} };
+  let lienzo;
+  if (s.tipo === "jpeg") lienzo = reducirEn(crearLienzo, img, { maxAncho: LADO_PUBLICAR, maxAlto: LADO_PUBLICAR });
+  else if (s.tipo === "reducir") {
+    const maxAncho = Math.max(16, Math.min(4096, Number(s.maxAncho) || 1080));
+    const maxAlto = Math.max(16, Math.min(4096, Number(s.maxAlto) || 1920));
+    lienzo = reducirEn(crearLienzo, img, { maxAncho, maxAlto });
+  } else if (s.tipo === "encajar") {
+    const ancho = Math.round(Number(s.ancho));
+    const alto = Math.round(Number(s.alto));
+    if (!(ancho >= 16 && ancho <= 4096 && alto >= 16 && alto <= 4096)) throw new ErrorPedido("La medida de encajar no vale.");
+    if (s.color && !COLOR.test(String(s.color))) throw new ErrorPedido("El color no es #RRGGBB.");
+    lienzo = encajarEn(crearLienzo, img, { ancho, alto }, MODOS_ENCAJE.has(s.modo) ? s.modo : "difuminado", s.color || "#ffffff");
+  } else throw new ErrorPedido("La salida tiene que ser medir, jpeg, encajar o reducir.");
+  const bytes = await lienzo.encode("jpeg", 90);
+  const json = JSON.stringify({ datos: bytes.toString("base64"), mime: "image/jpeg", ancho: lienzo.width, alto: lienzo.height });
+  return { cuerpo: Buffer.from(json), tipo: "application/json", cabeceras: {} };
+}
+
 async function atender(ruta, p) {
   if (ruta === "/miniatura") return miniatura(p);
+  if (ruta === "/imagen-redes") return imagenRedes(p);
   if (ruta === "/acabado") return acabado(p);
   const base = await preparar(p);
   const total = base.linea.total;

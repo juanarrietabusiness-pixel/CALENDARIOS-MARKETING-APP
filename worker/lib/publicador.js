@@ -48,6 +48,7 @@ import {
 } from "../../src/lib/publicacion.js";
 import { tipoAprobacion } from "../../src/lib/aprobacion.js";
 import { avisarFallo, avisar, miembrosDe, enlacePublicacion } from "./equipo.js";
+import { prepararYGuardar } from "./redesServidor.js";
 
 /** Un error que es de lo que se pidió, no del servidor: se enseña tal cual. */
 export class ErrorPublicar extends Error {
@@ -361,12 +362,21 @@ export async function programarAlAprobar(env, ownerId, calendarId, postId) {
   if (!(cliente?.programar_al_aprobar === 1 || leerJSON(cal.opciones, {})?.programarAlAprobar)) return null;
   const hallada = buscarPublicacion(leerJSON(cal.days, []), postId);
   if (!hallada || tipoAprobacion(hallada.post) !== "pieza") return null;
+  // Lo que antes hacía sólo el navegador (JPEG, la copia 4:5 o 9:16, la de TikTok), en el Container si nadie lo hizo:
+  // con la pieza preparada, se programa aunque nadie haya abierto la aplicación (worker/lib/redesServidor.js).
+  let prep = null;
+  try {
+    const cuentas = await acceso.leer("cuentas_sociales", { client_id: cal.client_id });
+    const conectadas = [...new Set(cuentas.filter((c) => c.red !== "tiktok" || esDePostPeer(c)).map((c) => c.red))];
+    const redes = redesDe(hallada.post, conectadas).filter((r) => conectadas.includes(r));
+    prep = await prepararYGuardar(env, acceso, { calendarId, postId, redes, clienteId: cal.client_id, colorMarca: cliente?.primary_color || "#ffffff" });
+  } catch (e) { console.error("preparar al aprobar:", e); }
   try {
     const filas = await programar(env, acceso, { calendarId, postId, soloPosibles: true });
     difundir(env, ownerId, { tipo: "publicacion", calId: calendarId, postId, por: FIRMA_SISTEMA });
     return filas;
   } catch (e) {
-    const texto = `${cliente?.name ? `${cliente.name}: ` : ""}el cliente aprobó «${tituloDe(hallada.post)}», pero no se pudo programar sola: ${e.message}`;
+    const texto = `${cliente?.name ? `${cliente.name}: ` : ""}el cliente aprobó «${tituloDe(hallada.post)}», pero no se pudo programar sola: ${e.message}${prep?.problema ? ` (Al prepararla: ${prep.problema}.)` : ""}`;
     difundir(env, ownerId, { tipo: "publicacion", calId: calendarId, postId, por: FIRMA_SISTEMA, aviso: texto });
     // Y en la campana: el aviso del momento se perdía si nadie tenía la aplicación abierta.
     try {

@@ -7,9 +7,10 @@
 // ============================================================
 
 import { compressImage } from "../utils";
+import { encajarEn, cubrirEn } from "./encajarLienzo.js";
 import {
   mediosDe, fotosTikTok, historiasDe, piezasDe, publicacionDeVariante, objetivoDe, necesitaAjuste, claveAdaptado, medidasAjuste, proporcionParaIA,
-  esDeMeta, renombrarAdaptados,
+  esDeMeta, renombrarAdaptados, LADO_PUBLICAR,
 } from "./publicacion";
 
 /** Una imagen del banco, reducida y en base64 para mandarla al modelo. */
@@ -113,8 +114,7 @@ export async function descargarEnTamano(url, ancho, alto, nombre) {
   setTimeout(() => URL.revokeObjectURL(enlace.href), 1000);
 }
 
-/** Lado mayor con el que se publica: Instagram reduce a 1440 de ancho y rechaza más de 8 MB. */
-const LADO_PUBLICAR = 2160;
+// El lado mayor con el que se publica (`LADO_PUBLICAR`) vive en publicacion.js: lo usa también el servidor.
 
 /**
  * Las imágenes de una publicación, listas para Meta: en JPEG y con sus
@@ -165,56 +165,26 @@ export async function prepararMediosParaMeta(medios, subir) {
 // Ajustar imágenes a lo que admite cada red
 // ------------------------------------------------------------
 
+/** Un <canvas> de `ancho` × `alto` (para encajarLienzo.js). */
+function lienzoNuevo(ancho, alto) {
+  const l = document.createElement("canvas");
+  l.width = ancho;
+  l.height = alto;
+  return l;
+}
+
 async function bitmapDe(src) {
   const res = await fetch(src, { credentials: "same-origin" });
   if (!res.ok) throw new Error("No se pudo leer la imagen.");
   return createImageBitmap(await res.blob());
 }
 
-/** Dibuja `img` ocupando todo el lienzo (recortando lo que sobre). */
-function cubrir(ctx, img, w, h) {
-  const e = Math.max(w / img.width, h / img.height);
-  ctx.drawImage(img, (w - img.width * e) / 2, (h - img.height * e) / 2, img.width * e, img.height * e);
-}
-
-/** Dibuja `img` entera, centrada (dejando márgenes). */
-function contener(ctx, img, w, h) {
-  const e = Math.min(w / img.width, h / img.height);
-  ctx.drawImage(img, (w - img.width * e) / 2, (h - img.height * e) / 2, img.width * e, img.height * e);
-}
-
 /**
- * La imagen encajada en `ancho`×`alto`:
- *   · difuminado: entera, sobre la misma imagen ampliada y desenfocada
- *     (lo que hace Metricool). El desenfoque se hace reduciendo y
- *     ampliando, que funciona igual en Safari, sin `ctx.filter`.
- *   · color: entera, sobre el color de la marca.
- *   · recorte: llenando el lienzo, recortada al centro.
+ * La imagen encajada en `ancho`×`alto` (difuminado, color o recorte): el MISMO dibujo que hace el Container al preparar
+ * sin pantalla (encajarLienzo.js).
  */
-export function encajar(img, { ancho, alto }, modo = "difuminado", color = "#ffffff") {
-  const lienzo = document.createElement("canvas");
-  lienzo.width = ancho;
-  lienzo.height = alto;
-  const ctx = lienzo.getContext("2d");
-  ctx.imageSmoothingQuality = "high";
-  if (modo === "recorte") {
-    cubrir(ctx, img, ancho, alto);
-    return lienzo;
-  }
-  if (modo === "color") {
-    ctx.fillStyle = color || "#ffffff";
-    ctx.fillRect(0, 0, ancho, alto);
-  } else {
-    const chico = document.createElement("canvas");
-    chico.width = Math.max(8, Math.round(ancho / 28));
-    chico.height = Math.max(8, Math.round(alto / 28));
-    cubrir(chico.getContext("2d"), img, chico.width, chico.height);
-    ctx.drawImage(chico, 0, 0, ancho, alto);
-    ctx.fillStyle = "rgba(0, 0, 0, 0.12)";
-    ctx.fillRect(0, 0, ancho, alto);
-  }
-  contener(ctx, img, ancho, alto);
-  return lienzo;
+export function encajar(img, medidas, modo = "difuminado", color = "#ffffff") {
+  return encajarEn(lienzoNuevo, img, medidas, modo, color);
 }
 
 /**
@@ -249,7 +219,7 @@ export function encuadrarParaCuadricula(img, encuadre = 0) {
     const chico = document.createElement("canvas");
     chico.width = Math.max(8, Math.round(img.width / 28));
     chico.height = Math.max(8, Math.round(img.height / 28));
-    cubrir(chico.getContext("2d"), img, chico.width, chico.height);
+    cubrirEn(chico.getContext("2d"), img, chico.width, chico.height);
     ctx.drawImage(chico, 0, 0, img.width, img.height);
   }
   ctx.drawImage(img, 0, -desplazamiento, img.width, img.height);

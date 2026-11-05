@@ -342,6 +342,9 @@ src/
                           cliente con revisión interna, historial (qué cambió) y carga (puro; también lo importa el Worker)
     informeRedes.js       Qué redes entran en el informe mensual: limpiar, ¿entra?, describir (puro; también el Worker)
     programarAprobadas.js Preparar imágenes, guardar y programar en lote lo aprobado de un calendario (cada una por su lado)
+    prepararRedes.js      Lo que necesita una publicación para salir en cada red, como plan: normalizar (JPEG, medidas) y las
+                          copias 4:5 / 9:16 / TikTok 1080p (puro; también el Worker, para prepararla sin pantalla)
+    encajarLienzo.js      Encajar o reducir una imagen en un lienzo que se le da (puro: navegador y Container)
     prepararEnvio.js      Al enviar el mes con «Programar al aprobar»: preparar las piezas (JPEG, 4:5) para que el servidor
                           las programe solo (en diferido: la carga inicial está en su tope)
     sesionActual.js       Quién está dentro (papel), para las piezas que no reciben `yo`
@@ -551,6 +554,7 @@ worker/
     firmas.js             Cifrar y firmar con el secreto de una integración (HKDF)
     meta.js               OAuth de Meta, cliente de la Graph API, cuentas, medios firmados
     publicador.js         La cola: programar, procesar (Instagram/Facebook/TikTok/YouTube), reintentos
+    redesServidor.js      Preparar una publicación para sus redes en el Container al aprobarla (JPEG y copias), y guardarla
     historiasAuto.js      Historias automáticas: ajustes, lo que falta preparar, guardar la pieza y el paso del cron
                           que pone en la cola la del día
     postpeer.js           TikTok por PostPeer: perfiles y cuentas, creator-info, el cuerpo de /posts, leer su
@@ -3066,6 +3070,14 @@ son del servidor.
   en segundo plano (`prepararEnvioDelMes`, lib/prepararEnvio.js; `conPreparadas` sólo pone lo preparado en las
   publicaciones cuyos archivos no cambiaron mientras tanto). Y si al aprobar no se puede programar, el motivo va a la
   CAMPANA (`avisar`), no sólo al aviso del momento, que se perdía si nadie tenía la aplicación abierta.
+  **Si nadie abrió el envío, lo prepara el CONTAINER al aprobar** (`prepararYGuardar` en worker/lib/redesServidor.js,
+  desde `programarAlAprobar`): la misma regla como plan (src/lib/prepararRedes.js: normalizar —JPEG a 2160 y medidas— y
+  luego las copias 4:5/9:16 de Meta y la 1080p de TikTok) y el MISMO dibujo que el navegador (src/lib/encajarLienzo.js,
+  que usa también `encajar` de medios.js) por `POST /imagen-redes`. Lo nuevo va a `clientes/<c>/posts/` y se guarda con
+  el `updated_at` del calendario como condición y sólo si los archivos de la publicación no cambiaron mientras se
+  preparaba; las pantallas abiertas releen (`calendario:recargar`). Sin Container (en local) o si falla, se programa
+  como antes y el aviso de la campana añade «Al prepararla: …». La duración de los videos (Shorts, TikTok) sigue
+  midiéndola sólo el navegador: sin medir, la cola hace lo de siempre.
 - **Lo aprobado NO sale solo: espera el paso final.** El cliente aprueba
   a veces sólo la IDEA y a veces la PIEZA FINAL; cada publicación dice cuál
   se le pide (`post.aprobacion`, sin elegir: pieza si hay archivo) y la
