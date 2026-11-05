@@ -572,6 +572,7 @@ worker/
                           papelera), archivos.js (claves de R2, tipo por bytes), descarga.js (bajar un
                           resultado a R2 por flujo, con topes), herramientas.js (ver_estudio,
                           crear_en_estudio y estado_trabajo: las mismas para el asistente y el MCP),
+                          miniaturas.js (la copia reducida que VE Claude, por el Container),
                           higgsfield-schemas.json (SU documentación: campos, valores, obligatorios), elevenlabs.js (la voz
                           directo con la llave oficial), ideas.js
                           («Dame ideas»), lote.js (la producción en lote: niveles, matriz, tipos y mes), encargos.js
@@ -1528,6 +1529,12 @@ son del servidor.
   pedía el video sin ellas y el modelo se inventaba la caja—. Lee `mercado_clientes` a mano, no con `leerMercado`
   (mercado.js importa este archivo por herramientasServidor.js: sería circular). El logo se da con su regla: en video, una
   imagen de cierre con el logo como `imagen_final`, nunca de referencia.
+  · **Claude VE lo que crea** (`worker/lib/estudio/miniaturas.js`): `estado_trabajo`, ya terminado, devuelve las imágenes y
+  `ver_pieza` enseña hasta 6 piezas de la galería de ESE cliente con su modelo, su pedido y el resultado del control (las dos
+  van como `{ texto, imagenes }`, que el MCP y el asistente ya pasan como bloques de imagen). Va una COPIA de 768 px en JPEG
+  que hace el Container (`POST /miniatura`, sin guion): una pieza de 2K en PNG pesa de 4 a 8 MB. Sin Container (en local)
+  o si falla, la original sólo si pesa menos de 1,2 MB; si no, el texto lo dice y no falla. Antes, por MCP, Claude creaba
+  a ciegas: recibía «Listo» y no podía corregir nada.
   · **Lo creado desde «Subir» apunta su uso al guardar** (`delEstudio` en `SubirRapido`): la
   publicación aún no existe al crear, y sin `usado_en` la papelera podría llevarse el archivo.
 - **El lote sigue en el SERVIDOR aunque se cierre la aplicación** (decisión de la agencia: en el teléfono, salir de la
