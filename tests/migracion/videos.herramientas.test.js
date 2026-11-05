@@ -61,7 +61,8 @@ describe("el formato contado a la IA", () => {
     for (const tipo of Object.keys(TIPOS_ESCENA)) expect(t).toContain(`  ${tipo}: `);
     expect(t).toContain(JSON.stringify(EJEMPLO_GUION));
     // Los componentes que el motor todavía no dibuja se dicen.
-    expect(t).toMatch(/personaje — .*MARCADOR/);
+    expect(t).toMatch(/telefono — .*MARCADOR/);
+    expect(t).not.toMatch(/personaje — .*MARCADOR/);
     // Neutro: ningún cliente de la agencia en el ejemplo.
     expect(JSON.stringify(EJEMPLO_GUION)).not.toMatch(/Baby|Caleb|D'CASA|Rofer|toallita/i);
   });
@@ -145,6 +146,45 @@ describe("crear, editar, aprobar y la voz", () => {
     expect((await llamar("editar_escena", { cliente: "Baby Caleb", video_id: id, version: 5, quitar: "zz" })).texto).toMatch(/Las que hay: e2, e3, e1/);
   });
 
+  it("editar_escena con «cambios»: varias escenas en UNA versión, en orden y todas o ninguna", async () => {
+    const id = idDe((await llamar("crear_video", { cliente: "Baby Caleb", guion: copia(EJEMPLO_GUION) })).texto);
+    let r = await llamar("editar_escena", {
+      cliente: "Baby Caleb", video_id: id, version: 1,
+      cambios: [
+        { id: "e1", cambiar: { habla: "Tres errores que casi todos cometen." } },
+        { id: "e3", cambiar: { pantalla: "Elige bien", pausa: 0.4 }, posicion: 1 },
+        { escena: { id: "e9", tipo: "dato", habla: "Un dato que importa mucho aquí.", capas: [] } },
+        { quitar: "e2" },
+      ],
+    });
+    expect(r.error).toBe(false);
+    expect(r.texto).toMatch(/Cambiada la escena «e1» \(habla\)\. Cambiada la escena «e3» \(pantalla, pausa\), ahora es la 1\. Añadida una escena en la posición 4\. Quitada la escena «e2»\. Ahora es la versión 2/);
+    const g = JSON.parse(fila(id).guion);
+    expect(g.escenas.map((e) => e.id)).toEqual(["e3", "e1", "e9"]);
+    expect(g.escenas[1].habla).toBe("Tres errores que casi todos cometen.");
+    expect(g.escenas[0]).toMatchObject({ pantalla: "Elige bien", pausa: 0.4 });
+    // Lo que no cambia de la escena se queda (sus capas).
+    expect(g.escenas[0].capas.length).toBe(EJEMPLO_GUION.escenas[2].capas.length);
+    expect(fila(id).version).toBe(2);
+
+    // Uno que falla (el 2.º) no deja nada a medias y dice cuál fue.
+    r = await llamar("editar_escena", { cliente: "Baby Caleb", video_id: id, version: 2, cambios: [{ id: "e1", cambiar: { habla: "Otra cosa distinta." } }, { quitar: "zz" }] });
+    expect(r.error).toBe(true);
+    expect(r.texto).toMatch(/Cambio 2: No hay ninguna escena «zz»/);
+    expect(fila(id).version).toBe(2);
+    // Un campo que no se cambia así, o el id.
+    r = await llamar("editar_escena", { cliente: "Baby Caleb", video_id: id, version: 2, cambios: [{ id: "e1", cambiar: { id: "otro" } }] });
+    expect(r.texto).toMatch(/Cambio 1: «id» no se cambia así/);
+    // Un guion que queda roto no se guarda.
+    r = await llamar("editar_escena", { cliente: "Baby Caleb", video_id: id, version: 2, cambios: [{ id: "e1", cambiar: { tipo: "inventado" } }] });
+    expect(r.error).toBe(true);
+    expect(fila(id).version).toBe(2);
+    // Sólo moverla, con la forma de uno solo.
+    r = await llamar("editar_escena", { cliente: "Baby Caleb", video_id: id, version: 2, id: "e9", posicion: 1 });
+    expect(r.texto).toMatch(/Movida la escena «e9» a la posición 1/);
+    expect(JSON.parse(fila(id).guion).escenas.map((e) => e.id)).toEqual(["e9", "e3", "e1"]);
+  });
+
   it("aprobar desbloquea generar_locucion; editar después lo devuelve a borrador y la voz ya no se puede", async () => {
     const id = idDe((await llamar("crear_video", { cliente: "Baby Caleb", guion: copia(EJEMPLO_GUION) })).texto);
     // Sin aprobar, la voz no se puede pedir.
@@ -185,6 +225,17 @@ describe("crear, editar, aprobar y la voz", () => {
     expect(t).toMatch(/Ya tiene la locución de esta versión/);
     const dichas = palabrasDe(textoDeLocucion(EJEMPLO_GUION));
     expect(t).toContain(`la voz NO dijo «${dichas.slice(-2).join(" ").replace(/[.,]$/, "")}»`);
+  });
+
+  it("personaje_video: sin datos dice cómo es; con ellos lo guarda en el kit (sólo eso) y la vista previa lo usa", async () => {
+    expect((await llamar("personaje_video", { cliente: "Baby Caleb" })).texto).toMatch(/no tiene personaje propio/);
+    const r = await llamar("personaje_video", { cliente: "Baby Caleb", ropa: "acento", accesorio: "chupete", pelo: "ninguno", nombre: "Caleb" });
+    expect(r.texto).toMatch(/Guardado en el kit de Baby Caleb \(«Caleb»\): piel #F3C7A6, sin pelo, ropa acento, accesorio chupete/);
+    const kit = JSON.parse(db.sqlite.prepare("select kit_marca from clients where name = 'Baby Caleb'").get().kit_marca);
+    expect(kit.personajeVideo).toEqual({ piel: "#F3C7A6", pelo: "", ropa: "acento", accesorio: "chupete", nombre: "Caleb" });
+    // Un valor que no vale vuelve al de partida en vez de guardarse.
+    await llamar("personaje_video", { cliente: "Baby Caleb", accesorio: "espada" });
+    expect(JSON.parse(db.sqlite.prepare("select kit_marca from clients where name = 'Baby Caleb'").get().kit_marca).personajeVideo.accesorio).toBe("ninguno");
   });
 
   it("un cliente o un video de otro espacio no existen", async () => {

@@ -22,6 +22,7 @@ import { revisarEscenas } from "../lib/revisionEscenas";
 import { textoDeSubtitulo } from "../lib/subtitulos";
 import { listarVideos, leerVideo, crearVideo, guardarVideo, aprobarVideo, borrarVideo } from "../lib/videosApi";
 import { limpiarKit } from "../lib/kitMarca";
+import { conPersonajeDelKit } from "../lib/personajeVideo";
 import RenderVideo from "./RenderVideo";
 import "./VideoAnimado.css";
 
@@ -197,7 +198,7 @@ export default function VideoAnimado({ client, estudio, publicacion = null }) {
       <div className="va-cuerpo">
         <div className="va-previa">
           {validacion.guion?.escenas?.length
-            ? <VistaPrevia guion={validacion.guion} locucion={abierto.locucion ?? null} kit={kit} archivos={archivos} />
+            ? <VistaPrevia guion={conPersonajeDelKit(validacion.guion, kit)} locucion={abierto.locucion ?? null} kit={kit} archivos={archivos} />
             : <p className="hint">Sin escenas válidas no hay vista previa.</p>}
         </div>
 

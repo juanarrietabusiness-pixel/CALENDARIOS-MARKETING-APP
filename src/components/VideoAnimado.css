@@ -84,6 +84,8 @@
 .va-rev-grave .va-rev-tipo { background: var(--danger-soft); color: var(--danger); }
 
 /* Sonido e historial (VideoSonido.jsx) */
+.va-generar { display: grid; gap: var(--sp-2); }
+.va-generar summary { cursor: pointer; min-height: var(--tap); display: flex; align-items: center; font-weight: 600; }
 .va-sonido, .va-historial { border-top: 1px solid var(--border); padding-top: var(--sp-2); display: grid; gap: var(--sp-2); }
 .va-sonido summary, .va-historial summary { cursor: pointer; min-height: var(--tap); display: flex; align-items: center; font-weight: 600; }
 .va-check { display: flex; gap: var(--sp-2); align-items: flex-start; min-height: var(--tap-sm); }

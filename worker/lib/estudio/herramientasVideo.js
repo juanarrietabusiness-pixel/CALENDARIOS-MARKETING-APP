@@ -6,7 +6,7 @@
 //   · ver_video        uno entero: estado, qué falta, la línea de tiempo por escena, la locución y el guion (JSON)
 //   · crear_video      un proyecto nuevo (borrador), ligado o no a una publicación
 //   · guardar_video    reescribe el guion y/o el título (con la versión que se leyó)
-//   · editar_escena    cambia, añade, mueve o quita UNA escena sin reescribir el resto
+//   · editar_escena    cambia, añade, mueve o quita escenas sin reescribir el resto: una, o varias en una versión (`cambios`)
 //   · aprobar_video    aprueba el guion de esa versión: con eso generar_locucion ya puede hacer la voz
 //   · ver_cuadro       la IMAGEN de un instante (o de una escena, ya llena), dibujada por el Container con el mismo motor
 //   · ver_escenas      una sola imagen con un cuadro de cada escena, numerados: el video entero de un vistazo
@@ -17,6 +17,7 @@
 //   · sonido_video     lo que suena debajo de la voz: efectos (whoosh y pop) y la música de fondo con su volumen; no toca
 //                      el guion ni la voz (gratis)
 //   · musicas          las músicas de fondo del cliente (audio de su galería)
+//   · personaje_video  el aspecto del personaje de la casa en los videos del cliente (piel, pelo, ropa, accesorio): al kit
 //   · versiones_video  el historial del guion; volver_a_version vuelve a una (versión nueva, en borrador)
 //
 // Las tres de mirar devuelven { texto, imagenes } (no un texto): el MCP las manda como bloques de imagen y el
@@ -36,6 +37,10 @@ import {
   guardarSonido, versionesDe, volverAVersion,
 } from "../videosProyectos.js";
 import { musicasDe } from "./galeria.js";
+import { kitDe, guardarKit } from "./kit.js";
+import {
+  ACCESORIOS_PERSONAJE, EXPRESIONES_PERSONAJE, TOKENS_ROPA, ASPECTO_POR_DEFECTO, limpiarPersonaje, tieneAspecto,
+} from "../../../src/lib/personajeVideo.js";
 import { VOLUMEN_MUSICA } from "../../../src/lib/sonidoVideo.js";
 import { locucionAlDia } from "./locucion.js";
 import { lineaDeTiempo, NOMBRE_ESTADO_VIDEO, NOMBRE_TIPO_ESCENA, puedeGenerarVoz, sinEtiquetas, palabrasMudas, palabrasDe, textoDeLocucion } from "../../../src/lib/videoEscenas.js";
@@ -90,7 +95,7 @@ export const DEFINICIONES_VIDEO = Object.freeze([
   },
   {
     name: "editar_escena",
-    description: "Cambia UNA escena sin reescribir el guion: «escena» con el id de una que existe la reemplaza (con «posicion», además la mueve); con un id nuevo la añade en «posicion» (1 = la primera) o al final. «quitar» con un id la borra. El guion entero se valida y, si cambia, vuelve a borrador con la versión siguiente. No gasta nada.",
+    description: "Cambia escenas sin reescribir el guion. UNA: «escena» con el id de una que existe la reemplaza (con «posicion», además la mueve); con un id nuevo la añade en «posicion» (1 = la primera) o al final; «quitar» con un id la borra; «id» + «cambiar» cambia SÓLO esos campos (habla, pantalla, pausa, fondo, transicion, tipo, capas) sin mandar la escena entera. VARIAS A LA VEZ: «cambios», una lista de esos mismos cambios ({escena, posicion} | {quitar} | {id, cambiar, posicion}), hasta 20, que se aplican en orden y todos o ninguno: queda UNA versión nueva. El guion entero se valida y, si cambia, vuelve a borrador. No gasta nada.",
     input_schema: {
       type: "object",
       properties: {
@@ -98,6 +103,13 @@ export const DEFINICIONES_VIDEO = Object.freeze([
         escena: { type: "object", description: "La escena completa (con su id), en el formato de escenas v1." },
         posicion: { type: "integer", description: "Dónde va: 1 = la primera." },
         quitar: { type: "string", description: "El id de la escena que se borra (en vez de «escena»)." },
+        id: { type: "string", description: "El id de una escena que existe, para «cambiar» sólo algunos campos (o sólo moverla con «posicion»)." },
+        cambiar: { type: "object", description: "Los campos que cambian de la escena «id»: habla, pantalla, pausa, fondo, transicion, tipo o capas (capas va entera)." },
+        cambios: {
+          type: "array", maxItems: 20,
+          description: "Varios cambios en una sola versión, en orden. Cada uno: {escena, posicion?} | {quitar} | {id, cambiar?, posicion?}.",
+          items: { type: "object" },
+        },
       },
       required: ["video_id", "version"],
     },
@@ -174,6 +186,21 @@ export const DEFINICIONES_VIDEO = Object.freeze([
     input_schema: { type: "object", properties: { ...clienteParam } },
   },
   {
+    name: "personaje_video",
+    description: `El PERSONAJE de los videos animados del cliente: la figura de la casa (bebé, niño o adulto) que dibuja la pieza «personaje», con el MISMO aspecto en todos sus videos. Sin parámetros, dice cómo es ahora. Con ellos, lo guarda en el kit del cliente: piel y pelo #RRGGBB (pelo «ninguno» = sin pelo), ropa (un token de la marca: ${TOKENS_ROPA.join(", ")}; o #RRGGBB), accesorio (${ACCESORIOS_PERSONAJE.join(", ")}) y un nombre. En cada escena, la pieza dice su variante, su pose y su expresión (${EXPRESIONES_PERSONAJE.join(", ")}; «auto» la toma de la pose). No gasta nada; mira el resultado con ver_cuadro.`,
+    input_schema: {
+      type: "object",
+      properties: {
+        ...clienteParam,
+        piel: { type: "string", description: "#RRGGBB" },
+        pelo: { type: "string", description: "#RRGGBB o «ninguno»" },
+        ropa: { type: "string", description: "Un token de la marca o #RRGGBB" },
+        accesorio: { type: "string", enum: [...ACCESORIOS_PERSONAJE] },
+        nombre: { type: "string", description: "Cómo lo llama la marca (≤ 40)" },
+      },
+    },
+  },
+  {
     name: "versiones_video",
     description: "El HISTORIAL del guion de un video animado: cada versión de antes con su número, cuándo, quién, cuántas escenas, cuánto dura y el principio de lo que se dice. Para volver a una, volver_a_version. No gasta nada.",
     input_schema: { type: "object", properties: { ...clienteParam, ...videoParam }, required: ["video_id"] },
@@ -199,7 +226,7 @@ export const DEFINICIONES_VIDEO = Object.freeze([
 ]);
 
 /** Las que escriben (en el MCP van como escritura; las demás, de sólo lectura). */
-export const ESCRIBEN_VIDEO = Object.freeze(["crear_video", "guardar_video", "editar_escena", "aprobar_video", "renderizar_video", "ligar_video", "sonido_video", "volver_a_version"]);
+export const ESCRIBEN_VIDEO = Object.freeze(["crear_video", "guardar_video", "editar_escena", "aprobar_video", "renderizar_video", "ligar_video", "sonido_video", "volver_a_version", "personaje_video"]);
 
 /** Lo que falta para el siguiente paso, en una frase para el modelo. Pura. */
 /** ¿La locución es de la versión aprobada? (un video «aprobado» con voz de esa versión ya no la necesita otra vez). */
@@ -336,14 +363,14 @@ export function crearHerramientasVideo({ env, acceso, resolverCliente, usuario, 
       });
     },
 
-    async editar_escena({ cliente, video_id: id, version, escena, posicion, quitar }) {
+    async editar_escena({ cliente, video_id: id, version, escena, posicion, quitar, id: escenaId, cambiar, cambios }) {
       const c = await resolverCliente(cliente);
       return conErrores(async () => {
         const fila = await proyectoDe(acceso, c.id, id);
-        const r = await editarEscena(acceso, c, fila, { version, escena, posicion, quitar, por: por?.nombre ?? null });
+        const r = await editarEscena(acceso, c, fila, { version, escena, posicion, quitar, id: escenaId, cambiar, cambios, por: por?.nombre ?? null });
         if (r.cambio) avisar(c.id, id);
         return [
-          r.cambio ? `${r.que} Ahora es la versión ${r.video.version} (${NOMBRE_ESTADO_VIDEO[r.video.estado]}).` : "La escena ya estaba así: no cambió nada.",
+          r.cambio ? `${r.que} Ahora es la versión ${r.video.version} (${NOMBRE_ESTADO_VIDEO[r.video.estado]}).` : "Ya estaba así: no cambió nada.",
           r.avisos.length ? `Avisos: ${r.avisos.map((a) => `${a.donde}: ${a.mensaje}`).join("; ")}` : "",
           textoDelVideo(r.video, { conGuion: false }),
         ].filter(Boolean).join("\n");
@@ -401,6 +428,21 @@ export function crearHerramientasVideo({ env, acceso, resolverCliente, usuario, 
       const lista = await musicasDe(acceso, c.id);
       if (!lista.length) return `${c.name} no tiene músicas de fondo en su galería. Se suben desde la pantalla del video (Sonido → Subir música: MP3 o WAV de hasta 15 MB, con derechos para usarla).`;
       return [`Músicas de fondo de ${c.name}:`, ...lista.map((m) => `· ${m.id} — «${m.nombre}» · ${(m.bytes / 1048576).toFixed(1)} MB · ${String(m.fecha).slice(0, 10)}`)].join("\n");
+    },
+
+    async personaje_video({ cliente, ...cambios }) {
+      const c = await resolverCliente(cliente);
+      const kit = kitDe(c);
+      const describir = (p, guardado) => `${guardado ? "Guardado en el kit de" : "El personaje de"} ${c.name}${p.nombre ? ` («${p.nombre}»)` : ""}: piel ${p.piel}, ${p.pelo ? `pelo ${p.pelo}` : "sin pelo"}, ropa ${p.ropa}, accesorio ${p.accesorio}.${guardado ? " Sale así en todos sus videos (salvo un guion que traiga estilo.personaje propio)." : ""}`;
+      const campos = ["piel", "pelo", "ropa", "accesorio", "nombre"].filter((k) => cambios[k] !== undefined);
+      if (!campos.length) return tieneAspecto(kit.personajeVideo) ? describir(limpiarPersonaje(kit.personajeVideo), false) : `${c.name} no tiene personaje propio: se dibuja con el aspecto de partida (${describir(ASPECTO_POR_DEFECTO, false).split(": ")[1]})`;
+      const nuevo = limpiarPersonaje({ ...(kit.personajeVideo ?? {}), ...Object.fromEntries(campos.map((k) => [k, cambios[k]])) });
+      try {
+        const guardado = await guardarKit(env, acceso, c, { ...kit, personajeVideo: nuevo });
+        return describir(guardado.personajeVideo ?? nuevo, true);
+      } catch (e) {
+        throw new Fallo(e.message);
+      }
     },
 
     async versiones_video({ cliente, video_id: id }) {

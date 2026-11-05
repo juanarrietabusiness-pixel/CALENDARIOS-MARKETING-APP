@@ -226,30 +226,87 @@ export async function guardarSonido(acceso, cliente, fila, sonido) {
   return { video: deFila({ ...fila, sonido: JSON.stringify(limpio), updated_at: momento }) };
 }
 
+/** Lo más que cambia una sola llamada (cada cambio es una escena). */
+export const MAX_CAMBIOS = 20;
+/** Lo que se puede cambiar de una escena sin mandarla entera (`cambiar`). */
+const CAMPOS_ESCENA = Object.freeze(["tipo", "habla", "pantalla", "pausa", "fondo", "transicion", "capas"]);
+
 /**
- * Cambia UNA escena del guion guardado sin reescribir el resto: `escena` con un `id` que ya existe la reemplaza (y,
- * con `posicion`, la mueve); con uno nuevo la añade en `posicion` (1 = la primera) o al final; `quitar` (un id) la
- * borra. El guion resultante se valida entero y se guarda como `guardarProyecto`. → { video, avisos, cambio, que }.
+ * Aplica UN cambio a la lista de escenas (la cambia) y devuelve la frase de lo hecho. Formas:
+ *   { quitar: id }                         la borra
+ *   { escena: {…con id}, posicion? }       la reemplaza (y la mueve) o, con un id nuevo, la añade
+ *   { id, cambiar: { habla, pantalla… } }  cambia SÓLO esos campos de una que existe (sin mandarla entera)
+ *   { id, posicion }                       sólo la mueve
+ * Lanza ErrorVideo con el número del cambio si no se puede. Pura salvo por cambiar `escenas`.
  */
-export async function editarEscena(acceso, cliente, fila, { version, escena, posicion, quitar, por = null }) {
+function aplicarCambio(escenas, op, n = null) {
+  const de = n === null ? "" : `Cambio ${n}: `;
+  const falla = (m, e = 400) => { throw new ErrorVideo(`${de}${m}`, e); };
+  const lista = () => escenas.map((e) => e?.id).join(", ") || "ninguna";
+  const buscar = (id) => {
+    const i = escenas.findIndex((e) => e?.id === id);
+    if (i < 0) falla(`No hay ninguna escena «${id}». Las que hay: ${lista()}.`, 404);
+    return i;
+  };
+  const sitio = (posicion, def) => (Number.isInteger(posicion) ? Math.min(Math.max(posicion, 1), escenas.length + 1) - 1 : def);
+  if (!op || typeof op !== "object" || Array.isArray(op)) falla("Cada cambio es un objeto (escena, quitar o id con cambiar).");
+  if (op.quitar !== undefined && op.quitar !== null && op.quitar !== "") {
+    const i = buscar(op.quitar);
+    if (escenas.length === 1) falla("Es la única escena: un video necesita al menos una.");
+    escenas.splice(i, 1);
+    return `Quitada la escena «${op.quitar}».`;
+  }
+  if (op.escena !== undefined) {
+    const nueva = typeof op.escena === "string" ? leerJSON(op.escena, null) : op.escena;
+    if (!nueva || typeof nueva !== "object" || Array.isArray(nueva)) falla("La escena es un objeto con su id.");
+    const i = nueva.id ? escenas.findIndex((e) => e?.id === nueva.id) : -1;
+    if (i >= 0) escenas.splice(i, 1);
+    const k = sitio(op.posicion, i >= 0 ? i : escenas.length);
+    escenas.splice(k, 0, nueva);
+    return i >= 0 ? `Cambiada la escena «${nueva.id}»${k !== i ? ` (ahora es la ${k + 1})` : ""}.` : `Añadida una escena en la posición ${k + 1}.`;
+  }
+  if (op.id) {
+    const i = buscar(op.id);
+    const actual = escenas[i];
+    let frase = "";
+    if (op.cambiar !== undefined) {
+      const c = op.cambiar;
+      if (!c || typeof c !== "object" || Array.isArray(c)) falla("«cambiar» es un objeto con los campos de la escena.");
+      const fuera = Object.keys(c).filter((k) => !CAMPOS_ESCENA.includes(k));
+      if (fuera.length) falla(`«${fuera.join("», «")}» no se cambia así (se puede: ${CAMPOS_ESCENA.join(", ")}). Para cambiar el id, quítala y añádela.`);
+      escenas[i] = { ...actual, ...c };
+      frase = `Cambiada la escena «${op.id}» (${Object.keys(c).join(", ")})`;
+    }
+    if (Number.isInteger(op.posicion)) {
+      const [e] = escenas.splice(i, 1);
+      const k = sitio(op.posicion, i);
+      escenas.splice(k, 0, e);
+      frase = frase ? `${frase}, ahora es la ${k + 1}` : `Movida la escena «${op.id}» a la posición ${k + 1}`;
+    }
+    if (!frase) falla(`Para la escena «${op.id}» falta qué cambiar («cambiar» o «posicion»).`);
+    return `${frase}.`;
+  }
+  return falla("Falta la escena (un objeto con su id), el id de la que se quita o el id con lo que se cambia.");
+}
+
+/**
+ * Cambia escenas del guion guardado sin reescribir el resto. Uno: `escena` (con un id que existe la reemplaza y, con
+ * `posicion`, la mueve; con uno nuevo la añade), `quitar` (un id) o `id` + `cambiar`. VARIOS a la vez: `cambios`, una
+ * lista de esos mismos cambios (hasta MAX_CAMBIOS), que se aplican EN ORDEN y TODOS O NINGUNO: el guion resultante se
+ * valida entero y se guarda como UNA versión (`guardarProyecto`). → { video, avisos, cambio, que }.
+ */
+export async function editarEscena(acceso, cliente, fila, { version, escena, posicion, quitar, id, cambiar, cambios, por = null }) {
   comprobarVersion(fila, version);
   const guion = leerJSON(fila.guion, {});
   const escenas = Array.isArray(guion.escenas) ? [...guion.escenas] : [];
   let que;
-  if (quitar !== undefined && quitar !== null && quitar !== "") {
-    const i = escenas.findIndex((e) => e?.id === quitar);
-    if (i < 0) throw new ErrorVideo(`No hay ninguna escena «${quitar}». Las que hay: ${escenas.map((e) => e?.id).join(", ") || "ninguna"}.`, 404);
-    if (escenas.length === 1) throw new ErrorVideo("Es la única escena: un video necesita al menos una.", 400);
-    escenas.splice(i, 1);
-    que = `Quitada la escena «${quitar}».`;
+  if (cambios !== undefined && cambios !== null) {
+    const lista = typeof cambios === "string" ? leerJSON(cambios, null) : cambios;
+    if (!Array.isArray(lista) || !lista.length) throw new ErrorVideo("«cambios» es una lista con al menos un cambio.", 400);
+    if (lista.length > MAX_CAMBIOS) throw new ErrorVideo(`Como mucho ${MAX_CAMBIOS} cambios a la vez.`, 400);
+    que = lista.map((op, k) => aplicarCambio(escenas, op, k + 1)).join(" ");
   } else {
-    const nueva = typeof escena === "string" ? leerJSON(escena, null) : escena;
-    if (!nueva || typeof nueva !== "object" || Array.isArray(nueva)) throw new ErrorVideo("Falta la escena (un objeto con su id) o el id de la que se quita.", 400);
-    const i = nueva.id ? escenas.findIndex((e) => e?.id === nueva.id) : -1;
-    if (i >= 0) escenas.splice(i, 1);
-    const n = Number.isInteger(posicion) ? Math.min(Math.max(posicion, 1), escenas.length + 1) - 1 : i >= 0 ? i : escenas.length;
-    escenas.splice(n, 0, nueva);
-    que = i >= 0 ? `Cambiada la escena «${nueva.id}»${n !== i ? ` (ahora es la ${n + 1})` : ""}.` : `Añadida una escena en la posición ${n + 1}.`;
+    que = aplicarCambio(escenas, { escena, posicion, quitar, id, cambiar });
   }
   const r = await guardarProyecto(acceso, cliente, fila, { guion: { ...guion, escenas }, version, por });
   return { ...r, que };

@@ -1,0 +1,152 @@
+// ============================================================
+// La MÚSICA de fondo con Suno por Kie.ai, como TRABAJO del Estudio (lo puro, en src/lib/musica.js)
+//
+// Va como la voz (worker/lib/estudio/locucion.js): un trabajo de `estudio_trabajos` con `tipo: "audio"` que va por la
+// cola de Kie (enviar una vez, mirar, entregar), lo avanza la bomba del espacio aunque nadie mire y se cobra al
+// ENTREGARLO. Siempre se confirma: sin `confirmado: true`, 409 `confirmar` con el costo estimado.
+//
+// Al entregar, las pistas (Suno suele dar DOS versiones) se bajan a R2 y entran en la galería del cliente como audio
+// con `modelo: "musica-suno"` (así las lista `musicasDe` junto a las subidas). Si se pidió para un video, la primera
+// queda puesta en su SONIDO (`videos_proyectos.sonido`, aparte del guion): no sube la versión ni pide otra voz, sólo
+// volver a renderizar. Si el video estaba renderizando o ya tenía otra música escogida DESPUÉS de pedirla, no se pisa.
+// ============================================================
+
+import { uuid } from "../ids.js";
+import { difundir } from "../vivo.js";
+import { despertar } from "../despertar.js";
+import { bloqueoPorPresupuesto, registrarConsumoFijo } from "../configIA.js";
+import { MOTORES } from "./motores.js";
+import { ErrorMotor } from "./gemini.js";
+import { abrirDescarga, guardarDescarga } from "./descarga.js";
+import { claveDeArchivo } from "./archivos.js";
+import { validarGuion, lineaDeTiempo } from "../../../src/lib/videoEscenas.js";
+import { limpiarSonido } from "../../../src/lib/sonidoVideo.js";
+import {
+  limpiarPedidoMusica, costoDeMusica, costoCobrado, modeloDeMusica, duracionParaVideo, MODELO_MUSICA_GENERADA,
+} from "../../../src/lib/musica.js";
+import { textoCosto } from "../../../src/lib/estudioCatalogo.js";
+
+/** Lo más que pesa una pista (6 minutos en MP3 de 320 kbps son ~14 MB). */
+export const TOPE_MUSICA = 20 * 1024 * 1024;
+const TIPOS = ["audio/mpeg", "audio/wav"];
+
+/** Un error de lo pedido, con su estado HTTP y lo que la pantalla necesita (`codigo`, `costo`…). */
+export class ErrorMusica extends Error {
+  constructor(mensaje, estado = 400, extra = {}) {
+    super(mensaje);
+    this.estado = estado;
+    Object.assign(this, extra);
+  }
+}
+
+const leerJSON = (t, def) => { try { return typeof t === "string" ? JSON.parse(t) : (t ?? def); } catch { return def; } };
+
+/**
+ * Lo que el guion de un video dice de su música (`musica.estilo`, `musica.instrumental`) y lo que dura: es lo que se
+ * usa cuando el pedido no lo dice. → { estilo, instrumental, segundos }.
+ */
+function delGuion(video) {
+  const v = validarGuion(leerJSON(video?.guion, null));
+  if (!v.ok) return { estilo: "", instrumental: true, segundos: 0 };
+  const m = v.guion.musica ?? {};
+  return { estilo: m.estilo ?? "", instrumental: m.instrumental !== false, segundos: v.guion.escenas.length ? lineaDeTiempo(v.guion).total : 0 };
+}
+
+/**
+ * Pide una música: con `video` (una fila de videos_proyectos), el estilo y la duración salen de su guion si no se dicen.
+ * Sin `confirmado: true` contesta 409 con el costo; con él, crea el trabajo. → { trabajoId, costo, pedido }.
+ */
+export async function pedirMusica(env, acceso, cliente, { estilo, letra, instrumental, duracion, titulo, evitar, modelo, video = null, confirmado = false, usuario = null, origen = "persona" } = {}) {
+  if (!MOTORES.kie?.activo(env)) {
+    throw new ErrorMusica("La música con Suno va por Kie.ai, y este servidor no tiene su llave (KIE_API_KEY). El administrador la pone como secreto del Worker.", 503, { codigo: "sin_llave" });
+  }
+  const g = video ? delGuion(video) : { estilo: "", instrumental: true, segundos: 0 };
+  const r = limpiarPedidoMusica({
+    estilo: estilo || g.estilo, letra, instrumental: instrumental ?? g.instrumental, titulo, evitar, modelo,
+    duracion: duracion ?? (g.segundos ? duracionParaVideo(g.segundos) : undefined),
+  });
+  if (r.error) throw new ErrorMusica(r.error);
+  const p = r.pedido;
+  const m = modeloDeMusica(p.modelo);
+  const costo = costoDeMusica();
+  if (confirmado !== true) {
+    throw new ErrorMusica(
+      `La música «${p.titulo}» (${p.duracion} s, ${p.instrumental ? "instrumental" : "con voz"}, ${m.nombre}) cuesta ${textoCosto(costo.usd)} aproximadamente (${costo.creditos} ${costo.unidad}; Suno entrega dos versiones). Confírmalo para generarla.`,
+      409, { codigo: "confirmar", costo: costo.usd, creditos: costo.creditos, unidad: costo.unidad, pedido: p },
+    );
+  }
+  const bloqueo = await bloqueoPorPresupuesto(acceso);
+  if (bloqueo) throw new ErrorMusica(bloqueo, 402, { codigo: "presupuesto" });
+  const ahora = new Date().toISOString();
+  const fila = await acceso.insertar("estudio_trabajos", {
+    id: uuid(), client_id: cliente.id, estado: "en_cola", tipo: "audio", motor: "kie", modelo: m.id,
+    prompt: p.titulo, n: 1,
+    ajustes: JSON.stringify({ para: "musica", pedido: p, ...(video ? { videoId: video.id } : {}) }),
+    medios: "{}", remoto: "[]", archivos: "[]", nota: "", intentos: 0, bloqueado_hasta: "",
+    costo_estimado: costo.usd, costo: 0, error: "", origen, creado_por: usuario?.id ?? null,
+    calendar_id: null, post_id: null, carpeta_id: null, created_at: ahora, updated_at: ahora, terminado_at: null,
+  });
+  await despertar(env, acceso.ownerId);
+  return { trabajoId: fila.id, costo: costo.usd, creditos: costo.creditos, pedido: p };
+}
+
+/**
+ * Kie tiene las pistas: se bajan a R2, entran en la galería y, si se pidió para un video, la primera queda en su
+ * sonido. Lo llama `pasoDeCola` (trabajos.js) y devuelve los cambios del trabajo.
+ */
+export async function terminarMusica(env, acceso, fila, { listo, modelo }) {
+  const ajustes = leerJSON(fila.ajustes, {});
+  const p = ajustes.pedido ?? {};
+  const pistas = (listo.pistas ?? [{ url: listo.url }]).slice(0, 4);
+  const costo = costoCobrado(listo.resultado) ?? (Number(fila.costo_estimado) || 0);
+  const ahora = new Date().toISOString();
+  const guardadas = [];
+  for (const [i, pista] of pistas.entries()) {
+    try {
+      const descarga = await abrirDescarga(pista.url, { nombre: modelo.nombre, tope: TOPE_MUSICA, tipos: TIPOS });
+      const nombre = `${p.titulo || pista.titulo || "Música"}${pistas.length > 1 ? ` (${i + 1})` : ""}`;
+      const clave = claveDeArchivo(fila.client_id, nombre, descarga.mime);
+      const g = await guardarDescarga(env, clave, descarga);
+      const id = uuid();
+      await acceso.insertar("estudio_archivos", {
+        id, client_id: fila.client_id, clave, tipo: "audio", mime: descarga.mime, ancho: 0, alto: 0, bytes: g?.bytes ?? 0,
+        prompt: nombre, modelo: MODELO_MUSICA_GENERADA,
+        ajustes: JSON.stringify({ para: "musica", pedido: p, duracion: pista.duracion || 0, suno: { id: pista.id, modelo: modelo.suno } }),
+        trabajo_id: fila.id, carpeta_id: null, origen: "estudio", costo: i === 0 ? costo : 0, favorito: 0, subido: 0, usado_en: "[]",
+        borrado_at: null, created_at: ahora, updated_at: ahora,
+      });
+      guardadas.push({ id, clave, nombre });
+    } catch (e) {
+      // Una pista que no baja no tira la otra; si no baja ninguna, el trabajo falla (y se reintenta si es pasajero).
+      if (!(e instanceof ErrorMotor)) throw e;
+      if (i === pistas.length - 1 && !guardadas.length) throw e;
+    }
+  }
+  if (!guardadas.length) throw new ErrorMotor(`${modelo.nombre}: no se pudo bajar ninguna pista.`, 502, { reintentable: true });
+  await registrarConsumoFijo(acceso, { proveedor: "kie", funcion: "estudio-musica", modelo: modelo.id, costo, clienteId: fila.client_id });
+
+  let enVideo = "";
+  if (ajustes.videoId) enVideo = await ponerEnVideo(env, acceso, fila, ajustes.videoId, guardadas[0]);
+  const nota = `${guardadas.length === 1 ? "Una música" : `${guardadas.length} versiones de la música`} en la galería${enVideo ? ` · ${enVideo}` : ""}.`;
+  return {
+    estado: "hecho", intentos: 0, error: "", costo, terminado_at: ahora,
+    archivos: JSON.stringify(guardadas.map((x) => x.id)), nota: nota.slice(0, 400),
+  };
+}
+
+/** Pone la primera pista en el sonido del video (si sigue sin otra música escogida después del pedido). → la frase. */
+async function ponerEnVideo(env, acceso, fila, videoId, pista) {
+  const video = await acceso.leerUno("videos_proyectos", { id: videoId, client_id: fila.client_id }).catch(() => null);
+  if (!video) return "";
+  if (video.estado === "renderizando") return "el video se estaba renderizando: escógela en «Sonido»";
+  const antes = limpiarSonido(leerJSON(video.sonido, null));
+  // Si alguien escogió otra música DESPUÉS de pedir ésta, se respeta.
+  if (antes.musica && video.updated_at > fila.created_at) return "el video ya tenía otra música escogida: cámbiala en «Sonido» si quieres ésta";
+  const sonido = limpiarSonido({ ...antes, musica: { archivoId: pista.id, clave: pista.clave, nombre: pista.nombre, volumen: antes.musica?.volumen ?? 0 } });
+  const n = await acceso.actualizar("videos_proyectos", { id: video.id, client_id: fila.client_id, updated_at: video.updated_at }, {
+    sonido: JSON.stringify(sonido), updated_at: new Date().toISOString(),
+  });
+  if (!n) return "escógela en «Sonido»";
+  difundir(env, acceso.ownerId, { tipo: "videos", clienteId: fila.client_id, id: video.id, por: { userId: "sistema", nombre: "Estudio", color: "", tab: null } });
+  return "puesta en el video (vuelve a renderizar para oírla)";
+}

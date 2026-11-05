@@ -375,6 +375,7 @@ export function describirUso(nombre, entrada = {}) {
     case "listar_voces": return `Miró las voces${entrada.cliente ? ` de ${entrada.cliente}` : ""}`;
     case "previsualizar_voz": return `Pidió la muestra de una voz${entrada.confirmado === true ? "" : " (sin confirmar)"}`;
     case "generar_locucion": return `Pidió la locución de un video animado${entrada.confirmado === true ? "" : " (sin confirmar)"}`;
+    case "generar_musica": return `Pidió una música de fondo con Suno${entrada.confirmado === true ? "" : " (sin confirmar)"}`;
     case "formato_video": return "Leyó el formato de escenas del video animado";
     case "listar_videos": return `Miró los videos animados${entrada.cliente ? ` de ${entrada.cliente}` : ""}`;
     case "ver_video": return "Miró un video animado";
@@ -387,6 +388,7 @@ export function describirUso(nombre, entrada = {}) {
     case "revisar_video": return "Revisó el video animado antes de renderizar";
     case "renderizar_video": return "Pidió el render a mp4 de un video animado";
     case "ligar_video": return entrada.publicacion_id ? "Ligó un video animado a una publicación" : "Desligó un video animado de su publicación";
+    case "personaje_video": return ["piel", "pelo", "ropa", "accesorio", "nombre"].some((k) => entrada[k] !== undefined) ? "Cambió el personaje de los videos animados" : "Miró el personaje de los videos animados";
     case "sonido_video": return entrada.efectos === undefined && entrada.musica_id === undefined && entrada.volumen === undefined ? "Miró el sonido de un video animado" : "Cambió el sonido de un video animado (efectos o música)";
     case "musicas": return `Miró las músicas de fondo${entrada.cliente ? ` de ${entrada.cliente}` : ""}`;
     case "versiones_video": return "Miró el historial de un video animado";

@@ -25,6 +25,7 @@ import { pedidoDelVideo, aBase64 } from "./cuadros.js";
 import { claveDeArchivo, claveDelCliente, slugCorto } from "./archivos.js";
 import { puedeRenderizar, esMp4, PLAZO_RENDER_MS } from "../../../src/lib/renderVideo.js";
 import { limpiarSonido } from "../../../src/lib/sonidoVideo.js";
+import { dbDeVolumenGuion } from "../../../src/lib/musica.js";
 
 const leerJSON = (t, d) => { try { return typeof t === "string" ? JSON.parse(t) : (t ?? d); } catch { return d; } };
 const SISTEMA = { userId: "sistema", nombre: "Render", color: "", tab: null };
@@ -169,6 +170,13 @@ export async function ejecutarRender(env, { ownerId, clienteId, videoId, intento
 
     // El sonido de debajo (efectos y música): aparte del guion. Una música que ya no está no tumba el render: va sin ella.
     const sonido = limpiarSonido(leerJSON(fila.sonido, {}));
+    // Sin música escogida en «Sonido», la que el GUION trae por su clave (con su volumen 0–1 pasado a dB).
+    if (!sonido.musica) {
+      const delGuion = leerJSON(fila.guion, {})?.musica;
+      if (delGuion?.clave && claveDelCliente(delGuion.clave, clienteId)) {
+        sonido.musica = { archivoId: "guion", clave: delGuion.clave, nombre: "La música del guion", volumen: dbDeVolumenGuion(delGuion.volumen ?? 0.35) };
+      }
+    }
     let musica = null;
     let sinMusica = null;
     const claveMusica = sonido.musica ? claveDelCliente(sonido.musica.clave, clienteId) : null;
