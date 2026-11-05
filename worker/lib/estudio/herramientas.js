@@ -8,7 +8,8 @@
 //                        marcha, la GUÍA VISUAL de la marca (del cerebro) y el CATÁLOGO
 //                        con los ids de las fotos de cada producto y del logo
 //   · crear_en_estudio   pide una imagen o un video: un TRABAJO, no una espera
-//   · estado_trabajo     cómo va un pedido y qué archivos dio
+//   · estado_trabajo     cómo va un pedido y qué archivos dio (terminado: con las IMÁGENES, para que las mire)
+//   · ver_pieza          mirar piezas de la galería por su ID (copia reducida por el Container: miniaturas.js)
 //
 // CREAR NO ESPERA. El Worker no puede quedarse a ver un video; el pedido queda
 // en la cola del Estudio, lo avanza el cron del minuto (o el navegador de quien
@@ -54,6 +55,7 @@ import { pedirMusica, ErrorMusica } from "./musica.js";
 import { DURACION_MUSICA } from "../../../src/lib/musica.js";
 import { MODELOS_VOZ } from "../../../src/lib/voces.js";
 import { DEFINICIONES_VIDEO, crearHerramientasVideo } from "./herramientasVideo.js";
+import { miniaturasDe, MAX_PIEZAS_VISTAS } from "./miniaturas.js";
 
 /** Lo más que puede pedir una IA de una vez. La pantalla admite más (8 imágenes, 2 videos): ahí lo ve una persona. */
 // 15 s: lo que dura un clip de MiniMax H3 o Kling 3.0 (la receta «Video del producto»). El gasto lo frena la confirmación.
@@ -116,8 +118,26 @@ export const DEFINICIONES_ESTUDIO = Object.freeze([
   },
   {
     name: "estado_trabajo",
-    description: "Cómo va un pedido del Estudio (el ID lo dio crear_en_estudio o sale en ver_estudio): si sigue en marcha, si falló y por qué, y qué archivos dio (con sus IDs).",
+    description:
+      "Cómo va un pedido del Estudio (el ID lo dio crear_en_estudio o sale en ver_estudio): si sigue en marcha, si falló y por qué, y qué archivos dio " +
+      "(con sus IDs). Cuando ya terminó, devuelve además las IMÁGENES (una copia reducida) para que las MIRES: juzga el texto letra por letra, la " +
+      "composición y la marca antes de decir que está bien.",
     input_schema: { type: "object", properties: { trabajo_id: { type: "string" } }, required: ["trabajo_id"] },
+  },
+  {
+    name: "ver_pieza",
+    description:
+      "MIRA piezas de la galería del Estudio de un cliente por su ID (de ver_estudio, estado_trabajo o un diseño): devuelve cada imagen (una copia " +
+      `reducida) con lo que se sabe de ella —modelo, el pedido, el resultado del control de calidad y si la usa una publicación—. Hasta ${MAX_PIEZAS_VISTAS} a la vez. ` +
+      "Úsala antes de decir que una pieza está bien o de proponer una corrección. No gasta.",
+    input_schema: {
+      type: "object",
+      properties: {
+        cliente: { type: "string", description: "Nombre o ID del cliente." },
+        archivo_ids: { type: "array", items: { type: "string" }, description: "IDs de la galería (de 1 a 6)." },
+      },
+      required: ["cliente", "archivo_ids"],
+    },
   },
   {
     name: "listar_voces",
@@ -253,6 +273,24 @@ export function textoDelCatalogo(catalogo, kit, archivos) {
  * Lo que devuelve la voz al asistente: la confirmación NO es un fallo (es la respuesta correcta a un pedido que cuesta),
  * así que vuelve como texto con la cifra y la orden de preguntar; lo demás, como error que el modelo pueda leer.
  */
+const leerJSON = (t, d) => { try { return typeof t === "string" ? JSON.parse(t) : (t ?? d); } catch { return d; } };
+
+/** Lo que se sabe de una pieza de la galería, en una línea: así el modelo la juzga sabiendo qué se pidió. */
+export function lineaDePieza(f, n) {
+  const control = leerJSON(f.ajustes, {})?.control;
+  const usos = leerJSON(f.usado_en, []);
+  const pedido = String(f.prompt ?? "").replace(/\s+/g, " ").trim();
+  const partes = [
+    `${n}. ${f.id} · ${f.tipo}${f.ancho && f.alto ? ` ${f.ancho}×${f.alto}` : ""} · ${f.modelo ? nombreDelModelo(f.modelo) : f.origen}`,
+    control
+      ? `control: ${control.estado === "ok" ? "bien" : "revisar"}${control.errores?.length ? ` (${control.errores.length} error${control.errores.length > 1 ? "es" : ""} de texto)` : ""}${control.puntajeDiseno ? `, diseño ${control.puntajeDiseno}/10` : ""}`
+      : "sin control de calidad",
+    Array.isArray(usos) && usos.length ? (usos.length > 1 ? `la usan ${usos.length} publicaciones` : "la usa una publicación") : "",
+    pedido ? `pedido: «${pedido.slice(0, 280)}${pedido.length > 280 ? "…" : ""}»` : "",
+  ];
+  return `· ${partes.filter(Boolean).join(" · ")}`;
+}
+
 function confirmacionDeVoz(e) {
   if (!(e instanceof ErrorVoz)) throw e;
   if (e.codigo === "confirmar") {
@@ -408,19 +446,50 @@ export function crearHerramientasEstudio({ env, acceso, resolverCliente, usuario
       const fila = await acceso.leerUno("estudio_trabajos", { id: String(id ?? "") });
       if (!fila) throw new ErrorHerramientaEstudio(`No encontré el pedido «${id}».`);
       const t = trabajoPublico(fila);
-      const archivos = t.archivos.length
-        ? (await Promise.all(t.archivos.map((a) => acceso.leerUno("estudio_archivos", { id: String(a), client_id: fila.client_id }))))
-          .filter(Boolean).map((f) => `· ${f.id} · ${f.tipo} · /api/media/${f.clave}`)
+      const fichas = t.archivos.length
+        ? (await Promise.all(t.archivos.map((a) => acceso.leerUno("estudio_archivos", { id: String(a), client_id: fila.client_id })))).filter(Boolean)
         : [];
-      return [
+      const texto = [
         `Pedido ${t.id}: ${NOMBRE_ESTADO[t.estado] ?? t.estado} — ${nombreDelModelo(t.modelo)}, ${t.n} ${t.tipo === "video" ? "video" : "imagen"}${t.n > 1 ? "s" : ""}.`,
         t.error ? `Motivo: ${t.error}` : "",
         t.nota ? `Nota: ${t.nota}` : "",
         `Llevan ${t.archivos.length} de ${t.n}.`,
         t.costo > 0 ? `Costo real hasta ahora: ${textoCosto(t.costo)}.` : "",
-        archivos.length ? `Archivos:\n${archivos.join("\n")}` : "",
+        fichas.length ? `Archivos:\n${fichas.map((f) => `· ${f.id} · ${f.tipo} · /api/media/${f.clave}`).join("\n")}` : "",
         estaVivo(t.estado) ? "Sigue en marcha: se hace solo." : "",
       ].filter(Boolean).join("\n");
+      // Terminado: las imágenes van para que el modelo las MIRE (lo que se pide en curso no se enseña a medias).
+      const imagenes = estaVivo(t.estado) ? [] : fichas.filter((f) => String(f.mime ?? "").startsWith("image/"));
+      if (!imagenes.length) return texto;
+      const vistas = (await miniaturasDe(env, imagenes)).filter(Boolean);
+      if (!vistas.length) return `${texto}\n(No pude enseñarte las imágenes ahora; están en la galería.)`;
+      return { texto: `${texto}\nVan ${vistas.length === 1 ? "la imagen" : `las ${vistas.length} imágenes`} (copia reducida), en el orden de arriba: míralas.`, imagenes: vistas };
+    },
+
+    async ver_pieza({ cliente, archivo_ids: ids = [] }) {
+      const c = await resolverCliente(cliente);
+      const lista = [...new Set((Array.isArray(ids) ? ids : [ids]).map((x) => String(x ?? "").trim()).filter(Boolean))];
+      if (!lista.length) throw new ErrorHerramientaEstudio("Dime los IDs de la galería que quieres ver (de ver_estudio o estado_trabajo).");
+      if (lista.length > MAX_PIEZAS_VISTAS) throw new ErrorHerramientaEstudio(`Como mucho ${MAX_PIEZAS_VISTAS} piezas a la vez.`);
+      const fichas = [];
+      const lineas = [];
+      for (const id of lista) {
+        const f = await acceso.leerUno("estudio_archivos", { id, client_id: c.id });
+        if (!f || f.borrado_at) { lineas.push(`· ${id}: no está en la galería de ${c.name}.`); continue; }
+        fichas.push(f);
+        lineas.push(lineaDePieza(f, fichas.length));
+      }
+      if (!fichas.length) throw new ErrorHerramientaEstudio(`Ninguna de esas piezas está en la galería de ${c.name}.`);
+      const vistas = await miniaturasDe(env, fichas);
+      const imagenes = [];
+      const sinVer = [];
+      fichas.forEach((f, i) => { if (vistas[i]) imagenes.push(vistas[i]); else sinVer.push(f.id); });
+      const texto = [
+        `${fichas.length === 1 ? "La pieza" : `Las ${fichas.length} piezas`} de ${c.name}, en este orden:`,
+        ...lineas,
+        sinVer.length ? `Sin imagen que enseñar (video, o no se pudo reducir): ${sinVer.join(", ")}.` : "",
+      ].filter(Boolean).join("\n");
+      return imagenes.length ? { texto, imagenes } : texto;
     },
 
     async listar_voces({ cliente }) {

@@ -5,7 +5,7 @@
 // arranque no basta, tiene que dibujar. Con el guion de ejemplo neutro comprueba:
 //   · /salud contesta;
 //   · /cuadro da un JPEG de 540 px de ancho en la proporción del formato, con su escena;
-//   · /hoja da una imagen; /revisar da la revisión en JSON;
+//   · /miniatura reduce una imagen a JPEG (y una que no lo es, 400); /hoja da una imagen; /revisar da la revisión en JSON;
 //   · /render da un mp4 de verdad, de la duración de la línea de tiempo, con el volumen en -14 LUFS (±1) aunque la voz
 //     llegue mucho más baja (una voz sintética: un tono que sube y baja, en WAV);
 //   · un guion roto es un 400 con el motivo, no un 500.
@@ -58,6 +58,16 @@ const m = medidasJpeg(c.bytes);
 if (!m || m.ancho !== 540 || m.alto !== 960) falla(`/cuadro no es un JPEG de 540 × 960 (${JSON.stringify(m)})`);
 if (c.cabeceras.get("x-escena") !== "e1") falla(`/cuadro en 1,5 s debería ser la escena e1, no ${c.cabeceras.get("x-escena")}`);
 console.log(`✓ /cuadro (${c.bytes.length} bytes, ${c.cabeceras.get("x-ms")} ms)`);
+
+// La miniatura de una pieza del Estudio (lo que Claude ve por MCP): el cuadro de arriba reducido a 256 de lado mayor.
+const mini = await fetch(`${base}/miniatura`, { method: "POST", body: JSON.stringify({ imagen: Buffer.from(c.bytes).toString("base64"), lado: 256 }) });
+const mj = await mini.json().catch(() => ({}));
+if (mini.status !== 200 || mj.mime !== "image/jpeg" || mj.alto !== 256 || mj.ancho !== 144 || mj.original?.alto !== 960) falla(`/miniatura devolvió ${mini.status}: ${JSON.stringify({ ...mj, datos: undefined })}`);
+const mm = medidasJpeg(Buffer.from(mj.datos, "base64"));
+if (!mm || mm.alto !== 256) falla(`/miniatura no devolvió un JPEG de 256 de alto (${JSON.stringify(mm)})`);
+const malo = await fetch(`${base}/miniatura`, { method: "POST", body: JSON.stringify({ imagen: "bm8gZXMgdW5hIGltYWdlbg==" }) });
+if (malo.status !== 400) falla(`/miniatura con algo que no es imagen debería ser 400, fue ${malo.status}`);
+console.log("✓ /miniatura");
 
 const h = await post("/hoja");
 if (h.estado !== 200 || !medidasJpeg(h.bytes)) falla(`/hoja devolvió ${h.estado}`);

@@ -11,15 +11,18 @@
 //   POST /revisar   { …, formatos? }         → JSON { problemas, texto }: la revisión con las fuentes reales
 //   POST /render    { …, audio? (base64), musica? { audio (base64), volumen }, efectos? (bool) }   → el MP4 entero (voz con los silencios, -14 LUFS, subtítulos), y en
 //                                              cabeceras lo que tardó, la duración y el volumen medido
+//   POST /miniatura { imagen (base64), lado? }  → JSON { datos (base64), mime, ancho, alto, original }: una COPIA
+//                                              reducida en JPEG (lado mayor ≤ `lado`, 768 por defecto) para que Claude
+//                                              VEA una pieza del Estudio por MCP sin mandarle la de 2K. No lleva guion.
 //
-// Todo pedido lleva { guion, palabras, formato, paleta, imagenes, logo, fuentes } (ver recursos.mjs). El guion se
-// valida aquí también: lo que no valida no se dibuja.
+// Todo pedido del video lleva { guion, palabras, formato, paleta, imagenes, logo, fuentes } (ver recursos.mjs). El
+// guion se valida aquí también: lo que no valida no se dibuja.
 // ============================================================
 
 import { createServer } from "node:http";
 import { Buffer } from "node:buffer";
 import process from "node:process";
-import { createCanvas } from "@napi-rs/canvas";
+import { createCanvas, loadImage } from "@napi-rs/canvas";
 import { validarGuion, lineaDeTiempo, FORMATOS_VIDEO } from "../src/lib/videoEscenas.js";
 import { dibujarFrame, paletaDelGuion, escenaEn } from "../src/lib/motorVideo.js";
 import { revisarEscenas, textoDeRevision, instanteLleno } from "../src/lib/revisionEscenas.js";
@@ -76,7 +79,30 @@ function cuadro(base, t, ancho) {
 
 const codificar = (lienzo, tipo) => (tipo === "png" ? lienzo.encode("png") : lienzo.encode("jpeg", 84));
 
+/** El lado mayor de una miniatura: lo que Claude necesita para juzgar una pieza sin pagar los tokens de una de 2K. */
+const LADO_MINIATURA = 768;
+
+/** Una imagen (base64) → su copia reducida en JPEG sobre blanco (el JPEG no tiene alfa). */
+async function miniatura(p) {
+  if (typeof p.imagen !== "string" || !p.imagen) throw new ErrorPedido("Falta la imagen.");
+  let img;
+  try { img = await loadImage(Buffer.from(p.imagen, "base64")); } catch { throw new ErrorPedido("No es una imagen que se pueda leer."); }
+  const lado = Math.max(128, Math.min(1600, Math.round(Number(p.lado) || LADO_MINIATURA)));
+  const f = Math.min(1, lado / Math.max(img.width, img.height));
+  const w = Math.max(1, Math.round(img.width * f));
+  const h = Math.max(1, Math.round(img.height * f));
+  const lienzo = createCanvas(w, h);
+  const ctx = lienzo.getContext("2d");
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, w, h);
+  ctx.drawImage(img, 0, 0, w, h);
+  const jpg = await lienzo.encode("jpeg", 82);
+  const json = JSON.stringify({ datos: jpg.toString("base64"), mime: "image/jpeg", ancho: w, alto: h, original: { ancho: img.width, alto: img.height } });
+  return { cuerpo: Buffer.from(json), tipo: "application/json", cabeceras: {} };
+}
+
 async function atender(ruta, p) {
+  if (ruta === "/miniatura") return miniatura(p);
   const base = await preparar(p);
   const total = base.linea.total;
   if (ruta === "/cuadro") {
