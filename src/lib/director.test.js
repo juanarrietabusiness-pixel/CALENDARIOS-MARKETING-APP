@@ -22,6 +22,38 @@ describe("la ficha de diseño", () => {
   });
 });
 
+describe("una ficha larga se acorta sin perder el texto (Feria del Lente, 5-nov-2026)", () => {
+  // La del director, como salió en producción (1.800+ caracteres por la línea «Fotografía»): cortada por el final,
+  // llegó al motor con «titular «Tus lentes en 40 mi» y sin marca ni «Evitar».
+  const larga = [
+    "Pieza: Post de feed 4:5 (1080x1350px) — Diferenciador para vender el servicio exclusivo de fabricación en 40 minutos a quien necesita lentes el mismo día en Ciudad de Panamá y La Chorrera.",
+    `Composición: Retícula con márgenes de 7% a cada lado; titular entre el 10% y el 18% de la altura, 78% del ancho, centrado; foto circular contenida entre el 24% y el 72% de la altura, 68% del ancho, centrada; ${"forma geométrica plana en la esquina, ".repeat(6)}logo abajo, 18% del ancho.`,
+    "Fondo: Color plano y liso Crema hueso #F2EDE4 sin textura, sin degradado, sin viñeta, luminoso y uniforme en toda la pieza.",
+    `Imagen principal: manos de técnico panameño colocando un lente transparente en la biseladora del taller, ${"encuadre medio cerrado a la altura de la mesa, ".repeat(5)}sin marcas.`,
+    `Fotografía: Luz difusa que entra por ventana amplia a la izquierda, 5200K; lente 85mm a f/4.5; ${"textura real de piel y metal sin aspecto plástico, ".repeat(6)}sin HDR.`,
+    "Texto (exacto, sin cambiar una letra): titular «Tus lentes en 40 minutos» (8 % de la altura, Oswald mayúsculas, rojo #D91B19); apoyo «Ciudad de Panamá y La Chorrera» (3,5 %, Montserrat, negro); botón «Agenda tu examen» (píldora roja con letra blanca).",
+    "Marca: el logo de referencia abajo al centro, 18 % del ancho.",
+    "Evitar: manos con dedos de más, una biseladora inventada con texto, letras de más.",
+  ].join("\n");
+
+  it("limpiarFicha la acorta por lo prescindible y la línea del texto llega entera", () => {
+    expect(larga.length).toBeGreaterThan(MAX_FICHA);
+    const f = limpiarFicha(larga);
+    expect(f.length).toBeLessThanOrEqual(MAX_FICHA);
+    expect(f).toContain("titular «Tus lentes en 40 minutos»");
+    expect(f).toContain("botón «Agenda tu examen» (píldora roja con letra blanca).");
+    expect(f.startsWith("Pieza: Post de feed 4:5")).toBe(true);
+  });
+
+  it("asegurarTexto añade la línea del texto aunque la ficha esté en el tope (antes el tope se la volvía a quitar)", () => {
+    const sinTexto = larga.replace(/\nTexto \(exacto[^\n]*/, "").replace("Evitar: ", `Evitar: ${"x ".repeat(400)}`);
+    const f = asegurarTexto(sinTexto, "Tus lentes en 40 minutos\nCiudad de Panamá y La Chorrera\nAgenda tu examen");
+    expect(f.length).toBeLessThanOrEqual(MAX_FICHA);
+    // «Ciudad de Panamá y La Chorrera» ya lo dice la línea «Pieza»: sólo se reponen las que faltan.
+    expect(f.split("\n").at(-1)).toBe("Texto exacto que va en la imagen (gana sobre cualquier otro texto de esta ficha): «Tus lentes en 40 minutos» / «Agenda tu examen».");
+  });
+});
+
 describe("el director de arte por tandas", () => {
   const piezas = [{ n: 1, idea: "Envío gratis", texto: "Envío gratis\nTodo noviembre" }, { n: 2, idea: "El sofá", sinTexto: true, indicacion: "fondo blanco" }];
 

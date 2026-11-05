@@ -220,9 +220,15 @@ export function correccionDeTexto(control, textoEsperado = "") {
     .map((e) => (e.escrito ? `donde dice "${e.escrito}" debe decir "${e.esperado}"` : e.esperado ? `falta la palabra "${e.esperado}"` : ""))
     .filter(Boolean);
   if (!cambios.length) return "";
+  // Varias líneas (titular, apoyo, botón) se dicen como líneas, cada una en su sitio: juntas en una frase, la edición
+  // las escribía todas del tamaño del titular y el botón dejaba de ser botón.
+  const lineas = String(textoEsperado ?? "").split("\n").map((l) => l.replace(/\s+/g, " ").trim().replace(/"/g, "'")).filter(Boolean);
+  const completo = lineas.length > 1
+    ? `El texto completo tiene que quedar EXACTAMENTE así, en ${lineas.length} líneas separadas y cada una en su sitio y con su tamaño (la primera es el titular, lo más grande; las demás, más pequeñas, como el apoyo o el botón): ${lineas.map((l) => `"${corto(l, 160)}"`).join(" / ")}.`
+    : lineas.length ? `El texto completo tiene que quedar EXACTAMENTE así: "${corto(lineas[0], 400)}".` : "";
   return [
     `Corrige SÓLO el texto de esta imagen: ${cambios.join("; ")}.`,
-    textoEsperado ? `El texto completo tiene que quedar EXACTAMENTE así: "${corto(textoEsperado, 400).replace(/"/g, "'")}".` : "",
+    completo,
     "Conserva todo lo demás exactamente igual: la composición, los colores, la tipografía y su tamaño, la posición del texto, las personas, los objetos y el logo.",
   ].filter(Boolean).join(" ");
 }

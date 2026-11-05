@@ -3490,6 +3490,11 @@ son del servidor.
   `crear_en_estudio`, se rechazaba entero. Ahora se quita primero «Marca» (la paleta la dice el kit; el sitio del logo,
   la composición), luego «Evitar» y «Fondo», y después se recorta la línea más larga por una palabra; la pieza y el texto
   exacto nunca. Lo usan `pedidoDePieza`, `conEscena` (encargos) y `crear_en_estudio` (que además lo dice).
+  · **Y la ficha del director tampoco se corta por el final al LEERLA** (`limpiarFicha` → `ajustarFicha` a `MAX_FICHA`;
+  `asegurarTexto` acorta lo demás para que su línea quepa). Con la línea «Fotografía» las fichas pasan de 1.800: la prueba de
+  Feria del Lente (5-nov) llegó al motor con «titular «Tus lentes en 40 mi» y sin marca ni «Evitar», y `asegurarTexto`
+  añadía el texto y el tope se lo volvía a quitar. El control «arregló» el texto que faltaba en UNA frase y titular, apoyo y
+  botón salieron del mismo tamaño: `correccionDeTexto` dice ahora cada línea en su sitio y con su tamaño.
   · **Las fotos del producto se ENDEREZAN** (una línea, una vez, si va alguna): las del catálogo suelen ser del celular,
   inclinadas o desde arriba, y el motor copiaba ese ángulo y ese fondo; lo impreso, tal cual y sin traducir.
   `crear_en_estudio` (asistente y MCP) ya las nombra como el producto REAL (`refsDelCatalogo`): antes iban sin línea.
