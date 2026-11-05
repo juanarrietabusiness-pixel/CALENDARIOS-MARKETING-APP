@@ -284,57 +284,80 @@ eso salen el ROAS y el CPA de equilibrio y el costo máximo por conversación. S
 el diagnóstico, el informe y el estratega sin teclearlo. La calculadora de presupuesto (meta de ventas → inversión →
 reparto por etapas) va aquí.
 
-**Las fórmulas: lo que dicen los apuntes y lo que falta.** Los apuntes dan las ENTRADAS de cada Excel, no sus fórmulas.
-Lo que sí está:
+**Las fórmulas, confirmadas (5-nov).** La agencia pasó los tres Excel del curso y la calculadora de rentabilidad que
+usa (deeplook.co/calculadora-roas, pública). Son dos números distintos y la app necesita los dos:
 
-- El número mágico depende del objetivo: mensajes, costo por conversación; tráfico, costo por clic único; clientes
-  potenciales, costo por cliente potencial; ventas por catálogo, ROAS o costo por compra; tráfico al negocio, CPM.
-- En mensajes: el % de quienes escriben y compran × el costo por compra objetivo = el costo por conversación. El % se
-  mide a mano (5 % de partida).
-- La calculadora de equilibrio pide, como % del BRUTO: producción, envíos, devoluciones, comisiones y otros costos
-  variables; además la tasa de cierre (no en e-commerce) y los costos fijos. Meta reporta en bruto (con impuestos y
-  devoluciones).
-- El equilibrio es una alarma, no el objetivo: se optimiza buscando lo más alto por encima del ROAS de equilibrio y el
-  menor costo posible por debajo del CAC de equilibrio.
-- El presupuesto pide la meta de ventas, el ticket y el % de la ganancia que se invierte en clientes nuevos, y devuelve
-  las ventas necesarias, la inversión y los márgenes. No dice cómo.
-- Del simulador sólo se sabe que existe («simular los mejores resultados y fijar un objetivo»). Los costos fijos de
-  leads y mensajes están en blanco en los apuntes.
+- **El OBJETIVO (el número mágico): cuánto se está dispuesto a pagar.** Excel «Calculadora de presupuesto». Entradas:
+  meta de ventas del mes, ticket promedio y el % DE LA VENTA que se invierte en conseguir un cliente (no todo el margen:
+  si el margen es 35 % y se quiere ganar al menos 15 %, se invierte 20 %).
+  · ventas necesarias = meta ÷ ticket
+  · costo por compra objetivo = ticket × %
+  · inversión del mes = meta × %
+  · ROAS objetivo = meta ÷ inversión (= 1 ÷ %)
+  · en mensajes y clientes potenciales: costo por conversación objetivo = costo por compra objetivo × tasa de cierre
+  (5 % si no se ha medido; luego la real).
+- **El LÍMITE (el equilibrio): a partir de qué número se pierde dinero.** Calculadora de deeplook. Entradas: modelo
+  (e-commerce, clientes potenciales, mensajes); costos variables en % de la venta NETA (producción, envíos, pasarela,
+  otros); IVA (en Panamá, ITBMS 7 %); devoluciones en % de la venta total; costos fijos del mes (con el fee de la
+  agencia, sin la pauta); presupuesto de pauta del mes; ticket; tasa de cierre; y si se mide todo el negocio (ventas
+  totales ÷ pauta) o sólo la pauta (con las ventas de otros canales aparte).
+  · margen bruto = 1 − la suma de los costos variables
+  · margen efectivo = margen bruto × (1 − devoluciones) ÷ (1 + ITBMS): lleva el margen a la venta con impuesto
+  · piso = 1 ÷ margen efectivo (por debajo, cada dólar de pauta pierde, sin contar los fijos)
+  · ROAS de equilibrio = (fijos + presupuesto − ventas de otros canales × margen efectivo) ÷ (presupuesto × margen
+  efectivo), y nunca por debajo del piso
+  · CAC de equilibrio = ticket ÷ ROAS de equilibrio
+  · costo por conversación de equilibrio = CAC de equilibrio × tasa de cierre
+  · utilidad del mes a un ROAS dado = ventas de otros canales × margen efectivo + ROAS × presupuesto × margen
+  efectivo − fijos − presupuesto. Con eso simula «a este ROAS ganas o pierdes tanto» y la tabla presupuesto × ROAS.
+  Ojo: con los fijos dentro, el equilibrio DEPENDE del presupuesto (más pauta reparte los fijos).
+- **La regla que une las dos:** el objetivo tiene que quedar por debajo del equilibrio. Si el costo por conversación
+  objetivo pasa del de equilibrio, la app avisa: con esa meta se pierde dinero.
+- **El SIMULADOR (Excel «Simulador de campañas»), cinco modos.** Conversaciones: impresiones = gasto ÷ CPM × 1.000;
+  alcance = impresiones ÷ frecuencia; clics únicos = impresiones × CTR único; conversaciones = clics únicos × % de
+  mensajes; costo por conversación = gasto ÷ conversaciones. Clientes potenciales de Meta: igual. Compras en la web:
+  clics salientes → visitas (% de visitas) → compras (% de compras) → valor y ROAS. Clientes potenciales en la web:
+  igual hasta las visitas. Alcance y ThruPlays: por costo por mil alcanzados y por ThruPlay. Los valores del Excel son
+  ejemplos; la app pone los REALES del cliente (sus 30 días en el Ads Manager, con las métricas de B.2) y saca tres
+  escenarios moviéndolos.
+- **El Excel de estrategia es la plantilla de la guía de montaje (C.3), vacía.** Una hoja por campaña: Presentación (3
+  conjuntos con su presupuesto diario y su público cada uno; calendario, exclusiones, ubicaciones y 5 anuncios
+  compartidos), Evaluación (presupuesto de campaña Advantage+, 2 conjuntos, 4 anuncios), Conversión (1 conjunto, 3
+  anuncios), Ascensión (1 conjunto, 4 anuncios) y una quinta, **Campaña especial** (1 conjunto, 4 anuncios), que los
+  apuntes no explican. Columnas: objetivo, presupuesto de campaña, presupuesto diario, app de mensajes, objetivo de
+  rendimiento, calendario, público, exclusiones, ubicaciones y los anuncios. Lo que va en cada casilla sale de los
+  apuntes (módulo 5); la app la entrega llena y descargable en el mismo formato.
+- **Dos errores en las copias de la agencia** (la app usa la fórmula correcta): en la Calculadora, hoja de interacción,
+  el % a invertir está escrito «16» y no «16 %», así que sale una inversión de 16.000 $ y un ROAS de 0,06; en el
+  Simulador, «Clientes potenciales en el sitio web» calcula los clientes sobre los clics salientes y no sobre las
+  visitas (300 en vez de 240).
 
-**Las fórmulas reconstruidas, POR CONFIRMAR con los Excels** (son las de finanzas de siempre, pero el Excel puede
-redondear, tratar el ITBMS o los fijos de otra forma):
+**Por cliente, en la app, con ayuda de la IA (decisión de la agencia, 5-nov).** Una ficha «Números del negocio» en Marca
+(o junto a Anuncios) con cada dato, su ayuda (qué es y cómo sacarlo) y de dónde viene:
 
-| Cálculo | Fórmula |
-|---|---|
-| Venta neta | precio con ITBMS ÷ 1,07 |
-| Margen de contribución | 1 − la suma de los % variables (sobre la venta neta) |
-| Ganancia por venta | venta neta × margen de contribución |
-| ROAS de equilibrio (neto) | 1 ÷ margen de contribución |
-| ROAS de equilibrio en bruto (el que enseña Meta) | el neto × 1,07 (y ÷ (1 − devoluciones) si Meta cuenta lo devuelto) |
-| CPA de equilibrio | ganancia por venta (menos la parte de los fijos si se cargan: fijos ÷ ventas del mes) |
-| Costo máximo por conversación | CPA de equilibrio × tasa de cierre |
-| Costo objetivo por conversación | costo por compra objetivo × tasa de cierre |
-| Ventas necesarias | meta de ventas ÷ ticket |
-| Conversaciones necesarias | ventas necesarias ÷ tasa de cierre |
-| Inversión | conversaciones × costo objetivo, o ganancia del mes × % que se invierte |
+| Dato | De dónde sale | La IA o la app ayuda con |
+|---|---|---|
+| Ticket promedio | El cliente (ventas del mes ÷ pedidos) | Propone uno con los precios del catálogo, marcado «estimado» |
+| Costos variables (%) | El cliente | Rangos habituales del rubro, marcados «estimado»; nunca como dato |
+| ITBMS | 7 % por defecto | 0 si el cliente está exento |
+| Devoluciones (%) | El cliente | 0 % si no tiene |
+| Costos fijos y fee de la agencia | El cliente y la agencia | Qué entra y qué no |
+| Meta de ventas y % a invertir | La agencia con el cliente | Que el % quede por debajo del margen |
+| Tasa de cierre | Medida (ventas ÷ conversaciones) | 5 % hasta medirla; el ajuste semanal |
+| Presupuesto, CPM, CTR único, % de mensajes, frecuencia | Lo lee la app del Ads Manager | — |
 
-Ejemplo (inventado): precio 107 $ con ITBMS → 100 $ netos; producto 40 %, envío 5 %, devoluciones 2 %, comisión 4 %,
-otros 2 % → margen 47 % → 47 $ por venta. ROAS de equilibrio 2,13 (2,28 en bruto). Con 5 % de cierre, el costo máximo
-por conversación es 2,35 $; con 20 %, 9,40 $. Por eso la tasa de cierre por defecto (decisión 4) cambia todo.
+La IA no inventa un número: lo que propone queda «estimado» hasta que una persona lo confirma, como las fechas
+especiales.
 
-**Lo que hace falta para replicarlas exactas:**
+**Lo que queda por decidir:**
 
-1. De cada Excel (presupuesto, número mágico / equilibrio, costo por conversación, simulador): las celdas de entrada y
-   la fórmula de cada celda de salida. Basta con el archivo o con capturas que enseñen la barra de fórmulas.
-2. Por cliente: ticket promedio; cada costo variable en % (producto, envío, devoluciones, comisión de Tafi o pasarela,
-   otros); si los precios llevan ITBMS; costos fijos del mes y si se cargan a la pauta; meta de ventas; y la tasa de
-   cierre real, con cómo se cuenta (etiquetas de WhatsApp, CRM, a mano).
-3. El costo por conversación de cada cliente ya lo lee la app de lo que corre en el Ads Manager (30 y 7 días): no hace
-   falta pedirlo.
-
-Las skills de Felipe Vergara instaladas en Claude no traen las fórmulas: sólo llaman a su servidor (que no siempre
-conecta), y su licencia no deja copiar su contenido. Las cuentas son finanzas comunes; lo que va a la app se escribe con
-palabras propias.
+1. **Qué es la «Campaña especial»** y cuándo se usa (¿promociones, fechas, lanzamientos?), y si Presentación lleva 4
+   anuncios por conjunto (apuntes) o 5 (plantilla).
+2. **Todo el negocio o sólo la pauta.** En WhatsApp Meta no ve las ventas: el ROAS sólo se puede medir con las ventas
+   totales del mes ÷ la pauta. Propuesta: «todo el negocio» por defecto; «sólo la pauta» cuando el cliente separe lo
+   que viene de los anuncios (etiquetas, CRM).
+3. **Quién apunta las ventas** para medir la tasa de cierre y el ROAS real: cada semana, el número de ventas por
+   WhatsApp (y su monto). ¿Lo escribe la agencia en la app o el cliente por un enlace, como la aprobación?
 
 **B.2 Las métricas que faltan (S).** Clics únicos en el enlace, CTR único y su costo, reproducciones de 3 s, tiempo
 promedio de reproducción y los rankings de calidad. Con ellos, el **% de mensajes** = conversaciones ÷ clics únicos.
@@ -443,13 +466,17 @@ campaña completa sugerida. La D necesita A y B funcionando un tiempo para tener
 | 1 | Reparto: 60/20/10/10 (lámina) o 60-80 / 30 / 5-10 / 5-10 (nota) | 60/20/10/10 por defecto, editable en el Manual |
 | 2 | Advantage+ en cuentas nuevas | Sólo como conjunto de prueba en presentación; nunca en evaluación ni ascensión |
 | 3 | Cuenta nueva: 4 campañas o presentación + evaluación | Nueva = presentación + evaluación; con historial = las 4 |
-| 4 | Tasa de cierre por defecto: 20 % (hoy) o 5 % (curso) | 5 % hasta medir la del cliente; cambia todos los números mágicos. Pendiente de los Excels (B.1) |
+| 4 | Tasa de cierre por defecto: 20 % (hoy) o 5 % (curso) | **5 %** (lo dice el Excel del curso) hasta medir la del cliente; cambia todos los números mágicos |
 | 5 | Nombres de etapas y maletas | Los del curso, con alias para lo ya escrito |
 | 6 | Tamaño del feed | Se queda 4:5 |
 | 7 | Cuándo se pausa un anuncio | Fuera del número mágico con el doble gastado, y nunca si el conjunto está sano |
 | 8 | ¿Lo normal es pautar la publicación existente o montar un anuncio nuevo? | **Decidido (agencia, 5-nov): las dos.** Toda publicación «Va a pauta» lleva su caption como anuncio (A.3) Y sus textos de anuncio aparte (A.4); `como` sólo dice cuál se espera |
-| 9 | ¿Qué publicaciones se marcan «Va a pauta» solas? | Las del tipo «Anuncio» del plan semanal y las de la oferta del mes, quitables (pendiente: se volvió a explicar) |
+| 9 | ¿Qué publicaciones se marcan «Va a pauta» solas? | **Decidido (agencia, 5-nov):** las del tipo «Anuncio» del plan semanal y las de la oferta del mes, quitables |
 | 10 | ¿Hashtags en lo que va a pauta? | Ninguno o casi |
+| 11 | Los números del negocio | **Decidido (agencia, 5-nov):** se configuran por cliente en la app, con ayuda y propuestas de la IA (B.1) |
+| 12 | ¿Qué es la «Campaña especial» de la plantilla? ¿4 o 5 anuncios en presentación? | Pendiente |
+| 13 | ¿Equilibrio de todo el negocio o sólo de la pauta? | Todo el negocio por defecto (B.1) |
+| 14 | ¿Quién apunta las ventas de cada semana? | Pendiente: la agencia en la app o el cliente por un enlace |
 
 ---
 
@@ -458,6 +485,5 @@ campaña completa sugerida. La D necesita A y B funcionando un tiempo para tener
 - Optimización de campañas de ventas, clientes potenciales y reconocimiento; los destinos e-commerce, formularios y
   negocio local; las columnas de esos objetivos (6.1).
 - Los módulos 5.1 a 5.6 y del 7 en adelante (el 6.2 cita el 9: potenciar con IA).
-- Los documentos que el curso cita y no están en los apuntes: el Excel de presupuesto, el del número mágico (ROAS y CPA
-  de equilibrio), el de costo por conversación, el simulador y la plantilla de preguntas para clientes. Con ellos, la
-  fase B.1 replica las fórmulas exactas en vez de reconstruirlas (qué hace falta de cada uno, en B.1).
+- Los Excel de presupuesto, simulador y estrategia ya están (B.1). Faltan, para la fase E: la plantilla de preguntas para
+  clientes, la de mensajes con las objeciones y el documento de las columnas (6.1).
