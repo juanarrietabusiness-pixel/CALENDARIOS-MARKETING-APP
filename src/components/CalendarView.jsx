@@ -11,7 +11,6 @@ import {
 } from "../lib/db";
 import { resumenCola, aprobadasSinProgramar } from "../lib/cola";
 import { navegar, analizarRuta, construirRuta } from "../lib/rutas";
-import { ideasDeRevision, porRevisar } from "../lib/revisionIdeas";
 import { agruparPorSemana, semanaInicial, rangoSemana } from "../lib/semanas";
 import { moverEnCalendario, ponerEnDia, copiaDePublicacion, tieneContenido, rellenarDesdeContenido } from "../lib/subir";
 import { conAprobacion, resumenEnvio, estadoDelEnvio, mensajeDeEnvio } from "../lib/aprobacion";
@@ -43,14 +42,10 @@ import { MonthGrid } from "./calendario/MonthGrid";
 import { CampanaMes } from "./calendario/campanaMes";
 import { RepeticionesMes } from "./calendario/repeticionesMes";
 import { repeticionesPendientes, copiaRepetida, conRegla } from "../lib/repetir";
-// «Revisar el mes» antes de enviarlo: reglas, IA y marca (se carga al abrirlo).
-const RevisionMes = lazy(() => import("./calendario/RevisionMes"));
-const ProducirMes = lazy(() => import("./calendario/ProducirMes"));
-// «Producir el mes»: crear lo que falta (el lote del Estudio) o diseñar lo que ya hay.
-const ProducirElMes = lazy(() => import("./calendario/ProducirElMes"));
-// «Revisar las ideas»: la aprobación interna, en tarjetas (aprobar, otra, quitar).
-const RevisarIdeas = lazy(() => import("./calendario/RevisarIdeas"));
-const GuionesParaGrabar = lazy(() => import("./calendario/GuionesParaGrabar"));
+// «Producir el mes»: el ASISTENTE DEL MES (fase 6), de la estrategia al envío en una pantalla. Dentro van «Revisar las
+// ideas», «Diseñar las aprobadas» (también los reels), «Guiones para grabar», «Completar los textos» y «Revisar el mes»,
+// que antes eran cinco entradas del menú «⋯». Se carga al abrirlo.
+const AsistenteMes = lazy(() => import("./calendario/AsistenteMes"));
 const GuardarMesDrive = lazy(() => import("./calendario/GuardarMesDrive"));
 const PlanSemanal = lazy(() => import("./calendario/PlanSemanal"));
 // Inspiración: lo que publican las cuentas que sigue el cliente, junto al calendario.
@@ -85,6 +80,8 @@ export default function CalendarView({
   onMoveBankToCal,
   onGuardarFechas,
   onGuardarPlan,
+  // «Planificar a mano» (el asistente de planificar de siempre, día por día): lo abre App.
+  onPlanificar = null,
   onPersistClient = null,
   abrirPublicacion = null,
   onPublicacionAbierta,
@@ -259,7 +256,33 @@ export default function CalendarView({
   // hubiera». Añadir una capa nueva es añadir un nombre, no una
   // séptima bandera que alguien tendrá que acordarse de bajar.
   // ------------------------------------------------------------
-  const [capa, setCapa] = useState(null);
+  // «?asistente=1» en la dirección (el botón «Planificar mes» de la cabecera del cliente, el buscador) abre el asistente
+  // del mes al llegar; se quita de la dirección en cuanto se lee.
+  const [capa, setCapa] = useState(() => (new URLSearchParams(window.location.search).get("asistente") ? "asistente" : null));
+  // El paso con que se abre el asistente (null = el que le toca al mes): «Revisar» y «Diseñar» del envío lo fijan.
+  const [pasoAsistente, setPasoAsistente] = useState(null);
+  const abrirAsistente = useCallback((paso = null) => { setPasoAsistente(paso); setCapa("asistente"); }, []);
+  useEffect(() => {
+    const leer = (abrir) => {
+      if (!new URLSearchParams(window.location.search).get("asistente")) return;
+      window.history.replaceState(window.history.state, "", window.location.pathname);
+      if (abrir) abrirAsistente();
+    };
+    leer(false);
+    // Ya en este mes: el cambio de dirección (navegar() lanza «popstate») lo abre.
+    const alNavegar = () => leer(true);
+    window.addEventListener("popstate", alNavegar);
+    return () => window.removeEventListener("popstate", alNavegar);
+  }, [abrirAsistente]);
+  // Lo que escribe el asistente parte del calendario MÁS NUEVO (el de este render o el que acaba de escribir él mismo, si
+  // aún no volvió a pintarse): dos escrituras seguidas no se pisan, y lo que llegó de otra persona tampoco.
+  const calVivo = useRef(cal);
+  useEffect(() => { calVivo.current = cal; }, [cal]);
+  const escribirMes = useCallback((cambiar) => {
+    const nuevo = cambiar(calVivo.current);
+    calVivo.current = nuevo;
+    onUpdateCal(calId, nuevo);
+  }, [onUpdateCal, calId]);
   // El plan semanal de la empresa en la barra de los días (lib/planSemanal.js): lo que leen el lote y la IA.
   // Va en diferido: las plantillas no caben en el arranque (rendimiento.bundle.test.js), y la barra sólo pinta texto.
   const [semanaPlan, setSemanaPlan] = useState(null);
@@ -956,9 +979,9 @@ export default function CalendarView({
           resto agrupado. Antes eran siete botones idénticos que mezclaban
           la acción principal con un visor de registros de desarrollo. */}
       <div className="toolbar">
-        {/* «Producir el mes»: con publicaciones pregunta si crear lo que falta o diseñar lo que hay; sin ninguna, va
-            directo al lote del mes del Estudio. Escribir sólo los textos que faltan está en «⋯». */}
-        <button className="btn btn-accent" onClick={() => (totalPosts ? abrirCapa("producir-mes") : producirEnLote())} disabled={genLoading || Boolean(yoActual()?.soloLectura)}>
+        {/* «Producir el mes»: el ASISTENTE DEL MES (estrategia → plan → ideas → diseñar → revisar y enviar). Se abre en el
+            paso que le toca al mes; lo que se hizo queda en el calendario y lo retoma cualquiera del equipo. */}
+        <button className="btn btn-accent" onClick={() => abrirAsistente()} disabled={Boolean(yoActual()?.soloLectura)}>
           <Icon name="sparkles" size={18} />
           {genLoading ? genStatus : "Producir el mes"}
         </button>
@@ -1027,11 +1050,8 @@ export default function CalendarView({
             { icon: "pencil", label: "Editar el mes", onClick: () => abrirMeta("general") },
             { icon: "calendar", label: "Fechas especiales", onClick: () => abrirCapa("fechas") },
             puedeEditarPlan && { icon: "grid", label: "Plan semanal de la empresa", onClick: () => { setDiaPlan(null); abrirCapa("plan"); } },
-            { icon: "checkSquare", label: "Revisar el mes", onClick: () => abrirCapa("revision") },
-            { icon: "checkCircle", label: "Revisar las ideas", onClick: () => abrirCapa("revisar-ideas"), disabled: !totalPosts },
-            { icon: "video", label: "Guiones para grabar", onClick: () => abrirCapa("grabar"), disabled: !totalPosts },
-            { icon: "sparkles", label: "Completar los textos que faltan", onClick: generateScripts, disabled: genLoading || !totalPosts },
-            { icon: "imageAi", label: "Diseñar las que ya hay", onClick: () => abrirCapa("producir") },
+            // Revisar las ideas, diseñar las que ya hay, los guiones para grabar, completar los textos y revisar el mes
+            // viven en el asistente del mes («Producir el mes»): el menú se queda con lo que no es el flujo del mes.
             client?.driveFolder && !virtual && { icon: "upload", label: "Guardar el mes en Drive", onClick: () => abrirCapa("drive") },
             { icon: "copy", label: "Exportar ideas y descripciones", onClick: () => abrirCapa("exportar") },
             { sep: true },
@@ -1278,7 +1298,7 @@ export default function CalendarView({
           onDropInspiracion={capa === "inspiracion" ? (id, fecha) => llevarInspiracion.current?.(id, fecha) : undefined}
           ideasBank={banco.ideas}
           semana={semanaPlan}
-          notas={client?.notasSemana}
+          notas={client?.planSemanal?.v === 1 ? client.planSemanal.notas : client?.notasSemana}
           onEditarPlan={puedeEditarPlan ? (dow) => { setDiaPlan(dow); abrirCapa("plan"); } : undefined}
           vecinos={vecinos}
           onVecina={(calVecino, post) => onAbrirVecina?.(calVecino, post.id)}
@@ -1618,77 +1638,36 @@ export default function CalendarView({
           revisionRevisor={cal.revisionRevisor}
           resumen={resumenEnvio(cal.days)}
           sinLoNecesario={sinLoNecesario(cal.days)}
-          onRevisar={() => abrirCapa("revision")}
+          onRevisar={() => abrirAsistente(4)}
           envio={envio}
-          onDisenar={() => abrirCapa("producir")}
+          onDisenar={() => abrirAsistente(3)}
           onEnviado={marcarEnvio}
           onClose={cerrarCapa}
         />
       )}
 
-      {capa === "revision" && (
-        <Suspense fallback={<div className="panel-cargando" role="status">Abriendo la revisión…</div>}>
-          <RevisionMes
+      {/* El asistente del mes (fase 6): «Producir el mes». Escribe por `escribirMes`, que parte del calendario más nuevo. */}
+      {capa === "asistente" && (
+        <Suspense fallback={<div className="panel-cargando" role="status">Abriendo el asistente del mes…</div>}>
+          <AsistenteMes
             client={client}
             cal={cal}
-            onAbrir={(postId) => {
+            pasoInicial={pasoAsistente}
+            escribir={escribirMes}
+            onGuardarPlan={puedeEditarPlan ? onGuardarPlan : null}
+            onCompletarTextos={totalPosts ? generateScripts : null}
+            completando={genLoading}
+            estadoCompletar={genStatus}
+            onEnviar={sendToClient}
+            onAbrirPost={(postId) => {
               for (const day of cal.days ?? []) {
                 const post = (day.posts ?? []).find((p) => p.id === postId);
                 if (post) { cerrarCapa(); setSidePanel({ post, day }); break; }
               }
             }}
             onArreglar={(date, post) => updatePost(date, post)}
-            onClose={cerrarCapa}
-          />
-        </Suspense>
-      )}
-
-      {capa === "producir-mes" && (
-        <Suspense fallback={<div className="panel-cargando" role="status">Abriendo…</div>}>
-          <ProducirElMes
-            mesNombre={`${MONTHS[cal.month].toLowerCase()} ${cal.year}`}
-            publicaciones={totalPosts}
-            porRevisar={ideasDeRevision(cal).filter(({ post }) => porRevisar(post)).length}
-            pasado={mesDelCal < fechaEnZona().slice(0, 7)}
-            onCrear={() => { cerrarCapa(); producirEnLote(); }}
-            onRevisar={() => abrirCapa("revisar-ideas")}
-            onDisenar={() => abrirCapa("producir")}
-            onClose={cerrarCapa}
-          />
-        </Suspense>
-      )}
-
-      {capa === "revisar-ideas" && (
-        <Suspense fallback={<div className="panel-cargando" role="status">Abriendo…</div>}>
-          <RevisarIdeas
-            client={client}
-            cal={cal}
-            onAplicar={(cambiar) => onUpdateCal(calId, { ...cal, days: cambiar(cal.days || []) })}
-            onClose={cerrarCapa}
-          />
-        </Suspense>
-      )}
-
-      {capa === "grabar" && (
-        <Suspense fallback={<div className="panel-cargando" role="status">Abriendo…</div>}>
-          <GuionesParaGrabar
-            client={client}
-            cal={cal}
-            onAplicar={(cambiar) => onUpdateCal(calId, { ...cal, days: cambiar(cal.days || []) })}
-            onClose={cerrarCapa}
-          />
-        </Suspense>
-      )}
-
-      {capa === "producir" && (
-        <Suspense fallback={<div className="panel-cargando" role="status">Abriendo…</div>}>
-          <ProducirMes
-            client={client}
-            cal={cal}
-            onPoner={(cambiar) => {
-              // Todas de una vez: poner una a una con `updatePost` partiría cada vez del calendario de antes.
-              onUpdateCal(calId, { ...cal, days: (cal.days || []).map((d) => ({ ...d, posts: (d.posts || []).map(cambiar) })) });
-            }}
+            onProducirEnLote={() => { cerrarCapa(); producirEnLote(); }}
+            onPlanificarAMano={onPlanificar ? () => { cerrarCapa(); onPlanificar(); } : null}
             onClose={cerrarCapa}
           />
         </Suspense>

@@ -368,8 +368,12 @@ src/
                           mes y la copia como idea (puro)
     notasSemana.js        La NOTA FIJA de cada día de la semana («los lunes, muebles y camas»): limpiar, la de una fecha, el
                           producto que nombra, ponerla en las casillas del motor de ideas (puro; también el Worker)
-    planSemanal.js        La barra de los días del calendario: el plan semanal de la empresa (tipo y formato de cada
-                          publicación de cada día, «Video con rostro (UGC)»), guardar y volver al estándar (puro)
+    planSemanal.js        El plan semanal ÚNICO de la empresa (formato, tipo, HORA y nota de cada día; `clients.plan_semanal`):
+                          leerlo (también lo de antes), la barra de los días, guardarlo con las columnas de antes derivadas,
+                          volver al estándar, la hora del plan de una publicación (puro; también el Worker)
+    asistenteMes.js       El asistente del mes: los 5 pasos, el paso que le toca a un mes, las casillas del plan semanal,
+                          ponerlas en el calendario, las horas en bloque, `opciones.asistente` (puro)
+    asistenteMesApi.js    Cliente de /api/estudio/<c>/reel/mes (los reels del mes: costo y lanzar)
     aprobacion.js         Qué aprueba el cliente (idea o pieza final), qué cuenta de su respuesta,
                           por programar / por producir, cambios tras aprobar (puro; también
                           lo importa el Worker)
@@ -503,9 +507,11 @@ src/
     Recetas.jsx           Las recetas de la agencia: «Crear aquí» (el director, pestaña Diseño), «Crear con Claude» y el editor (lazy)
     calendario/RevisionMes.jsx  «Revisar el mes» antes de enviarlo: reglas, IA opcional e imágenes contra el kit (lazy)
     calendario/CarruselIA.jsx   «Crear carrusel con IA»: el guion en láminas, el texto por IA o por plantilla, rehacer una (lazy)
-    calendario/ProducirMes.jsx  «Diseñar las que ya hay»: las piezas que faltan en lote, con costo y confirmación (lazy)
-    calendario/ProducirElMes.jsx  El botón «Producir el mes»: crear lo que falta (lote del Estudio), revisar las ideas o diseñar
-                          lo que hay (lazy)
+    calendario/ProducirMes.jsx  «Diseñar las aprobadas» (paso del asistente del mes; `ponerSolas`): las piezas que faltan en lote, con
+                          costo y confirmación (lazy)
+    calendario/AsistenteMes.jsx  El botón «Producir el mes»: el ASISTENTE DEL MES (estrategia → plan → ideas → diseñar → revisar y
+                          enviar), guardado en el calendario (lazy)
+    calendario/envolturaMes.jsx  Las pantallas del mes sueltas (diálogo) o INCRUSTADAS como un paso del asistente
     calendario/RevisarIdeas.jsx  «Revisar las ideas»: la aprobación INTERNA en tarjetas (aprobar, otra con nota, quitar) (lazy)
     calendario/crearConIA.jsx  El Estudio en un diálogo dentro del panel de una publicación y de «Subir»
                           (el hook que lo abre, en hooks/useCrearConIA.jsx)
@@ -545,7 +551,8 @@ src/
     calendario/PortadaClic.jsx  «Portada que da clic» dentro de «Portada del video»: concepto, titular, formato, la vista a 120 px (lazy)
     VideoListo.jsx        «¿Está listo este video?»: en la pestaña Subir y en el visor del Estudio (lazy)
     calendario/avisoTemporada.jsx  «Se acerca …»: la fecha comercial del cliente en tres semanas y cómo reutilizar una pieza
-    calendario/PlanSemanal.jsx  «Plan semanal de <empresa>»: editar lo que sale cada día, fijo todos los meses (lazy)
+    calendario/PlanSemanal.jsx  «Plan semanal de <empresa>»: el editor ÚNICO (`EditorSemana`: formato, tipo, hora y nota de cada día,
+                          partir de un plan de la agencia); el diálogo de la barra, el asistente del mes y la ficha lo usan (lazy)
     calendario/fechasEspeciales.jsx  Escoger las fechas de un cliente (importante, ocultar, propias, IA)
     CalendarView.jsx      Vista de lista y de rejilla, filtros, generación, envío
     anuncios/AsistenteCampana.jsx  «Nueva campaña»: objetivo y destino (web o WhatsApp), públicos (1–3), anuncios (1–6, carrusel), revisar
@@ -663,6 +670,7 @@ worker/
     ids.js                UUID, testigos, huellas
   videosProyectos.js    Los proyectos de video animado: crear, guardar, editar UNA escena y aprobar (la ruta y las
                           herramientas van por aquí)
+    estudio/reelDelMes.js  Los reels de un mes (el asistente del mes): el costo sin crear nada y, con el sí, el encargo de cada uno
     estudio/encargoReel.js  El REEL por planos como encargo (tipo «reel»): el storyboard en orden, se para a revisar y se retoma
                           (`continuarReel`), el video o los clips, el montaje (`montarReel`) y a su publicación
     estudio/montaje.js    El proyecto de video animado del montaje de un reel (`origen`: { tipo: "reel", encargoId })
@@ -725,7 +733,7 @@ container/                El Container del video animado (Node + @napi-rs/canvas
                           /render (render.mjs) con el MISMO motor de src/lib; los clips de video (clips.mjs, PUT /clip/<id>);
                           probar.mjs, probarAudio.mjs y probarClips.mjs son sus pruebas (job «contenedor»)
 migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales, 0033 kit de marca, 0034 estudio de mercado, 0035 ritmo de contenido, 0036 inventario, 0037 plantillas de plan, 0038 campañas con varios conjuntos y anuncios, 0039 estratega, 0040 historial de anuncios, 0041 informe de anuncios, 0042 galería agrupada y repetidos, 0043 conversaciones del asistente, 0044 banco de ideas único, 0045 fórmulas UGC, 0046 inspiración, 0047 conversaciones de diseño, 0048 historias automáticas, 0049 encargos del Estudio: lote y carrusel, 0050 historias apartadas, 0051 notas fijas de los días, 0052 programar al aprobar por cliente, 0053 qué se le cambió a una nota, 0054 qué redes entran en el informe, 0055 hasta 5 historias automáticas al día, 0056 los días fijos de cada empresa, 0057 la lista aplicada de una auditoría, 0058 la caché de Scrape Creators, 0059 proyectos de video animado, 0060 sonido e historial de los videos, 0061 recetas y «Crear con Claude», 0062 «Lo mejor del momento»)
-migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales, 0033 kit de marca, 0034 estudio de mercado, 0035 ritmo de contenido, 0036 inventario, 0037 plantillas de plan, 0038 campañas con varios conjuntos y anuncios, 0039 estratega, 0040 historial de anuncios, 0041 informe de anuncios, 0042 galería agrupada y repetidos, 0043 conversaciones del asistente, 0044 banco de ideas único, 0045 fórmulas UGC, 0046 inspiración, 0047 conversaciones de diseño, 0048 historias automáticas, 0049 encargos del Estudio: lote y carrusel, 0050 historias apartadas, 0051 notas fijas de los días, 0052 programar al aprobar por cliente, 0053 qué se le cambió a una nota, 0054 qué redes entran en el informe, 0055 hasta 5 historias automáticas al día, 0056 los días fijos de cada empresa, 0057 la lista aplicada de una auditoría, 0058 la caché de Scrape Creators, 0059 proyectos de video animado, 0060 sonido e historial de los videos, 0061 recetas y «Crear con Claude», 0063 de dónde sale un video animado)
+migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales, 0033 kit de marca, 0034 estudio de mercado, 0035 ritmo de contenido, 0036 inventario, 0037 plantillas de plan, 0038 campañas con varios conjuntos y anuncios, 0039 estratega, 0040 historial de anuncios, 0041 informe de anuncios, 0042 galería agrupada y repetidos, 0043 conversaciones del asistente, 0044 banco de ideas único, 0045 fórmulas UGC, 0046 inspiración, 0047 conversaciones de diseño, 0048 historias automáticas, 0049 encargos del Estudio: lote y carrusel, 0050 historias apartadas, 0051 notas fijas de los días, 0052 programar al aprobar por cliente, 0053 qué se le cambió a una nota, 0054 qué redes entran en el informe, 0055 hasta 5 historias automáticas al día, 0056 los días fijos de cada empresa, 0057 la lista aplicada de una auditoría, 0058 la caché de Scrape Creators, 0059 proyectos de video animado, 0060 sonido e historial de los videos, 0061 recetas y «Crear con Claude», 0063 de dónde sale un video animado, 0066 el plan semanal único)
 scripts/migracion/        Volcado desde Supabase, conversión e importación
 tests/
   utils/                  Lector de wrangler.jsonc y _headers, fallos e informe
@@ -2004,11 +2012,10 @@ son del servidor.
 - **El lote del mes salta los días que ya tienen publicación** (`omitir` en `lote/mes`, `diasConPublicacion` en
   loteMes.js con `client.calendars`): antes «Mes completo» creaba una segunda encima. Todos ocupados: 400 sin llamar a la
   IA. Lo que ya hay se diseña con «Diseñar las que ya hay» (ProducirMes).
-- **«Producir el mes» es el botón grande del calendario** (antes «Generar contenido», que sólo escribía textos). Sin
-  publicaciones va directo al Estudio con `?lote=mes&mes=AAAA-MM` (Estudio lo lee al montar, abre el lote en «Mes completo»
-  con ese mes —también uno de más de dos meses adelante— y quita la búsqueda de la dirección); con publicaciones pregunta
-  (`ProducirElMes.jsx`): crear lo que falta o diseñar lo que hay. «Completar los textos que faltan» (el `generateScripts`
-  de siempre) quedó en el menú «⋯».
+- **«Producir el mes» es el botón grande del calendario** y abre el ASISTENTE DEL MES (fase 6; ver «El mes en un solo
+  flujo», al final). El lote del mes del Estudio (`?lote=mes&mes=AAAA-MM`: Estudio lo lee al montar, abre el lote en «Mes
+  completo» con ese mes y quita la búsqueda de la dirección) sigue, desde el paso Plan del asistente («Otras formas de
+  planificar»). `ProducirElMes.jsx` (la pregunta «crear o diseñar») se quitó: la hace el asistente.
 - **«De la galería» en una publicación** (`GaleriaSelector.jsx`, botón de `EditorMedios`): un carrusel o un reel es UNA
   tarjeta y tocarla escoge todas sus piezas en su orden; las sueltas, una a una con su número. Con algo ya puesto pregunta
   añadir o reemplazar; con el formato automático, dos o más lo vuelven carrusel (si no, se avisa). Se apunta el uso de
@@ -4746,6 +4753,62 @@ son del servidor.
   botones de la barra del mes llevan texto (Seleccionar, Lo mejor, Ideas). **Topes al límite**: el CSS inicial quedó en
   ~12,48 de 12 kB (redondea a 12) y el chunk del Estudio en ~19,98 de 20: lo siguiente que se sume ahí tiene que sacar
   algo antes.
+- **El mes en un solo flujo: el ASISTENTE DEL MES** (fase 6; `calendario/AsistenteMes.jsx`, lazy; lo puro en
+  `src/lib/asistenteMes.js`). El botón «Producir el mes» (y «Planificar mes» de la cabecera del cliente y «Nuevo calendario»
+  del buscador, que navegan con `?asistente=1`: CalendarView lo abre al llegar o, ya en ese mes, al oír el `popstate`) abre
+  cinco pasos en una pantalla con su avance: Estrategia → Plan → Ideas → Diseñar → Revisar y enviar. Antes eran cinco
+  puertas del menú «⋯» (Revisar las ideas, Diseñar las que ya hay, Guiones para grabar, Completar los textos, Revisar el mes),
+  que ya no están en el menú: viven dentro. «Planificar a mano» (PlanWizard, día por día y con plantillas propias) sigue,
+  desde el paso Plan (`onPlanificar` de App). Cosas que no se ven en la pantalla:
+  · **Se GUARDA EN EL CALENDARIO, no en el navegador**: la estrategia en sus campos de siempre (`campaign`, `offers`,
+  `promoCode`, `weekConcepts`, `opciones.estrategia`), el plan como PUBLICACIONES (casillas sin idea, `delPlan: true`, con su
+  formato, tipo, hora y la matriz), las ideas al llegar cada tanda (lo pagado no se pierde aunque se cierre a la mitad), la
+  aprobación interna en cada publicación (`etapa`) y lo del asistente en `opciones.asistente` (el paso al que se llegó, los
+  ajustes de temporada aceptados, quién). Así lo retoma otra persona del equipo o la misma en el teléfono: se abre en
+  `pasoQueToca` (lo que le falta al mes, o el paso guardado si es anterior). Un mes con publicaciones entra donde le toca y
+  el plan sólo llena los días LIBRES (salvo «Añadir también en los días que ya tienen»).
+  · **Todo lo escribe `escribirMes(cambiar)`** (CalendarView): parte del calendario MÁS NUEVO (`calVivo`, que también guarda
+  lo que acaba de escribir antes de volver a pintarse), así dos escrituras seguidas no se pisan, y va por `onUpdateCal`: el
+  guardado agrupado y sus avisos de tiempo real de siempre. En un mes sin cajón crea el cajón (`fusionarEnMes` lleva ahora
+  también las `opciones` que el cajón no tenga).
+  · **Las casillas no llevan `aprobacion: "idea"`**: con ella el cliente aprobaría sólo la idea y lo aprobado nunca se
+  programaría. Sin ella, lo de siempre (pieza si la tiene).
+  · **Diseñar NO escribe el calendario desde la pantalla**: «Diseñar las aprobadas» es `ProducirMes` con `ponerSolas` (el
+  encargo con `poner: true`, también el carrusel: `lanzarCarrusel({ poner })`) y lo pone el SERVIDOR al terminar
+  (`ponerResultados`). Por eso en ese modo no se guardan las fichas desde la pantalla ni hay «Poner»: un guardado del mes
+  entero pisaría lo que el servidor acaba de poner. Por lo mismo el asistente sólo apunta su paso en los hitos (estrategia
+  guardada, plan puesto), no al moverse entre pasos.
+  · **Los REELS ahora se diseñan** (`worker/lib/estudio/reelDelMes.js`, `POST /api/estudio/<c>/reel/mes`): sin `confirmado`,
+  el costo aproximado de cada reel aprobado (un guion de muestra de la duración por defecto: NO se escribe nada ni se paga);
+  con el sí, UNA publicación por llamada (escribir el guion tarda): el guion SIGUE el de la publicación (`guionDeReel` con su
+  `postId`), el plan (`planDeReel`, importado en el momento desde herramientasReel.js por el ciclo de siempre) y el encargo
+  del reel por planos ligado a su publicación (se pone solo). La voz del montaje se confirma APARTE cuando llega a
+  «confirmar» (el asistente lo ofrece con su costo). Un UGC no va por aquí: «Guiones para grabar», dentro del mismo paso.
+  · **Las HORAS EN BLOQUE** (`horasEnBloque`): a lo que no tiene hora, la del plan semanal para su día y su formato
+  (`horaDelPlan`) o la hora por defecto que se escoja; lo que ya tiene hora o se publicó no se toca.
+  · **UNA sola IA en la estrategia**: «Proponer la estrategia con IA» trae objetivo, foco, campaña, el concepto y la etapa de
+  cada semana (las ofertas se escriben ANTES: la IA las lee). Precargada del mes, o del anterior (objetivo y foco).
+  · **Revisar las ideas, Diseñar y Revisar el mes viven DOS veces** (`envolturaMes.jsx`): sueltas son el diálogo de siempre e
+  incrustadas no atrapan el foco ni llevan su «Cerrar». «Revisar» y «Diseñar» del envío al cliente abren el asistente en ese
+  paso (`pasoInicial`). El editor del plan semanal y «Guiones para grabar» se abren ANIDADOS dentro del diálogo del asistente.
+  · **Nada de esto se ha probado contra los servicios reales**: los tests usan los motores de prueba.
+- **El plan semanal ÚNICO de cada empresa** (fase 6; `clients.plan_semanal`, 0066; `src/lib/planSemanal.js`;
+  `calendario/PlanSemanal.jsx`). Formato, tipo, HORA y nota de cada día en un solo sitio y un solo editor (`EditorSemana`: la
+  barra de los días, el asistente del mes y la pestaña Semanal de la ficha, que ya no tiene el ritmo, la plantilla ni la
+  estructura semanal de antes). Cosas que no se ven:
+  · **Lo de antes se sigue leyendo, sin migrar nada**: `semanaDelCliente`, `notasDelCliente`, `ritmoDelCliente` y
+  `plantillaDeLaSemana` miran primero `planSemanal` y, sin él, la plantilla (`plan_contenido`), el ritmo (`ritmo_contenido`) y
+  las notas (`notas_semana`). El Worker lee la fila con `planSemanalDeFila` (el lote del mes: ritmo y notas). Lo leen el
+  lote del Estudio, «Planificar mes», la barra, las notas de la rejilla y la línea de la IA (`lineaDelPlanDe` en api.js).
+  · **Al guardar, el formato nuevo Y las columnas de antes DERIVADAS** (`planSemanalParaGuardar`): la copia con la primera de
+  cada día «del ritmo» (así la temporada la sigue ajustando), el ritmo, las notas y la línea de la IA. Lo escribe SÓLO
+  `PUT /api/clientes/<id>/plan-semanal` (limpia cada parte): `clientToRow` no lleva `plan_semanal`, así una ficha abierta desde
+  antes no lo pisa. La ficha, al guardar el plan desde su pestaña, mete lo guardado en su formulario: si no, «Guardar» de la
+  ficha escribiría el plan de antes en las columnas derivadas.
+  · **«Volver al estándar»** deja `dias: null` (la plantilla `base` con el ritmo de la agencia) y CONSERVA las notas.
+  · **La HORA** va en cada publicación del plan (`hora`, «HH:MM»; también en la copia de `plan_contenido`, `limpiarHueco` la
+  conserva) y viaja a `configDeFormatos`, `casillasConPlantilla` («Mes completo» del lote), «Planificar mes» (`publishTime` de
+  cada formato) y las casillas del asistente. `PlanDelCliente.jsx` se quitó: su «Personalizar para este cliente» es el editor.
 
 ## Documentos relacionados
 

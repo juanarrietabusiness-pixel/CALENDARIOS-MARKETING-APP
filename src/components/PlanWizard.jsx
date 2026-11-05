@@ -18,9 +18,10 @@ import { leerMercado } from "../lib/mercado";
 import { productosParaPlan, limpiarEstudio, estructuraATexto } from "../lib/estudioMercado";
 import { leerPlantillas } from "../lib/plantillasApi";
 import { conNotasDelDia } from "../lib/notasSemana";
-import { plantillaDelCliente, configDeFormatos, resumenPlantilla, OBJETIVOS_PLAN } from "../lib/plantillasPlan";
+import { configDeFormatos, resumenPlantilla, OBJETIVOS_PLAN } from "../lib/plantillasPlan";
+import { plantillaDeLaSemana, ritmoDelCliente, notasDelCliente } from "../lib/planSemanal";
 import {
-  PILARES, limpiarRitmo, ritmoDelMes, sugerenciasDeTemporada, asignarMatriz,
+  PILARES, ritmoDelMes, sugerenciasDeTemporada, asignarMatriz,
   nombreDePilar, resumenRitmo, fechaCorta, CAMPOS_MATRIZ, pilarDe,
 } from "../lib/pilares";
 
@@ -91,11 +92,12 @@ export default function PlanWizard({ client, onGenerate, onClose, mesInicial = n
     setImportantDates((prev) => [...prev.filter((d) => !d.auto && d.date.startsWith(prefijo)), ...auto]);
   }, [year, month, client?.fechasEspeciales]);
   // El ritmo de contenido del cliente (lunes Anuncio … sábado 7 maletas) y los cambios de temporada aceptados.
-  const ritmo = limpiarRitmo(client?.ritmoContenido);
+  const ritmo = ritmoDelCliente(client);
   const [aceptadas, setAceptadas] = useState(Array.isArray(b.aceptadas) ? b.aceptadas : []);
   const sugerencias = useMemo(
-    () => sugerenciasDeTemporada({ year, month, ritmo: client?.ritmoContenido, fechas: fechasDelMes(year, month, client?.fechasEspeciales) }),
-    [year, month, client?.ritmoContenido, client?.fechasEspeciales],
+    () => sugerenciasDeTemporada({ year, month, ritmo: ritmoDelCliente(client), fechas: fechasDelMes(year, month, client?.fechasEspeciales) }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [year, month, client?.ritmoContenido, client?.planSemanal, client?.fechasEspeciales],
   );
   // Al cambiar de mes se olvidan los cambios de temporada del otro (no al abrir: los del borrador se quedan).
   const mesVisto = useRef(`${year}-${month}`);
@@ -158,14 +160,14 @@ export default function PlanWizard({ client, onGenerate, onClose, mesInicial = n
   const aplicarPlantilla = (t) => {
     setPlan("custom");
     const cfg = configDeFormatos(t);
-    setFormatConfig(Object.fromEntries(Object.entries(cfg).map(([dow, lista]) => [dow, lista.map((h) => ({ ...h, publishTime: "" }))])));
+    setFormatConfig(Object.fromEntries(Object.entries(cfg).map(([dow, lista]) => [dow, lista.map((h) => ({ ...h, publishTime: h.hora || "" }))])));
   };
   useEffect(() => {
     let vivo = true;
     leerPlantillas().then((lista) => {
       if (!vivo) return;
       setPlantillas(lista);
-      const delCliente = plantillaDelCliente(client?.planContenido, lista);
+      const delCliente = plantillaDeLaSemana(client, lista);
       // Con un borrador, sus formatos se quedan: la plantilla del cliente ya se aplicó cuando se empezó.
       if (delCliente && !borrador) {
         setPlantillaElegida(delCliente.personalizada ? "cliente" : delCliente.id);
@@ -176,7 +178,7 @@ export default function PlanWizard({ client, onGenerate, onClose, mesInicial = n
     // Sólo al abrir: elegir otra plantilla o tocar los formatos después no debe volver a la del cliente.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  const plantillaDelClienteActual = plantillas ? plantillaDelCliente(client?.planContenido, plantillas) : null;
+  const plantillaDelClienteActual = plantillas ? plantillaDeLaSemana(client, plantillas) : null;
   const elegirPlantilla = (id) => {
     setPlantillaElegida(id);
     const t = id === "cliente" ? plantillaDelClienteActual : (plantillas ?? []).find((p) => p.id === id);
@@ -384,7 +386,7 @@ Formato: una linea por semana, solo el concepto. ${numWeeks} lineas exactas.`;
     }
     const productos = productosParaPlan(mercado?.catalogo ?? [], mercado?.inventario);
     // La nota fija del día («los lunes, muebles y camas»): si nombra un producto, ese día va con él (lib/notasSemana.js).
-    const conNotas = conNotasDelDia(lista, client?.notasSemana, productos).map(({ notaDia: _n, fecha: _f, ...c }) => c);
+    const conNotas = conNotasDelDia(lista, notasDelCliente(client), productos).map(({ notaDia: _n, fecha: _f, ...c }) => c);
     const asignada = asignarMatriz(conNotas, {
       productos, deseos: general?.deseos ?? [], perfiles: general?.perfiles ?? [],
       foco: focoId,

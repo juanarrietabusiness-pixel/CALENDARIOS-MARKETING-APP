@@ -1,6 +1,7 @@
 import { useId, useMemo, useRef, useState } from "react";
 import Icon from "../Icon";
 import { useDialogA11y } from "../../hooks/useDialogA11y";
+import { Envoltura } from "./envolturaMes";
 import { FORMATS } from "../../constants";
 import { nombreDePilar } from "../../lib/pilares";
 import { casillaParaOtra, reemplazarConIdea, ideasDelPlan, estrategiaDelCalendario, usadosDelMes } from "../../lib/ideaPublicacion";
@@ -26,7 +27,7 @@ import "./RevisionMes.css";
 const fechaCorta = (iso) => new Date(`${iso}T12:00:00`).toLocaleDateString("es-PA", { weekday: "short", day: "numeric", month: "short" });
 const FILTROS = [["revisar", "Por revisar"], ["aprobadas", "Aprobadas"], ["todas", "Todas"]];
 
-export default function RevisarIdeas({ client, cal, onAplicar, onClose }) {
+export default function RevisarIdeas({ client, cal, onAplicar, onClose, incrustado = false }) {
   const ids = useId();
   const ref = useDialogA11y(onClose);
   // La función más nueva: «Otra» vuelve tarde y tiene que escribir sobre el calendario de ENTONCES.
@@ -73,14 +74,13 @@ export default function RevisarIdeas({ client, cal, onAplicar, onClose }) {
   };
 
   return (
-    <div className="overlay overlay-sheet">
-      <div ref={ref} role="dialog" aria-modal="true" aria-labelledby={`${ids}-t`} className="sheet revision-mes" tabIndex={-1}>
+    <Envoltura incrustado={incrustado} refDialogo={ref} titulo={`${ids}-t`}>
         <div className="sheet-header">
           <div>
             <h2 id={`${ids}-t`} style={{ fontSize: "var(--fs-md)", margin: 0 }}>Revisar las ideas</h2>
             <p className="hint" style={{ margin: 0 }}>Antes de diseñar: aprueba las que van, pide otra para las que no y quita las que sobran. Al cliente le llega el calendario con todo creado.</p>
           </div>
-          <button type="button" className="btn-icon" onClick={onClose} aria-label="Cerrar"><Icon name="close" /></button>
+          {!incrustado && <button type="button" className="btn-icon" onClick={onClose} aria-label="Cerrar"><Icon name="close" /></button>}
         </div>
         <div className="sheet-body">
           <div className="est-tipos" role="group" aria-label="Qué ideas ver" style={{ marginBottom: "var(--sp-3)" }}>
@@ -144,12 +144,11 @@ export default function RevisarIdeas({ client, cal, onAplicar, onClose }) {
           </ul>
         </div>
         <div className="sheet-footer">
-          <button type="button" className="btn btn-secondary" onClick={onClose}>Cerrar</button>
+          {!incrustado && <button type="button" className="btn btn-secondary" onClick={onClose}>Cerrar</button>}
           <button type="button" className="btn btn-primary" disabled={!pendientes.length} onClick={aprobarTodas}>
             <Icon name="check" size={16} /> Aprobar las {pendientes.length} que quedan
           </button>
         </div>
-      </div>
-    </div>
+    </Envoltura>
   );
 }

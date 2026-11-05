@@ -1,6 +1,7 @@
 import { useEffect, useId, useMemo, useState } from "react";
 import Icon from "../Icon";
 import { useDialogA11y } from "../../hooks/useDialogA11y";
+import { Envoltura } from "./envolturaMes";
 import { callAI } from "../../api";
 import { leerMercado } from "../../lib/mercado";
 import { limpiarEstudio } from "../../lib/estudioMercado";
@@ -32,7 +33,7 @@ const TANDA_IA = 12;
 
 const fechaCorta = (iso) => new Date(`${iso}T12:00:00`).toLocaleDateString("es-PA", { weekday: "short", day: "numeric", month: "short" });
 
-export default function RevisionMes({ client, cal, onAbrir, onArreglar, onClose }) {
+export default function RevisionMes({ client, cal, onAbrir, onArreglar, onClose, incrustado = false }) {
   const ids = useId();
   const ref = useDialogA11y(onClose);
   const [mercado, setMercado] = useState(null);
@@ -135,14 +136,13 @@ export default function RevisionMes({ client, cal, onAbrir, onArreglar, onClose 
   const ocupado = Boolean(trabajando);
 
   return (
-    <div className="overlay overlay-sheet">
-      <div ref={ref} role="dialog" aria-modal="true" aria-labelledby={`${ids}-t`} className="sheet revision-mes" tabIndex={-1}>
+    <Envoltura incrustado={incrustado} refDialogo={ref} titulo={`${ids}-t`}>
         <div className="sheet-header">
           <div>
             <h2 id={`${ids}-t`} style={{ fontSize: "var(--fs-md)", margin: 0 }}>Revisar el mes antes de enviarlo</h2>
             <p className="hint" style={{ margin: 0 }}>{mercado === null ? "Revisando…" : resumen || "Las reglas no encontraron nada."}</p>
           </div>
-          <button type="button" className="btn-icon" onClick={onClose} aria-label="Cerrar"><Icon name="close" /></button>
+          {!incrustado && <button type="button" className="btn-icon" onClick={onClose} aria-label="Cerrar"><Icon name="close" /></button>}
         </div>
         <div className="sheet-body">
           <div className="revision-acciones">
@@ -223,7 +223,6 @@ export default function RevisionMes({ client, cal, onAbrir, onArreglar, onClose 
             ))}
           </ul>
         </div>
-      </div>
-    </div>
+    </Envoltura>
   );
 }

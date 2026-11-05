@@ -57,7 +57,8 @@ import { asignarMatriz, pilarDe, idDePilar } from "../../../src/lib/pilares.js";
 import { diasDelLote, planDelMes, mesDe, textoMes } from "../../../src/lib/loteMes.js";
 import { fechasDelMes } from "../../../src/lib/fechasEspeciales.js";
 import { fechaEnZona } from "../../../src/lib/agenda.js";
-import { limpiarNotasSemana, conNotasDelDia, notaDelDia, productoDeNota } from "../../../src/lib/notasSemana.js";
+import { conNotasDelDia, notaDelDia, productoDeNota } from "../../../src/lib/notasSemana.js";
+import { planSemanalDeFila } from "../../../src/lib/planSemanal.js";
 import { CLAVES_NIVEL } from "../../../src/lib/consciencia.js";
 import { bloqueDeMarca, kitVacio } from "../../../src/lib/kitMarca.js";
 import { lineaDePlantilla, bloqueDeDisenoPorTipo } from "../../../src/lib/director.js";
@@ -216,7 +217,8 @@ export async function produccionDeLote(env, acceso, cliente, datos = {}) {
   const deseos = general?.deseos ?? [];
   // Las notas fijas de cada día de la semana («los lunes, muebles y camas»): el tema del día y, si nombran un producto
   // del plan, ese día va con él (lib/notasSemana.js). No cambian ni el formato ni el tipo.
-  const notas = limpiarNotasSemana(leerJSON(cliente.notas_semana));
+  const semana = planSemanalDeFila(cliente);
+  const notas = semana.notas;
   const perfiles = general?.perfiles ?? [];
   // Sin las composiciones aprendidas de la pantalla, se leen de la galería (lo hace también «Planificar mes»).
   if (!Array.isArray(datos.composiciones)) orden = await composicionesAprendidas(acceso, cliente.id);
@@ -232,7 +234,7 @@ export async function produccionDeLote(env, acceso, cliente, datos = {}) {
     // Los días que ya tienen publicación no se vuelven a llenar (los manda la pantalla, que mira el calendario).
     const omitir = new Set((Array.isArray(datos.omitir) ? datos.omitir : []).map(String).filter((f) => FECHA.test(f)));
     const dias = diasDelLote({
-      ...mes, ritmo: leerJSON(cliente.ritmo_contenido), fechas,
+      ...mes, ritmo: semana.ritmo, fechas,
       dias: (Array.isArray(datos.dias) ? datos.dias : []).map(Number).filter((d) => d >= 0 && d <= 6),
       desde: textoMes(mes.year, mes.month) === hoy.slice(0, 7) ? hoy : "",
     }).filter((d) => !omitir.has(d.fecha));

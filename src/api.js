@@ -317,7 +317,8 @@ export async function imagenDelADN(repoUrl, path) {
  * ficha queda debajo declarada como lo que es: un índice, no una fuente.
  */
 /** El plan de contenido del cliente, como lo guardó su ficha (plantillasPlan.js, `lineaDelPlan`). */
-const lineaDelPlanDe = (client) => String(client?.planContenido?.linea ?? "").slice(0, 400);
+// La línea del plan para la IA: la del plan semanal ÚNICO (lib/planSemanal.js) o, sin él, la de la plantilla de antes.
+const lineaDelPlanDe = (client) => String(client?.planSemanal?.linea || client?.planContenido?.linea || "").slice(0, 400);
 
 export function buildClientContext(client, calendar, adnCompleto = "", cerebro = null) {
   // Quien llama a esto ESCRIBE texto —ideas, guiones, captions—: la capa de
