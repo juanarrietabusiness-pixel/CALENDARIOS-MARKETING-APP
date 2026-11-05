@@ -4195,6 +4195,11 @@ son del servidor.
   · **El reparto llena el cuadro** (el video de Feria salía con el texto pequeño y media pantalla vacía): los textos
   piden un ancho mínimo de su columna (`ANCHO_TEXTO`) y, si la escena ocupa menos del `LLENADO` (68 %) de su alto,
   todo crece hasta `CRECER_MAX` (×1,35) sin pasar del ancho. Los tamaños por rol subieron (titular 0,105 del lado).
+  · **1:1 y 16:9 crecen más que 9:16** (`CRECER_POR_FORMATO`: 1,35 · 1,55 · 1,8): con el mismo lado corto hay sitio
+  alrededor, y el contenido se quedaba pequeño en medio. En 16:9 van en DOS columnas no sólo la imagen o el personaje,
+  también el icono, el anillo, el dibujo, la lista, el reloj y el logo (`IZQUIERDA_APAISADO`; el texto, a la derecha y
+  un poco más ancha), lo visual llega al 82 % del alto (`altoUtil`) y una columna sola no pasa del 68 % del ancho
+  (`ANCHO_COLUMNA_APAISADO`): a todo el ancho, un titular salía en una línea larguísima y pequeña.
   · **La revisión también mira el DISEÑO** en el instante «lleno» de cada escena (que espera a que una cifra o un anillo
   terminen de contar): `texto_pequeno` (menos del 3,5 % del lado, ~38 px), `espacio_vacio` (lo que se ve ocupa menos
   del 12 % del cuadro, o cabe en una franja de menos del 35 % del alto) y `desequilibrio` (el centro de lo que OCUPA la
