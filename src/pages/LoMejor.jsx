@@ -120,7 +120,7 @@ export default function LoMejor({ clients = [], pulso = 0, yo = null }) {
       {!cargando && datos && !piezas.length && (
         <p className="lo-mejor-vacio">
           Nada con estos filtros {ventana === "semana" ? "esta semana" : "en el último mes"}. Añade cuentas de competencia o inspiración a cada cliente
-          (pestaña Inspiración), guarda referencias con «Pegar un enlace» o búsquedas en la Biblioteca de anuncios.
+          (Referencias → Lo mejor), guarda referencias con «Pegar un enlace» o búsquedas en la Biblioteca de anuncios.
         </p>
       )}
       {datos?.total > piezas.length && <p className="lo-mejor-nota">Las {piezas.length} mejores de {datos.total}.</p>}

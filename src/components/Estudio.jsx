@@ -877,11 +877,11 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
     <section className={`estudio${dialogo ? " estudio-dialogo" : ""}`} aria-labelledby={`${ids}-h`}>
       <header className="est-cabecera">
         <div>
-          <TituloH id={`${ids}-h`} className="est-titulo">{dialogo ? "Crear en el Estudio" : "Galería"}</TituloH>
+          <TituloH id={`${ids}-h`} className="est-titulo">{dialogo ? "Crear en el Estudio" : "Estudio"}</TituloH>
           <p className="est-sub">
             {dialogo
               ? "Crea una imagen o un video para esta publicación, o escoge uno que ya hayas hecho."
-              : `Lo creado para ${client.name}: cada pieza con su pedido y lo que costó.`}
+              : `Lo creado para ${client.name}, con su pedido y lo que costó. A mano, en «Avanzado».`}
           </p>
         </div>
         {dialogo && onCerrar && <button type="button" className="btn-icon" aria-label="Cerrar" onClick={onCerrar}><Icon name="close" size={18} /></button>}

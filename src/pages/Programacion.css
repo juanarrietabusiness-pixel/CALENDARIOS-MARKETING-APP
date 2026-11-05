@@ -2,6 +2,7 @@
 .programacion { display: flex; flex-direction: column; gap: var(--sp-4); }
 
 .prog-filtros { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; }
+.prog-filtros[hidden] { display: none; }
 .prog-filtros .segmented { width: auto; flex: 0 0 auto; }
 .prog-filtros .input { width: auto; flex: 1 1 160px; max-width: 240px; }
 

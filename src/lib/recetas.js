@@ -241,7 +241,7 @@ export const RECETAS_CASA = Object.freeze([
     instrucciones: [
       "1. Lee la página del enlace (con tu herramienta de leer páginas web). Si no se puede leer, pide que copien el texto.",
       "2. Escribe la ficha: nombre, qué es en una frase, para quién, de 3 a 5 beneficios con las palabras de la página, datos (medidas, material, qué incluye), precio con la fecha en que se leyó, y lo que falta como «por confirmar».",
-      "3. Propón cómo queda en el catálogo del cliente y dile a la persona que lo guarde en la pestaña Cerebro → Estudio de mercado → Catálogo (con sus fotos): desde aquí no se escribe el catálogo.",
+      "3. Propón cómo queda en el catálogo del cliente y dile a la persona que lo guarde en Marca → Cerebro → Estudio de mercado → Catálogo (con sus fotos): desde aquí no se escribe el catálogo.",
       "4. Si piden piezas de ese producto, sigue con «Foto héroe del producto» o «Ficha técnica del producto».",
     ].join("\n"),
   },

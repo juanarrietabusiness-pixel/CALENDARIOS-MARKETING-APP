@@ -683,7 +683,7 @@ function Workspace({ session, ruta }) {
           setPulso((n) => n + 1);
           if (ev.aviso) setToast(ev.aviso);
           else if (ev.estado === "publicada") setToast(`Publicada ${ev.variante === "historia" ? "la historia " : ""}en ${NOMBRE_RED[ev.red] ?? ev.red}.`);
-          else if (ev.estado === "error") setToast(`No se pudo publicar en ${NOMBRE_RED[ev.red] ?? ev.red}. El motivo está en Programación.`);
+          else if (ev.estado === "error") setToast(`No se pudo publicar en ${NOMBRE_RED[ev.red] ?? ev.red}. El motivo está en Producción.`);
           break;
 
         default:

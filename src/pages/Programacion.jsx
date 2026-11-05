@@ -178,7 +178,8 @@ export default function Programacion({ clients = [], pulso = 0, onAbrir, onSubir
         ))}
       </div>
 
-      <div className="prog-filtros">
+      {/* Los filtros son de la cola: «Por producir» tiene los suyos (cada publicación con su revisión). */}
+      <div className="prog-filtros" hidden={pestana === "producir"}>
         <label className="sr-only" htmlFor={`${ids}-q`}>Buscar por texto</label>
         <input id={`${ids}-q`} className="input prog-buscar" type="search" placeholder="Buscar por texto" value={texto} onChange={(e) => setTexto(e.target.value)} />
         <label className="sr-only" htmlFor={`${ids}-c`}>Cliente</label>

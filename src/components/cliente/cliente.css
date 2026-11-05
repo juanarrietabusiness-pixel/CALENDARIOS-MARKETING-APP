@@ -44,8 +44,15 @@
 
 /* El semáforo del kit (Marca) y su aviso corto (Crear). */
 .semaforo { display: flex; flex-direction: column; gap: var(--sp-2); }
-.semaforo-titulo { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; font-size: var(--fs-sm); margin: 0; }
-.semaforo-resumen { margin-left: auto; font-size: var(--fs-2xs); font-weight: 600; padding: 2px var(--sp-2); border-radius: var(--radius-pill); background: var(--surface-2); color: var(--text-dim); }
+.semaforo-cabecera { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
+.semaforo-titulo { display: flex; align-items: center; gap: var(--sp-2); font-size: var(--fs-sm); margin: 0; flex: 1 1 240px; }
+.semaforo-luces { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-1) var(--sp-3); font-size: var(--fs-2xs); color: var(--text-dim); }
+.semaforo-luces li { display: inline-flex; align-items: center; gap: var(--sp-1); }
+.semaforo-luces .semaforo-luz { width: 18px; height: 18px; }
+.semaforo-luces li[data-estado="verde"] .semaforo-luz { background: var(--success); }
+.semaforo-luces li[data-estado="ambar"] .semaforo-luz { background: var(--accent-alt); color: #1a1200; }
+.semaforo-luces li[data-estado="rojo"] .semaforo-luz { background: var(--danger); color: #fff; }
+.semaforo-resumen { font-size: var(--fs-2xs); font-weight: 600; padding: 2px var(--sp-2); border-radius: var(--radius-pill); background: var(--surface-2); color: var(--text-dim); }
 .semaforo[data-estado="rojo"] .semaforo-resumen { background: var(--danger-soft); color: var(--danger); }
 .semaforo[data-estado="ambar"] .semaforo-resumen { background: var(--alt-soft); color: var(--accent-alt); }
 .semaforo-lista { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: var(--sp-2); }

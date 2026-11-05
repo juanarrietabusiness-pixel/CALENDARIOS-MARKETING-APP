@@ -2361,9 +2361,9 @@ button.campana-semana-boton:hover { border-color: var(--accent-line); }
   margin-bottom: calc(-1 * var(--sp-4) - 1px);
 }
 .pestanas-cliente::-webkit-scrollbar { display: none; }
-/* En el teléfono un degradado a la derecha avisa de que la barra sigue: sin él, las últimas pestañas no se sabía que existían. */
+/* En el teléfono caben las cinco (fase 7: eran diez y desplazaban de lado): el icono encima del nombre, a partes iguales. */
 @media (max-width: 719px) {
-  .pestanas-cliente { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 36px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 36px), transparent); padding-right: 36px; }
+  .pestana-cliente { flex: 1 1 0; min-width: 0; flex-direction: column; gap: 2px; padding: var(--sp-1) 2px; font-size: var(--fs-3xs); }
 }
 .pestana-cliente {
   scroll-snap-align: center;
@@ -2382,8 +2382,8 @@ button.campana-semana-boton:hover { border-color: var(--accent-line); }
   cursor: pointer;
 }
 .pestana-cliente:hover { color: var(--text); }
-.pestana-cliente[aria-current="page"] { color: var(--text); border-bottom-color: var(--accent); }
-.pestana-cliente[aria-current="page"] svg { color: var(--accent); }
+.pestana-cliente[aria-selected="true"] { color: var(--text); border-bottom-color: var(--accent); }
+.pestana-cliente[aria-selected="true"] svg { color: var(--accent); }
 
 /* Resumen del cliente */
 .resumen-cliente { list-style: none; display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; }

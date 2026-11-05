@@ -525,7 +525,7 @@ function PublicacionesDeHoy({ pulso, nombreDe, clients, yo }) {
   };
   const nOcultos = [fallidas.length > 0 && !ver.fallidas, (nProgramar || nProducir) && !ver.aprobadas, aMano.length > 0 && !ver.aMano].filter(Boolean).length;
   if (!ver.fallidas && !ver.aprobadas && !ver.aMano && !hoy.length && !nOcultos) return null;
-  const ir = (e) => { e.preventDefault(); navegar("/programacion"); };
+  const ir = (e) => { e.preventDefault(); navegar("/produccion"); };
   const linea = (f) => `${nombreDe(f.clientId) || "Cliente"} · ${REDES[f.red]?.nombre ?? f.red}${f.variante === "historia" ? " (historia)" : ""}`;
   const descartar = async (f) => {
     if (!window.confirm("¿Descartar este fallo? No se volverá a intentar.")) return;
@@ -564,7 +564,7 @@ function PublicacionesDeHoy({ pulso, nombreDe, clients, yo }) {
             ))}
           </ul>
           {fallo && <p role="alert" style={{ fontSize: "var(--fs-2xs)" }}>{fallo}</p>}
-          <a href="/programacion" onClick={ir}>Revisar y reintentar en Programación</a>
+          <a href="/produccion" onClick={ir}>Revisar y reintentar en Producción</a>
         </div>
       )}
       {ver.aprobadas && (
@@ -582,7 +582,7 @@ function PublicacionesDeHoy({ pulso, nombreDe, clients, yo }) {
           <p style={{ fontSize: "var(--fs-2xs)", color: "var(--text-dim)", margin: "var(--sp-1) 0" }}>
             Lo aprobado no sale solo: revísalo y dale el paso final.
           </p>
-          <a href="/programacion" onClick={ir}>Revisar y programar en Programación</a>
+          <a href="/produccion" onClick={ir}>Revisar y programar en Producción</a>
         </div>
       )}
       {ver.aMano && (
@@ -609,12 +609,12 @@ function PublicacionesDeHoy({ pulso, nombreDe, clients, yo }) {
         <p style={{ fontSize: "var(--fs-2xs)", color: "var(--text-dim)", display: "flex", alignItems: "center", gap: "var(--sp-2)", flexWrap: "wrap" }}>
           <Icon name="clock" size={14} />
           Hoy {hoy.length === 1 ? "sale 1 publicación" : `salen ${hoy.length} publicaciones`}; la próxima a las {horaDe(hoy[0].programadaPara)} ({linea(hoy[0])}).
-          <a href="/programacion" onClick={ir}>Ver la cola</a>
+          <a href="/produccion" onClick={ir}>Ver la cola</a>
         </p>
       )}
       {nOcultos > 0 && (
         <p style={{ fontSize: "var(--fs-3xs)", color: "var(--text-faint)", margin: 0 }}>
-          {nOcultos === 1 ? "Un aviso oculto" : `${nOcultos} avisos ocultos`}: vuelven si cambia algo, y siguen en <a href="/programacion" onClick={ir}>Programación</a>.
+          {nOcultos === 1 ? "Un aviso oculto" : `${nOcultos} avisos ocultos`}: vuelven si cambia algo, y siguen en <a href="/produccion" onClick={ir}>Producción</a>.
         </p>
       )}
     </section>

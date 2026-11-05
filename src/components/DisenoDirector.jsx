@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect, useState } from "react";
 import Icon from "./Icon";
 
 // ============================================================
-// La pestaña «Diseño»: el director creativo del cliente
+// «¿Qué quieres crear?»: el director creativo del cliente, arriba de la pestaña Crear (fase 7; era la pestaña «Diseño»)
 //
 // Es el MISMO asistente de siempre (ChatPanel), en la página y no flotando,
 // con sus conversaciones de diseño (tema «diseno»: las ve todo el equipo,
@@ -48,7 +48,7 @@ export default function DisenoDirector({ client, asistente }) {
       <div className="diseno-cabecera" style={{ display: "flex", alignItems: "flex-start", gap: "var(--sp-2)", justifyContent: "space-between", flexWrap: "wrap", margin: "0 0 var(--sp-2)" }}>
         <p className="hint" style={{ margin: 0, flex: "1 1 320px" }}>
           Dile qué quieres con tus palabras. Él diseña la tanda, te enseña el plan con su costo, crea al pulsar «Crear», revisa
-          cada imagen y corrige las que salgan mal. Lo creado queda en el Estudio; lo que va a una publicación, en ella.
+          cada imagen y corrige las que salgan mal. Lo creado queda en la galería, aquí debajo; lo que va a una publicación, en ella.
         </p>
         <button type="button" className="btn btn-secondary btn-sm" onClick={() => setRecetas(true)}>
           <Icon name="list" size={16} /> Recetas

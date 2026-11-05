@@ -529,8 +529,7 @@ export function ApprovalDialog({
               <div>
                 <span id={`${ids}-auto`} style={{ fontSize: "var(--fs-xs)", fontWeight: 600 }}>Programar al aprobar</span>
                 <p className="hint" style={{ margin: 0 }}>
-                  Vale para este cliente, en todos sus meses. Apagado: lo aprobado espera en Programación → «Aprobadas, por
-                  programar» a que alguien dé el paso final. Encendido: la PIEZA FINAL aprobada se programa sola; una idea
+                  Vale para este cliente, en todos sus meses. Apagado: lo aprobado espera en Producción → «Por producir» a que alguien dé el paso final. Encendido: la PIEZA FINAL aprobada se programa sola; una idea
                   aprobada, nunca. Si algo lo impide, te llega a la campana con el motivo.
                 </p>
               </div>

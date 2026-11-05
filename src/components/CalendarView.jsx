@@ -1096,7 +1096,7 @@ export default function CalendarView({
               <span className="toggle-thumb" />
             </button>
           </span>
-          <a className="barra-publicar-enlace" href="/programacion" onClick={(e) => { e.preventDefault(); navegar("/programacion"); }}>
+          <a className="barra-publicar-enlace" href="/produccion" onClick={(e) => { e.preventDefault(); navegar("/produccion"); }}>
             Ver la cola
           </a>
         </div>
