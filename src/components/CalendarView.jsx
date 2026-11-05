@@ -990,27 +990,27 @@ export default function CalendarView({
           aria-pressed={selectionMode}
           aria-label="Seleccionar publicaciones"
         >
-          <Icon name="checkSquare" size={16} />
+          <Icon name="checkSquare" size={16} /> <span>Seleccionar</span>
         </button>
 
         <button
           className="btn btn-secondary"
           onClick={() => setCapa((c) => (c === "inspiracion" ? null : "inspiracion"))}
           aria-expanded={capa === "inspiracion"}
-          aria-label="Inspiración: lo que publican las cuentas que sigue este cliente"
-          title="Inspiración: lo que publican su competencia y las cuentas que le inspiran"
+          aria-label="Lo mejor: lo que mejor les funciona a las cuentas que sigue este cliente"
+          title="Lo mejor: lo que publican su competencia y las cuentas que le inspiran"
         >
-          <Icon name="eye" size={18} />
+          <Icon name="eye" size={18} /> <span>Lo mejor</span>
         </button>
 
         <button
           className="btn btn-secondary"
           onClick={() => setCapa((c) => (c === "banco" ? null : "banco"))}
           aria-expanded={capa === "banco"}
-          aria-label={`Banco de ideas, ${ideasBank.length} guardadas`}
+          aria-label={`Ideas: el banco de ideas, ${ideasBank.length} guardadas`}
           style={{ position: "relative" }}
         >
-          <Icon name="bulb" size={18} />
+          <Icon name="bulb" size={18} /> <span>Ideas</span>
           {ideasBank.length > 0 && (
             <span aria-hidden="true" style={{ position: "absolute", top: -5, right: -5, background: "var(--accent-alt)", color: "#1a1200", borderRadius: "var(--radius-pill)", minWidth: 18, height: 18, fontSize: "var(--fs-3xs)", fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 5px" }}>
               {ideasBank.length}

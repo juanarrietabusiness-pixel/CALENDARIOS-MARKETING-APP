@@ -17,8 +17,7 @@ import { OverflowMenu } from "./calendario/primitivas";
 import { soloLectura } from "../lib/sesionActual";
 import * as api from "../lib/estudio";
 import { MEDIOS_VACIOS, recortarMedios, clavesDe, formularioInicial } from "../lib/estudio";
-import { estampaSola, estamparEnGaleria, conLogoSiToca } from "../lib/logoEstudio";
-import { terminarTrabajo } from "../lib/controlEstudio";
+import { estampaSola, estamparEnGaleria } from "../lib/logoEstudio";
 import {
   modeloPorId, nombreDelModelo, estimar, textoCosto, pideConfirmar, ajustesDe, estaVivo, maxPorPedido, PRECIOS_AL, MAX_PROMPT,
 } from "../lib/estudioCatalogo";
@@ -68,6 +67,7 @@ const dormir = (ms) => new Promise((r) => setTimeout(r, ms));
 const FILTROS_FIJOS = FILTROS_GALERIA;
 // Un carrusel o un reel de la galería con todas sus piezas y la descarga en ZIP: sólo al abrirlo.
 const VisorGrupo = lazy(() => import("./VisorGrupo"));
+const PonerEnPublicacion = lazy(() => import("./PonerEnPublicacion"));
 // La papelera, igual: sólo al abrirla (la pestaña tiene tope de 20 kB comprimidos).
 const EstudioPapelera = lazy(() => import("./EstudioPapelera"));
 
@@ -138,6 +138,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
   // La galería: lo que no se pudo pintar (el archivo ya no está) y lo marcado para mandar varias a la papelera.
   const [perdidos, setPerdidos] = useState(() => new Set());
   const [seleccion, setSeleccion] = useState(null); // null = no se está seleccionando; si no, un Set de ids
+  const [poner, setPoner] = useState(null); // «Poner en una publicación…» con las escogidas (ids en su orden)
   // La revisión de marca de cada imagen: id → { cargando } | { datos } | { error }.
   const [revisiones, setRevisiones] = useState({});
 
@@ -165,11 +166,6 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
   const [borrando, setBorrando] = useState(null);
 
   const siguiendo = useRef(new Set());
-  // Los trabajos del compositor cuyas imágenes llevan el logo ESTAMPADO al terminar (kit.logoModo «estampado»).
-  // Los trabajos de imagen del compositor: al terminar pasan por el control (lib/controlEstudio.js); el valor dice si
-  // además se estampa el logo.
-  const paraEstampar = useRef(new Map());
-  const kitRef = useRef(null);
   const montado = useRef(true);
   const promptRef = useRef(null);
 
@@ -231,7 +227,6 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
   const puedeLogo = Boolean(conKit && form && modelo && ponerLogo({ kit, tipo: form.tipo, modelo, referencias: clavesDe(form.medios).reference }));
   // Con el logo estampado (kit), el modelo no lo recibe: la aplicación lo pega encima al terminar.
   const estampa = Boolean(conKit && form && form.tipo !== "video" && estampaSola(kit));
-  kitRef.current = kit;
   // Lo que va de referencia además de lo puesto a mano (lib/pieza.js): las fotos de los productos que nombra la idea,
   // los personajes, la tipografía de la marca, las referencias del tipo y del estilo, y los «Me gusta».
   const hayGustos = (datos?.archivos ?? []).some((a) => a.favorito && a.tipo === "imagen");
@@ -245,7 +240,6 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
     if (siguiendo.current.has(id)) return;
     siguiendo.current.add(id);
     let vistas = -1;
-    let ultimo = null;
     try {
       while (montado.current) {
         let r;
@@ -257,7 +251,6 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
         }
         if (!montado.current) break;
         const t = r.trabajo;
-        ultimo = t;
         setDatos((d) => (d ? { ...d, trabajos: reemplazar(d.trabajos, t) } : d));
         const hechas = t.archivos?.length ?? 0;
         if (hechas !== vistas) { vistas = hechas; cargar(); } // las piezas van apareciendo
@@ -265,12 +258,6 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
         // Otro tiene el paso, el motor pidió esperar (saturación) o el video aún se hace: sin prisa.
         // Si no, el siguiente ya. Nunca más de 15 s: por si acaso se cierra el diálogo y hay que enterarse.
         await dormir(Math.min(15_000, Math.max(r.espera ?? 0, r.ocupado ? 2500 : t.nota ? 3000 : 200)));
-      }
-      // Terminado: si se pidió con el logo estampado, cada imagen sale otra vez con el logo encima (la cruda se queda).
-      if (ultimo && !estaVivo(ultimo.estado) && paraEstampar.current.has(id)) {
-        const estampar = paraEstampar.current.get(id);
-        paraEstampar.current.delete(id);
-        if (await terminarTrabajo({ clienteId: client.id, trabajo: ultimo, kit: kitRef.current, estampar, conLogo: conLogoSiToca })) cargar();
       }
     } finally {
       siguiendo.current.delete(id);
@@ -455,15 +442,17 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
         extra: dePlantilla ? lineaDePlantillaEnPedido(kit, plantillaSel) : "",
       });
       const medios = { ...clavesDe(form.medios), ...pieza.medios };
-      const { trabajo } = await api.pedirImagenes(client.id, {
-        modelo: form.modelo, prompt: pieza.prompt,
-        n: form.n, ajustes: ajustesDe(modelo, form.ajustes, medios),
-        medios, confirmado: true,
-        ...(uso ? { calendarId: uso.calendarId, postId: uso.postId } : {}),
-      });
-      setDatos((d) => (d ? { ...d, trabajos: reemplazar(d.trabajos, trabajo) } : d));
-      if (form.tipo === "imagen") paraEstampar.current.set(trabajo.id, estampa && conLogo);
-      seguir(trabajo.id);
+      const pedido = { modelo: form.modelo, prompt: pieza.prompt, n: form.n, ajustes: ajustesDe(modelo, form.ajustes, medios), medios };
+      if (form.tipo === "imagen") {
+        // Por el SERVIDOR, como el lote (lib/visorEstudio.js): control, proporción y logo aunque se cierre la pantalla.
+        const v = await import("../lib/visorEstudio");
+        await v.pedirDelCompositor({ clienteId: client.id, ...pedido, kit, estampar: estampa && conLogo, uso, seguir: () => montado.current, alFallo: (t) => montado.current && avisar(false, t) });
+        cargar();
+      } else {
+        const { trabajo } = await api.pedirImagenes(client.id, { ...pedido, confirmado: true, ...(uso ? { calendarId: uso.calendarId, postId: uso.postId } : {}) });
+        setDatos((d) => (d ? { ...d, trabajos: reemplazar(d.trabajos, trabajo) } : d));
+        seguir(trabajo.id);
+      }
       setIdeaAnterior(null);
       if (delNombrado.length) {
         setForm((f) => ({ ...f, medios: { ...f.medios, reference: [...delNombrado, ...f.medios.reference.filter((x) => !delNombrado.some((n) => n.id === x.id))].slice(0, modelo.referencias || 0) } }));
@@ -882,11 +871,11 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
     <section className={`estudio${dialogo ? " estudio-dialogo" : ""}`} aria-labelledby={`${ids}-h`}>
       <header className="est-cabecera">
         <div>
-          <TituloH id={`${ids}-h`} className="est-titulo">{dialogo ? "Crear con IA" : "Estudio"}</TituloH>
+          <TituloH id={`${ids}-h`} className="est-titulo">{dialogo ? "Crear en el Estudio" : "Estudio"}</TituloH>
           <p className="est-sub">
             {dialogo
               ? "Crea una imagen o un video para esta publicación, o escoge uno que ya hayas hecho."
-              : `Crea imágenes y videos para ${client.name}. Cada uno queda aquí, con su prompt y lo que costó.`}
+              : `Crea imágenes y videos para ${client.name}. Cada uno queda aquí, con su pedido y lo que costó.`}
           </p>
         </div>
         {dialogo && onCerrar && <button type="button" className="btn-icon" aria-label="Cerrar" onClick={onCerrar}><Icon name="close" size={18} /></button>}
@@ -904,57 +893,9 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
       {soloPrueba && (
         <p className="est-aviso est-aviso-info">
           Ahora mismo sólo está activo el motor de <strong>prueba</strong> (gratis): saca una tarjeta con tu texto, no una imagen ni un video reales.
-          Para eso de verdad, el administrador tiene que poner la llave de un proveedor como secreto del Worker:{" "}
+          Para eso de verdad, el administrador tiene que poner la llave de un proveedor en los ajustes del servidor:{" "}
           {llavesQueFaltan.map((l, i) => <span key={l}>{i > 0 ? (i === llavesQueFaltan.length - 1 ? " o " : ", ") : ""}<code>{l}</code></span>)}.
         </p>
-      )}
-
-      {/* ---------- El kit de marca ---------- */}
-      {!dialogo && datos && (
-        <Suspense fallback={null}>
-          <EstudioKit
-            client={client}
-            kit={kit}
-            archivos={archivos}
-            perdidas={datos.perdidas}
-            onCambio={cargar}
-            lectura={lectura}
-            onPreparar={() => api.prepararKit(client.id)}
-            onGuardar={guardarKitDeMarca}
-          />
-        </Suspense>
-      )}
-
-      {/* ---------- Un lote de anuncios por nivel de consciencia ---------- */}
-      {!lectura && !dialogo && motores && (
-        <div className="card est-lote-entrada">
-          <div>
-            <strong>En lote</strong>
-            <p className="hint">De la idea a la imagen: anuncios en matriz (deseos × perfiles × niveles), por tipo de pieza o el MES completo con el ritmo del cliente. La IA escribe título, brief y texto de cada pieza, tú revisas y ves el costo, y cada una llega al calendario lista para revisión. O recrea con la marca un anuncio que te guste.</p>
-          </div>
-          <div className="est-lote-botones">
-            <button type="button" className="btn btn-secondary" onClick={() => setLoteAbierto(true)}><Icon name="megaphone" size={16} /> Producir en lote</button>
-            <button type="button" className="btn btn-secondary" onClick={() => setRecrear({ archivo: null })}><Icon name="refresh" size={16} /> Recrear un anuncio</button>
-          </div>
-        </div>
-      )}
-      {recrear && (
-        <Suspense fallback={null}>
-          <EstudioRecrear
-            client={client} archivos={datos?.archivos ?? []} productosConFotos={datos?.productos ?? []} inicial={recrear.archivo}
-            activos={activos}
-            onCerrar={() => { setRecrear(null); cargar(); }} onCrear={desdeRecrear}
-          />
-        </Suspense>
-      )}
-      {loteAbierto && motores && datos && (
-        <Suspense fallback={null}>
-          <EstudioLote
-            client={client} motores={motores} productosConFotos={datos?.productos ?? []} archivos={datos?.archivos ?? []} papelera={datos?.papelera ?? []} kit={kit}
-            inicial={loteAbierto?.alcance ? loteAbierto : null}
-            onCerrar={() => setLoteAbierto(false)} onHecho={cargar} onLlevar={onLlevarAlCalendario}
-          />
-        </Suspense>
       )}
 
       {/* ---------- Pedir ---------- */}
@@ -1017,6 +958,38 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
             onEscribir: escribirGuion, onUsar: usarGuion, onDescartar: () => setGuion(null),
           }}
         />
+      )}
+
+      {/* ---------- Muchas de una vez (anuncios en matriz, por tipo o el mes) y recrear un anuncio de otra cuenta ---------- */}
+      {!lectura && !dialogo && motores && (
+        <div className="card est-lote-entrada">
+          <div>
+            <strong>Muchas de una vez</strong>
+            <p className="hint">Anuncios en matriz (deseos × perfiles × niveles), por tipo de pieza o el MES completo con el ritmo del cliente. La IA escribe cada pieza, tú revisas y ves el costo, y cada una llega al calendario lista para revisión. O recrea con tu marca un anuncio de otra cuenta que te guste.</p>
+          </div>
+          <div className="est-lote-botones">
+            <button type="button" className="btn btn-secondary" onClick={() => setLoteAbierto(true)}><Icon name="megaphone" size={16} /> Producir varias piezas</button>
+            <button type="button" className="btn btn-secondary" onClick={() => setRecrear({ archivo: null })}><Icon name="refresh" size={16} /> Recrear con mi marca</button>
+          </div>
+        </div>
+      )}
+      {recrear && (
+        <Suspense fallback={null}>
+          <EstudioRecrear
+            client={client} archivos={datos?.archivos ?? []} productosConFotos={datos?.productos ?? []} inicial={recrear.archivo}
+            activos={activos}
+            onCerrar={() => { setRecrear(null); cargar(); }} onCrear={desdeRecrear}
+          />
+        </Suspense>
+      )}
+      {loteAbierto && motores && datos && (
+        <Suspense fallback={null}>
+          <EstudioLote
+            client={client} motores={motores} productosConFotos={datos?.productos ?? []} archivos={datos?.archivos ?? []} papelera={datos?.papelera ?? []} kit={kit}
+            inicial={loteAbierto?.alcance ? loteAbierto : null}
+            onCerrar={() => setLoteAbierto(false)} onHecho={cargar} onLlevar={onLlevarAlCalendario}
+          />
+        </Suspense>
       )}
 
       {/* ---------- En curso ---------- */}
@@ -1106,6 +1079,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
                 <span className="est-seleccion-cuenta">{seleccion.size} seleccionada{seleccion.size === 1 ? "" : "s"}</span>
                 <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSeleccion(new Set(visibles.map((a) => a.id)))}>Todas las que se ven</button>
                 <button type="button" className="btn btn-secondary btn-sm" disabled={seleccion.size < 2 || lectura} onClick={agrupar}>Agrupar como carrusel</button>
+                {!dialogo && <button type="button" className="btn btn-secondary btn-sm" disabled={!seleccion.size} onClick={() => setPoner([...seleccion])}><Icon name="send" size={14} /> Poner en una publicación…</button>}
                 <button type="button" className="btn btn-danger btn-sm" disabled={!seleccion.size} onClick={() => variasAPapelera([...seleccion])}>
                   <Icon name="trash" size={14} /> Mandar {seleccion.size || ""} a la papelera
                 </button>
@@ -1259,6 +1233,22 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
           />
         </Suspense>
       )}
+      {/* ---------- El kit de marca: al final (arriba, crear y la galería) ---------- */}
+      {!dialogo && datos && (
+        <Suspense fallback={null}>
+          <EstudioKit
+            client={client}
+            kit={kit}
+            archivos={archivos}
+            perdidas={datos.perdidas}
+            onCambio={cargar}
+            lectura={lectura}
+            onPreparar={() => api.prepararKit(client.id)}
+            onGuardar={guardarKitDeMarca}
+          />
+        </Suspense>
+      )}
+
       {driveRol && (
         <BancoSelector
           clientId={client.dbId || client.id}
@@ -1281,7 +1271,13 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
             onSueltas={() => { setFiltro(grupoAbierto.carpeta.id); setGrupoAbierto(null); }}
             onOrdenar={lectura ? null : (orden) => api.ordenarCarpeta(client.id, grupoAbierto.carpeta.id, orden).then(cargar)}
             onDesagrupar={lectura ? null : () => api.desagrupar(client.id, grupoAbierto.carpeta.id).then(() => { setGrupoAbierto(null); return cargar(); })}
+            cliente={lectura || onUsarVarias ? null : client}
           />
+        </Suspense>
+      )}
+      {poner && (
+        <Suspense fallback={null}>
+          <PonerEnPublicacion cliente={client} archivoIds={poner} descripcion={poner.length === 1 ? "la escogida" : `las ${poner.length} escogidas, en el orden en que las tocaste`} onCerrar={() => { setPoner(null); setSeleccion(null); }} />
         </Suspense>
       )}
       {visor && (

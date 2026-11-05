@@ -50,7 +50,8 @@ export function pasoListo({ id = "p1", titulo = "", pedido, texto = "", kit = {}
 /** Manda los pasos al servidor. → el encargo (lo sigue `esperarEnServidor`). */
 export async function lanzarEnServidor({ clienteId, pasos, titulo = "", carpetaId = null }) {
   const { encargo } = await crearEncargo(clienteId, {
-    tipo: "lote", titulo: limpio(titulo, 140), pasos, carpetaId, mejorar: false, controlar: true, paralelo: Math.min(3, Math.max(1, pasos.length)),
+    // `seguido`: la pantalla lo mira mientras sale; la campana sólo avisa si falla o si tardó (worker/lib/equipo.js).
+    tipo: "lote", titulo: limpio(titulo, 140), pasos, carpetaId, mejorar: false, controlar: true, paralelo: Math.min(3, Math.max(1, pasos.length)), seguido: true,
   });
   return encargo;
 }

@@ -280,6 +280,7 @@ export default function EstudioRecrear({ client, archivos = [], productosConFoto
                       <span className="label">Descripción propuesta</span>
                       <p className="recrear-descripcion">{version.descripcion}</p>
                       <CopyButton text={version.descripcion} describes="la descripción" />
+                      {version.hashtags && <p className="hint">Hashtags (van aparte): {version.hashtags}</p>}
                     </div>
                   )}
                   <div className="field">

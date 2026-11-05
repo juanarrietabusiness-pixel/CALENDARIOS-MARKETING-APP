@@ -31,6 +31,8 @@ export default function GuionCorto({ segundos, escribiendo, resultado, onEscribi
               <p><strong>Descripción del post:</strong></p>
               <p className="est-guion-caption">{g.descripcion}</p>
               <CopyButton text={g.descripcion} describes="la descripción" />
+              {/* Los hashtags van aparte (lib/reglasFormato.js): en su campo de la publicación, no al final del caption. */}
+              {g.hashtags && <p className="hint"><strong>Hashtags (aparte):</strong> {g.hashtags}</p>}
             </div>
           )}
           <div className="est-acciones-idea">

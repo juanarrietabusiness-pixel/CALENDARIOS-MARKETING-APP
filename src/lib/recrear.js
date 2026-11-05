@@ -42,6 +42,8 @@ export function versionDeAdaptacion(adaptacion) {
     idea: corto([a.idea, a.guion].filter(Boolean).join(" "), 1500),
     texto: corto(a.textoPantalla, 120),
     descripcion: String(a.descripcion ?? "").trim().slice(0, 2200),
+    // Los hashtags aparte (lib/reglasFormato.js): van a su campo, nunca al final del caption.
+    hashtags: String(a.hashtags ?? "").trim().slice(0, 600),
   };
 }
 

@@ -1,25 +1,28 @@
 // ============================================================
-// La pestaña «Subir» del panel de una publicación
+// Las pestañas «Pieza» y «Publicar» del panel de una publicación
 //
-// Pensada como el «Crear publicación» de Metricool, que es lo que la
-// agencia usa de referencia:
+// Eran una sola pestaña, «Subir», con unos 25 controles de IA en una columna
+// (fase 4 de docs/propuesta-lo-mejor-y-creacion.md). Ahora:
 //
-//   · A la IZQUIERDA se configura, y es lo único que desplaza. Arriba,
-//     qué sale y dónde; debajo, el compositor: los archivos (con borrar a
-//     la vista y la portada del video) y el texto, con la IA al lado.
-//     Lo de cada red va PLEGADO —«Configuración de Instagram», «de
-//     Facebook», «Historia»—, con un resumen de lo puesto en el título:
-//     antes todo iba abierto y había que bajar mucho para llegar al final.
-//     La revisión son dos filas, «N errores» y «N avisos», que se abren.
-//   · La barra con el día, la hora y el botón va pegada ABAJO DE LA
-//     IZQUIERDA, no de la ventana entera: tapaba media vista previa. Y
-//     lleva dentro las acciones del pie del panel (borrar, al banco,
-//     cerrar), que a lo ancho no tiene pie propio: eran dos barras
-//     apiladas y a 800 px de alto dejaban una rendija para configurar.
-//   · A la DERECHA, la vista previa a toda la altura, con su propio
-//     desplazamiento. Siempre entera, siempre a la vista.
+//   · PIEZA: el archivo. Tres botones grandes —«Diseñar con el director»
+//     (la imagen, la serie de un carrusel o el reel por planos, según el
+//     formato), «Subir archivo» y «De la galería»— y «¿Qué quieres?». Lo
+//     demás (Drive, video del producto, video animado, el Estudio avanzado,
+//     las recetas, el modelo, tipo/estilo/plantilla, los atajos de foto y de
+//     temporada) va plegado en «Más formas». Las acciones sobre cada imagen ya
+//     puesta (Otra versión, Corregir, Recrear con mi marca, Ver en el Estudio)
+//     siguen junto a la imagen.
+//   · PUBLICAR, pensada como el «Crear publicación» de Metricool:
+//     A la IZQUIERDA se configura, y es lo único que desplaza: qué sale y
+//     dónde, el texto con la IA al lado y lo de cada red PLEGADO, con un
+//     resumen de lo puesto en el título. La revisión son dos filas, «N
+//     errores» y «N avisos», que se abren. La barra con el día, la hora y el
+//     botón va pegada ABAJO DE LA IZQUIERDA (no de la ventana entera: tapaba
+//     media vista previa) y lleva dentro las acciones del pie del panel.
+//     A la DERECHA, la vista previa a toda la altura, siempre a la vista.
 //
-// En el teléfono todo va en una columna, y la barra al final.
+// Es UN componente con las dos secciones (`seccion`): lo que está en marcha no
+// se pierde al pasar de una a otra. En el teléfono todo va en una columna.
 //
 // Las reglas son las de `lib/publicacion.js`, las mismas que aplica el
 // servidor al publicar: el aviso llega al escribir, no a la hora de salir.
@@ -65,15 +68,21 @@ const VideoListo = lazy(() => import("../VideoListo"));
 const Recetas = lazy(() => import("../Recetas"));
 
 /**
+ * @param seccion      «pieza» (el archivo y todas las formas de hacerlo) o «publicar» (dónde, el texto, cómo se va a
+ *                     ver, la revisión y «¿Cuándo sale?»). Es UN componente con las dos: lo que está en marcha (una
+ *                     versión, el diálogo del Estudio) no se pierde al pasar de una a otra.
+ * @param onIrA        cambiar de pestaña del panel («pieza» | «salida»).
  * @param formatoAuto  true cuando la publicación se creó con «Subir
  *                     contenido»: el formato sigue al archivo (una imagen,
  *                     post; varias, carrusel; un video, reel) hasta que se
  *                     escoja uno a mano.
  * @param ancho        pantalla ancha: la vista previa va en su columna.
  */
-export default function PestanaPublicar({ post, sf, setForm, client, clientId, day, cal = null, onError, publicacion = null, children, acciones = null, enlaceAMano = null, formatoAuto = false, ancho = false }) {
+export default function PestanaPublicar({ post, sf, setForm, client, clientId, day, cal = null, onError, publicacion = null, children, acciones = null, enlaceAMano = null, formatoAuto = false, ancho = false, seccion = "publicar", onIrA = null }) {
   const ids = useId();
   const entrada = useRef(null);
+  // «De Drive» / «Del banco» desde «Más formas» (lo abre EditorMedios, que tiene el selector).
+  const abrirBanco = useRef(null);
   const auto = useRef(formatoAuto);
   const [escribiendo, setEscribiendo] = useState("");
   const [escrito, setEscrito] = useState("");
@@ -176,11 +185,14 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
     // El guion por tramos del reel, también sólo si estaba vacío (lo pone igual el servidor al terminar el encargo).
     const guionReel = String(opciones.guion ?? "").trim();
     const portadaReel = String(opciones.portada ?? "").trim();
+    // Los hashtags que trajo el guion (aparte del caption, lib/reglasFormato.js), sólo si no había.
+    const hashtagsReel = String(opciones.hashtags ?? "").trim();
     setForm((p) => ({
       ...conMedios(p, [medioDeArchivo(video)]), mediosCambiadosAt: new Date().toISOString(),
       ...(caption && !String(p.descripcion || p.script || "").trim() ? { descripcion: caption } : {}),
       ...(guionReel && !String(p.guion ?? "").trim() ? { guion: guionReel } : {}),
       ...(portadaReel && !p.portada ? { portada: portadaReel, portadaMs: null } : {}),
+      ...(hashtagsReel && !String(p.hashtagsFinales ?? "").trim() ? { hashtagsFinales: hashtagsReel } : {}),
     }));
     if (cal && post.id) apuntarUso(clientId, video.id, { calendarId: cal.dbId || cal.id, postId: post.id }).catch(() => {});
     setEscrito("Puesto el reel en la publicación.");
@@ -279,7 +291,7 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
   const corregir = async (medio) => {
     if (versionando || !clientId) return;
     if (!indicacion.trim()) {
-      onError?.("Escribe en «¿Qué quieres?» qué hay que cambiar de la imagen y pulsa «Corregir esta» otra vez.");
+      onError?.("Escribe en «¿Qué quieres?» qué hay que cambiar de la imagen y pulsa «Corregir» otra vez.");
       campoIndicacion.current?.focus();
       return;
     }
@@ -397,64 +409,116 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
   // El video que revisa «¿Está listo este video?»: el primero que ya está en el almacenamiento.
   const videoSubido = mediosDe(post).find((m) => m.tipo === "video" && String(m.src ?? "").startsWith("/api/media/"))?.src ?? "";
 
-  return (
-    <div className="pestana-publicar" data-ancho={ancho || undefined}>
-      <div className="pp-izquierda">
-      <div className="pp-config">
-      {/* Lo que pidió cambiar el cliente, con «Rehacer la imagen» (la misma imagen, sólo ese cambio). */}
-      <CambiosDelCliente post={post} setForm={setForm} clientId={clientId} uso={cal && post.id ? { calendarId: cal.dbId || cal.id, postId: post.id } : null} />
-      <section className="pp-bloque" aria-labelledby={`${ids}-que`}>
-        <h3 id={`${ids}-que`} className="label">¿Qué sale y dónde?</h3>
-        <DestinoRedes
-          post={post}
-          redes={redes}
-          onRedes={(lista) => sf("redes", lista)}
-          cuentas={cuentas}
-          formato={post.format}
-          onFormato={elegirFormato}
-        />
-      </section>
+  // El aviso de lo último que pasó (lo puesto, lo escrito): sale en la pestaña que se esté viendo.
+  const estadoEscrito = (
+    <div role="status" aria-live="polite" className={escrito ? undefined : "sr-only"}>{escrito && <p className="notice notice-ok">{escrito}</p>}</div>
+  );
+  const dialogos = (
+    <>
+      {galeria && (
+        <Suspense fallback={null}>
+          <GaleriaSelector clienteId={clientId} maximo={LIMITES.instagram.carruselMax} yaTiene={mediosDe(post).length} onElegir={ponerDeGaleria} onCerrar={() => setGaleria(false)} />
+        </Suspense>
+      )}
+      {carrusel && (
+        <Suspense fallback={null}>
+          <CarruselIA client={client} post={post} cal={cal} onPoner={ponerCarrusel} onCerrar={() => setCarrusel(false)} indicacion={indicacion} />
+        </Suspense>
+      )}
+      {reel && (
+        <Suspense fallback={null}>
+          <ReelIA client={client} post={post} cal={cal} forma={reel} onPoner={ponerReel} onCerrar={() => setReel(false)} />
+        </Suspense>
+      )}
+      {recetas && (
+        <Suspense fallback={null}>
+          <Recetas
+            clienteId={clientId}
+            publicacion={cal && post.id ? { calendarId: cal.dbId || cal.id, postId: post.id, etiqueta: post.title || post.idea?.slice(0, 50) || "esta publicación" } : null}
+            indicacion={indicacion}
+            onCrearAqui={window.location.pathname.startsWith("/cliente/") && post.id ? (r) => {
+              const base = window.location.pathname.split("/").slice(0, 3).join("/");
+              const q = new URLSearchParams({ receta: r.id, post: post.id, ...(indicacion.trim() ? { pide: indicacion.trim() } : {}) });
+              setRecetas(false);
+              navegar(`${base}/diseno?${q}`);
+            } : null}
+            onCerrar={() => setRecetas(false)}
+          />
+        </Suspense>
+      )}
+      {dialogoCreacion}
+    </>
+  );
 
-      {/* El compositor: archivos y texto en una misma tarjeta. */}
-      <section className="compositor" aria-label="Contenido de la publicación">
-        <EditorMedios
-          post={post}
-          clientId={clientId}
-          client={client}
-          driveFolder={client?.driveFolder}
-          onChange={alCambiarMedios}
-          onError={onError}
-          entradaRef={entrada}
-          onPortada={conPortada ? (c) => setForm((p) => ({ ...p, ...c })) : null}
-          onCrearConIA={(o) => abrirCreacion({ ...o, indicacion })}
-          onOtraVersion={client ? (m) => otraVersion(m) : null}
-          onRecrear={client ? (m) => otraVersion(m, { recrear: true }) : null}
-          onCrearAqui={puedeCrearAqui ? crearAqui : null}
-          onCorregir={clientId ? (m) => corregir(m) : null}
-          onVerEnEstudio={clientId ? verEnEstudio : null}
-          versionando={versionando}
-          onCrearCarrusel={post.format === "carrusel" && clientId ? () => setCarrusel(true) : null}
-          onCrearReel={post.format === "reel" && clientId ? () => setReel("guion") : null}
-          onVideoProducto={(post.format === "reel" || post.format === "historia") && clientId ? () => setReel("producto") : null}
-          onVideoAnimado={(post.format === "reel" || post.format === "historia") && clientId ? () => setReel("animado") : null}
-          onDeLaGaleria={clientId ? () => setGaleria(true) : null}
-        />
+  // ---- La pestaña PIEZA: el archivo de la publicación y todas las formas de hacerlo ----
+  if (seccion === "pieza") {
+    const vertical = post.format === "reel" || post.format === "historia";
+    // «Diseñar con el director», según lo que sea: una imagen, la serie de un carrusel o el reel por planos.
+    const disenar = !clientId ? null
+      : puedeCrearAqui ? { accion: crearAqui, detalle: "Con su idea, su texto, el kit y el modelo del cliente.", ocupado: versionando === "nueva" }
+        : post.format === "carrusel" ? { accion: () => setCarrusel(true), detalle: "El director diseña la serie, lámina a lámina." }
+          : post.format === "reel" ? { accion: () => setReel("guion"), detalle: "Guion por planos, fotogramas y el video, en el servidor." }
+            : null;
+    const lleno = mediosDe(post).length >= LIMITES.instagram.carruselMax;
+    const principales = (
+      <div className="pieza-principales" role="group" aria-label="Cómo poner la pieza">
+        {disenar && (
+          <button type="button" className="btn btn-primary pieza-boton" onClick={disenar.accion} disabled={Boolean(versionando)} aria-busy={disenar.ocupado || undefined}>
+            <Icon name="sparkles" size={20} />
+            <span><strong>{disenar.ocupado ? "Diseñando…" : "Diseñar con el director"}</strong><small>{disenar.detalle}</small></span>
+          </button>
+        )}
+        <button type="button" className="btn btn-secondary pieza-boton" onClick={() => entrada.current?.click()} disabled={lleno}>
+          <Icon name="upload" size={20} />
+          <span><strong>Subir archivo</strong><small>Del equipo o del teléfono; también se arrastra o se pega.</small></span>
+        </button>
+        {clientId && (
+          <button type="button" className="btn btn-secondary pieza-boton" onClick={() => setGaleria(true)} disabled={lleno}>
+            <Icon name="image" size={20} />
+            <span><strong>De la galería</strong><small>Lo ya hecho en el Estudio: sueltas o un carrusel entero.</small></span>
+          </button>
+        )}
+      </div>
+    );
+    // Lo demás, plegado: cada forma sigue a un toque, pero no se come la pantalla.
+    const masFormas = (
+      <Plegable titulo="Más formas" icono="more" resumen={opcionesPuestas || modeloAccion ? "con opciones escogidas" : null}>
+        <div className="pieza-mas" role="group" aria-label="Más formas de hacer la pieza">
+          {clientId && (
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => abrirBanco.current?.()} disabled={lleno}>
+              <Icon name="folder" size={16} /> {client?.driveFolder ? "De Drive" : "Del banco"}
+            </button>
+          )}
+          {vertical && clientId && (
+            <>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => setReel("producto")} title="10–15 s que terminan en la foto real del producto y el logo">
+                <Icon name="video" size={16} /> Video del producto
+              </button>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => setReel("animado")} title="Escenas dibujadas con código, una locución y subtítulos: la IA escribe el guion de esta publicación">
+                <Icon name="sparkles" size={16} /> Video animado
+              </button>
+            </>
+          )}
+          {post.format === "historia" && clientId && (
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => setReel("guion")} title="Guion por planos, fotogramas y el video, en el servidor">
+              <Icon name="formatReel" size={16} /> Video con IA por planos
+            </button>
+          )}
+          {clientId && (
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => abrirCreacion({ tipo: post.format === "reel" ? "video" : "imagen", indicacion })} disabled={lleno}
+              title="El Estudio en un diálogo: escoger tipo, modelo y referencias, y revisar antes de crear">
+              <Icon name="imageAi" size={16} /> Crear en el Estudio (avanzado)
+            </button>
+          )}
+          {client && (
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => setRecetas(true)} title="Las recetas de la agencia: aquí con el director o en claude.ai, con lo que escribiste en «¿Qué quieres?»">
+              <Icon name="list" size={16} /> Con una receta…
+            </button>
+          )}
+        </div>
         {client && (puedeCrearAqui || conImagen) && (
-          <div className="field que-quieres">
-            <label className="label" htmlFor={`${ids}-quiero`}>¿Qué quieres? <span className="hint">(opcional)</span></label>
-            <textarea
-              id={`${ids}-quiero`} ref={campoIndicacion} className="input" rows={2} maxLength={300} value={indicacion}
-              onChange={(e) => setIndicacion(e.target.value)} aria-describedby={`${ids}-quiero-ayuda`}
-              placeholder={conImagen ? "Ej.: el fondo más claro, el producto más grande, quita la planta" : "Ej.: una mamá con su bebé en la sala, luz de mañana"}
-            />
-            {conImagen && (
-              <div className="est-editar-atajos" style={{ display: "flex", flexWrap: "wrap", gap: "var(--sp-1)" }} role="group" aria-label="Ajustes del texto de la imagen, de un toque">
-                {AJUSTES_DE_TEXTO.map((x) => (
-                  <button key={x.id} type="button" className="filter-chip" aria-pressed={indicacion === x.instruccion} onClick={() => setIndicacion(x.instruccion)}>{x.etiqueta}</button>
-                ))}
-              </div>
-            )}
-            {/* Atajos de Higgsfield adaptados (lib/modosFoto.js): un modo de foto de producto, o la misma pieza en una fecha. */}
+          <>
+            {/* Atajos de Higgsfield adaptados (lib/modosFoto.js): rellenan «¿Qué quieres?». */}
             <div className="que-quieres-atajos" role="group" aria-label="Modo de foto del producto">
               <span className="hint">Modo de foto:</span>
               {MODOS_FOTO.map((x) => (
@@ -475,91 +539,146 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
                 })}
               </div>
             )}
-            <div className="que-quieres-atajos">
-              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setRecetas(true)}>
-                <Icon name="list" size={14} /> Con una receta…
-              </button>
-              <span className="hint">Aquí con el director o en claude.ai, con lo que escribiste arriba.</span>
-            </div>
-            {recetas && (
-              <Suspense fallback={null}>
-                <Recetas
-                  clienteId={clientId}
-                  publicacion={cal && post.id ? { calendarId: cal.dbId || cal.id, postId: post.id, etiqueta: post.title || post.idea?.slice(0, 50) || "esta publicación" } : null}
-                  indicacion={indicacion}
-                  onCrearAqui={window.location.pathname.startsWith("/cliente/") && post.id ? (r) => {
-                    const base = window.location.pathname.split("/").slice(0, 3).join("/");
-                    const q = new URLSearchParams({ receta: r.id, post: post.id, ...(indicacion.trim() ? { pide: indicacion.trim() } : {}) });
-                    setRecetas(false);
-                    navegar(`${base}/diseno?${q}`);
-                  } : null}
-                  onCerrar={() => setRecetas(false)}
-                />
-              </Suspense>
+            <SelectorModeloDelEspacio
+              valor={modeloAccion} onCambiar={setModeloAccion} conReferencias
+              proporcion={vertical ? "9:16" : "4:5"}
+              etiqueta="Con qué modelo (sólo esta vez)" vacio="El del cliente"
+            />
+          </>
+        )}
+        {puedeCrearAqui && (
+          <>
+            <button type="button" className="btn btn-ghost btn-sm" aria-expanded={verOpciones} aria-controls={`${ids}-opciones`} onClick={() => setVerOpciones((v) => !v)}>
+              <Icon name="palette" size={14} /> {verOpciones ? "Cerrar las opciones" : `Tipo, estilo y plantilla${opcionesPuestas ? ` (${opcionesPuestas} escogid${opcionesPuestas === 1 ? "a" : "as"})` : ""}`}
+            </button>
+            {verOpciones && (
+              <div id={`${ids}-opciones`}>
+                <Suspense fallback={<p className="hint" role="status">Cargando las opciones…</p>}>
+                  <OpcionesCrearAqui clientId={clientId} valor={opcionesCrear} onCambiar={setOpcionesCrear} presetDelPost={presetDePilar(post.pilar, post.pilarSub)} />
+                </Suspense>
+              </div>
             )}
-            <p id={`${ids}-quiero-ayuda`} className="hint" style={{ margin: 0 }}>
-              {!conImagen
-                ? "Manda sobre todo lo demás: el director de arte rediseña la pieza con ello."
-                : "Manda sobre todo lo demás en «Otra versión» y «Recrear con mi marca» (el director mira la imagen y la rediseña). «Corregir esta» cambia sólo esto en la misma imagen. Todo sale revisado y ocupa su sitio, con «Deshacer»; «Ver en el Estudio» abre la pieza con sus versiones."}
-            </p>
-            {(puedeCrearAqui || conImagen) && (
-              <SelectorModeloDelEspacio
-                valor={modeloAccion} onCambiar={setModeloAccion} conReferencias
-                proporcion={post.format === "historia" || post.format === "reel" ? "9:16" : "4:5"}
-                etiqueta="Con qué modelo (sólo esta vez)" vacio="El del cliente"
+          </>
+        )}
+      </Plegable>
+    );
+    return (
+      <div className="pestana-pieza">
+        {/* Lo que pidió cambiar el cliente, con «Rehacer la imagen» (la misma imagen, sólo ese cambio). */}
+        <CambiosDelCliente post={post} setForm={setForm} clientId={clientId} uso={cal && post.id ? { calendarId: cal.dbId || cal.id, postId: post.id } : null} />
+        <section className="compositor" aria-label="La pieza de la publicación">
+          <EditorMedios
+            post={post}
+            clientId={clientId}
+            client={client}
+            driveFolder={client?.driveFolder}
+            onChange={alCambiarMedios}
+            onError={onError}
+            entradaRef={entrada}
+            abrirBancoRef={abrirBanco}
+            onPortada={conPortada ? (c) => setForm((p) => ({ ...p, ...c })) : null}
+            onCrearConIA={(o) => abrirCreacion({ ...o, indicacion })}
+            onOtraVersion={client ? (m) => otraVersion(m) : null}
+            onRecrear={client ? (m) => otraVersion(m, { recrear: true }) : null}
+            onCorregir={clientId ? (m) => corregir(m) : null}
+            onVerEnEstudio={clientId ? verEnEstudio : null}
+            versionando={versionando}
+            botones={principales}
+          />
+          {client && (puedeCrearAqui || conImagen) && (
+            <div className="field que-quieres">
+              <label className="label" htmlFor={`${ids}-quiero`}>¿Qué quieres? <span className="hint">(opcional)</span></label>
+              <textarea
+                id={`${ids}-quiero`} ref={campoIndicacion} className="input" rows={2} maxLength={300} value={indicacion}
+                onChange={(e) => setIndicacion(e.target.value)} aria-describedby={`${ids}-quiero-ayuda`}
+                placeholder={conImagen ? "Ej.: el fondo más claro, el producto más grande, quita la planta" : "Ej.: una mamá con su bebé en la sala, luz de mañana"}
               />
-            )}
-            {puedeCrearAqui && (
-              <>
-                <button type="button" className="btn btn-ghost btn-sm" aria-expanded={verOpciones} aria-controls={`${ids}-opciones`} onClick={() => setVerOpciones((v) => !v)}>
-                  <Icon name="palette" size={14} /> {verOpciones ? "Cerrar las opciones" : `Tipo, estilo y plantilla${opcionesPuestas ? ` (${opcionesPuestas} escogid${opcionesPuestas === 1 ? "a" : "as"})` : ""}`}
-                </button>
-                {verOpciones && (
-                  <div id={`${ids}-opciones`}>
-                    <Suspense fallback={<p className="hint" role="status">Cargando las opciones…</p>}>
-                      <OpcionesCrearAqui clientId={clientId} valor={opcionesCrear} onCambiar={setOpcionesCrear} presetDelPost={presetDePilar(post.pilar, post.pilarSub)} />
-                    </Suspense>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-        )}
-        {(progresoVersion || deshacer) && (
-          <div role="status" aria-live="polite" className="otra-version-estado">
-            {progresoVersion && <p className="hint" style={{ margin: 0 }}><Icon name="sparkles" size={13} /> {progresoVersion}</p>}
-            {deshacer && !progresoVersion && (
-              <p className="hint" style={{ margin: 0 }}>
-                {deshacer.antes ? "Imagen nueva puesta." : "Imagen creada y puesta."}{" "}
-                <button type="button" className="btn btn-ghost btn-sm" onClick={volverALaAnterior}>Deshacer</button>
+              {conImagen && (
+                <div className="est-editar-atajos" style={{ display: "flex", flexWrap: "wrap", gap: "var(--sp-1)" }} role="group" aria-label="Ajustes del texto de la imagen, de un toque">
+                  {AJUSTES_DE_TEXTO.map((x) => (
+                    <button key={x.id} type="button" className="filter-chip" aria-pressed={indicacion === x.instruccion} onClick={() => setIndicacion(x.instruccion)}>{x.etiqueta}</button>
+                  ))}
+                </div>
+              )}
+              <p id={`${ids}-quiero-ayuda`} className="hint" style={{ margin: 0 }}>
+                {!conImagen
+                  ? "Manda sobre todo lo demás: el director diseña la pieza con ello."
+                  : "Manda en «Otra versión» (la misma información, otra composición) y en «Recrear con mi marca». «Corregir» cambia sólo esto en la misma imagen. Todo sale revisado y ocupa su sitio, con «Deshacer»."}
               </p>
-            )}
-          </div>
-        )}
-        {galeria && (
+            </div>
+          )}
+          {(progresoVersion || deshacer) && (
+            <div role="status" aria-live="polite" className="otra-version-estado">
+              {progresoVersion && <p className="hint" style={{ margin: 0 }}><Icon name="sparkles" size={13} /> {progresoVersion}</p>}
+              {deshacer && !progresoVersion && (
+                <p className="hint" style={{ margin: 0 }}>
+                  {deshacer.antes ? "Imagen nueva puesta." : "Imagen creada y puesta."}{" "}
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={volverALaAnterior}>Deshacer</button>
+                </p>
+              )}
+            </div>
+          )}
+          {estadoEscrito}
+          {masFormas}
+        </section>
+
+        {videoSubido && clientId && (
           <Suspense fallback={null}>
-            <GaleriaSelector clienteId={clientId} maximo={LIMITES.instagram.carruselMax} yaTiene={mediosDe(post).length} onElegir={ponerDeGaleria} onCerrar={() => setGaleria(false)} />
-          </Suspense>
-        )}
-        {/* «Guardar en Drive»: en la carpeta del cliente, por mes y semana (sólo si tiene carpeta). */}
-        {client?.driveFolder && clientId && day?.date && (
-          <BotonGuardarDrive clientId={clientId} post={post} fecha={day.date} onGuardado={(g) => sf("guardadoDrive", g)} />
-        )}
-        {carrusel && (
-          <Suspense fallback={null}>
-            <CarruselIA client={client} post={post} cal={cal} onPoner={ponerCarrusel} onCerrar={() => setCarrusel(false)} indicacion={indicacion} />
-          </Suspense>
-        )}
-        {reel && (
-          <Suspense fallback={null}>
-            <ReelIA client={client} post={post} cal={cal} forma={reel} onPoner={ponerReel} onCerrar={() => setReel(false)} />
+            <VideoListo key={videoSubido} clienteId={clientId} clave={videoSubido} src={videoSubido} productoId={post.productoId ?? ""}
+              idea={String(post.idea || post.title || post.descripcion || "")} formato={esHistoria ? "historia" : "reel"} />
           </Suspense>
         )}
 
+        {onIrA && (
+          <button type="button" className="btn btn-secondary pieza-siguiente" onClick={() => onIrA("salida")}>
+            Siguiente: dónde y cuándo sale <Icon name="chevronRight" size={16} />
+          </button>
+        )}
+        {dialogos}
+      </div>
+    );
+  }
+
+  // ---- La pestaña PUBLICAR: qué sale y dónde, el texto, cómo se va a ver, la revisión y «¿Cuándo sale?» ----
+  const medios = mediosDe(post);
+  return (
+    <div className="pestana-publicar" data-ancho={ancho || undefined}>
+      <div className="pp-izquierda">
+      <div className="pp-config">
+      <section className="pp-bloque" aria-labelledby={`${ids}-que`}>
+        <h3 id={`${ids}-que`} className="label">¿Qué sale y dónde?</h3>
+        <DestinoRedes
+          post={post}
+          redes={redes}
+          onRedes={(lista) => sf("redes", lista)}
+          cuentas={cuentas}
+          formato={post.format}
+          onFormato={elegirFormato}
+        />
+      </section>
+
+      {/* La pieza se hace en su pestaña; aquí, un vistazo y el camino. */}
+      <div className="field">
+        <span className="label">La pieza</span>
+        <div className="medios-resumen">
+          {medios.slice(0, 6).map((m, i) => (
+            <span key={`${m.src}-${i}`} className="medios-resumen-item">
+              {m.tipo === "video" ? <Icon name="play" size={16} /> : <img src={m.src} alt="" />}
+            </span>
+          ))}
+          {onIrA && (
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => onIrA("pieza")}>
+              <Icon name={medios.length ? "pencil" : "plus"} size={14} /> {medios.length ? `${medios.length} · cambiar en Pieza` : "Hacerla en Pieza"}
+            </button>
+          )}
+        </div>
+      </div>
+
+      <section className="compositor" aria-label="El texto de la publicación">
         {esHistoria ? (
           <p className="notice notice-warn pestana-publicar-nota">
             Una historia no lleva texto, hashtags ni comentario: lo que diga va dentro de la imagen o el video.
-            {mediosDe(post).length > 1 && ` Salen ${mediosDe(post).length} historias seguidas, en este orden.`}
+            {medios.length > 1 && ` Salen ${medios.length} historias seguidas, en este orden.`}
             {" "}El sticker de enlace, la música y las encuestas sólo se ponen desde la app de Instagram.
           </p>
         ) : (
@@ -567,7 +686,7 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
             <div className="compositor-texto-cabecera">
               <label className="label" htmlFor={`${ids}-desc`}>Texto de la publicación</label>
               <button type="button" className="btn-ai" disabled={!tieneContenido(post) || !!escribiendo} onClick={escribir}
-                title={tieneContenido(post) ? "La IA mira la imagen o el video y escribe el texto, los hashtags, el primer comentario y el texto alternativo que falten." : "Sube una imagen o un video primero"}>
+                title={tieneContenido(post) ? "La IA mira la imagen o el video y escribe el texto, los hashtags, el primer comentario y el texto alternativo que falten." : "Pon primero la pieza (pestaña Pieza)"}>
                 <Icon name="sparkles" size={14} /> {escribiendo || "Escribir con IA"}
               </button>
             </div>
@@ -579,17 +698,14 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
               onChange={(e) => sf("descripcion", e.target.value)}
               placeholder="Caption / descripción del contenido…"
             />
-            <div role="status" aria-live="polite" className={escrito ? undefined : "sr-only"}>{escrito && <p className="notice notice-ok">{escrito}</p>}</div>
           </div>
         )}
+        {estadoEscrito}
+        {/* «Guardar en Drive»: en la carpeta del cliente, por mes y semana (sólo si tiene carpeta). */}
+        {client?.driveFolder && clientId && day?.date && (
+          <BotonGuardarDrive clientId={clientId} post={post} fecha={day.date} onGuardado={(g) => sf("guardadoDrive", g)} />
+        )}
       </section>
-
-      {videoSubido && clientId && (
-        <Suspense fallback={null}>
-          <VideoListo key={videoSubido} clienteId={clientId} clave={videoSubido} src={videoSubido} productoId={post.productoId ?? ""}
-            idea={String(post.idea || post.title || post.descripcion || "")} formato={esHistoria ? "historia" : "reel"} />
-        </Suspense>
-      )}
 
       {fuera && <AjusteImagen post={post} alCambiar={setForm} clientId={clientId} objetivo={objetivo} color={client?.primaryColor} onError={onError} />}
 
@@ -660,7 +776,7 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
         </aside>
       )}
 
-      {dialogoCreacion}
+      {dialogos}
     </div>
   );
 }

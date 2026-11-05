@@ -60,6 +60,7 @@ import { cambiarPublicacion } from "./ponerEnPost.js";
 import { marcarUso } from "./galeria.js";
 import { conHistoriaEncajada } from "../redesServidor.js";
 import { postConPiezas } from "../../../src/lib/galeriaPura.js";
+import { avisarEncargo } from "../equipo.js";
 
 /**
  * La plantilla del kit que escogió el DIRECTOR (o la de su tipo) en el pedido de una pieza, como lo hace la pantalla
@@ -209,6 +210,8 @@ export async function crearEncargo(env, acceso, cliente, cuerpo = {}, { usuario 
     paralelo: tipo === "carrusel" || tipo === "reel" ? 1 : Math.max(1, Math.min(3, Math.floor(Number(cuerpo.paralelo)) || 2)),
     // Lo que sale se pone SOLO en su publicación al terminar (las piezas que pide Claude con `post_id`).
     poner: cuerpo.poner === true,
+    // La pantalla lo sigue de cerca (una pieza del panel o del visor): la campana sólo avisa si falla o si tarda mucho.
+    seguido: cuerpo.seguido === true,
     carpetaId: cuerpo.carpetaId ? texto(cuerpo.carpetaId, 80) : null,
     vistas: limpiarVistas(cuerpo.vistas), concepto: "",
     // Quién lo pidió por dentro (el asistente o Claude por MCP): queda en cada trabajo, como cuando pedían a pelo.
@@ -332,6 +335,9 @@ export async function avanzarEncargo(env, acceso, id) {
   await acceso.actualizar("estudio_encargos", { id, bloqueado_hasta: permiso }, cambios);
   const actual = await acceso.leerUno("estudio_encargos", { id });
   if (actual && (r.hizo || estado !== "en_marcha")) anunciar(env, acceso, actual);
+  // Se acaba de cerrar (estaba en marcha al empezar el paso): a la campana de quien lo pidió (equipo.js). Un reel que
+  // se retoma tras revisar el storyboard vuelve a avisar al cerrarse otra vez: son dos momentos distintos.
+  if (actual && estado !== "en_marcha") await avisarEncargo(env, acceso, actual, { datos, pasos });
   return { encargo: actual, hizo: Boolean(r.hizo), ocupado: false };
 }
 

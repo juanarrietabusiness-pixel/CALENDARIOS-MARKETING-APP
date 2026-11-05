@@ -44,8 +44,6 @@
 .lote-llevar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); margin-top: var(--sp-1); }
 
 /* La entrada en la pestaña Estudio */
-.est-lote-entrada { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--sp-3); padding: var(--sp-3) var(--sp-4); }
-.est-lote-entrada .hint { margin: var(--sp-1) 0 0; }
 
 @media (max-width: 599px) {
   .dialog.lote-dialogo { max-height: 100dvh; height: 100dvh; border-radius: 0; }

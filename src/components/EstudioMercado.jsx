@@ -1041,7 +1041,7 @@ function AccionesReferencia({ client, referencia: r, productos, ocupado, onOcupa
     setTrabajando(false);
     onOcupado("");
   };
-  const texto = adaptacion ? [adaptacion.titulo, adaptacion.idea, "", adaptacion.guion, adaptacion.textoPantalla && `Texto en pantalla: ${adaptacion.textoPantalla}`, "", adaptacion.descripcion].filter((x) => x !== undefined && x !== false).join("\n").trim() : "";
+  const texto = adaptacion ? [adaptacion.titulo, adaptacion.idea, "", adaptacion.guion, adaptacion.textoPantalla && `Texto en pantalla: ${adaptacion.textoPantalla}`, "", adaptacion.descripcion, adaptacion.hashtags && `\nHashtags (aparte): ${adaptacion.hashtags}`].filter((x) => x !== undefined && x !== false).join("\n").trim() : "";
   const copiar = async () => {
     try { await navigator.clipboard.writeText(texto); setCopiado(true); setTimeout(() => setCopiado(false), 2500); } catch { /* el texto está a la vista */ }
   };

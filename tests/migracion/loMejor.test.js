@@ -244,6 +244,8 @@ describe("recrear", () => {
     const encargo = db.sqlite.prepare("select datos, pasos from estudio_encargos where id = ?").get(d.encargoId);
     const datos = JSON.parse(encargo.datos);
     expect(datos.especiales[0].papel).toBe("inspiracion");
+    // Lo que salga se pone SOLO en su publicación al terminar (como las piezas de Claude con post_id).
+    expect(datos.poner).toBe(true);
     const [paso] = JSON.parse(encargo.pasos);
     expect(paso.pedido.postId).toBe(d.postId);
     // La imagen de otra marca no va al motor: no está en los medios del pedido.

@@ -7,7 +7,8 @@ import { navegar } from "../lib/rutas";
 // La campana: la bandeja de avisos de cada persona
 //
 // Te asignaron algo, el cliente aprobó o pidió cambios en algo tuyo, algo
-// no se publicó, te mencionaron. Se guarda en el servidor, así que llega
+// no se publicó, te mencionaron, o el Estudio terminó (o no pudo) lo que
+// pediste: un lote, un carrusel, un reel, un render (worker/lib/equipo.js). Se guarda en el servidor, así que llega
 // aunque no estuvieras conectado. Es un desplegable (Escape y clic fuera),
 // no un diálogo.
 //
@@ -123,7 +124,7 @@ export default function Avisos({ pulso = 0, onAbrirPublicacion }) {
               ))}
             </ul>
           ) : (
-            <p className="avisos-vacio">Nada por aquí. Te llegará lo que te asignen, lo que responda el cliente en lo tuyo y lo que no se publique.</p>
+            <p className="avisos-vacio">Nada por aquí. Te llegará lo que te asignen, lo que responda el cliente en lo tuyo, lo que no se publique y lo que el Estudio termine de lo que pediste (lotes, carruseles, reels, videos).</p>
           )}
           {puedeNotificar() && permiso === "default" && (
             <button type="button" className="btn btn-secondary btn-sm avisos-permiso" onClick={pedirPermiso}>

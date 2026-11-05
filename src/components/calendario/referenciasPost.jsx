@@ -39,7 +39,7 @@ export function ReferenciasPost({ form, setForm, client, cal, onAviso }) {
       const siguiente = { ...conMedios(p, medios), referencias: referenciasDe(p).filter((x) => x.src !== r.src), mediosCambiadosAt: new Date().toISOString() };
       return mediosDe(p).length ? siguiente : { ...siguiente, format: formatoDeMedios(medios) ?? p.format };
     });
-    onAviso?.("Puesto en la pestaña Subir: ahora sí se publica.");
+    onAviso?.("Puesto en la pestaña Pieza: ahora sí se publica.");
   };
 
   const recrear = async (r) => {
@@ -59,7 +59,7 @@ export function ReferenciasPost({ form, setForm, client, cal, onAviso }) {
           const siguiente = { ...conMedios(p, medios), mediosCambiadosAt: new Date().toISOString() };
           return mediosDe(p).length ? siguiente : { ...siguiente, format: formatoDeMedios(medios) ?? p.format };
         });
-        onAviso?.("Lista: recreada con la marca. La pieza nueva está en la pestaña Subir; la referencia se queda aquí.");
+        onAviso?.("Lista: recreada con la marca. La pieza nueva está en la pestaña Pieza; la referencia se queda aquí.");
       }
     } catch (e) {
       onAviso?.(`No se pudo recrear con la marca: ${e.message}`);

@@ -362,6 +362,9 @@ div.est-img { cursor: default; }
 /* «Me gusta»: el corazón se rellena al marcarlo (con el color de «marcado» del Estudio) */
 .est-me-gusta[aria-pressed="true"] svg path { fill: currentColor; }
 .est-gustos .hint { margin: var(--sp-1) 0 0; }
+/* La tarjeta «Muchas de una vez»: su estilo vivía en EstudioLote.css, que sólo se carga al abrir el lote. */
+.est-lote-entrada { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--sp-3); padding: var(--sp-3) var(--sp-4); }
+.est-lote-entrada .hint { margin: var(--sp-1) 0 0; }
 .est-lote-botones { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
 
 /* La referencia visual del tipo de pieza (y la del kit) */
