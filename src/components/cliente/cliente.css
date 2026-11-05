@@ -71,3 +71,7 @@
 .marca-kit .lote-fila { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--sp-3); }
 .marca-fechas-mes { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; margin-top: var(--sp-3); }
 .marca-fechas-nombre { min-width: 120px; text-align: center; font-weight: 600; font-size: var(--fs-xs); }
+
+/* Anuncios (pages/Anuncios.jsx): la cabecera de Campañas lleva cuatro o cinco botones; en el teléfono no cabían en una
+   fila y la página entera desplazaba de lado. */
+.anuncios .page-header-actions { flex-wrap: wrap; }

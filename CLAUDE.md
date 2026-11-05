@@ -118,6 +118,10 @@ src/
     db.js                 Llama a /api/*; conserva todas sus firmas
     equipo.js             Miembros, invitaciones y perfil propio
     rutas.js              Slugs, análisis y construcción de direcciones (puro)
+    pestanas.js           Las barras de pestañas: el id de cada pestaña y de su panel, y las teclas (puro)
+    semaforoKit.js        El SEMÁFORO del kit: qué le falta a un cliente para que el diseño salga bien (logo, fotos del
+                          catálogo, plantillas, «Me gusta», ficha técnica, voz), con su arreglo; el aviso de una pieza (puro)
+    semaforoKitApi.js     Lo de GET /api/estudio para el semáforo, recordado dos minutos por cliente
     contextoADN.js        Qué del ADN viaja a la IA al escribir (sin la maquetación de Meta AI)
                           y cómo se parte el contexto para la caché de prompt (puro)
     cerebro.js            Cliente de /api/cerebro (notas, buscar, importar, preparar ficha)
@@ -413,6 +417,15 @@ src/
     anunciosApi.js        Cliente de /api/anuncios
   components/
     Icon.jsx              Set de iconos SVG monocromos (rejilla 24, trazo 1.75)
+    BarraPestanas.jsx     Una barra de pestañas accesible (role="tablist", flechas, Inicio, Fin, foco): las del cliente,
+                          sus sub-secciones y Anuncios
+    cliente/Crear.jsx     La pestaña Crear: el director («¿Qué quieres crear?») y la galería del Estudio, con el aviso del kit (lazy)
+    cliente/Referencias.jsx  La pestaña Referencias: banco de ideas, «Lo mejor» del cliente y la competencia (lazy)
+    cliente/Marca.jsx     La pestaña Marca: semáforo del kit, ficha, kit y voz, cerebro, plan semanal, fechas y Drive (lazy)
+    cliente/SemaforoKit.jsx  El semáforo del kit en pantalla (plegado; «Subir el logo» ahí mismo) y su aviso corto
+    cliente/cliente.css   Los estilos de esas tres pestañas, de las sub-pestañas y del semáforo (van con sus chunks)
+    SeccionComoTrabajamos.jsx  Ajustes → «Cómo trabajamos»: recetas, fórmulas UGC, plantillas de plan y manuales
+    Drive.css / FichaCliente.css / PestanaContenido.css  Estilos que salieron de index.css (el CSS inicial estaba en su tope)
     Presencia.jsx         Avatares, estado de la conexión, «X está editando»
     SelectorFecha.jsx     Calendario del mes para escoger una fecha (portal)
     SeccionIA.jsx         Ajustes → IA: modelo, nivel al escribir, nivel del asistente
@@ -438,6 +451,7 @@ src/
     ElegirDia.jsx         «¿Cuándo la haces?»: sin día, hoy, mañana u otro día (el `today_date` de una tarea)
     HoyInicio.jsx         «Tus tareas de hoy» en el inicio (sustituye al panel de tareas rápidas)
     calendario/aprobacionCliente.jsx  «¿Qué aprueba el cliente?» y en qué quedó
+    calendario/AvisoKitPieza.jsx  El aviso del kit en la pestaña Pieza: sin logo, o un producto que nombra sin fotos (lazy)
     calendario/cambiosCliente.jsx  Lo que pidió cambiar el cliente y «Rehacer la imagen con lo que pidió» (pestaña Subir)
     calendario/equipoPublicacion.jsx  Lo lleva, etapa, hilo del equipo, tareas de la
                           publicación e historial
@@ -456,15 +470,15 @@ src/
     calendario/GuardarMesDrive.jsx    «Guardar el mes en Drive» (lazy)
     ExploradorDrive.jsx   La carpeta de Drive de un cliente: gestionar o escoger
     BancoSelector.jsx     Escoger de Drive (o del banco anterior); forma única
-    PestanaContenido.jsx  La pestaña Contenido: Drive + migrar el banco anterior
-    Estudio.jsx           La pestaña Estudio y el diálogo «Crear con IA»: pedir imágenes o videos,
+    PestanaContenido.jsx  Marca → Drive (era la pestaña Contenido): Drive + migrar el banco anterior
+    Estudio.jsx           Crear → Galería (era la pestaña Estudio; lo manual, plegado en «Avanzado») y el diálogo «Crear con IA»: pedir imágenes o videos,
                           verlos aparecer, galería, carpetas y papelera (lazy)
     EstudioCompositor.jsx Qué crear: tipo, prompt, modelo (ordenar/filtrar), ajustes, imágenes de apoyo
     EstudioVisor.jsx      La pieza grande (imagen o video) con todo lo que se sabe de ella, «Usar como logo»
                           y «Revisar marca»
     ContenidoCompetencia.jsx  «Su contenido en Instagram» (pestaña Competencia del estudio de mercado): las publicaciones de
                           un competidor, las mejores primero; analizar como referencia o extraer su guion UGC (lazy)
-    Inspiracion.jsx       La pestaña Inspiración = «Lo mejor» FILTRADO por el cliente (y el ojo del calendario, donde se arrastra
+    Inspiracion.jsx       Referencias → Lo mejor (era la pestaña Inspiración) = «Lo mejor» FILTRADO por el cliente (y el ojo del calendario, donde se arrastra
                           a un día): sus cuentas, «Actualizar» y el resumen al cerebro, con las tarjetas de «Lo mejor» (lazy)
     LoMejorTarjetas.jsx   Las tarjetas de «Lo mejor»: vista previa (el video se reproduce), la cifra de verdad, el tipo, «Recrear
                           para [cliente]», guardar en ideas, extraer guion, fórmula, «Crear con Claude», llevar a un día
@@ -475,12 +489,12 @@ src/
     BibliotecaSC.jsx      La Biblioteca por Scrape Creators: empresa o palabra, filtros, cada anuncio con analizar, traer,
                           al banco de ideas y transcribir (lazy)
     calendario/referenciasPost.jsx  «Referencias · no se publican» del panel: recrear con la marca, extraer guion, usar como contenido
-    EstudioMercado.jsx    El estudio de mercado en la pestaña Cerebro: catálogo, «Realizar estudio de mercado» por
+    EstudioMercado.jsx    El estudio de mercado en Marca → Cerebro (y su competencia, `CompetenciaDeMercado`, en Referencias): catálogo, «Realizar estudio de mercado» por
                           pasos con revisión, y las referencias de la competencia (lazy)
     EstudioLote.jsx       «Producir en lote»: qué (anuncios, por tipo o el mes; post, historia, carrusel o reel), ideas por
                           tandas («Sólo las ideas al calendario») y crear; cada pieza «Llevar al calendario» (lazy)
     EstudioRecrear.jsx    «Recrear un anuncio»: el anuncio (subir, galería o Drive), el análisis y la versión editable (lazy)
-    EstudioKit.jsx        El kit de marca: prepararlo con IA desde el cerebro, revisarlo, guardarlo (también las reglas que no se
+    EstudioKit.jsx        El kit de marca (Marca → Kit y voz; la voz va en su tarjeta, VozDeMarca): prepararlo con IA desde el cerebro, revisarlo, guardarlo (también las reglas que no se
                           rompen y quién pone el logo)
     VisorGrupo.jsx        Un carrusel o un reel de la galería con sus piezas en orden, «Descargar» en ZIP, «Usar el carrusel
                           en la publicación» y «Mandar el carrusel a la papelera» (lazy)
@@ -515,12 +529,12 @@ src/
     calendario/RevisarIdeas.jsx  «Revisar las ideas»: la aprobación INTERNA en tarjetas (aprobar, otra con nota, quitar) (lazy)
     calendario/crearConIA.jsx  El Estudio en un diálogo dentro del panel de una publicación y de «Subir»
                           (el hook que lo abre, en hooks/useCrearConIA.jsx)
-    DisenoDirector.jsx    La pestaña Diseño: el asistente incrustado como director creativo, con atajos (lazy)
+    DisenoDirector.jsx    «¿Qué quieres crear?» de Crear (era la pestaña Diseño): el asistente incrustado como director creativo, con atajos (lazy)
     PlanDePiezas.jsx      El plan de una tanda del director: las fichas, el costo, «Crear» y cada pieza según sale
     PonerEnPublicacion.jsx  «Poner en una publicación…» del visor, del carrusel y de la galería con varias escogidas (lazy)
     GuardarPlantilla.jsx  «Guardar como plantilla» del visor: la IA lee su sistema de diseño y la pieza pasa al kit (lazy)
     calendario/OpcionesCrearAqui.jsx  Tipo, estilo, modelo y plantilla de «Crear la imagen aquí» (lazy)
-    Cerebro.jsx           La pestaña Cerebro: las notas de un cliente, ficha desactualizada, datos que no cuadran, añadir
+    Cerebro.jsx           Marca → Cerebro (era la pestaña Cerebro): las notas de un cliente, ficha desactualizada, datos que no cuadran, añadir
                           (qué es), actualizar desde GitHub, filtros, buscar, subir
     NotaLegible.jsx       Una nota del cerebro formateada para leer (títulos, listas, tablas, [[enlaces]])
     ConversacionesChat.jsx  La lista de conversaciones del asistente: abrir, nueva, renombrar, borrar (segundo toque)
@@ -568,12 +582,12 @@ src/
     Equipo.jsx            Quién entra en el espacio; invitar y sacar
     Invitacion.jsx        Lo que ve quien abre un enlace de invitación
     Aprobar.jsx           Página pública que ve el cliente final
-    Tareas.jsx            «Mi día»: la semana (por defecto), la lista Atrasadas/Hoy/Próximas y la vista por empresa
+    Tareas.jsx            «Mi día»: la semana (por defecto), la lista Atrasadas/Hoy/Próximas y la vista por empresa (`?empresa=`)
     Resultados.jsx        La pestaña Resultados de un cliente y /resultados (la agencia)
-    Programacion.jsx      /programacion como Business Suite: Publicadas (con cifras) · Programadas · No publicadas, filtros
+    Programacion.jsx      /produccion («Producción», era /programacion) como Business Suite: Por producir · Publicadas (con cifras) · Programadas · No publicadas, filtros
     Bandeja.jsx           /bandeja: comentarios y mensajes de Facebook e Instagram (lazy)
     Auditorias.jsx        /auditorias: auditar el perfil de un cliente o de un prospecto
-    Biblioteca.jsx        /biblioteca: buscar en la Biblioteca de anuncios de Meta, filtros
+    Biblioteca.jsx        /biblioteca (Anuncios → Biblioteca): buscar en la Biblioteca de anuncios de Meta, filtros
                           guardados (la competencia de un cliente), exportar CSV (lazy)
     AuditoriaPublica.jsx  Lo que abre el cliente o el prospecto con el enlace (sin sesión)
     ConectarClaude.jsx    /conectar-claude: el permiso que pide Claude (OAuth)
@@ -583,6 +597,7 @@ src/
     Ajustes.jsx           IA, presupuesto y consumo, integraciones, tareas, copia
     LoMejor.jsx           /lo-mejor: «Lo mejor del momento» de todos los clientes (Esta semana · Este mes · Nuevo, filtros) (lazy)
     Campanas.jsx          /campanas («Anuncios»): cuenta publicitaria, cifras, campañas, crear (lazy)
+    Anuncios.jsx          «Anuncios»: Campañas y Biblioteca de anuncios como dos pestañas, cada una con su dirección (lazy)
 worker/
   index.js                Enrutado, sesión y cabeceras de /api/*
   hub.js                  Durable Object: un espacio, sus sockets y su presencia; y la ALARMA que lleva el Estudio sin pantalla
@@ -752,17 +767,22 @@ tests/
 | `/` | Panel, sin cliente elegido |
 | `/cliente/<slug>` | Un cliente |
 | `/cliente/<slug>/<mes>-<año>` | Un mes del calendario de ese cliente (`octubre-2026`), exista o no su cajón. Los enlaces viejos con el nombre o el id del calendario siguen abriendo su mes |
-| `/cliente/<slug>/tareas` · `/contenido` · `/ideas` · `/inspiracion` · `/resultados` · `/estudio` · `/diseno` · `/cerebro` · `/ficha` | Las otras pestañas del cliente (`/diseno`: el director creativo) |
-| `/tareas` | Mi día |
+| `/cliente/<slug>/crear` · `/crear/director` · `/crear/galeria` | Crear: el director («¿Qué quieres crear?») arriba y la galería del Estudio debajo, con lo manual en «Avanzado» |
+| `/cliente/<slug>/referencias` · `/referencias/ideas` · `/inspiracion` · `/competencia` | Referencias: el banco de ideas, «Lo mejor» del cliente (`?pieza=<clave>` la señala) y la competencia del estudio de mercado |
+| `/cliente/<slug>/marca` · `/marca/ficha` · `/kit` · `/cerebro` · `/plan` · `/fechas` · `/drive` | Marca: ficha, kit y voz, cerebro (con el estudio de mercado), plan semanal, fechas especiales y la carpeta de Drive, con el semáforo del kit arriba |
+| `/cliente/<slug>/resultados` | Resultados del cliente |
+| `/cliente/<slug>/tareas` | Todas las tareas del cliente (con las que se repiten). Ya no es pestaña: su cabecera lleva a Mi día por empresa |
+| `/cliente/<slug>/estudio` · `/diseno` · `/ideas` · `/inspiracion` · `/cerebro` · `/ficha` · `/contenido` | Las pestañas de antes: abren la nueva en su sub-sección (Crear → Galería / Director, Referencias → Ideas / Lo mejor, Marca → Cerebro / Ficha / Drive) sin reescribir la dirección, así `?lote=`, `?receta=` y `?pieza=` siguen |
+| `/tareas` | Mi día (`?empresa=<id>`: la vista por empresa con la de ese cliente) |
 | `/ajustes` | IA, presupuesto, integraciones, tareas, copia de seguridad |
 | `/resultados` | Todos los clientes, últimos 30 días |
-| `/programacion` | Lo aprobado por programar y la cola de todos los clientes: lo que falló, lo que sale, lo que salió |
-| `/tablero` | Ya no existe: un enlace viejo abre Programación |
+| `/produccion` | Producción: lo por producir (aprobado por programar, ideas por producir) y la cola de todos los clientes: lo que falló, lo que sale, lo que salió. `/programacion` (su nombre de antes) también |
+| `/tablero` | Ya no existe: un enlace viejo abre Producción |
 | `/bandeja` | Comentarios y mensajes de Facebook e Instagram de los clientes con la bandeja encendida |
 | `/auditorias` | Auditorías de perfil de clientes y prospectos |
-| `/biblioteca` | Biblioteca de anuncios: todos por Scrape Creators (con llave) o los de política por la API de Meta; filtros guardados, CSV |
+| `/biblioteca` | Anuncios → Biblioteca de anuncios: todos por Scrape Creators (con llave) o los de política por la API de Meta; filtros guardados, CSV |
 | `/lo-mejor` | «Lo mejor del momento»: lo que mejor funciona de la competencia, la inspiración, los anuncios y lo propio, para recrearlo (`?pieza=<clave>` la señala) |
-| `/campanas` | Anuncios de Meta: campañas, cifras y crear (en pausa) |
+| `/campanas` | Anuncios → Campañas de Meta: cifras y crear (en pausa) |
 | `/auditoria?t=<testigo>` | Auditoría compartida (sin sesión) |
 | `/conectar-claude?…` | El permiso de Claude (OAuth: `authorization_endpoint`) |
 | `/a-mano/<calendario>/<publicación>` | Publicar a mano desde el teléfono |
@@ -775,7 +795,7 @@ tests/
 
 El slug sale del nombre normalizado, y `slugsUnicos()` garantiza que dos
 clientes que normalicen igual no compartan dirección. Los nombres de las
-pestañas (`PESTANAS_CLIENTE`) están reservados: un calendario llamado
+pestañas (`PESTANAS_CLIENTE`: las nuevas, «tareas» y las de antes) están reservados: un calendario llamado
 «Ideas» no puede quedarse `/ideas`. Un id en crudo
 también resuelve, para los enlaces que alguien pegara antes.
 
@@ -4809,6 +4829,59 @@ son del servidor.
   · **La HORA** va en cada publicación del plan (`hora`, «HH:MM»; también en la copia de `plan_contenido`, `limpiarHueco` la
   conserva) y viaja a `configDeFormatos`, `casillasConPlantilla` («Mes completo» del lote), «Planificar mes» (`publishTime` de
   cada formato) y las casillas del asistente. `PlanDelCliente.jsx` se quitó: su «Personalizar para este cliente» es el editor.
+
+- **Fase 7: un cliente con CINCO pestañas y la navegación global agrupada** (decisión de la agencia: le gusta agrupar;
+  docs/propuesta-lo-mejor-y-creacion.md). Eran diez pestañas por cliente que en el teléfono desplazaban de lado. NINGUNA
+  función se quitó: se agruparon. Lo que no se ve en la pantalla:
+  · **Calendario · Crear · Referencias · Marca · Resultados** (`PESTANAS_DEL_CLIENTE` en src/lib/rutas.js), cada una con sus
+  sub-secciones detrás (`SECCIONES_DEL_CLIENTE`: `/cliente/x/marca/kit`). Crear = el director («¿Qué quieres crear?», el
+  mismo ChatPanel incrustado de la pestaña Diseño, `tema="diseno"`, con atajos y recetas) arriba y la galería del Estudio
+  debajo; lo manual (compositor de imagen y video, carrusel y reel guiados, «Muchas de una vez», recrear) va plegado en
+  «Avanzado» DENTRO del Estudio (`avanzado`, un `hidden` que no desmonta: `enfocarPrompt` lo abre antes de enfocar, y el
+  lote y el recreador van FUERA, así `?lote=mes` abre su diálogo aunque esté plegado). Referencias = banco de ideas, «Lo mejor»
+  del cliente (Inspiracion.jsx) y la competencia del estudio de mercado EN LA PÁGINA (`CompetenciaDeMercado`, el mismo
+  `PanelCompetencia` del diálogo). Marca = ficha, kit y voz, cerebro (con su estudio de mercado), plan semanal (el MISMO
+  `EditorSemana`), fechas especiales (el diálogo de siempre, mes a mes) y Drive (PestanaContenido).
+  · **Las direcciones de antes NO se reescriben** (`PESTANAS_VIEJAS`): `/estudio` es Crear → Galería, `/diseno` Crear →
+  Director, `/ideas` e `/inspiracion` Referencias, `/cerebro`, `/ficha` y `/contenido` Marca. Lo que traen detrás lo lee la
+  pantalla AL MONTARSE (`?lote=` el Estudio, `?receta=` el director, `?pieza=` Inspiración): si se redirigiera, se perdería.
+  Los avisos del servidor siguen apuntando a `/estudio`, `/tareas` o `/inspiracion?pieza=` y llegan. `construirRuta` con un
+  nombre de antes da la dirección nueva. Todos los nombres (nuevos, «tareas» y los de antes) quedan reservados
+  (`PESTANAS_CLIENTE`). «Cambiar de cliente no cambia de pestaña» sigue, también la sub-sección; y al volver a una pestaña
+  se vuelve a la última sub-sección que se miró (`ultimaSeccion` en App.jsx, por sesión).
+  · **Los avisos de la campana perdían lo que va detrás de la dirección** (`navegar(u.pathname)` en Avisos.jsx): el «rinde 3×»
+  llegaba a Inspiración sin su `?pieza=`. Ahora `u.pathname + u.search`.
+  · **Las pestañas son pestañas de verdad** (BarraPestanas.jsx, lib/pestanas.js): `role="tablist"`, `aria-selected`,
+  `aria-controls` a un `tabpanel` con `aria-labelledby`, foco sólo en la escogida, flechas, Inicio y Fin. Activación MANUAL
+  (Intro o Espacio): cada pestaña es una dirección y una pantalla que se descarga. Antes eran `aria-current="page"`. En el
+  teléfono caben las cinco (icono encima del nombre, `--fs-3xs`).
+  · **Las tareas del cliente ya no son pestaña**: su botón en la cabecera (y «tareas atrasadas» del resumen) lleva a Mi día,
+  por empresa, con las suyas (`/tareas?empresa=<id>`, lo lee Tareas.jsx al montarse; no se recuerda como vista del
+  navegador). `/cliente/x/tareas` sigue con su lista entera (TaskPanel: repetir, plantillas), y Mi día enlaza a ella.
+  · **El kit de marca salió del Estudio a Marca → Kit y voz**: EstudioKit importa ahora Estudio.css (vivía de los estilos del
+  Estudio), ProbarVoz importa VideoAnimado.css (lo mismo) y la voz (VozDeMarca) va en su tarjeta, también con el kit vacío.
+  Con eso el chunk del Estudio quedó por debajo de su tope pese al «Avanzado».
+  · **El SEMÁFORO del kit** (lib/semaforoKit.js, cliente/SemaforoKit.jsx): kit, logo, imágenes de la marca perdidas, fotos del
+  catálogo, plantillas, «Me gusta» (3), ficha técnica del cerebro (sólo en Marca, con el estado de GET /api/cerebro) y voz,
+  en verde, ámbar o rojo con su arreglo: ir a donde se arregla o, el logo, SUBIRLO ahí mismo (a la galería y al kit). Sale de
+  lo que ya devuelve GET /api/estudio, que ahora trae además `sinFotos` (los productos activos sin fotos o con todas perdidas).
+  Plegado arriba de Marca; en Crear, sólo lo crítico (los rojos sin la ficha), con lo que leyó el Estudio (`onDatos`, sin
+  pedirlo otra vez); en la pestaña Pieza de una publicación (AvisoKitPieza, lazy), sin logo o un producto que NOMBRA sin
+  fotos. La lectura se recuerda dos minutos por cliente (lib/semaforoKitApi.js): abrir paneles no la pide cada vez.
+  · **Navegación global**: Inicio · Mi día · Lo mejor · Producción · Bandeja · Resultados · Anuncios · Auditorías, y aparte
+  Equipo y Ajustes. «Producción» es Programación con «Por producir» (lo aprobado por programar y las ideas por producir;
+  antes era un bloque de «No publicadas») como primera pestaña: `/produccion`, y `/programacion` sigue (también `/tablero`).
+  PorProgramar va siempre montado (`hidden`) para que su cifra salga en la pestaña. «Anuncios» (pages/Anuncios.jsx) lleva la
+  Biblioteca como pestaña; `/campanas` y `/biblioteca` siguen siendo sus direcciones.
+  · **Ajustes → «Cómo trabajamos»**: recetas y fórmulas UGC (su diálogo de siempre, que antes sólo se abría desde la pestaña
+  Diseño, una publicación o el guion de un UGC), plantillas de plan y «Manuales de la agencia» (campañas, video, director y
+  cómo se diseña cada tipo).
+  · **El «⋯» del calendario ya no lleva el plan semanal ni las fechas especiales**: viven en Marca. En el calendario quedan sus
+  accesos directos (la barra de los días y «Elegir fechas» de la tarjeta de la campaña); en el teléfono la barra no se ve, así
+  que el plan semanal es Marca → Plan semanal.
+  · **El CSS inicial estaba en su tope (12,48 de 12,5 kB)**: lo de Drive, el banco anterior y la ficha salió de index.css a
+  Drive.css, PestanaContenido.css y FichaCliente.css, importados por sus componentes (todos en diferido). Lo nuevo va en
+  cliente/cliente.css, con sus chunks.
 
 ## Documentos relacionados
 

@@ -25,7 +25,7 @@ export default function Anuncios({ vista = "campanas", clients = [], pulso = 0, 
   const ids = useId();
   const actual = vista === "biblioteca" ? "biblioteca" : "campanas";
   return (
-    <div>
+    <div className="anuncios">
       <BarraPestanas
         etiqueta="Anuncios"
         pestanas={PESTANAS}
