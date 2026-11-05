@@ -176,11 +176,14 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
     // El guion por tramos del reel, también sólo si estaba vacío (lo pone igual el servidor al terminar el encargo).
     const guionReel = String(opciones.guion ?? "").trim();
     const portadaReel = String(opciones.portada ?? "").trim();
+    // Los hashtags que trajo el guion (aparte del caption, lib/reglasFormato.js), sólo si no había.
+    const hashtagsReel = String(opciones.hashtags ?? "").trim();
     setForm((p) => ({
       ...conMedios(p, [medioDeArchivo(video)]), mediosCambiadosAt: new Date().toISOString(),
       ...(caption && !String(p.descripcion || p.script || "").trim() ? { descripcion: caption } : {}),
       ...(guionReel && !String(p.guion ?? "").trim() ? { guion: guionReel } : {}),
       ...(portadaReel && !p.portada ? { portada: portadaReel, portadaMs: null } : {}),
+      ...(hashtagsReel && !String(p.hashtagsFinales ?? "").trim() ? { hashtagsFinales: hashtagsReel } : {}),
     }));
     if (cal && post.id) apuntarUso(clientId, video.id, { calendarId: cal.dbId || cal.id, postId: post.id }).catch(() => {});
     setEscrito("Puesto el reel en la publicación.");

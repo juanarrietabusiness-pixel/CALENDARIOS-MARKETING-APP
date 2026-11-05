@@ -16,9 +16,9 @@ describe("recrear un anuncio", () => {
   });
 
   it("la versión de partida sale de lo que propuso la IA", () => {
-    expect(versionDeAdaptacion({ idea: "El sofá cama abierto.", guion: "Fondo arena, luz de tarde.", textoPantalla: "Duerme mejor", descripcion: "Caption #dcasa" }))
-      .toEqual({ idea: "El sofá cama abierto. Fondo arena, luz de tarde.", texto: "Duerme mejor", descripcion: "Caption #dcasa" });
-    expect(versionDeAdaptacion(null)).toEqual({ idea: "", texto: "", descripcion: "" });
+    expect(versionDeAdaptacion({ idea: "El sofá cama abierto.", guion: "Fondo arena, luz de tarde.", textoPantalla: "Duerme mejor", descripcion: "Caption", hashtags: "#dcasa" }))
+      .toEqual({ idea: "El sofá cama abierto. Fondo arena, luz de tarde.", texto: "Duerme mejor", descripcion: "Caption", hashtags: "#dcasa" });
+    expect(versionDeAdaptacion(null)).toEqual({ idea: "", texto: "", descripcion: "", hashtags: "" });
   });
 
   it("en imagen: las fotos del producto delante, el anuncio sólo por su forma, y el texto exacto", () => {

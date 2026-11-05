@@ -154,7 +154,7 @@ export default function RecrearLoMejor({ pieza, clientes = [], clienteInicial = 
           <div role="status" className="lo-mejor-hecho">
             <p style={{ margin: 0 }}><Icon name="check" size={16} /> Publicación creada el <strong>{diaEnPalabras(hecho.fecha)}</strong>.</p>
             <p className="hint" style={{ margin: 0 }}>
-              {hecho.encargoId && "El director la está diseñando en el servidor: sigue aunque cierres la aplicación. Cuando salga, está en el Estudio del cliente."}
+              {hecho.encargoId && "El director la está diseñando en el servidor: sigue aunque cierres la aplicación. Cuando salga, se pone sola en la publicación y te llega un aviso a la campana."}
               {hecho.videoId && "El guion del video animado está listo para revisar (en la publicación, «Video animado»)."}
               {hecho.camino === "grabar" && "El guion para grabar está en la publicación, con las tomas y qué audio usar."}
               {hecho.aviso ? ` ${hecho.aviso}` : ""}

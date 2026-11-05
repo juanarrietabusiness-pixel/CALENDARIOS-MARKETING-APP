@@ -680,7 +680,8 @@ export async function recrear(env, acceso, usuario, { clave, clienteId, camino: 
       const estampa = Boolean(k.logo) && k.logoModo === "estampado";
       const carpeta = await crearCarpeta(acceso, cliente.id, post.title, { tipo: "carrusel" });
       fila = await crearEncargo(env, acceso, cliente, {
-        tipo: "carrusel", titulo: post.title, carpetaId: carpeta.id, controlar: true, logoEstampado: estampa,
+        // `poner`: el carrusel entero se pone SOLO en su publicación al terminar (encargos.js, `ponerResultados`).
+        tipo: "carrusel", titulo: post.title, carpetaId: carpeta.id, controlar: true, logoEstampado: estampa, poner: true,
         comun: {
           modelo: modelo.id, modo: "ia", plantilla: "banda", idea: corto(brief, 400), hilo: "",
           preset: estiloDeMarca(kit, "", { marca: cliente.name, rubro: cliente.industry ?? "" }), fotos: [], personajes: [],
@@ -693,7 +694,8 @@ export async function recrear(env, acceso, usuario, { clave, clienteId, camino: 
       if (!pieza || pieza.error) throw new ErrorLoMejor(pieza?.error ?? "No se pudo armar la pieza.", 409);
       const k = limpiarKit(kit);
       fila = await crearEncargo(env, acceso, cliente, {
-        tipo: "lote", titulo: post.title, mejorar: true, controlar: true, paralelo: 1,
+        // `poner`: la pieza va SOLA a su publicación al terminar, aunque nadie tenga la aplicación abierta.
+        tipo: "lote", titulo: post.title, mejorar: true, controlar: true, paralelo: 1, poner: true,
         especiales: especial ? [{ papel: "inspiracion", ...especial }] : [],
         pasos: [pasoDelPlan(pieza, { calendarioDePost: { [post.id]: calendarId }, productos, estampa: Boolean(k.logo) && k.logoModo === "estampado" })],
       }, { usuario });

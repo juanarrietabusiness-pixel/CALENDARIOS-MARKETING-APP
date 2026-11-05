@@ -20,6 +20,7 @@
 // ============================================================
 
 import { lineaDelGuionPost } from "./guionVideo.js";
+import { captionYHashtags } from "./videoCorto.js";
 import { lineasDeContenido } from "./pilares";
 
 /** Lo que dura: el modelo decide cuáles tiene. 15 s es el tope de un clip de MiniMax H3 y de Kling 3.0. */
@@ -98,7 +99,7 @@ export function pedidoDeVideoProducto({ marca = "la marca", segundos = 10, produ
     "- Nada de texto en pantalla: los modelos de video escriben mal. Nada inventado: ni precios, ni cifras, ni reseñas.",
     "",
     "Responde SOLO con JSON, sin texto alrededor:",
-    `{"inicio":"el primer fotograma, en una o dos frases","inicioConProducto":false,"tramos":[${tramos.map((t) => `{"clave":"${t.clave}","accion":"lo que pasa"}`).join(",")}],"camara":"el movimiento","locucion":"lo que dice la voz en off","musica":"la música, en una frase","descripcion":"el caption del post, con llamada a la acción y hashtags al final"}`,
+    `{"inicio":"el primer fotograma, en una o dos frases","inicioConProducto":false,"tramos":[${tramos.map((t) => `{"clave":"${t.clave}","accion":"lo que pasa"}`).join(",")}],"camara":"el movimiento","locucion":"lo que dice la voz en off","musica":"la música, en una frase","descripcion":"el caption del post, con llamada a la acción, SIN hashtags","hashtags":"de 5 a 10 hashtags, aparte"}`,
   ].filter((x) => x !== "").join("\n");
 }
 
@@ -123,7 +124,8 @@ export function leerVideoProducto(texto, segundos = 10) {
     camara: corto(d.camara, 160),
     locucion: locucionQueCabeEn(corto(d.locucion, 600), s),
     musica: corto(d.musica, 200),
-    descripcion: String(d.descripcion ?? "").trim().slice(0, 2200),
+    // Los hashtags SIEMPRE aparte (lib/reglasFormato.js).
+    ...captionYHashtags(d),
   };
 }
 
