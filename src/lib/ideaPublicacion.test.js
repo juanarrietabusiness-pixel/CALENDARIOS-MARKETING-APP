@@ -71,6 +71,12 @@ describe("la idea de una publicación, como el lote", () => {
     expect(estrategiaDelCalendario(cal)).toEqual({ campana: "Marzo", ofertas: "10 %", codigo: "X", semanas: ["A"] });
     expect(estrategiaDelCalendario(null)).toEqual({ campana: "", ofertas: "", codigo: "", semanas: [] });
   });
+
+  it("el concepto de la semana es el de su FILA de la rejilla, aunque el día guarde el de antes", () => {
+    // Octubre de 2026 empieza en jueves: el 5 (lunes) es de la semana 2.
+    const cal = { weekConcepts: ["Uno", "Dos"], days: [{ date: "2026-10-05", concept: "Viejo", posts: [{ id: "p1", format: "post" }] }] };
+    expect(casillasSinIdea(cal)[0].semana).toBe("Dos");
+  });
 });
 
 describe("«Otra» de una publicación", () => {

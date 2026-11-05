@@ -74,6 +74,8 @@ describe("extraer y adaptar", () => {
     expect(leerAdaptacionUgc("TITULO: x\nGUION:\nnada")).toBeNull();
     expect(publicacionDeUgc(a, { duracion: 15, productoId: "p1", producto: "Lavado" })).toMatchObject({
       format: "reel", rostro: true, title: "Sofá como nuevo", guion: GUION, ganchosUgc: ["Uno", "Dos"], duracionUgc: 15, productoId: "p1",
+      // Los hashtags, aparte (lib/reglasFormato.js): en el caption y en su campo saldrían dos veces.
+      descripcion: "Escríbenos.", hashtagsFinales: "#sofa",
     });
   });
 });

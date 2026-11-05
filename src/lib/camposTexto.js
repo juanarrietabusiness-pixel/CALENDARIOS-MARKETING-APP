@@ -108,7 +108,7 @@ export function pedidoDeCampos({
   const ugcs = plan.filter((r) => r.rostro && r.campos.includes("guion"));
   const lineaDe = (r) => {
     const escrito = Object.entries(r.escrito ?? {}).map(([k, v]) => `     ${NOMBRE[k] ?? k}: «${conLineas(v, MAX_ESCRITO)}»`);
-    const antes = Object.entries(r.antes ?? {}).map(([k, v]) => `   el ${NOMBRE[k] ?? k} que tiene ahora (escribe uno mejor que conserve su intención; lo que va entre comillas se dice TAL CUAL): «${conLineas(v, MAX_ESCRITO)}»`);
+    const antes = Object.entries(r.antes ?? {}).map(([k, v]) => `   lo que tiene ahora en «${NOMBRE[k] ?? k}» (escribe una versión mejor que conserve su intención; lo que va entre comillas se dice TAL CUAL): «${conLineas(v, MAX_ESCRITO)}»`);
     return [
       lineaDePieza({ ...r, rostro: false }, productos),
       r.rostro ? `   UGC: lo GRABA una persona de la marca hablando a cámara (no se hace con IA); guion para grabar de ${r.duracionUgc} s, unas ${palabrasQueCaben(r.duracionUgc)} palabras de voz en total.` : "",

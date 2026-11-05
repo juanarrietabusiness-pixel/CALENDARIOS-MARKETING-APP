@@ -20,6 +20,8 @@
 // También lo importa el Worker («Extraer guion y adaptar»).
 // ============================================================
 
+import { separarHashtags } from "./reglasFormato.js";
+
 export const DURACIONES_UGC = Object.freeze([15, 30, 45, 60]);
 export const DURACION_UGC = 30;
 /** Palabras por segundo de una voz natural a cámara. */
@@ -247,6 +249,8 @@ export function leerAdaptacionUgc(texto) {
  * caption. Sólo lo que trae; lo demás (fecha, medios) es de quien la recibe. Pura.
  */
 export function publicacionDeUgc(adaptado = {}, { duracion = DURACION_UGC, productoId = "", producto = "" } = {}) {
+  // Los hashtags del final del caption, APARTE (lib/reglasFormato.js): en los dos sitios saldrían dos veces.
+  const { texto: caption, hashtags } = separarHashtags(adaptado.descripcion ?? "");
   return {
     format: "reel", rostro: true,
     ...(adaptado.titulo ? { title: adaptado.titulo } : {}),
@@ -254,7 +258,8 @@ export function publicacionDeUgc(adaptado = {}, { duracion = DURACION_UGC, produ
     guion: adaptado.guion ?? "",
     ...(adaptado.ganchos?.length ? { ganchosUgc: adaptado.ganchos } : {}),
     duracionUgc: duracionUgc(duracion),
-    ...(adaptado.descripcion ? { descripcion: adaptado.descripcion } : {}),
+    ...(caption ? { descripcion: caption } : {}),
+    ...(hashtags ? { hashtagsFinales: hashtags } : {}),
     ...(productoId ? { productoId, producto } : {}),
   };
 }
