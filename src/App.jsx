@@ -839,6 +839,17 @@ function Workspace({ session, ruta }) {
     navegar(construirRuta({ cliente: slug, calendario: slugDeMes(year, month) }));
   }, [clients]);
 
+  /**
+   * «Planificar mes» (y «Nuevo calendario» del buscador): el ASISTENTE DEL MES del mes que se mira, en el calendario
+   * (calendario/AsistenteMes.jsx). Va por la dirección (`?asistente=1`): CalendarView lo abre al llegar o, si ya estaba
+   * en ese mes, al oír el cambio de dirección. «Planificar a mano» (PlanWizard) se abre desde dentro del asistente.
+   */
+  const abrirAsistenteDelMes = useCallback(() => {
+    if (!selectedClientId) return;
+    const slug = slugsDeClientes(clients).get(selectedClientId) ?? selectedClientId;
+    navegar(`${construirRuta({ cliente: slug, calendario: slugDeMes(mesVisto.year, mesVisto.month) })}?asistente=1`);
+  }, [clients, selectedClientId, mesVisto]);
+
   // Una dirección que no resuelve —cliente borrado, enlace viejo, un
   // nombre cambiado— vuelve al inicio en vez de dejar la pantalla vacía
   // sin explicar nada. Se hace REEMPLAZANDO: no es navegar, es corregir,
@@ -941,18 +952,19 @@ function Workspace({ session, ruta }) {
   };
 
   /**
-   * El plan semanal de un cliente (lib/planSemanal.js): la plantilla personalizada y el ritmo, que es lo que leen el
-   * lote del Estudio, «Planificar mes» y la IA. Deja escapar el error: el diálogo lo dice y se queda abierto.
+   * El plan semanal ÚNICO de un cliente (lib/planSemanal.js): formato, tipo, hora y nota de cada día, y las columnas de
+   * antes derivadas (las lee la IA). Por su ruta (`PUT /api/clientes/<id>/plan-semanal`), no con la ficha entera. Deja
+   * escapar el error: el editor lo dice y se queda abierto. `clienteId`: el de la ficha que se edita (por defecto, el
+   * que se mira).
    */
-  const guardarPlanCliente = async (cambio) => {
-    const id = selectedClientId;
-    const cliente = clientsRef.current.find((c) => c.id === id);
-    if (!cliente) return;
-    // Las notas fijas de los días sólo cambian si vienen: «Volver al estándar» no las trae y no se las lleva.
-    const campos = { planContenido: cambio.planContenido, ritmoContenido: cambio.ritmoContenido, ...("notasSemana" in cambio ? { notasSemana: cambio.notasSemana } : {}) };
-    const nuevo = { ...cliente, ...campos };
-    await db.saveClient(nuevo, ownerId);
-    setClients((prev) => prev.map((c) => (c.id === id ? { ...c, ...campos } : c)));
+  const guardarPlanCliente = async (cambio, clienteId = selectedClientId) => {
+    const cliente = clientsRef.current.find((c) => c.id === clienteId);
+    if (!cliente) return null;
+    const fila = await db.guardarPlanSemanal(cliente.dbId || cliente.id, cambio);
+    const g = rowToClient(fila);
+    const campos = { planSemanal: g.planSemanal, planContenido: g.planContenido, ritmoContenido: g.ritmoContenido, notasSemana: g.notasSemana };
+    setClients((prev) => prev.map((c) => (c.id === clienteId ? { ...c, ...campos } : c)));
+    return campos;
   };
 
   /**
@@ -1341,7 +1353,7 @@ function Workspace({ session, ruta }) {
     else if (a.tipo === "asistente") setShowChat(true);
     else if (a.tipo === "subir") setShowSubir(true);
     else if (a.tipo === "nuevo-cliente") openNewClient();
-    else if (a.tipo === "nuevo-calendario") setShowWizard(true);
+    else if (a.tipo === "nuevo-calendario") abrirAsistenteDelMes();
     else if (a.tipo === "cliente") irA(a.clienteId);
     else if (a.tipo === "calendario") irA(a.clienteId, a.calId);
     else if (a.tipo === "publicacion") {
@@ -1628,7 +1640,7 @@ function Workspace({ session, ruta }) {
                       </button>
                       {/* Ya no se crea un calendario por mes: el asistente
                           PLANIFICA el mes que se elija, dentro del mismo calendario. */}
-                      <button className="btn btn-primary" onClick={() => setShowWizard(true)}>
+                      <button className="btn btn-primary" onClick={abrirAsistenteDelMes}>
                         <Icon name="sparkles" size={18} /> Planificar mes
                       </button>
                     </div>
@@ -1720,6 +1732,7 @@ function Workspace({ session, ruta }) {
                     onMoveBankToCal={ideaAlCalendario}
                     onGuardarFechas={guardarFechasCliente}
                     onGuardarPlan={guardarPlanCliente}
+                    onPlanificar={() => setShowWizard(true)}
                     onPersistClient={persistClient}
                   />
                 ) : null)}
@@ -1812,6 +1825,7 @@ function Workspace({ session, ruta }) {
           <ClientModal
             initial={editingClient}
             onSave={saveClient}
+            onGuardarPlan={guardarPlanCliente}
             onDelete={esAdmin() ? deleteClient : null}
             onClose={() => {
               setShowClientModal(false);

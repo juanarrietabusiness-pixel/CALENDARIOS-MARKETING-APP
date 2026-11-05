@@ -48,6 +48,8 @@ export const NEGOCIOS_PLAN = Object.freeze([
 ]);
 
 export const MAX_POR_DIA = 4;
+/** Una hora del plan: «HH:MM» de 24 horas. */
+export const HORA_PLAN = /^([01]\d|2[0-3]):[0-5]\d$/;
 export const MAX_PLANTILLAS = 40;
 
 const objetivoDe = (id) => OBJETIVOS_PLAN.find((o) => o.id === id) ?? null;
@@ -94,7 +96,9 @@ const ID = /^[\w-]{1,60}$/;
 function limpiarHueco(h) {
   const format = FORMATOS_PLAN.includes(h?.format) ? h.format : null;
   if (!format) return null;
-  return { format, pilar: idDePilar(h?.pilar), ...(format === "reel" && h?.rostro === true ? { rostro: true } : {}) };
+  // La HORA de la publicación (plan semanal único, «HH:MM»): sólo si es válida; sin ella, la del día o la sugerida.
+  const hora = HORA_PLAN.test(String(h?.hora ?? "")) ? String(h.hora) : "";
+  return { format, pilar: idDePilar(h?.pilar), ...(format === "reel" && h?.rostro === true ? { rostro: true } : {}), ...(hora ? { hora } : {}) };
 }
 
 /** Una plantilla, limpia. Null si no tiene id o nombre. Pura. */
@@ -172,7 +176,7 @@ export function plantillaDelCliente(planContenido, lista = []) {
 export function configDeFormatos(plantilla) {
   const cfg = {};
   for (let dow = 0; dow < 7; dow++) {
-    cfg[dow] = (plantilla?.dias?.[dow] ?? []).map((h) => ({ format: h.format, pilar: idDePilar(h.pilar), ...(h.format === "reel" && h.rostro ? { rostro: true } : {}) }));
+    cfg[dow] = (plantilla?.dias?.[dow] ?? []).map((h) => ({ format: h.format, pilar: idDePilar(h.pilar), ...(h.format === "reel" && h.rostro ? { rostro: true } : {}), ...(h.hora ? { hora: h.hora } : {}) }));
   }
   return cfg;
 }

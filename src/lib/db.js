@@ -228,6 +228,11 @@ export async function guardarDiasTrabajo(clientId, dias) {
   return pedir(`/clientes/${encodeURIComponent(clientId)}/dias`, conCuerpo("PUT", { dias }));
 }
 
+/** El plan semanal ÚNICO de una empresa (lib/planSemanal.js): el formato nuevo y las columnas de antes derivadas. */
+export async function guardarPlanSemanal(clientId, cambio) {
+  return pedir(`/clientes/${encodeURIComponent(clientId)}/plan-semanal`, conCuerpo("PUT", cambio));
+}
+
 export async function deleteClientTask(taskId) {
   await pedir(`/tareas/${taskId}`, { method: "DELETE" });
 }

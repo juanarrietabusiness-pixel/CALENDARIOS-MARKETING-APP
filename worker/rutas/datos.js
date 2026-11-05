@@ -35,6 +35,9 @@ import { obtenerOCrearMes, moverDeMes, ErrorMes } from "../lib/meses.js";
 import { olvidarIndice } from "../lib/cerebro/cerebro.js";
 import { olvidarClave } from "../lib/estudio/galeria.js";
 import { limpiarDias } from "../../src/lib/semanaTareas.js";
+import { limpiarPlanSemanal } from "../../src/lib/planSemanal.js";
+import { limpiarPlanCliente } from "../../src/lib/plantillasPlan.js";
+import { limpiarRitmo } from "../../src/lib/pilares.js";
 
 /**
  * Lo que va después de responder (avisos, historial): con el `waitUntil`
@@ -50,7 +53,7 @@ function despues(ctx, promesa) {
 /** Borrar un cliente o un calendario entero, sólo quien administra. */
 const soloAdmin = (ctx) => (ctx.usuario?.rol === "admin" ? null : error("Sólo quien administra el espacio puede borrar clientes o calendarios enteros.", 403));
 
-const JSON_CLIENTES = ["ideas_bank", "saved_categories", "weekly_structure", "meta_recipe", "competidores", "fechas_especiales", "kit_marca", "ritmo_contenido", "plan_contenido", "notas_semana", "dias_trabajo"];
+const JSON_CLIENTES = ["ideas_bank", "saved_categories", "weekly_structure", "meta_recipe", "competidores", "fechas_especiales", "kit_marca", "ritmo_contenido", "plan_contenido", "notas_semana", "dias_trabajo", "plan_semanal"];
 const JSON_CALENDARIOS = ["week_concepts", "days", "visual_references", "day_labels", "opciones"];
 const BOOL_CALENDARIOS = ["share_enabled", "allow_editing"];
 
@@ -320,6 +323,29 @@ export async function rutasDatos(req, env, ctx) {
       if (!Array.isArray(dias)) return error("Faltan los días");
       const limpios = limpiarDias(dias);
       const n = await acceso.actualizar("clients", { id }, { dias_trabajo: limpios.length ? JSON.stringify(limpios) : null, updated_at: ahora() });
+      if (!n) return noEncontrado("Cliente");
+      const guardado = salidaCliente(await acceso.leerUno("clients", { id }));
+      difundir(env, acceso.ownerId, { tipo: "cliente", cliente: guardado, por: firma(ctx.usuario, req) });
+      return json(guardado);
+    }
+
+    // ---- /api/clientes/<id>/plan-semanal: el plan semanal ÚNICO (formato, tipo, hora y nota de cada día) ----
+    // Su propia ruta, como los días fijos: `clientToRow` no lleva `plan_semanal`, así una ficha abierta desde antes no
+    // lo pisa. Escribe el formato nuevo y las columnas de antes DERIVADAS de él (las compone la pantalla, que tiene la
+    // lista de plantillas, con `planSemanalParaGuardar`); aquí sólo se limpian.
+    if (sub === "plan-semanal" && metodo === "PUT") {
+      const datos = (await cuerpo(req)) ?? {};
+      const ps = limpiarPlanSemanal(datos.planSemanal);
+      if (!ps) return error("Falta el plan semanal");
+      const plan = limpiarPlanCliente(datos.planContenido);
+      const cambios = {
+        plan_semanal: JSON.stringify(ps),
+        plan_contenido: plan.plantilla || plan.personalizada ? JSON.stringify(plan) : null,
+        ritmo_contenido: datos.ritmoContenido && typeof datos.ritmoContenido === "object" ? JSON.stringify(limpiarRitmo(datos.ritmoContenido)) : null,
+        notas_semana: ps.notas ? JSON.stringify(ps.notas) : null,
+        updated_at: ahora(),
+      };
+      const n = await acceso.actualizar("clients", { id }, cambios);
       if (!n) return noEncontrado("Cliente");
       const guardado = salidaCliente(await acceso.leerUno("clients", { id }));
       difundir(env, acceso.ownerId, { tipo: "cliente", cliente: guardado, por: firma(ctx.usuario, req) });

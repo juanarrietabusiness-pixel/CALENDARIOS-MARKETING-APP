@@ -60,7 +60,8 @@ describe("guardar lo editado en la barra", () => {
   it("volver al estándar quita la copia y el ritmo propio, y conserva la plantilla elegida", () => {
     expect(semanaEstandar({ planContenido: { plantilla: "ventas-productos", personalizada: { id: "cliente", nombre: "x", dias: {} } } }, lista))
       .toMatchObject({ planContenido: { plantilla: "ventas-productos", personalizada: null }, ritmoContenido: null });
-    expect(semanaEstandar({}, lista)).toEqual({ planContenido: null, ritmoContenido: null });
+    // Además del plan único («el estándar»: sin días propios), las columnas de antes vacías.
+    expect(semanaEstandar({}, lista)).toMatchObject({ planContenido: null, ritmoContenido: null, planSemanal: { v: 1, dias: null } });
     expect(semanaPropia({})).toBe(false);
   });
 

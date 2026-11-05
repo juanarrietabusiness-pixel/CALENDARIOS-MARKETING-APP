@@ -152,11 +152,13 @@ export function laminasDeEncargo(e, archivos) {
  * `propuesta`, que hace que el director diseñe la serie en el servidor). `previas`: { portada, anterior } (claves de
  * las crudas) al seguir tras aprobar la portada. → { encargo, archivos }.
  */
-export async function lanzarCarrusel({ clienteId, comun, laminas = [], total, previas = null, sistema = null, conSistema = true, propuesta = null, carpetaId = null, controlar = false, logoEstampado = false, titulo = "" }) {
+export async function lanzarCarrusel({ clienteId, comun, laminas = [], total, previas = null, sistema = null, conSistema = true, propuesta = null, carpetaId = null, controlar = false, logoEstampado = false, titulo = "", poner = false }) {
   const vistas = propuesta ? await api.vistasDelCliente(clienteId).catch(() => []) : [];
   return crearEncargo(clienteId, {
     tipo: "carrusel", titulo, comun: comunParaServidor(comun), laminas, total: total ?? laminas.length, previas, sistema, conSistema,
     propuesta, carpetaId, controlar, logoEstampado, vistas,
+    // Lo que sale se pone SOLO en su publicación al terminar (el asistente del mes).
+    ...(poner ? { poner: true } : {}),
   });
 }
 

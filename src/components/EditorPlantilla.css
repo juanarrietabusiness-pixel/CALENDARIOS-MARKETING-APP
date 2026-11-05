@@ -19,3 +19,8 @@
 .plan-semanal { max-width: 640px; }
 .plan-semanal .editor-plantilla-dias { grid-template-columns: none; }
 .plan-semanal .editor-plantilla-hueco .input { flex: 1 1 0; min-width: 0; }
+/* El plan semanal ÚNICO (PlanSemanal.jsx): cada publicación con su tipo, su formato y su HORA. */
+.editor-semana .editor-plantilla-dias { grid-template-columns: none; }
+.editor-semana-pub { display: grid; gap: var(--sp-1); padding-bottom: var(--sp-2); border-bottom: 1px solid var(--border); }
+.editor-semana-hora { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
+.editor-semana-hora .campo-hora { flex: 1 1 200px; }

@@ -86,6 +86,12 @@ export function fusionarEnMes(real, cambiado) {
   for (const k of ["weekConcepts", "dayLabels", "campaign", "offers", "promoCode"]) {
     if (vacio(cal[k]) && !vacio(cambiado?.[k])) cal[k] = cambiado[k];
   }
+  // Las opciones del mes (la estrategia, lo del asistente del mes): cada una sólo donde el cajón no la tenía.
+  if (cambiado?.opciones && typeof cambiado.opciones === "object") {
+    const ya = cal.opciones && typeof cal.opciones === "object" ? cal.opciones : {};
+    const nuevas = Object.fromEntries(Object.entries(cambiado.opciones).filter(([k, v]) => vacio(ya[k]) && !vacio(v)));
+    if (Object.keys(nuevas).length) cal.opciones = { ...ya, ...nuevas };
+  }
   return cal;
 }
 

@@ -52,7 +52,9 @@ describe("las notas fijas de los días", () => {
     expect(pedido).toContain(lineaDeNotaDelDia("Muebles y camas"));
     expect(pedido).toContain("producto: Camas");
   });
-  it("«Volver al estándar» no trae notas: no se las lleva (App las cambia sólo si vienen)", () => {
-    expect("notasSemana" in semanaEstandar({ notasSemana: { 1: "x" } }, [])).toBe(false);
+  it("«Volver al estándar» no se lleva las notas: las conserva en el plan único y en su columna", () => {
+    const e = semanaEstandar({ notasSemana: { 1: "x" } }, []);
+    expect(e.notasSemana).toEqual({ 1: "x" });
+    expect(e.planSemanal.notas).toEqual({ 1: "x" });
   });
 });
