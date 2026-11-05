@@ -67,6 +67,13 @@ import { bloqueDeMarca, kitVacio } from "../../src/lib/kitMarca.js";
 import { catalogoParaDisenar } from "../lib/estudio/catalogoDiseno.js";
 import { instruccionDeDiseno, resumenDelKit, lineaDeCorrecciones } from "../../src/lib/director.js";
 import { REGLA_RECETAS } from "../../src/lib/recetas.js";
+// El reel por planos (el encargo del servidor): las MISMAS herramientas que el MCP. Se importan aquí y no en
+// herramientasServidor.js: desde allí cerrarían el ciclo que deja las definiciones del Estudio sin iniciar.
+import { DEFINICIONES_REEL_MCP, crearHerramientasReel } from "../lib/estudio/herramientasReel.js";
+
+/** Las del reel con la forma de la API de Anthropic (`input_schema`). */
+const DEFINICIONES_REEL = Object.freeze(DEFINICIONES_REEL_MCP.map(({ name, description, inputSchema }) => ({ name, description, input_schema: inputSchema })));
+const NOMBRES_REEL = new Set(DEFINICIONES_REEL.map((d) => d.name));
 
 const MAX_BODY_BYTES = 8 * 1024 * 1024;
 const MAX_TOKENS = 32_000;
@@ -102,6 +109,11 @@ OTRAS HERRAMIENTAS QUE TIENES ADEMÁS DE LAS DEL CALENDARIO:
   crea nada; díselo al usuario y sólo con su «sí» repites con confirmado=true.
 · generar_musica: una música de fondo con Suno (dos versiones a la galería; con video_id queda puesta en el
   video). También SIEMPRE se confirma, igual que la voz.
+· crear_reel, estado_reel, continuar_reel y montar_reel: un REEL por planos hecho en el servidor (el storyboard, el
+  video o los clips y el montaje con la voz, el texto, los subtítulos y el logo); sale solo en su publicación aunque
+  se cierre la aplicación. La primera llamada trae el guion y el costo y NO crea nada: díselo al usuario y sólo con su
+  «sí» repites con confirmado=true. La voz del montaje se confirma aparte (confirmado_voz).
+· video_listo («¿Está listo este video?») y extraer_guion_ugc (el guion de un video, adaptado como UGC para grabar).
 Antes de decir que no tienes un dato, mira si alguna de estas herramientas lo trae.`;
 
 const NOMBRES_WEB = new Set(HERRAMIENTAS_WEB.map((h) => h.name));
@@ -123,7 +135,7 @@ function validarMensajes(messages) {
 function herramientasDelNavegador(tools) {
   if (!Array.isArray(tools)) return [];
   return tools
-    .filter((t) => t && typeof t.name === "string" && t.input_schema && !NOMBRES.has(t.name))
+    .filter((t) => t && typeof t.name === "string" && t.input_schema && !NOMBRES.has(t.name) && !NOMBRES_REEL.has(t.name))
     .slice(0, 40)
     .map(({ name, description, input_schema }) => ({ name, description, input_schema }));
 }
@@ -153,6 +165,8 @@ export async function rutaChat(req, env, { acceso, ctx, usuario = null } = {}) {
   const ejecutor = crearEjecutor({
     env, acceso, clienteActual,
     estudio: usuario ? { usuario, por: firma(usuario, req), origen: "asistente" } : null,
+    // El reel por planos, como en el MCP: crea encargos (gasta), así que sólo con quien firma.
+    mas: usuario ? ({ resolverCliente, buscarPublicacion }) => crearHerramientasReel({ env, acceso, resolverCliente, usuario, buscarPublicacion }) : null,
   });
 
   const cachear = body.seguido === true;
@@ -181,6 +195,7 @@ export async function rutaChat(req, env, { acceso, ctx, usuario = null } = {}) {
   const tools = [
     ...herramientasDelNavegador(body.tools),
     ...DEFINICIONES,
+    ...(usuario ? DEFINICIONES_REEL : []),
     ...(env.AI_CHAT_WEB === "no" ? [] : HERRAMIENTAS_WEB),
   ];
   const base = {

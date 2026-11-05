@@ -47,5 +47,6 @@
 .inspiracion-llevar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); margin-top: var(--sp-1); }
 
 @media (max-width: 1023px) {
-  .bank-panel.inspiracion { width: 100%; }
+  .bank-panel.inspiracion { width: auto; }
+  .bank-panel.inspiracion.bank-panel-pagina { width: 100%; }
 }

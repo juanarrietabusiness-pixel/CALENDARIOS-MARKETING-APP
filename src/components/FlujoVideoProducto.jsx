@@ -270,6 +270,7 @@ export default function FlujoVideoProducto({ client, estudio, inicial = {}, onPo
               <summary className="hint">El caption del post</summary>
               <p style={{ whiteSpace: "pre-wrap" }}>{guion.descripcion}</p>
               <CopyButton text={guion.descripcion} describes="el caption" />
+              {guion.hashtags && <p className="hint">Hashtags (van aparte): {guion.hashtags}</p>}
             </details>
           )}
           {paso === "guion" && (
@@ -366,7 +367,7 @@ export default function FlujoVideoProducto({ client, estudio, inicial = {}, onPo
                 <button type="button" className="btn btn-ghost" onClick={() => setPaso("fotogramas")}>Volver a los fotogramas</button>
                 {pedidoVideo && <button type="button" className="btn btn-secondary" onClick={pedirVideo}><Icon name="refresh" size={18} /> Otra versión · {textoCosto(costoVideo)}</button>}
                 {onPoner && videos[0] && (
-                  <button type="button" className="btn btn-primary" onClick={() => onPoner([videos[0]], { reemplazar: true, descripcion: guion?.descripcion ?? "" })}>
+                  <button type="button" className="btn btn-primary" onClick={() => onPoner([videos[0]], { reemplazar: true, descripcion: guion?.descripcion ?? "", hashtags: guion?.hashtags ?? "" })}>
                     <Icon name="check" size={18} /> Poner en la publicación
                   </button>
                 )}

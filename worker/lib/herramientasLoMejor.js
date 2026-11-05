@@ -95,7 +95,7 @@ export function crearHerramientasLoMejor({ env, acceso, resolverCliente, usuario
       try {
         const r = await recrear(env, acceso, usuario, { clave: String(clave ?? ""), clienteId: c.id, camino, productoId: String(productoId ?? ""), confirmado: confirmado === true });
         const que = r.encargoId
-          ? `El director la está diseñando en el servidor (encargo ${r.encargoId}): míralo con estado_encargo.`
+          ? `El director la está diseñando en el servidor (encargo ${r.encargoId}): se pondrá sola en la publicación al terminar; míralo con estado_encargo.`
           : r.videoId ? `El guion del video animado ${r.videoId} está listo para revisar (ver_video, ver_escenas).`
             : "El guion para grabar está en la publicación (con las tomas y qué audio usar).";
         return `Hecho para ${c.name}: publicación ${r.postId} del ${r.fecha} (${CAMINOS[r.camino].nombre}), con el original como referencia. ${que}${r.aviso ? ` ${r.aviso}` : ""}`;

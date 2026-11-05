@@ -417,7 +417,7 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
       }
     }
     setLlevandoIdeas(false);
-    if (n) setAviso({ ok: true, texto: `${n} ${n === 1 ? "idea llevada" : "ideas llevadas"} al calendario, cada una en su día, para que el cliente las apruebe. «Qué se ve» queda en cada una: «Crear con IA» y «Producir el mes» la usan para diseñarla después.` });
+    if (n) setAviso({ ok: true, texto: `${n} ${n === 1 ? "idea llevada" : "ideas llevadas"} al calendario, cada una en su día, para que el cliente las apruebe. «Qué se ve» queda en cada una: «Diseñar con el director» (pestaña Pieza) y «Producir el mes» la usan para diseñarla después.` });
   };
 
   const cambiarIdea = (id, campo, valor) => setIdeas((l) => l.map((x) => (x.id === id ? { ...x, [campo]: valor } : x)));
@@ -511,8 +511,8 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
     onHecho?.();
     setAviso({ ok: true, texto: [
       lanzados.length
-        ? "Las piezas siguen creándose en el servidor: puedes cerrar la aplicación. Al volver, «Producir en lote» → «Seguir con ellas» las enseña aquí; también salen en la galería, en la carpeta del lote."
-        : "Listo. Están en la galería, en la carpeta del lote.",
+        ? "Las piezas siguen creándose en el servidor: puedes cerrar la aplicación. Al volver, «Producir varias piezas» → «Seguir con ellas» las enseña aquí, y te llega un aviso a la campana al terminar; también salen en la galería, en su carpeta."
+        : "Listo. Están en la galería, en su carpeta.",
       grabar ? `${grabar === 1 ? "El UGC va" : `Los ${grabar} UGC van`} al calendario como idea, con su guion para grabar.` : "",
       variantes > 1 ? "Escoge una imagen de cada pieza." : "",
       esMes ? "«Llevar las N al calendario» las pone cada una en su día, listas para revisión." : "Lleva al calendario las que quieras.",
@@ -570,7 +570,7 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
     <div className="overlay" onClick={(e) => { if (e.target === e.currentTarget && !creando) onCerrar(); }}>
       <div ref={ref} className="dialog lote-dialogo" role="dialog" aria-modal="true" aria-labelledby={`${ids}-t`}>
         <div className="lote-cabecera">
-          <h3 id={`${ids}-t`}>Producir en lote</h3>
+          <h3 id={`${ids}-t`}>Producir varias piezas</h3>
           <button type="button" className="btn-icon" aria-label="Cerrar" disabled={creando} onClick={onCerrar}><Icon name="close" size={18} /></button>
         </div>
         <ol className="lote-pasos" aria-label="Pasos">

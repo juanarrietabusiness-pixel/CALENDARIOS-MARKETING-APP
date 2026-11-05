@@ -15,6 +15,8 @@ const ExtraerUgc = lazy(() => import("./calendario/ExtraerUgc"));
 // «Guardar como plantilla» va en su chunk: el del Estudio está en su tope.
 const GuardarPlantilla = lazy(() => import("./GuardarPlantilla"));
 const VideoListo = lazy(() => import("./VideoListo"));
+// «Poner en una publicación…»: lo que ya está en la galería, a un post de cualquier mes (sin crear ni cobrar).
+const PonerEnPublicacion = lazy(() => import("./PonerEnPublicacion"));
 
 // ============================================================
 // El visor: la imagen (o el video) grande y todo lo que se sabe de ella
@@ -173,6 +175,7 @@ export default function Visor({
   const [ejemplos, setEjemplos] = useState([]);
   const [cuantas, setCuantas] = useState(1);
   const [extrayendo, setExtrayendo] = useState(false);
+  const [poniendo, setPoniendo] = useState(false);
   const m = modeloPorId(a.modelo);
   const puedeOtra = !lectura && !a.subido && costoOtra != null && onOtraIgual;
   const video = a.tipo === "video";
@@ -245,7 +248,7 @@ export default function Visor({
               <ReferenciasGaleria archivos={galeria} elegidas={ejemplos} onCambiar={setEjemplos} max={2} etiqueta="Ejemplo de la galería" />
               {selector(`El de editar (${api.modeloParaEditar(activos ?? {})?.nombre ?? "automático"})`)}
               <div className="est-editar-botones">
-                <button type="submit" className="btn btn-primary btn-sm" disabled={!cambio.trim()}><Icon name="wand" size={14} /> Editar con IA</button>
+                <button type="submit" className="btn btn-primary btn-sm" disabled={!cambio.trim()}><Icon name="wand" size={14} /> Corregir</button>
                 <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setEditando(false); setCambio(""); }}>Cancelar</button>
                 {clienteId && !lectura && <GuardarRegla clienteId={clienteId} texto={cambio} />}
               </div>
@@ -267,13 +270,13 @@ export default function Visor({
                     </select>
                   </label>
                   <button type="button" className="btn btn-secondary btn-sm" disabled={versionando} onClick={() => onOtrasVersiones(cuantas, modeloSel)}>
-                    <Icon name="sparkles" size={14} /> {versionando ? "Escribiendo las versiones…" : cuantas === 1 ? "Otra versión distinta" : `${cuantas} versiones distintas`}
+                    <Icon name="sparkles" size={14} /> {versionando ? "Escribiendo las versiones…" : cuantas === 1 ? "Otra versión" : `${cuantas} versiones`}
                   </button>
                 </span>
               </div>
               {!editando && selector(`El de esta pieza (${nombreDelModelo(a.modelo) || "el mismo"})`)}
               <p className="hint" style={{ margin: 0 }}>
-                «Otra igual» repite el pedido con la marca de hoy. «Versión distinta»: el director la rediseña mirando esta, con la misma información y el mismo texto. Salen revisadas por el control y con el logo.
+                «Otra igual» repite el pedido con la marca de hoy. «Otra versión»: la misma información y el mismo texto con otra composición (el director la rediseña mirando esta). Salen revisadas por el control y con el logo.
                 {" "}{textoCosto(costoVersion)} cada una{(elegido ?? m)?.estimado ? ", aprox." : ""}.
               </p>
             </div>
@@ -286,11 +289,15 @@ export default function Visor({
           )}
           {!video && (onRevisar || revision) && <RevisionDeMarca revision={revision} onRevisar={onRevisar} onCorregir={lectura ? null : onCorregir} />}
           <div className="est-visor-acciones">
-            {!lectura && !video && onEditar && !editando && <button type="button" className="btn btn-secondary" onClick={() => setEditando(true)}><Icon name="pencil" size={16} /> Editar</button>}
+            {!lectura && !video && onEditar && !editando && <button type="button" className="btn btn-secondary" onClick={() => setEditando(true)} title="Corregir: edita esta misma imagen (sale una nueva; ésta se queda)"><Icon name="pencil" size={16} /> Corregir</button>}
             {onUsar && <button type="button" className="btn btn-primary" onClick={onUsar}><Icon name="check" size={16} /> {etiquetaUsar ?? "Usar en la publicación"}</button>}
+            {/* Desde la pestaña Estudio (no desde una publicación, que tiene «Usar»): a un post de cualquier mes. */}
+            {!onUsar && !lectura && cliente && (
+              <button type="button" className="btn btn-primary" onClick={() => setPoniendo(true)}><Icon name="send" size={16} /> Poner en una publicación…</button>
+            )}
             {!lectura && !video && <button type="button" className="btn btn-secondary" onClick={onAnimar}><Icon name="video" size={16} /> Animar</button>}
             {!lectura && !video && <button type="button" className="btn btn-secondary" onClick={onReferencia}><Icon name="paperclip" size={16} /> Usar de referencia</button>}
-            {!lectura && onRecrear && <button type="button" className="btn btn-secondary" onClick={onRecrear} title="Analizarlo y hacer una versión con la marca"><Icon name="refresh" size={16} /> Recrear como anuncio</button>}
+            {!lectura && onRecrear && <button type="button" className="btn btn-secondary" onClick={onRecrear} title="Para un anuncio de OTRA cuenta: lo analiza y hace una versión propia con esta marca, sin copiarlo"><Icon name="refresh" size={16} /> Recrear con mi marca</button>}
             {!lectura && video && cliente && esVideoReal(a) && (
               <button type="button" className="btn btn-secondary" onClick={() => setExtrayendo(true)} title="Sacar lo que se dice y lo que se ve, y reescribirlo para esta marca como UGC para grabar">
                 <Icon name="user" size={16} /> Extraer guion UGC
@@ -318,6 +325,11 @@ export default function Visor({
       {extrayendo && (
         <Suspense fallback={null}>
           <ExtraerUgc client={cliente} inicial={{ id: a.id, src: a.src, nombre: "Este video" }} onCerrar={() => setExtrayendo(false)} />
+        </Suspense>
+      )}
+      {poniendo && (
+        <Suspense fallback={null}>
+          <PonerEnPublicacion cliente={cliente} archivoIds={[a.id]} tipo={video ? "video" : "imagen"} descripcion={video ? "este video" : "esta imagen"} onCerrar={() => setPoniendo(false)} />
         </Suspense>
       )}
     </div>

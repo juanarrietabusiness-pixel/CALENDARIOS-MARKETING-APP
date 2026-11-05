@@ -28,6 +28,7 @@ import { puedeRenderizar, esMp4, PLAZO_RENDER_MS } from "../../../src/lib/render
 import { tieneHabla } from "../../../src/lib/videoEscenas.js";
 import { limpiarSonido } from "../../../src/lib/sonidoVideo.js";
 import { dbDeVolumenGuion } from "../../../src/lib/musica.js";
+import { avisarRender } from "../equipo.js";
 
 const leerJSON = (t, d) => { try { return typeof t === "string" ? JSON.parse(t) : (t ?? d); } catch { return d; } };
 const SISTEMA = { userId: "sistema", nombre: "Render", color: "", tab: null };
@@ -53,7 +54,8 @@ export async function pedirRender(env, acceso, cliente, fila, { version, usuario
   const intento = uuid();
   const momento = ahora();
   const render = {
-    estado: "en_curso", intento, version: fila.version, pedidoAt: momento, por: usuario?.nombre ?? null,
+    // `porId`: a quién le llega el aviso de la campana al terminar (equipo.js, `avisarRender`).
+    estado: "en_curso", intento, version: fila.version, pedidoAt: momento, por: usuario?.nombre ?? null, porId: usuario?.id ?? null,
     // Lo que ya había salido se recuerda: si este falla, el mp4 anterior sigue en la galería y en la publicación.
     ...(anterior.estado === "listo" ? { anterior: { clave: anterior.clave, archivoId: anterior.archivoId, version: anterior.version } } : anterior.anterior ? { anterior: anterior.anterior } : {}),
   };
@@ -231,14 +233,18 @@ export async function ejecutarRender(env, { ownerId, clienteId, videoId, intento
       aviso: [sinClips, sinMusica, puesto?.aviso].filter(Boolean).join(" ") || null,
     };
     delete listo.anterior;
-    await terminar(acceso, clienteId, videoId, intento, "renderizado", listo);
+    const escrito = await terminar(acceso, clienteId, videoId, intento, "renderizado", listo);
     avisar(env, ownerId, clienteId, videoId);
+    // A la campana de quien lo pidió: el render sigue aunque se cierre la aplicación, y si no, nadie se enteraba.
+    if (escrito) await avisarRender(env, acceso, fila, listo);
     return listo;
   } catch (e) {
     console.error("render:", e?.message ?? e);
     const motivo = String(e?.message ?? e).slice(0, 400);
-    await terminar(acceso, clienteId, videoId, intento, "fallido", { ...render, estado: "fallido", error: motivo, terminadoAt: ahora() }).catch(() => {});
+    const fallido = { ...render, estado: "fallido", error: motivo, terminadoAt: ahora() };
+    const escrito = await terminar(acceso, clienteId, videoId, intento, "fallido", fallido).catch(() => false);
     avisar(env, ownerId, clienteId, videoId);
+    if (escrito) await avisarRender(env, acceso, fila, fallido);
     return null;
   }
 }

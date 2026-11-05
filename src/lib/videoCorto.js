@@ -20,6 +20,7 @@
 import { SIN_TEXTO_VIDEO } from "./videoLimpio.js";
 import { pilarDe, nombreDePilar, lineasDeContenido } from "./pilares";
 import { lineaDelGuionPost } from "./guionVideo.js";
+import { separarHashtags, juntarHashtags } from "./reglasFormato.js";
 
 /** Los tres tiempos de cada duración, en segundos. */
 export const TRAMOS = Object.freeze({
@@ -74,8 +75,17 @@ export function pedidoDeGuionCorto({ marca, idea = "", segundos = 8, post = null
     "- Mensaje corto y directo, en español latino neutro. Nada de precios inventados.",
     "",
     "Responde SOLO con JSON, sin texto alrededor:",
-    `{"escena":"dónde pasa y quién sale, en una frase","camara":"el movimiento","tramos":[${tramos.map((t) => `{"clave":"${t.clave}","accion":"lo que se ve"}`).join(",")}],"textoEdicion":"el texto que se añade en edición (o vacío)","sonido":"música o sonido ambiente; voz sólo si hace falta, en una frase","descripcion":"el caption del post, con llamada a la acción y hashtags al final"}`,
+    `{"escena":"dónde pasa y quién sale, en una frase","camara":"el movimiento","tramos":[${tramos.map((t) => `{"clave":"${t.clave}","accion":"lo que se ve"}`).join(",")}],"textoEdicion":"el texto que se añade en edición (o vacío)","sonido":"música o sonido ambiente; voz sólo si hace falta, en una frase","descripcion":"el caption del post, con llamada a la acción, SIN hashtags","hashtags":"de 5 a 10 hashtags, aparte"}`,
   ].filter((x) => x !== "").join("\n");
+}
+
+/**
+ * El caption y los hashtags de una respuesta, cada uno en su sitio: los del final del caption se suman a los de
+ * «hashtags» sin repetir. Pura.
+ */
+export function captionYHashtags(d = {}) {
+  const { texto, hashtags } = separarHashtags(String(d?.descripcion ?? ""));
+  return { descripcion: texto.slice(0, 2200), hashtags: juntarHashtags(d?.hashtags, hashtags).slice(0, 600) };
 }
 
 /** La respuesta de la IA → el guion, limpio. Null si no se puede leer. Pura. */
@@ -98,7 +108,8 @@ export function leerGuionCorto(texto, segundos = 8) {
     textoPantalla: "",
     textoEdicion: corto(d.textoEdicion, 200),
     sonido: corto(d.sonido, 200),
-    descripcion: String(d.descripcion ?? "").trim().slice(0, 2200),
+    // Los hashtags SIEMPRE aparte (lib/reglasFormato.js): los que se cuelen al final del caption pasan a su campo.
+    ...captionYHashtags(d),
   };
 }
 

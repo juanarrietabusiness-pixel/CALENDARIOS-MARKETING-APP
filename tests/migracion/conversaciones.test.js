@@ -185,6 +185,35 @@ describe("las rutas", () => {
     expect(pedidos[1].system.map((b) => b.text).join("\n")).not.toMatch(/DIRECTOR CREATIVO/);
   });
 
+  it("el asistente tiene las herramientas del reel por planos del servidor (las mismas que el MCP) y las ejecuta él", async () => {
+    const pedidos = [];
+    const ev = (t, d) => `event: ${t}\ndata: ${JSON.stringify(d)}\n\n`;
+    vi.stubGlobal("fetch", async (url, init = {}) => {
+      if (String(url).includes("/v1/models")) return Response.json({ data: [{ id: "claude-sonnet-5" }] });
+      pedidos.push(JSON.parse(init.body));
+      const inicio = ev("message_start", { type: "message_start", message: { model: "claude-sonnet-5", content: [], usage: { input_tokens: 10, output_tokens: 0 } } });
+      const fin = (razon) => [ev("message_delta", { type: "message_delta", delta: { stop_reason: razon }, usage: { output_tokens: 2 } }), ev("message_stop", { type: "message_stop" })];
+      // La primera vuelta pide estado_reel; la segunda contesta con texto.
+      const cuerpo = pedidos.length === 1
+        ? [inicio,
+          ev("content_block_start", { type: "content_block_start", index: 0, content_block: { type: "tool_use", id: "t1", name: "estado_reel", input: {} } }),
+          ev("content_block_delta", { type: "content_block_delta", index: 0, delta: { type: "input_json_delta", partial_json: JSON.stringify({ encargo_id: "no-existe" }) } }),
+          ev("content_block_stop", { type: "content_block_stop", index: 0 }), ...fin("tool_use")]
+        : [inicio,
+          ev("content_block_start", { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } }),
+          ev("content_block_delta", { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "No está." } }),
+          ev("content_block_stop", { type: "content_block_stop", index: 0 }), ...fin("end_turn")];
+      return new Response(cuerpo.join(""), { headers: { "content-type": "text/event-stream" } });
+    });
+    env.ANTHROPIC_API_KEY = "k";
+    await (await pedir(JEFE, "/api/ia/chat", { method: "POST", body: { messages: [{ role: "user", content: "¿Cómo va el reel?" }], clienteId: "c1" } })).text();
+    expect(pedidos[0].tools.map((t) => t.name)).toEqual(expect.arrayContaining(["crear_reel", "estado_reel", "continuar_reel", "montar_reel", "video_listo", "extraer_guion_ugc"]));
+    // La herramienta la ejecutó el servidor y su resultado volvió al modelo en la misma vuelta.
+    const resultado = pedidos[1].messages.at(-1).content.find((b) => b.type === "tool_result");
+    expect(resultado).toMatchObject({ tool_use_id: "t1", is_error: true });
+    expect(String(resultado.content)).toMatch(/No encontré el reel/);
+  });
+
   it("las ve todo el equipo: otra persona del espacio la abre y sigue en ella", async () => {
     const a = await crear(JEFE, "c1", "Guiones de reels");
     await decir(JEFE, a.id, "Quiero cinco guiones");

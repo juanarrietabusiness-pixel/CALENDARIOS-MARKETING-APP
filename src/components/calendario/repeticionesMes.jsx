@@ -33,7 +33,7 @@ export function RepeticionesMes({ pendientes = [], hechas = 0, soloLectura = fal
           </button>
           <button type="button" className="btn btn-ghost btn-sm" onClick={onCerrarHechas}>Listo</button>
         </div>
-        <p className="hint" style={{ margin: 0 }}>El diseño, con «Producir el mes» o «Crear con IA» en cada una.</p>
+        <p className="hint" style={{ margin: 0 }}>El diseño, con «Producir el mes» o «Diseñar con el director» en cada una.</p>
       </section>
     );
   }

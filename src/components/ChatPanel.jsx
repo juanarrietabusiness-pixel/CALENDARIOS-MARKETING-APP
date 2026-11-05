@@ -740,7 +740,7 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
     const quitadas = modo === "reemplazar" ? r.antes.filter((m) => !piezas.some((a) => a.src === m.src)).length : 0;
     return {
       ok: true,
-      mensaje: `${r.puestas} pieza${r.puestas === 1 ? "" : "s"} puesta${r.puestas === 1 ? "" : "s"} en la publicación ${postId}${r.puestas >= 2 ? " como carrusel, en orden" : ""}${quitadas ? ` (sustituyen a ${quitadas} archivo${quitadas === 1 ? "" : "s"} que tenía, que siguen en la galería)` : ""}. Ya se ven en su pestaña Subir, listas para revisar y programar.`,
+      mensaje: `${r.puestas} pieza${r.puestas === 1 ? "" : "s"} puesta${r.puestas === 1 ? "" : "s"} en la publicación ${postId}${r.puestas >= 2 ? " como carrusel, en orden" : ""}${quitadas ? ` (sustituyen a ${quitadas} archivo${quitadas === 1 ? "" : "s"} que tenía, que siguen en la galería)` : ""}. Ya se ven en su pestaña Pieza, listas para revisar y programar.`,
     };
   }, [client, ponerPiezasEnPost]);
 

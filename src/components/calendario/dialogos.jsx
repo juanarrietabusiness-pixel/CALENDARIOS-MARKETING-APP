@@ -26,7 +26,8 @@ const EditorEstrategia = lazy(() => import("../EstrategiaMes").then((m) => ({ de
  * luego había que abrirla y buscar la pestaña. Ahora se escoge qué se
  * quiere hacer y se abre directamente ahí, sin rellenar nada:
  *
- *   · Subir contenido → la pestaña Subir; el formato sale del archivo y
+ *   · Subir contenido → la pestaña Pieza (pide «publicar», el nombre de
+ *     antes: PostSidePanel lo traduce); el formato sale del archivo y
  *     queda aprobada (sale directo, como el botón «Subir»).
  *   · Agregar idea    → la pestaña Idea, para que el cliente la revise.
  *
@@ -439,7 +440,7 @@ export function ApprovalDialog({
                   <p className="hint" style={{ margin: 0 }}>{envio.sinHora === 1 ? "1 no tiene" : `${envio.sinHora} no tienen`} hora: ponla para que al aprobarse se pueda programar sin tocar nada.</p>
                 )}
                 {envio.porCorregir > 0 && (
-                  <p className="hint" style={{ margin: 0 }}>{envio.porCorregir === 1 ? "1 tiene" : `${envio.porCorregir} tienen`} cambios pedidos sin hacer: ábrela{envio.porCorregir === 1 ? "" : "s"} y usa «Rehacer la imagen con lo que pidió» (pestaña Subir).</p>
+                  <p className="hint" style={{ margin: 0 }}>{envio.porCorregir === 1 ? "1 tiene" : `${envio.porCorregir} tienen`} cambios pedidos sin hacer: ábrela{envio.porCorregir === 1 ? "" : "s"} y usa «Rehacer la imagen con lo que pidió» (pestaña Pieza).</p>
                 )}
                 {envio.corregidas > 0 && (
                   <p className="hint" style={{ margin: 0 }}>{envio.corregidas === 1 ? "1 ya está corregida" : `${envio.corregidas} ya están corregidas`}: en su enlace salen «Actualizada · revísala» y el mensaje de abajo se lo dice.</p>

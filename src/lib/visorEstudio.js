@@ -16,6 +16,10 @@
 //
 // Un video no tiene control ni logo: sigue pidiéndose como antes.
 //
+// Y el «Crear» del COMPOSITOR de la pestaña Estudio (`pedirDelCompositor`): se
+// revisaba en el navegador, así que sólo había control (y logo estampado) si la
+// pantalla seguía abierta. Ahora es un encargo de una pieza como los demás.
+//
 // Se carga aparte (import dinámico desde Estudio.jsx): el chunk del Estudio está
 // en su tope.
 // ============================================================
@@ -93,6 +97,23 @@ async function mandar({ clienteId, a, p, escenas, kit, uso, textos, seguir, alFa
     .then((r) => { const malo = r?.find((x) => x.error); if (malo) alFallo(`Una pieza nueva no salió: ${malo.error}`); })
     .catch((e) => alFallo(e.message));
   return { encargo, trabajos: [] };
+}
+
+/**
+ * «Crear» del compositor (una imagen; un video sigue como antes): el pedido ya armado (`pedidoDePieza`) va como un
+ * encargo de UNA pieza por el servidor: la proporción, el control con su corrección y el logo estampado si el kit lo
+ * pide (`estampar`), aunque se cierre la pantalla. No bloquea: la pieza aparece en la galería; `alFallo` si no sale.
+ */
+export async function pedirDelCompositor({ clienteId, modelo, prompt, n = 1, ajustes = {}, medios = {}, kit = {}, estampar = null, uso = null, carpetaId = null, seguir = () => true, alFallo = () => {} }) {
+  const paso = pasoListo({
+    titulo: "Del compositor", kit, estampar, texto: "",
+    pedido: { modelo, prompt, n, ajustes, medios, ...(uso ? { calendarId: uso.calendarId, postId: uso.postId } : {}) },
+  });
+  const encargo = await lanzarEnServidor({ clienteId, pasos: [paso], titulo: ideaDelPedido(prompt).slice(0, 80) || "Del compositor", carpetaId });
+  void esperarEnServidor({ clienteId, encargo, kit, seguir })
+    .then((r) => { const malo = r?.find((x) => x.error); if (malo) alFallo(`La pieza no salió: ${malo.error}`); })
+    .catch((e) => alFallo(e.message));
+  return encargo;
 }
 
 /** «Otra igual»: el mismo pedido otra vez (el motor no repite la imagen: sale otra con lo mismo). */

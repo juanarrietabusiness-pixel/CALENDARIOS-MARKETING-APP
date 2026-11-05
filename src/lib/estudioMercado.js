@@ -25,6 +25,7 @@
 
 import { MONTHS } from "../constants";
 import { DESEOS_REISS, NIVELES_CONSCIENCIA, nombreDeNivel } from "./consciencia";
+import { separarHashtags, juntarHashtags } from "./reglasFormato.js";
 
 /** Los siete elementos del estudio («las 7 maletas»), por producto o servicio. */
 export const ELEMENTOS_MERCADO = Object.freeze([
@@ -812,7 +813,7 @@ export function pedidoDeAdaptacion({ marca, referencia, productoLinea = "", form
       : mismo ? "En «guion», la orden de edición en 2 a 4 frases: «Conserva … Cambia … por …». Nada de tramos." : `En «guion», escena por escena con sus segundos${segundos ? `, que sumen ${segundos} s` : ""} (como los tramos de la referencia), cada una con qué se ve y la cámara.`,
     "",
     "Responde SOLO con JSON, sin texto alrededor:",
-    '{"titulo":"…","idea":"la idea en 1-2 frases","guion":"…","textoPantalla":"lo que se lee en pantalla (corto)","descripcion":"el caption, con llamada a la acción y hashtags al final"}',
+    '{"titulo":"…","idea":"la idea en 1-2 frases","guion":"…","textoPantalla":"lo que se lee en pantalla (corto)","descripcion":"el caption, con llamada a la acción, SIN hashtags","hashtags":"de 5 a 10 hashtags, aparte"}',
   ].filter((x) => x !== "" && x !== false && x !== undefined).join("\n");
 }
 
@@ -825,7 +826,9 @@ export function leerAdaptacion(texto) {
     idea: corto(d.idea, 400),
     guion: largo(d.guion, 3000),
     textoPantalla: corto(d.textoPantalla, 200),
-    descripcion: largo(d.descripcion, 2200),
+    // Los hashtags SIEMPRE aparte (lib/reglasFormato.js): los que se cuelen al final del caption pasan a su campo.
+    descripcion: largo(separarHashtags(d.descripcion).texto, 2200),
+    hashtags: juntarHashtags(d.hashtags, separarHashtags(d.descripcion).hashtags).slice(0, 600),
   };
   return r.guion || r.idea ? r : null;
 }

@@ -294,7 +294,9 @@ src/
     marcaDeHoy.js         Un pedido de antes con la MARCA DE HOY: cambia el bloque de la marca, el acabado y el logo por los
                           del kit actual y acorta la escena, nunca el final (puro)
     visorEstudio.js       «Otra igual», «Otra versión distinta» y «Editar» del visor, por el servidor (lazy: el chunk del
-                          Estudio está en su tope)
+                          Estudio está en su tope); también el «Crear» del compositor (`pedirDelCompositor`)
+    pestanasPanel.js      Las pestañas del panel de una publicación (Idea · Pieza · Publicar) y lo que pedían las de antes (puro)
+    ponerPiezas.js        «Poner en una publicación…» desde el Estudio: a qué publicación (de cualquier mes) y el pedido (puro + API)
     piezaChat.js          La imagen o el video que pide el asistente, por el Estudio con el kit del cliente; la imagen, con el
                           director y por el servidor (lazy)
     referencias.js        Qué se toma de cada imagen de referencia (estilo, composición, producto…), la foto
@@ -509,6 +511,7 @@ src/
                           (el hook que lo abre, en hooks/useCrearConIA.jsx)
     DisenoDirector.jsx    La pestaña Diseño: el asistente incrustado como director creativo, con atajos (lazy)
     PlanDePiezas.jsx      El plan de una tanda del director: las fichas, el costo, «Crear» y cada pieza según sale
+    PonerEnPublicacion.jsx  «Poner en una publicación…» del visor, del carrusel y de la galería con varias escogidas (lazy)
     GuardarPlantilla.jsx  «Guardar como plantilla» del visor: la IA lee su sistema de diseño y la pieza pasa al kit (lazy)
     calendario/OpcionesCrearAqui.jsx  Tipo, estilo, modelo y plantilla de «Crear la imagen aquí» (lazy)
     Cerebro.jsx           La pestaña Cerebro: las notas de un cliente, ficha desactualizada, datos que no cuadran, añadir
@@ -664,6 +667,7 @@ worker/
                           (`continuarReel`), el video o los clips, el montaje (`montarReel`) y a su publicación
     estudio/montaje.js    El proyecto de video animado del montaje de un reel (`origen`: { tipo: "reel", encargoId })
     estudio/ponerEnPost.js  Cambiar UNA publicación desde el servidor sin pisar a nadie (updated_at como condición, la cola, el aviso)
+    estudio/ponerPiezas.js  «Poner en una publicación…» del Estudio (POST /api/estudio/<c>/poner): lo de la galería a un post
     estudio/guionVideo.js El contexto común de los guiones de video (`contextoDeGuion`): producto, cerebro, criterio, publicación
     estudio/herramientasReel.js  El video por MCP: crear_reel, estado_reel, continuar_reel, montar_reel, video_listo y
                           extraer_guion_ugc (sólo MCP: desde herramientas.js sería el ciclo de siempre)
@@ -4686,6 +4690,63 @@ son del servidor.
   exacto»; el encargo pone `p.texto` con `textoDeLaFicha` en cuanto el director escribe la ficha (si nadie dijo el
   texto); y `compararTexto` marca una LÍNEA esperada que sale en dos renglones (`repetido`; lo que sobra suelto, como el
   logo, sigue sin contar) y la corrección pide quitar la copia.
+- **Fase 4: menos puertas y nombres claros** (docs/propuesta-lo-mejor-y-creacion.md). Lo que no se ve en la pantalla:
+  · **El panel de una publicación tiene TRES pestañas: Idea · Pieza · Publicar** (`src/lib/pestanasPanel.js`). La de
+  antes, «Subir», mezclaba el archivo con la salida (unos 25 controles de IA en una columna). PIEZA: «Diseñar con el
+  director» (según el formato: «Crear la imagen aquí» en un post o una historia sin archivo, «Carrusel con IA» en un
+  carrusel, el reel por planos en un reel), «Subir archivo» y «De la galería», «¿Qué quieres?» y lo demás plegado en «Más
+  formas» (Drive, video del producto, video animado, «Crear en el Estudio (avanzado)», recetas, el modelo de esta vez,
+  tipo/estilo/plantilla, los atajos de foto y de temporada). Las acciones de cada imagen (Otra versión, Corregir, Recrear
+  con mi marca, Ver en el Estudio) siguen junto a ella. PUBLICAR: redes, texto, vista previa, lo de cada red, revisión y
+  «¿Cuándo sale?». Es UN componente (`PestanaPublicar` con `seccion`), así que lo que está en marcha (una versión, el
+  diálogo del Estudio) no se pierde al pasar de Pieza a Publicar. Las claves internas son `idea`, `pieza` y `salida`; lo
+  que se pedía antes sigue valiendo (`pestanaDelPanel`): «contenido» abre Idea y «publicar» (la «Subir» de antes, la de
+  «Agregar publicación» → «Subir contenido») abre Pieza. Donde este archivo dice «la pestaña Subir», ahora es Pieza (el
+  archivo) o Publicar (la salida). EditorMedios acepta `botones` (sustituye su fila) y `abrirBancoRef` («De Drive» desde
+  fuera); «Subir» (el diálogo) sigue con la fila de siempre. Flechas, Inicio y Fin mueven entre pestañas.
+  · **El glosario**, en lo que se ve: *Diseñar* (crear con el director) · *Otra versión* (misma información, otra
+  composición) · *Corregir* (editar la misma imagen; era «Corregir esta», «Editar», «Editar con IA») · *Recrear con mi
+  marca* (sólo para lo de OTRA cuenta; era también «Recrear como anuncio» y «Recrear un anuncio») · *Poner en una
+  publicación* · *Guardar referencia*. Fuera a la vista «prompt», «lote» («Producir varias piezas», «Muchas de una vez»),
+  «secreto del Worker» y «Crear con IA» (el diálogo es «Crear en el Estudio»). Queda «/receta <id>» en la caja del
+  director: es lo que él lee (REGLA_RECETAS).
+  · **«Poner en una publicación…» desde el Estudio** (visor de una pieza, visor de un carrusel o un reel, y la galería con
+  varias escogidas; `PonerEnPublicacion.jsx`, lazy): `POST /api/estudio/<c>/poner` (worker/lib/estudio/ponerPiezas.js)
+  con { postId, calendarId, carpetaId | archivoIds, modo }. Lo mismo que `poner_en_publicacion` de Claude
+  (`postConPiezas`: un carrusel en su orden o sueltas, reemplazar o añadir, dos imágenes o más = carrusel, su historia
+  encajada si recibe su primera imagen) por el camino de la fase 5 (`cambiarPublicacion`: el `updated_at` como
+  condición, la cola y `calendario:recargar`), y apunta el uso de cada pieza. La lista de publicaciones sale de
+  `client.calendars` (de una semana atrás en adelante, sin lo publicado; buscando, también lo pasado). No crea ni cobra.
+  · **La campana avisa cuando el Estudio TERMINA o FALLA algo, a quien lo pidió** (`avisoDeEncargo`, `avisarEncargo`,
+  `avisoDeRender`, `avisarRender` en worker/lib/equipo.js; tipos «encargo», «encargo-fallo», «render», «render-fallo»).
+  Un lote, un carrusel, un reel (también el storyboard que espera revisión y el montaje que espera el sí de la voz), lo
+  de «Recrear para…» y un render, guardados en `avisos` como los demás: llegan aunque se lanzaran desde el teléfono y se
+  cerrara la aplicación. `avanzarEncargo` avisa al pasar de «en marcha» a «hecho» o «fallido» (cancelar no avisa: lo hizo
+  la persona); un reel retomado avisa otra vez al cerrarse. Los firma el sistema (`POR_ESTUDIO`): firmados por la persona,
+  `avisar` no se los mandaría a ella. Lo que la pantalla SIGUE de cerca (`seguido: true`, lo pone `lanzarEnServidor` de
+  piezaServidor.js: el panel, el visor, las historias, el asistente) sólo avisa si falla o si tardó más de
+  `AVISO_SEGUIDO_MS` (3 min: ya no se estaba mirando). El render guarda quién lo pidió (`render.porId`); el de un MONTAJE
+  no avisa por su cuenta (lo dice el reel al cerrarse). El enlace lleva a la publicación si la hay; si no, al Estudio.
+  · **El «Crear» del compositor del Estudio va por el SERVIDOR** (`pedirDelCompositor` en lib/visorEstudio.js): un
+  encargo de una pieza con el control, la proporción y el logo estampado aunque se cierre la pantalla. Antes se revisaba
+  en el navegador (`terminarTrabajo`) y sólo si la pantalla seguía abierta. Un video sigue como antes (sin control).
+  · **El asistente de la aplicación tiene las herramientas del reel del servidor** (crear_reel, estado_reel,
+  continuar_reel, montar_reel, video_listo, extraer_guion_ugc: las mismas del MCP). Las importa worker/rutas/chat.js y no
+  herramientasServidor.js (cerraría el ciclo que deja `DEFINICIONES_ESTUDIO` sin iniciar): `crearEjecutor` recibe `mas({
+  resolverCliente, buscarPublicacion })` y las suma. Sólo con quien firma (gastan).
+  · **«Recrear para…» de «Lo mejor» se pone SOLO en su publicación** (`poner: true` en sus dos encargos; `ponerResultados`
+  de encargos.js, como lo de Claude con `post_id`).
+  · **Los guiones de video corto, del producto y la adaptación del estudio de mercado piden los hashtags APARTE**
+  (`captionYHashtags` en videoCorto.js; `leerAdaptacion`): los que se cuelen al final del caption pasan a `hashtags`, y
+  «Poner en la publicación» los rellena en `hashtagsFinales` si estaba vacío.
+  · **El Estudio, reordenado**: «¿Qué quieres crear?», «Muchas de una vez» (el lote y recrear) y la galería arriba; el kit
+  de marca al final. El estilo de la tarjeta del lote vivía en EstudioLote.css (sólo se cargaba al abrir el lote): ahora
+  en Estudio.css. **En el teléfono, el banco y «Lo mejor» del calendario son una hoja inferior** (`.bank-panel` fijo
+  encima de la barra de abajo, por debajo de 1024 px; la pestaña Ideas/Inspiración, `bank-panel-pagina`, no) y los
+  botones de la barra del mes llevan texto (Seleccionar, Lo mejor, Ideas). **Topes al límite**: el CSS inicial quedó en
+  ~12,48 de 12 kB (redondea a 12) y el chunk del Estudio en ~19,98 de 20: lo siguiente que se sume ahí tiene que sacar
+  algo antes.
+
 ## Documentos relacionados
 
 - `docs/propuesta-estudio-y-meta.md` — el Estudio de Agents Office —imagen y video por trabajos,

@@ -9,13 +9,18 @@ import "./publicar.css";
 // su sitio (borrar, mover, banco) levantan `yaEscrito` antes de
 // reescribir el calendario ellos mismos.
 //
-// DOS PESTAÑAS: Idea (planificar: idea, guion, descripción, aprobación,
-// conversación) y Subir (qué sale y dónde, medios, la IA que escribe
-// mirándolos, vista previa real, texto de cada red, revisión con arreglos
-// y «¿Cuándo sale?»). Es la misma publicación y el mismo `form`: cambiar
-// de pestaña no guarda ni pierde nada. La última elegida se recuerda
-// mientras dure la sesión, salvo que se abra pidiendo una
-// («Agregar publicación» → «Subir contenido» o «Agregar idea»).
+// TRES PESTAÑAS: Idea (planificar: idea, guion, descripción, aprobación,
+// conversación), Pieza (el archivo: «Diseñar con el director», «Subir
+// archivo», «De la galería» y «Más formas») y Publicar (qué sale y dónde,
+// el texto, la vista previa real, lo de cada red, la revisión con arreglos
+// y «¿Cuándo sale?»). Antes Pieza y Publicar eran UNA pestaña, «Subir», con
+// unos 25 controles de IA en una columna. Es la misma publicación y el
+// mismo `form`: cambiar de pestaña no guarda ni pierde nada. La última
+// elegida se recuerda mientras dure la sesión, salvo que se abra pidiendo
+// una («Agregar publicación» → «Subir contenido» abre Pieza; «Agregar
+// idea», Idea). Lo que pedía la pestaña de antes sigue valiendo
+// (`pestanaDelPanel`): «contenido» es Idea y «publicar» (la de «Subir»),
+// Pieza.
 //
 // A LO ANCHO desde 1024 px. En 440 px, configurar la publicación tapaba
 // cómo iba a quedar: ahora es una ventana grande, con la vista previa en
@@ -35,6 +40,7 @@ import { vivo } from "../../lib/vivo";
 import { mediosDe } from "../../lib/publicacion";
 import { publicacionVacia } from "../../lib/subir";
 import { useAnchoAmplio } from "../../hooks/useAnchoAmplio";
+import { PESTANAS_PANEL, pestanaDelPanel, pestanaPorTecla } from "../../lib/pestanasPanel";
 
 import { useDialogA11y } from "../../hooks/useDialogA11y";
 import { AvisoEditando } from "../Presencia";
@@ -57,10 +63,9 @@ import { ReferenciasPost } from "./referenciasPost";
 // El asistente DENTRO de la publicación (lib/asistentePost.js): el mismo chat, sólo para este post.
 const ChatPanel = lazy(() => import("../ChatPanel"));
 
-// «Idea» planifica; «Subir» es archivo, texto y cuándo sale —como lo llama
-// la agencia—. Los valores internos siguen siendo contenido/publicar.
-const PESTANAS = [["contenido", "Idea", "bulb"], ["publicar", "Subir", "upload"]];
-let pestanaRecordada = "contenido";
+// «Idea» planifica; «Pieza» es el archivo; «Publicar», dónde, el texto y cuándo sale (lib/pestanasPanel.js).
+const PESTANAS = PESTANAS_PANEL;
+let pestanaRecordada = "idea";
 
 export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDate, onDuplicar = null, onSendToBank, onDescartar, suggestion, onAcceptSuggestion, onRejectSuggestion, client, cal, editandoOtros = {}, pulso = 0, publicacion = null, pestanaInicial = null, nueva = false }) {
   const [form, setForm] = useState({ ...post });
@@ -76,16 +81,20 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
   const ancho = useAnchoAmplio(1024);
   const miembros = useEquipo(pulso);
   const [pestana, setPestanaEstado] = useState(() => {
-    if (pestanaInicial) pestanaRecordada = pestanaInicial;
+    const pedida = pestanaDelPanel(pestanaInicial);
+    if (pedida) pestanaRecordada = pedida;
     return pestanaRecordada;
   });
   const setPestana = (p) => { pestanaRecordada = p; setPestanaEstado(p); };
+  // Flechas a los lados (en círculo), Inicio y Fin: el patrón de pestañas de WAI-ARIA.
   const teclaPestana = (e) => {
-    if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
-    const otra = pestana === "contenido" ? "publicar" : "contenido";
+    const otra = pestanaPorTecla(pestana, e.key);
+    if (!otra) return;
+    e.preventDefault();
     setPestana(otra);
     document.getElementById(`${ids}-tab-${otra}`)?.focus();
   };
+  const enPublicar = pestana === "salida";
   const sf = (k, v) => setForm((p) => ({ ...p, [k]: v }));
 
   // ---- El asistente de esta publicación ----
@@ -269,9 +278,9 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "var(--sp-2)", flexShrink: 0 }}>
-          {/* A lo ancho, en Subir, borrar y mandar al banco viven aquí: en la barra de abajo
+          {/* A lo ancho, en Publicar, borrar y mandar al banco viven aquí: en la barra de abajo
               le quitaban una fila entera a lo que se está configurando. */}
-          {pestana === "publicar" && ancho && (
+          {enPublicar && ancho && (
             <>
               <button type="button" className="btn btn-danger btn-sm" aria-label="Eliminar publicación" title="Eliminar publicación"
                 onClick={() => { save(); yaEscrito.current = true; if (onDelete) onDelete(day.date, post.id); onClose(); }}>
@@ -316,20 +325,22 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
         role="tabpanel"
         aria-labelledby={`${ids}-tab-${pestana}`}
         className="panel-cuerpo"
-        data-columnas={pestana === "publicar" && ancho ? true : undefined}
-        style={pestana === "publicar" && ancho
+        data-columnas={enPublicar && ancho ? true : undefined}
+        style={enPublicar && ancho
           // A lo ancho cada columna desplaza por su cuenta (publicar.css):
           // la vista previa, entera y a la vista; la barra, bajo la izquierda.
           ? { flex: 1, minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column" }
-          : { flex: 1, overflowY: "auto", padding: "var(--sp-4)", paddingBottom: pestana === "publicar" ? 0 : "var(--sp-4)" }}
+          : { flex: 1, overflowY: "auto", padding: "var(--sp-4)", paddingBottom: enPublicar ? 0 : "var(--sp-4)" }}
       >
         {fieldError && (
-          <p role="alert" className="notice notice-error" style={pestana === "publicar" && ancho ? { margin: "var(--sp-3) var(--sp-4) 0" } : undefined}>{fieldError}</p>
+          <p role="alert" className="notice notice-error" style={enPublicar && ancho ? { margin: "var(--sp-3) var(--sp-4) 0" } : undefined}>{fieldError}</p>
         )}
-        <div aria-live="polite">{fieldAviso && pestana !== "publicar" && <p role="status" className="hint" style={{ marginTop: 0 }}>{fieldAviso}</p>}</div>
+        <div aria-live="polite">{fieldAviso && pestana === "idea" && <p role="status" className="hint" style={{ marginTop: 0 }}>{fieldAviso}</p>}</div>
 
-        {pestana === "publicar" ? (
+        {pestana !== "idea" ? (
           <PestanaPublicar
+            seccion={pestana === "pieza" ? "pieza" : "publicar"}
+            onIrA={setPestana}
             post={form}
             sf={sf}
             setForm={setForm}
@@ -393,7 +404,7 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
             {/* Con algo escrito, la IA la completa o la mejora (el motor en su modo «campos»); vacía, la genera. */}
             <AiButton field="idea" label="la idea" accion={String(form.idea ?? "").trim() ? "Completar" : "Generar"} />
           </div>
-          <textarea id={`${ids}-idea`} className="textarea" value={form.idea || ""} onChange={(e) => sf("idea", e.target.value)} placeholder="Explicación o prompt para la generación con IA…" />
+          <textarea id={`${ids}-idea`} className="textarea" value={form.idea || ""} onChange={(e) => sf("idea", e.target.value)} placeholder="Qué se quiere contar y cómo (la IA lo usa para escribir y diseñar)…" />
         </div>
 
         {/* UGC: el guion en columnas, la duración, los ganchos, copiar y «Extraer guion de un video y adaptarlo». */}
@@ -429,7 +440,7 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
           {/* El pedido de la imagen ya escrito (lib/promptImagen.js): «Crear la imagen aquí» y «Crear con IA» no esperan
               a «Mejorar idea». Si se cambia qué se ve o el texto, deja de valer y se vuelve a preparar al crear. */}
           {promptListo(form) && (
-            <p className="hint" style={{ margin: 0 }}><Icon name="check" size={13} /> Lista para crear la imagen: sale sin esperar a «Mejorar idea».</p>
+            <p className="hint" style={{ margin: 0 }}><Icon name="check" size={13} /> El director ya la diseñó: «Diseñar con el director» (pestaña Pieza) sale sin esperar.</p>
           )}
         </div>
 
@@ -448,7 +459,7 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
               placeholder={"Titular corto\nFrase de apoyo\nPrecio (si va)"} />
             <p id={`${ids}-pieza-ayuda`} className="hint" style={{ margin: 0 }}>
               {llevaTextoPieza(form.format)
-                ? "Lo que va escrito sobre la imagen. «Crear con IA» y «Producir el mes» lo ponen tal cual."
+                ? "Lo que va escrito sobre la imagen. «Diseñar con el director» y «Producir el mes» lo ponen tal cual."
                 : "Este formato no lleva texto en la pieza (el video va limpio): se conserva lo que ya estaba escrito."}
             </p>
           </div>
@@ -484,7 +495,7 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
             onChange={(e) => sf("descripcion", e.target.value)}
             placeholder="Caption / descripción del contenido…"
           />
-          {/* Los hashtags van APARTE (los escribe la IA en su campo, pestaña Subir): dentro del caption saldrían dos veces. */}
+          {/* Los hashtags van APARTE (los escribe la IA en su campo, pestaña Publicar): dentro del caption saldrían dos veces. */}
         </div>
         )}
 
@@ -573,7 +584,7 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
         </fieldset>
 
 
-        {/* Los medios se editan en Subir; aquí, un vistazo y el camino. */}
+        {/* La pieza se hace en su pestaña; aquí, un vistazo y el camino. */}
         <div className="field">
           <span className="label">Imágenes y videos</span>
           <div className="medios-resumen">
@@ -582,8 +593,8 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
                 {m.tipo === "video" ? <Icon name="play" size={16} /> : <img src={m.src} alt="" />}
               </span>
             ))}
-            <button type="button" className="btn btn-secondary btn-sm" onClick={() => setPestana("publicar")}>
-              <Icon name={mediosDe(form).length ? "pencil" : "upload"} size={14} /> {mediosDe(form).length ? `${mediosDe(form).length} · editar en Subir` : "Añadir en Subir"}
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => setPestana("pieza")}>
+              <Icon name={mediosDe(form).length ? "pencil" : "plus"} size={14} /> {mediosDe(form).length ? `${mediosDe(form).length} · cambiar en Pieza` : "Hacerla en Pieza"}
             </button>
           </div>
         </div>
@@ -598,8 +609,8 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
         </div>)}
       </div>
 
-      {/* A lo ancho, en Subir, estas acciones van en la barra de «¿Cuándo sale?». */}
-      {!(pestana === "publicar" && ancho) && <div style={{ padding: "var(--sp-3) var(--sp-4)", borderTop: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: "var(--sp-2)" }}>
+      {/* A lo ancho, en Publicar, estas acciones van en la barra de «¿Cuándo sale?». */}
+      {!(enPublicar && ancho) && <div style={{ padding: "var(--sp-3) var(--sp-4)", borderTop: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: "var(--sp-2)" }}>
         {duplicando && onDuplicar && (
           <div className="duplicar-fila">
             <span className="label" style={{ margin: 0 }}>Duplicar a</span>
