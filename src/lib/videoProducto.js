@@ -19,6 +19,7 @@
 // Lo usan la pantalla (components/FlujoVideoProducto.jsx) y el Worker (worker/lib/estudio/guionCorto.js).
 // ============================================================
 
+import { lineaDelGuionPost } from "./guionVideo.js";
 import { lineasDeContenido } from "./pilares";
 
 /** Lo que dura: el modelo decide cuáles tiene. 15 s es el tope de un clip de MiniMax H3 y de Kling 3.0. */
@@ -71,7 +72,7 @@ export function locucionQueCabeEn(texto = "", segundos = 10) {
 }
 
 /** Lo que se le pide a la IA para el guion. Pura. */
-export function pedidoDeVideoProducto({ marca = "la marca", segundos = 10, producto = "", idea = "", kit = "", contexto = "", post = null }) {
+export function pedidoDeVideoProducto({ marca = "la marca", segundos = 10, producto = "", idea = "", kit = "", contexto = "", post = null, criterio = "", guionPost = "" }) {
   const tramos = tramosDeProducto(segundos);
   const tipo = post ? lineasDeContenido(post) : "";
   return [
@@ -82,6 +83,9 @@ export function pedidoDeVideoProducto({ marca = "la marca", segundos = 10, produ
     tipo ? `\n${tipo}` : "",
     kit ? `\nEL ESTILO DE LA MARCA:\n${corto(kit, 1200)}` : "",
     contexto ? `\nLO QUE SABEMOS DE LA MARCA:\n${corto(contexto, 3500)}` : "",
+    // Lo común de todo guion de video (lib/guionVideo.js): el criterio de la agencia y el guion de la publicación.
+    criterio ? `\n${String(criterio).trim()}` : "",
+    guionPost ? `\n${lineaDelGuionPost(guionPost)}` : "",
     "",
     "Reglas:",
     `- Tres tramos seguidos, en una sola escena continua: ${tramos.map((t) => `${t.nombre.toLowerCase()} (${t.desde}–${t.hasta} s)`).join(", ")}.`,

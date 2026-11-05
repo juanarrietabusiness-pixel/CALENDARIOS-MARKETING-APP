@@ -19,6 +19,7 @@
 
 import { SIN_TEXTO_VIDEO } from "./videoLimpio.js";
 import { pilarDe, nombreDePilar, lineasDeContenido } from "./pilares";
+import { lineaDelGuionPost } from "./guionVideo.js";
 
 /** Los tres tiempos de cada duración, en segundos. */
 export const TRAMOS = Object.freeze({
@@ -48,7 +49,7 @@ const tramosDe = (segundos) => TRAMOS[segundos >= 10 ? 10 : 8];
 const corto = (t, n) => String(t ?? "").replace(/\s+/g, " ").trim().slice(0, n);
 
 /** Lo que se le pide a la IA para un guion corto. Pura. */
-export function pedidoDeGuionCorto({ marca, idea = "", segundos = 8, post = null, kit = "", contexto = "", productoLinea = "" }) {
+export function pedidoDeGuionCorto({ marca, idea = "", segundos = 8, post = null, kit = "", contexto = "", productoLinea = "", criterio = "", guionPost = "" }) {
   const tramos = tramosDe(segundos);
   const tipo = post ? lineasDeContenido(post) : "";
   return [
@@ -59,6 +60,9 @@ export function pedidoDeGuionCorto({ marca, idea = "", segundos = 8, post = null
     productoLinea ? `\nEL PRODUCTO (con su precio exacto): ${productoLinea}` : "",
     kit ? `\nEL ESTILO DE LA MARCA:\n${corto(kit, 1500)}` : "",
     contexto ? `\nLO QUE SABEMOS DE LA MARCA:\n${corto(contexto, 4000)}` : "",
+    // Lo común de todo guion de video (lib/guionVideo.js): el criterio de la agencia y el guion de la publicación.
+    criterio ? `\n${String(criterio).trim()}` : "",
+    guionPost ? `\n${lineaDelGuionPost(guionPost)}` : "",
     "",
     "Reglas:",
     `- Tres tiempos: ${tramos.map((t) => `${NOMBRE_TRAMO[t.clave].toLowerCase()} (${t.desde}–${t.hasta} s)`).join(", ")}. Una sola escena continua, sin cortes.`,

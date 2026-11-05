@@ -44,7 +44,7 @@ export function textoDePublicacion(post) {
  * catálogo con los IDs de la galería de sus fotos; `personaje`: el aspecto del kit (o null); `errores`: los del intento
  * anterior, para corregirlos sobre `anterior`. Pura.
  */
-export function pedidoDeGuionAnimado({ marca, idea, publicacion = "", segundos, formato = "9:16", contexto = "", productos = "", personaje = null, errores = [], anterior = "" }) {
+export function pedidoDeGuionAnimado({ marca, idea, publicacion = "", segundos, formato = "9:16", contexto = "", productos = "", personaje = null, errores = [], anterior = "", criterio = "" }) {
   const f = FORMATOS_VIDEO[formato] ? formato : "9:16";
   const s = duracionAnimado(segundos);
   const partes = [
@@ -63,6 +63,8 @@ export function pedidoDeGuionAnimado({ marca, idea, publicacion = "", segundos, 
     "· Cada escena con su «pantalla» (lo que se lee) y capas que se dibujen de verdad: texto, sello, icono, cifra, anillo, dibujo, forma, imagen (sólo con IDs de la galería que estén abajo), logo, llamado y personaje.",
     personaje ? `· La marca tiene PERSONAJE${personaje.nombre ? ` («${personaje.nombre}»)` : ""}: úsalo con «personaje» (variante, pose y expresión según lo que pase en la escena). Su aspecto lo pone el kit: no escribas estilo.personaje.` : "",
     "· Sin paleta propia: los colores salen del kit por sus tokens.",
+    // El criterio comercial de la agencia: el mismo de todo guion de video (lib/guionVideo.js).
+    criterio ? `\n${String(criterio).trim()}` : "",
     "",
     contexto ? `LA MARCA\n${contexto}` : "",
     productos ? `CATÁLOGO (las fotos son el producto REAL; en una capa «imagen» va su ID en «archivo»)\n${productos}` : "",

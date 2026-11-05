@@ -173,9 +173,14 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
     if (!video) return;
     // El caption que escribió la receta «Video del producto» sólo RELLENA: lo escrito a mano gana.
     const caption = String(opciones.descripcion ?? "").trim();
+    // El guion por tramos del reel, también sólo si estaba vacío (lo pone igual el servidor al terminar el encargo).
+    const guionReel = String(opciones.guion ?? "").trim();
+    const portadaReel = String(opciones.portada ?? "").trim();
     setForm((p) => ({
       ...conMedios(p, [medioDeArchivo(video)]), mediosCambiadosAt: new Date().toISOString(),
       ...(caption && !String(p.descripcion || p.script || "").trim() ? { descripcion: caption } : {}),
+      ...(guionReel && !String(p.guion ?? "").trim() ? { guion: guionReel } : {}),
+      ...(portadaReel && !p.portada ? { portada: portadaReel, portadaMs: null } : {}),
     }));
     if (cal && post.id) apuntarUso(clientId, video.id, { calendarId: cal.dbId || cal.id, postId: post.id }).catch(() => {});
     setEscrito("Puesto el reel en la publicación.");

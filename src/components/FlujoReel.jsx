@@ -1,11 +1,15 @@
 import { lazy, Suspense, useEffect, useId, useMemo, useRef, useState } from "react";
 import Icon from "./Icon";
-import { textoCosto, estimar, costoDePieza, etiquetaDeCosto, CONFIRMAR_DESDE, MODELOS, VOCES_OMNI } from "../lib/estudioCatalogo";
+import { textoCosto, estimar, costoDePieza, etiquetaDeCosto, CONFIRMAR_DESDE, VOCES_OMNI } from "../lib/estudioCatalogo";
 import * as api from "../lib/estudio";
 import { TIPOS_PRESET, ESTILOS_VISUALES, limpiarKit, referenciasDePersonajes, estiloDeMarca, bloqueDeMarca } from "../lib/kitMarca";
-import { repartirTiempos, tramo, maxPlanos, MIN_PLANOS, DURACIONES_REEL, ajustarDuracion, locucionQueCabe, PALABRAS_POR_SEGUNDO, soloFlow, SEGUNDOS_POR_CLIP, promptParaFlow, sinVozPropia } from "../lib/reel";
+import { repartirTiempos, tramo, maxPlanos, MIN_PLANOS, ajustarDuracion, locucionQueCabe, PALABRAS_POR_SEGUNDO, promptParaFlow, sinVozPropia } from "../lib/reel";
 import { modelosParaCarrusel, modeloParaCarrusel } from "../lib/carruselEstudio";
-import { modelosParaReel, modeloRecomendadoParaReel, modeloParaTramo, crearFotogramas, crearFotograma, editarImagen, pedidoDeVideo, crearVideo, corregirTramo, modelosParaClips, modeloParaClips, pedidoDeClip, crearClips } from "../lib/reelEstudio";
+import { modelosParaReel, modeloRecomendadoParaReel, modeloParaTramo, crearFotograma, editarImagen, pedidoDeVideo, corregirTramo, modelosParaClips, modeloParaClips, pedidoDeClip } from "../lib/reelEstudio";
+import { duracionesDeReel, haceDuracion, duracionDeClip, DURACION_REEL_POR_DEFECTO } from "../lib/duracionesVideo";
+import { resultadoDeReel, finalDePaso } from "../lib/encargoReelPuro";
+import { lanzarReel, continuarReel, montarReel, fotogramaFinal, listarEncargos, leerEncargo, seguirEncargo } from "../lib/encargosApi";
+import { textoDelGuionReel } from "../lib/montajeReel";
 import { crearZip } from "../lib/zip";
 import { CopyButton } from "./calendario/primitivas";
 import ReferenciasGaleria from "./ReferenciasGaleria";
@@ -16,32 +20,23 @@ import "./calendario/CarruselIA.css";
 import "./EstudioLote.css";
 
 // ============================================================
-// El reel con IA de 10 s, como en Flow, en cuatro pasos
+// El reel por planos, hecho en el SERVIDOR y terminado aquí
 //
-//   1. Idea: la promoción, el beneficio o la idea central; el tipo, el
-//      estilo, el producto y los personajes. La IA propone el guion.
-//   2. Planos: de 4 a 8, cada uno con su tiempo, qué se ve y la cámara (sin
-//      texto en pantalla: videoLimpio.js); el sonido y la descripción del post.
-//   3. Fotogramas: uno por plano, en orden, para revisar personajes, estilo
-//      e historia ANTES de pagar el video. Cada uno se corrige o se rehace.
-//   4. Video: con los fotogramas como storyboard. «Corregir un tramo» (del
-//      segundo X al Y) saca una versión nueva sin tocar lo demás.
+//   1. Idea: la promoción, el beneficio o la idea central; el tipo, el estilo, el producto y los personajes. La IA
+//      propone el guion (lee el que ya tiene la publicación, si lo tiene).
+//   2. Planos: qué se ve y la cámara de cada uno, lo que se DICE y lo que se LEE (el gancho, el llamado). El video va
+//      limpio: el texto lo pone el montaje, escrito por el código.
+//   3. Fotogramas: uno por plano, en orden. Los hace el SERVIDOR (un encargo de tipo «reel»): se puede cerrar esto y
+//      retomarlo («Seguir con…» en el paso 1). Se corrigen o se rehacen antes de pagar el video.
+//   4. Video: un video con todo (el storyboard) o un clip limpio por plano, y «Montarlo aquí»: la voz de la marca
+//      (ElevenLabs, con el tiempo de cada palabra), el gancho escrito, los subtítulos, el logo, el llamado y la música,
+//      por el render del video animado. Los clips también se bajan en un ZIP para CapCut. Lo que sale se pone SOLO en
+//      su publicación (y su caption, guion y portada si estaban vacíos).
 //
-// 10 s con Gemini Omni o 8 s con Veo 3.1 Fast (la mitad de precio): cambiar la
-// duración reparte los planos en el tiempo nuevo sin reescribir el guion. El
-// sonido va en el MISMO pedido del video —música, locución con una voz
-// escogida (Omni) y efectos—: así la voz cae en el plano que toca. Al corregir
-// un fotograma o un tramo se pueden poner ejemplos de la galería.
+// Las duraciones salen de las llaves que hay (lib/duracionesVideo.js): lo que un modelo hace en un video va en uno; lo
+// que pasa de ahí, por clips y montaje. «Copiar para Flow» sigue, como opción manual.
 //
-// «Copiar para Flow» (lo principal): el guion en UNA instrucción para Gemini
-// Omni en Flow, con todo lo que Flow no sabe —la marca, la continuidad, los
-// clips, el sonido y qué imágenes subir— (`promptParaFlow`). 20, 30 y 40 s
-// son SÓLO para Flow: varios clips de 10 s que el agente genera seguidos.
-// El guion puede seguir la ESTRUCTURA de un anuncio que ya funciona (las
-// referencias analizadas del estudio de mercado).
-//
-// Lo usan la pestaña Estudio («Video») y «Crear reel con IA» de una
-// publicación (que además lo pone en ella).
+// Lo usan la pestaña Estudio («Video») y «Crear reel con IA» de una publicación.
 // ============================================================
 
 const PASOS = [["idea", "Idea"], ["planos", "Planos"], ["fotogramas", "Fotogramas"], ["video", "Video"]];
@@ -51,17 +46,22 @@ const PASOS = [["idea", "Idea"], ["planos", "Planos"], ["fotogramas", "Fotograma
 const FlujoVideoProducto = lazy(() => import("./FlujoVideoProducto"));
 const VideoAnimado = lazy(() => import("./VideoAnimado"));
 const FORMAS = [
-  ["guion", "Por planos", "La idea, el storyboard y el video (o Flow)"],
+  ["guion", "Por planos", "La idea, el storyboard, el video y el montaje con voz, texto y logo"],
   ["producto", "Del producto", "10–15 s que terminan en su foto real y el logo"],
   ["animado", "Animado con código", "Escenas dibujadas, una locución y subtítulos: 30 s a 2 min"],
 ];
+const FASE_MONTAJE = {
+  nuevo: "Montando…", aprobar: "Aprobando el montaje…", voz: "Pidiendo la voz…", esperaVoz: "Generando la voz de la marca…",
+  render: "Renderizando el mp4…", renderizando: "Renderizando el mp4…",
+};
 
 export default function FlujoReel({ client, estudio, inicial = {}, onPoner = null, onListo = null, cabecera = null, onCreando = () => {} }) {
   const ids = useId();
   const [forma, setForma] = useState(["producto", "animado"].includes(inicial.forma) ? inicial.forma : "guion");
+  const [abrirVideoId, setAbrirVideoId] = useState(null);
   const clienteId = client?.dbId || client?.id;
   const kit = limpiarKit(estudio?.kit);
-  const activos = estudio?.activos ?? {};
+  const activos = useMemo(() => estudio?.activos ?? {}, [estudio?.activos]);
   const [paso, setPaso] = useState("idea");
   const [idea, setIdea] = useState(inicial.idea ?? "");
   const [preset, setPreset] = useState(inicial.preset ?? "");
@@ -69,74 +69,101 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
   const [productoId, setProductoId] = useState(inicial.productoId ?? "");
   const [personajes, setPersonajes] = useState([]);
   const [refsMano, setRefsMano] = useState([]); // de la galería, para los fotogramas
-  const [duracion, setDuracion] = useState(10);
+  const rutas = useMemo(() => duracionesDeReel(activos), [activos]);
+  const [duracion, setDuracion] = useState(() => (rutas.some((d) => d.segundos === DURACION_REEL_POR_DEFECTO) ? DURACION_REEL_POR_DEFECTO : rutas[0]?.segundos ?? DURACION_REEL_POR_DEFECTO));
   // Un anuncio que ya funciona (referencias analizadas del estudio de mercado): el guion sigue su estructura.
   const [referencias, setReferencias] = useState([]);
   const [referenciaId, setReferenciaId] = useState(inicial.referenciaId ?? "");
   const [copiado, setCopiado] = useState(false);
-  const [voz, setVoz] = useState(() => kit.voz || ""); // la voz fija del cliente (kit), si la tiene
+  const [voz, setVoz] = useState(() => kit.voz || ""); // la voz de Omni (sólo un video de Omni con su propia voz)
   const [ejemplosFoto, setEjemplosFoto] = useState({}); // i → [ejemplos de la galería]
   const [ejemplosTramo, setEjemplosTramo] = useState([]);
-  const [guion, setGuion] = useState(null); // { hilo, planos, musica, locucion, efectos, descripcion, segundos }
-  const [fotos, setFotos] = useState([]); // por plano: { archivo } | { error } | { cargando }
+  const [guion, setGuion] = useState(null); // { hilo, planos, musica, locucion, efectos, descripcion, gancho, llamado, segundos }
   const [correccion, setCorreccion] = useState({}); // i → texto
-  const [videos, setVideos] = useState([]); // versiones, la última primero
+  const [tocando, setTocando] = useState({}); // i → true mientras se corrige o rehace un fotograma
+  const [versiones, setVersiones] = useState([]); // videos corregidos por tramos (la última primero)
   const [tramoCambio, setTramoCambio] = useState({ desde: 0, hasta: 3, cambio: "" });
   const [modeloImagenId, setModeloImagenId] = useState("");
   const [modeloVideoId, setModeloVideoId] = useState("");
-  // Qué sale de los fotogramas: UN video con todo (el storyboard) o un clip LIMPIO por fotograma para editar en CapCut.
+  // Qué sale de los fotogramas: UN video con todo (el storyboard) o un clip LIMPIO por fotograma (para montar aquí).
   const [salida, setSalida] = useState("uno");
   const [modeloClipsId, setModeloClipsId] = useState("");
-  const [segundosClip, setSegundosClip] = useState(5);
-  const [clips, setClips] = useState([]); // por plano: { archivo } | { error } | { cargando } | null
+  const [revisar, setRevisar] = useState(true);
+  const [montar, setMontar] = useState(true);
   const [bajando, setBajando] = useState(false);
   const [revision, setRevision] = useState(null); // { idea, cambios }: lo que propone el director comercial
   const [ocupado, setOcupado] = useState("");
-  const [confirmar, setConfirmar] = useState(null); // "fotogramas" | "video" | null
+  const [confirmar, setConfirmar] = useState(null); // "lanzar" | "continuar" | null
   const [aviso, setAviso] = useState(null);
+  // El encargo del servidor que lleva el reel, y los archivos que ya salieron.
+  const [encargo, setEncargo] = useState(null);
+  const [archivosEnc, setArchivosEnc] = useState(() => new Map());
+  const [anteriores, setAnteriores] = useState([]); // los reels de este cliente que se pueden retomar
   const carpeta = useRef(null);
   const vivo = useRef(true);
+  const siguiendo = useRef(null);
+  const puestoAvisado = useRef(false);
   useEffect(() => { vivo.current = true; return () => { vivo.current = false; }; }, []);
   useEffect(() => {
     let sigue = true;
     import("../lib/mercado").then(({ leerMercado }) => leerMercado(clienteId))
       .then((m) => { if (sigue) setReferencias((m?.referencias ?? []).filter((r) => r.analisis)); })
       .catch(() => { /* sin estudio de mercado, sin referencias */ });
+    listarEncargos(clienteId).then((l) => { if (sigue) setAnteriores(l.filter((e) => e.tipo === "reel")); }).catch(() => {});
     return () => { sigue = false; };
   }, [clienteId]);
 
   const productos = estudio?.productos ?? [];
-  const modelosImagen = useMemo(() => modelosParaCarrusel(estudio?.activos ?? {}), [estudio]);
+  const modelosImagen = useMemo(() => modelosParaCarrusel(activos), [activos]);
   // Las listas van del más barato al más caro; si nadie escoge, el recomendado.
-  const modeloImagen = modelosImagen.find((m) => m.id === modeloImagenId) ?? modelosImagen.find((m) => m.id === modeloParaCarrusel(estudio?.activos ?? {}).id) ?? modelosImagen[0] ?? null;
-  const modelosVideo = useMemo(() => modelosParaReel(estudio?.activos ?? {}), [estudio]);
-  const modeloVideo = modelosVideo.find((m) => m.id === modeloVideoId) ?? modeloRecomendadoParaReel(estudio?.activos ?? {}) ?? MODELOS.find((m) => m.id === "prueba-video");
-  const paraTramo = modeloParaTramo(activos);
+  const modeloImagen = modelosImagen.find((m) => m.id === modeloImagenId) ?? modelosImagen.find((m) => m.id === modeloParaCarrusel(activos).id) ?? modelosImagen[0] ?? null;
   const segundos = guion?.segundos ?? duracion;
+  const ruta = rutas.find((d) => d.segundos === segundos) ?? null;
+  // UN video sólo con un modelo que haga esa duración exacta: lo que pasa de ahí, por clips.
+  const modelosVideo = useMemo(() => modelosParaReel(activos).filter((m) => haceDuracion(m, segundos)), [activos, segundos]);
+  const modeloVideo = modelosVideo.find((m) => m.id === modeloVideoId) ?? modelosVideo.find((m) => m.id === ruta?.modelos?.[0]) ?? modelosVideo.find((m) => m.id === modeloRecomendadoParaReel(activos)?.id) ?? modelosVideo[0] ?? null;
+  const modelosClips = useMemo(() => modelosParaClips(activos), [activos]);
+  const modeloClips = modelosClips.find((m) => m.id === modeloClipsId) ?? modeloParaClips(activos);
+  const salidaReal = salida === "uno" && !modeloVideo ? "clips" : salida;
+  const paraTramo = modeloParaTramo(activos);
   const planos = guion?.planos ?? [];
-  const listos = fotos.map((f) => f?.archivo).filter(Boolean);
   const estiloTexto = estiloDeMarca(kit, preset, { marca: client.name, rubro: client.industry ?? "", estilo });
   const deLosPersonajes = referenciasDePersonajes(kit, personajes, estudio?.archivos ?? []);
   const lineaPersonajes = deLosPersonajes.map((p) => `Personaje: ${p.nota}.`).filter((v, i, l) => l.indexOf(v) === i).join(" ");
+  const fotosProducto = api.fotosDelProducto(productos, productoId).map((f) => f.clave);
   const costoFotos = modeloImagen ? Math.round(planos.length * estimar(modeloImagen, 1, { imageSize: "2K" }) * 1000) / 1000 : 0;
-  const pedidoVideo = modeloVideo && guion ? pedidoDeVideo({
-    modelo: modeloVideo, planos, hilo: guion.hilo, musica: guion.musica, locucion: guion.locucion, efectos: guion.efectos, voz,
-    segundos, estilo: estiloTexto, personajes: lineaPersonajes, fotogramas: listos,
-  }) : null;
-  const conVoz = Boolean(modeloVideo?.ajustes?.voz);
   const maxPalabras = Math.floor(segundos * PALABRAS_POR_SEGUNDO);
   const palabras = String(guion?.locucion ?? "").trim().split(/\s+/).filter(Boolean).length;
-  const costoVideo = pedidoVideo ? estimar(modeloVideo, 1, pedidoVideo.ajustes) : 0;
-  const modelosClips = useMemo(() => modelosParaClips(estudio?.activos ?? {}), [estudio]);
-  const modeloClips = modelosClips.find((m) => m.id === modeloClipsId) ?? modeloParaClips(activos);
-  const duracionesClip = (modeloClips?.ajustes?.duration?.valores ?? []).map(Number);
-  const conFotograma = fotos.filter((f) => f?.archivo).length;
-  const muestraClip = modeloClips && listos[0] && planos[0] ? pedidoDeClip({ modelo: modeloClips, plano: planos[0], fotograma: listos[0], segundos: segundosClip }) : null;
-  const costoClips = muestraClip ? Math.round(conFotograma * estimar(modeloClips, 1, muestraClip.ajustes) * 1000) / 1000 : 0;
   const ocupar = (q) => { setOcupado(q); onCreando(Boolean(q)); };
-  const largo = soloFlow(segundos);
 
-  /** El prompt para Flow: todo lo que Flow no sabe, en una sola instrucción. */
+  // Lo que ya salió en el servidor.
+  const res = encargo ? resultadoDeReel(encargo, archivosEnc) : null;
+  const fotos = res?.fotos ?? [];
+  const listos = fotos.map((f) => f?.archivo).filter(Boolean);
+  const videoListo = res?.video ?? null;
+  const videos = [...versiones, ...(videoListo ? [videoListo] : [])];
+  const clips = res?.clips ?? [];
+  const montaje = res?.montaje ?? null;
+  const enMarcha = Boolean(res?.enMarcha);
+
+  /** Lo que costará el video (o los clips) con lo escogido. */
+  const costoDelVideo = () => {
+    if (!guion) return 0;
+    if (salidaReal === "uno" && modeloVideo) {
+      const p = pedidoDeVideo({ modelo: modeloVideo, planos, hilo: guion.hilo, musica: guion.musica, locucion: guion.locucion, efectos: guion.efectos, voz, segundos, estilo: estiloTexto, fotogramas: listos.length ? listos : [{ clave: "x" }], sinVoz: montar });
+      return estimar(modeloVideo, 1, p.ajustes);
+    }
+    if (modeloClips) {
+      return Math.round(planos.reduce((t, pl) => {
+        const s = duracionDeClip(modeloClips, Math.max(1, pl.hasta - pl.desde));
+        return t + estimar(modeloClips, 1, pedidoDeClip({ modelo: modeloClips, plano: pl, fotograma: { clave: "x" }, segundos: s }).ajustes);
+      }, 0) * 1000) / 1000;
+    }
+    return 0;
+  };
+  const costoVideo = costoDelVideo();
+
+  /** El prompt para Flow: todo lo que Flow no sabe, en una sola instrucción (opción manual). */
   const producto = productos.find((p) => p.id === productoId);
   const paraFlow = guion ? promptParaFlow({
     guion: { ...guion, segundos }, marca: client.name, rubro: client.industry ?? "", identidad: bloqueDeMarca(kit), estilo: estiloTexto,
@@ -145,50 +172,95 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
     ingredientes: [
       kit.logo && `el logo de ${client.name}`,
       ...kit.personajes.filter((p) => personajes.includes(p.id)).map((p) => `el retrato de ${p.nombre}`),
-      producto && api.fotosDelProducto(productos, productoId).length && `la foto de ${producto.nombre}`,
+      producto && fotosProducto.length && `la foto de ${producto.nombre}`,
     ].filter(Boolean),
   }) : "";
 
-  /** 10 s (Omni) u 8 s (Veo, la mitad): los planos se reparten en el tiempo nuevo y el modelo del video sigue. */
+  /** Otra duración: los planos se reparten en el tiempo nuevo y, si ninguna lo hace en un video, van por clips. */
   const cambiarDuracion = (d) => {
     setDuracion(d);
     setGuion((g) => (g ? { ...g, segundos: d, planos: ajustarDuracion(g.planos, d), locucion: locucionQueCabe(g.locucion, d) } : g));
-    const opcion = DURACIONES_REEL.find((x) => x.segundos === d);
-    const m = opcion?.modelos.map((id) => modelosVideo.find((x) => x.id === id)).find(Boolean);
-    if (m) setModeloVideoId(m.id);
+    const opcion = rutas.find((x) => x.segundos === d);
+    if (opcion?.ruta === "clips") setSalida("clips");
+    else if (opcion) { setSalida("uno"); setModeloVideoId(opcion.modelos[0] ?? ""); }
     setTramoCambio((t) => ({ ...t, desde: Math.min(t.desde, d - 1), hasta: Math.min(t.hasta, d) }));
   };
   const selectorDuracion = (
     <div className="field">
       <span className="label" id={`${ids}-dur`}>Duración</span>
       <div className="est-tipos" role="group" aria-labelledby={`${ids}-dur`}>
-        {DURACIONES_REEL.map((d) => (
-          <button key={d.segundos} type="button" className="filter-chip" aria-pressed={segundos === d.segundos} onClick={() => cambiarDuracion(d.segundos)}>{d.nombre}</button>
+        {rutas.map((d) => (
+          <button key={d.segundos} type="button" className="filter-chip" aria-pressed={segundos === d.segundos} disabled={Boolean(encargo)} onClick={() => cambiarDuracion(d.segundos)}>{d.nombre}</button>
         ))}
       </div>
-      {segundos === 8 && <p className="hint">Veo 3.1 Fast cuesta más o menos la mitad. Con fotogramas usa hasta 3 de referencia (el primero, uno del medio y el último).</p>}
-      {soloFlow(segundos) && <p className="hint">Para Flow: {Math.ceil(segundos / SEGUNDOS_POR_CLIP)} clips de {SEGUNDOS_POR_CLIP} s con Gemini Omni, en una sola instrucción. Aquí no se crea por API.</p>}
+      {ruta && <p className="hint">{ruta.ayuda}</p>}
+      {!rutas.length && <p className="hint">No hay ningún modelo de video con llave (Ajustes → IA): sólo se puede copiar el guion para Flow.</p>}
     </div>
   );
 
-  /** La carpeta del reel: la galería la enseña como UNA tarjeta (los videos, el último primero, y los fotogramas). */
+  /** La carpeta del reel: la galería la enseña como UNA tarjeta (el servidor la ordena al terminar). */
   const prepararCarpeta = async () => {
-    if (!carpeta.current) carpeta.current = await api.carpetaDeGrupo(clienteId, "reel", idea);
+    if (!carpeta.current) carpeta.current = await api.carpetaDeGrupo(clienteId, "reel", idea || guion?.titulo || "Reel");
+    return carpeta.current;
   };
-  const ordenFinal = [...videos.map((v) => v?.id), ...fotos.map((f) => f?.archivo?.id)].filter(Boolean).join(",");
-  useEffect(() => {
-    if (!carpeta.current || ocupado || !ordenFinal) return;
-    api.ordenarCarpeta(clienteId, carpeta.current, ordenFinal.split(",")).catch(() => { /* sin orden, la galería lo deduce */ });
-  }, [ordenFinal, ocupado, clienteId]);
+
+  /** Sigue el encargo mientras se mira (el servidor lo lleva aunque se cierre esto). */
+  const seguir = (id) => {
+    if (siguiendo.current === id) return;
+    siguiendo.current = id;
+    seguirEncargo({
+      clienteId, id, seguir: () => vivo.current && siguiendo.current === id,
+      alCambio: (e, archivos) => {
+        if (!vivo.current) return;
+        setEncargo(e);
+        setArchivosEnc((a) => new Map([...a, ...archivos]));
+      },
+    }).then((e) => {
+      if (siguiendo.current === id) siguiendo.current = null;
+      if (!vivo.current || !e) return;
+      window.dispatchEvent(new Event("ia:gasto"));
+      if (e.estado === "fallido") setAviso({ ok: false, texto: e.error || "No salió." });
+      else if (e.nota) setAviso({ ok: true, texto: e.nota });
+    }).catch(() => { siguiendo.current = null; });
+  };
+
+  /** Abre un reel lanzado antes (se cerró la pantalla, o se pidió desde Claude): todo vuelve a donde iba. */
+  const retomar = async (id) => {
+    setAviso(null);
+    try {
+      const r = await leerEncargo(clienteId, id);
+      const e = r.encargo;
+      const g = e.reel?.reel;
+      if (!g) throw new Error("Ese encargo no trae su guion.");
+      setGuion(g);
+      setDuracion(g.segundos);
+      setIdea(e.titulo || idea);
+      carpeta.current = e.reel.carpetaId ?? null;
+      setEncargo(e);
+      setArchivosEnc(new Map((r.archivos ?? []).map((a) => [a.id, a])));
+      setSalida(e.reel.salida === "clips" ? "clips" : "uno");
+      if (e.reel.video?.modelo) (e.reel.salida === "clips" ? setModeloClipsId : setModeloVideoId)(e.reel.video.modelo);
+      const r2 = resultadoDeReel(e, new Map((r.archivos ?? []).map((a) => [a.id, a])));
+      setPaso(r2.storyboardListo && !r2.esperaRevision && e.reel.salida !== "fotogramas" ? "video" : "fotogramas");
+      if (e.estado === "en_marcha") seguir(e.id);
+    } catch (err) {
+      setAviso({ ok: false, texto: err.message });
+    }
+  };
 
   const escribir = async () => {
     ocupar("guion");
     setAviso(null);
     try {
-      const r = await api.guionDeReel(clienteId, { idea, segundos: duracion, preset, estilo, productoId: productoId || undefined, personajes, referenciaId: referenciaId || undefined });
+      const r = await api.guionDeReel(clienteId, {
+        idea, segundos: duracion, preset, estilo, productoId: productoId || undefined, personajes, referenciaId: referenciaId || undefined,
+        // El guion que YA tiene la publicación: el reel lo sigue en vez de inventar otro.
+        ...(inicial.guionPost ? { guionPost: inicial.guionPost } : {}), ...(inicial.postId ? { postId: inicial.postId } : {}),
+        montaje: true,
+      });
       setGuion(r);
       setPaso("planos");
-      setAviso({ ok: true, texto: ["Revisa los planos: qué se ve y la cámara. El video va limpio, sin texto.", r.aviso ?? ""].filter(Boolean).join(" ") });
+      setAviso({ ok: true, texto: ["Revisa los planos: qué se ve, lo que se dice y lo que se lee. El video va limpio: el texto lo pone el montaje.", r.aviso ?? ""].filter(Boolean).join(" ") });
     } catch (e) {
       setAviso({ ok: false, texto: e.message });
     } finally {
@@ -216,81 +288,143 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
   const quitarPlano = (i) => setGuion((g) => ({ ...g, planos: repartirTiempos(g.planos.filter((_, j) => j !== i), g.segundos) }));
   const anadirPlano = () => setGuion((g) => ({ ...g, planos: repartirTiempos([...g.planos, { escena: "", camara: "" }], g.segundos) }));
 
-  const comunFotos = () => ({
-    clienteId, modelo: modeloImagen, hilo: guion.hilo, estilo: estiloTexto, personajes: deLosPersonajes,
-    fotos: api.fotosDelProducto(productos, productoId).map((f) => f.clave), referencias: refsMano, carpetaId: carpeta.current, seguir: () => vivo.current,
+  /** Lo de la pantalla que el servidor necesita para armar cada fotograma como a mano. */
+  const comunParaServidor = () => ({
+    modelo: modeloImagen.id, estilo: estiloTexto, lineaPersonajes,
+    personajes: deLosPersonajes.map((p) => ({ clave: p.clave, nota: p.nota })), fotos: fotosProducto,
+    referencias: refsMano.map((r) => ({ clave: r.clave, toma: r.toma ?? [], nota: r.nota ?? "" })),
   });
-  const crearLosFotogramas = async () => {
-    setConfirmar(null);
-    setPaso("fotogramas");
-    ocupar("fotogramas");
-    setFotos(planos.map(() => ({ cargando: true })));
-    await prepararCarpeta();
-    const salida = await crearFotogramas({ ...comunFotos(), carpetaId: carpeta.current, planos, alAvanzar: (i, r) => { if (vivo.current) setFotos((x) => x.map((y, j) => (j === i ? r : y))); } });
-    ocupar("");
-    if (!vivo.current) return;
-    setFotos(planos.map((_, i) => salida[i] ?? { error: "No se pidió." }));
-    window.dispatchEvent(new Event("ia:gasto"));
-    const bien = salida.filter((r) => r?.archivo).length;
-    setAviso({ ok: bien > 0, texto: bien === planos.length ? "Revisa el storyboard: corrige o rehaz los fotogramas que no te convenzan antes de crear el video." : `Salieron ${bien} de ${planos.length}. Rehaz los que fallaron.` });
-  };
-  const unFotograma = async (i, hacer) => {
-    setFotos((x) => x.map((y, j) => (j === i ? { ...y, cargando: true } : y)));
-    try {
-      const archivo = await hacer();
-      if (vivo.current) setFotos((x) => x.map((y, j) => (j === i ? { archivo } : y)));
-      setCorreccion((c) => ({ ...c, [i]: "" }));
-    } catch (e) {
-      if (vivo.current) setFotos((x) => x.map((y, j) => (j === i ? { ...y, cargando: false, error: e.message } : y)));
-    }
-    window.dispatchEvent(new Event("ia:gasto"));
-  };
-  const rehacerFotograma = (i) => unFotograma(i, () => crearFotograma({
-    ...comunFotos(), plano: planos[i], total: planos.length, anterior: fotos[i - 1]?.archivo ?? fotos[1]?.archivo ?? null, primero: i > 1 ? fotos[0]?.archivo ?? null : null,
-  }));
-  const corregirFotograma = async (i) => {
-    await unFotograma(i, () => editarImagen({ clienteId, modelo: modeloImagen, archivo: fotos[i].archivo, instruccion: correccion[i], ejemplos: ejemplosFoto[i] ?? [], carpetaId: carpeta.current, seguir: () => vivo.current }));
-    setEjemplosFoto((e) => ({ ...e, [i]: [] }));
-  };
+  const videoParaServidor = () => (salidaReal === "uno"
+    ? { modelo: modeloVideo?.id ?? "", voz: montar ? "" : voz }
+    : { modelo: modeloClips?.id ?? "" });
 
-  const crearElVideo = async () => {
+  /** Al servidor: el storyboard (y, si no se revisa, el video o los clips y el montaje). */
+  const lanzar = async () => {
     setConfirmar(null);
-    setPaso("video");
-    ocupar("video");
-    setAviso({ ok: true, texto: "Creando el video: tarda unos minutos. Puedes seguir en otra pestaña; queda en la galería." });
+    ocupar("lanzar");
+    setAviso(null);
     try {
-      await prepararCarpeta();
-      const video = await crearVideo({ clienteId, pedido: pedidoVideo, carpetaId: carpeta.current, calendarId: inicial.calendarId, postId: inicial.postId, seguir: () => vivo.current });
-      if (!vivo.current) return;
-      setVideos((v) => [video, ...v]);
-      setAviso({ ok: true, texto: "Listo. Si un tramo no quedó, corrígelo: sale otra versión y esta se queda." });
+      const carpetaId = await prepararCarpeta();
+      const r = await lanzarReel(clienteId, {
+        titulo: String(guion.titulo || idea || "Reel").replace(/\s+/g, " ").slice(0, 120),
+        reel: { ...guion, segundos }, comun: comunParaServidor(), salida: salidaReal, revisar,
+        video: videoParaServidor(), montaje: montar ? { automatico: true } : null, carpetaId,
+        ...(inicial.postId && inicial.calendarId ? { calendarId: inicial.calendarId, postId: inicial.postId } : {}),
+      });
+      setEncargo(r.encargo);
+      setArchivosEnc(new Map((r.archivos ?? []).map((a) => [a.id, a])));
+      setPaso("fotogramas");
+      setAviso({ ok: true, texto: "Creando los fotogramas en el servidor, en orden: puedes cerrar esto y seguir después («Seguir con…» en el primer paso)." });
+      seguir(r.encargo.id);
     } catch (e) {
       setAviso({ ok: false, texto: e.message });
     } finally {
       ocupar("");
+    }
+  };
+
+  /** Tras revisar el storyboard: el video o los clips (y el montaje), en el servidor. */
+  const continuar = async () => {
+    setConfirmar(null);
+    ocupar("continuar");
+    setAviso(null);
+    try {
+      const r = await continuarReel(clienteId, encargo.id, { salida: salidaReal, video: videoParaServidor(), montaje: montar ? { automatico: true } : null });
+      setEncargo(r.encargo);
+      setArchivosEnc((a) => new Map([...a, ...(r.archivos ?? []).map((x) => [x.id, x])]));
+      setPaso("video");
+      setAviso({ ok: true, texto: `${salidaReal === "clips" ? "Creando los clips" : "Creando el video"} en el servidor: tarda unos minutos. Puedes cerrar esto.` });
+      seguir(encargo.id);
+    } catch (e) {
+      setAviso({ ok: false, texto: e.message });
+    } finally {
+      ocupar("");
+    }
+  };
+
+  /** «Montarlo aquí»: sólo el proyecto (para revisarlo), o terminado (voz, render y a la publicación). */
+  const montarAqui = async ({ automatico = false, confirmadoVoz = false } = {}) => {
+    ocupar("montar");
+    setAviso(null);
+    try {
+      const r = await montarReel(clienteId, encargo.id, { automatico, confirmadoVoz });
+      setEncargo(r.encargo);
+      setArchivosEnc((a) => new Map([...a, ...(r.archivos ?? []).map((x) => [x.id, x])]));
+      const m = r.encargo.reel?.montaje;
+      if (!automatico && !confirmadoVoz && m?.videoId) {
+        setAviso({ ok: true, texto: "Montado: revisa el video animado, apruébalo y renderízalo." });
+      } else {
+        setAviso({ ok: true, texto: "Montando en el servidor: la voz de la marca, el texto, los subtítulos y el logo. Puedes cerrar esto." });
+        if (r.encargo.estado === "en_marcha") seguir(encargo.id);
+      }
+    } catch (e) {
+      setAviso({ ok: false, texto: e.message });
+    } finally {
+      ocupar("");
+    }
+  };
+
+  // Con el storyboard hecho y el video en camino (sin revisar), se pasa solo a ver el video.
+  const aVideo = paso === "fotogramas" && Boolean(res?.storyboardListo) && !res?.esperaRevision && encargo?.reel?.salida !== "fotogramas" && encargo?.reel?.video?.fase !== "espera";
+  useEffect(() => { if (aVideo) setPaso("video"); }, [aVideo]);
+
+  // Lo que el servidor ya puso en la publicación, también en el panel abierto (si no, su guardado al cerrar lo pisaría).
+  useEffect(() => {
+    const puesto = encargo?.reel?.puesto;
+    if (!onPoner || !puesto?.postId || !videoListo || puestoAvisado.current) return;
+    puestoAvisado.current = true;
+    onPoner([videoListo], { reemplazar: true, descripcion: guion?.descripcion ?? "", guion: guion ? textoDelGuionReel(guion) : "", portada: listos[0]?.src ?? "", quedarse: true });
+  }, [encargo, videoListo, onPoner, guion, listos]);
+  // Y el mp4 del montaje terminado (lo pone el render en la publicación): el panel abierto lo recibe igual.
+  const mp4Avisado = useRef(false);
+  const montajeHecho = montaje?.fase === "hecho" && montaje.automatico && montaje.videoId ? montaje.videoId : null;
+  useEffect(() => {
+    if (!onPoner || !montajeHecho || mp4Avisado.current || !inicial.postId) return;
+    mp4Avisado.current = true;
+    import("../lib/videosApi").then(({ leerVideo }) => leerVideo(clienteId, montajeHecho)).then((v) => {
+      const r = v?.render;
+      if (!vivo.current || r?.estado !== "listo" || !r.clave) return;
+      onPoner([{ id: r.archivoId, src: `/api/media/${r.clave}`, mime: "video/mp4", tipo: "video", ancho: r.ancho, alto: r.alto, prompt: v.titulo }], { reemplazar: true, quedarse: true });
+    }).catch(() => { mp4Avisado.current = false; });
+  }, [montajeHecho, onPoner, clienteId, inicial.postId]);
+
+  /** Un fotograma corregido o rehecho a mano: el servidor lo toma como el de ese plano (el video y los clips salen de él). */
+  const unFotograma = async (i, hacer) => {
+    setTocando((t) => ({ ...t, [i]: true }));
+    try {
+      const archivo = await hacer();
+      const p = encargo.pasos[i];
+      setArchivosEnc((a) => new Map([...a, [archivo.id, archivo]]));
+      for (let intento = 0; intento < 5; intento++) {
+        try {
+          const r = await fotogramaFinal(clienteId, encargo.id, p.id, archivo.id);
+          if (vivo.current) setEncargo(r.encargo);
+          break;
+        } catch (e) {
+          if (e?.estado !== 409) throw e;
+          await new Promise((ok) => setTimeout(ok, 2500));
+        }
+      }
+      setCorreccion((c) => ({ ...c, [i]: "" }));
+    } catch (e) {
+      setAviso({ ok: false, texto: e.message });
+    } finally {
+      if (vivo.current) setTocando((t) => ({ ...t, [i]: false }));
       window.dispatchEvent(new Event("ia:gasto"));
     }
   };
-  /** Un clip limpio por fotograma, todos a la vez (sin voz, sin música, sin texto: lo demás se pone en CapCut). */
-  const crearLosClips = async () => {
-    setConfirmar(null);
-    setPaso("video");
-    ocupar("clips");
-    setClips(fotos.map((f) => (f?.archivo ? { cargando: true } : null)));
-    setAviso({ ok: true, texto: `Creando ${conFotograma} clips a la vez: tardan unos minutos. Quedan en la galería.` });
-    await prepararCarpeta();
-    const salidaClips = await crearClips({
-      clienteId, modelo: modeloClips, planos, fotogramas: fotos.map((f) => f?.archivo ?? null), hilo: guion.hilo, estilo: estiloTexto,
-      personajes: lineaPersonajes, segundos: segundosClip, carpetaId: carpeta.current, seguir: () => vivo.current,
-      alAvanzar: (i, r) => { if (vivo.current) setClips((x) => x.map((y, j) => (j === i ? r : y))); },
-    });
-    ocupar("");
-    window.dispatchEvent(new Event("ia:gasto"));
-    if (!vivo.current) return;
-    const bien = salidaClips.filter((r) => r?.archivo).length;
-    setAviso({ ok: bien > 0, texto: bien === conFotograma ? "Listos. Descárgalos en un ZIP, en orden, para editarlos." : `Salieron ${bien} de ${conFotograma}.` });
+  const archivoDe = (i) => fotos[i]?.archivo ?? null;
+  const rehacerFotograma = (i) => unFotograma(i, async () => crearFotograma({
+    clienteId, modelo: modeloImagen, hilo: guion.hilo, estilo: estiloTexto, personajes: deLosPersonajes, fotos: fotosProducto, referencias: refsMano,
+    plano: planos[i], total: planos.length, anterior: archivoDe(i - 1) ?? archivoDe(1) ?? null, primero: i > 1 ? archivoDe(0) : null,
+    carpetaId: carpeta.current, seguir: () => vivo.current,
+  }));
+  const corregirFotograma = async (i) => {
+    await unFotograma(i, () => editarImagen({ clienteId, modelo: modeloImagen, archivo: archivoDe(i), instruccion: correccion[i], ejemplos: ejemplosFoto[i] ?? [], carpetaId: carpeta.current, seguir: () => vivo.current }));
+    setEjemplosFoto((e) => ({ ...e, [i]: [] }));
   };
-  /** Los clips en un ZIP, numerados en el orden de los planos. */
+
+  /** Los clips en un ZIP, numerados en el orden de los planos (para CapCut). */
   const bajarClips = async () => {
     setBajando(true);
     try {
@@ -303,7 +437,7 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
       const url = URL.createObjectURL(new Blob([crearZip(archivos)], { type: "application/zip" }));
       const enlace = document.createElement("a");
       enlace.href = url;
-      enlace.download = `clips-${String(client.name ?? "reel").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 40)}.zip`;
+      enlace.download = `clips-${String(client.name ?? "reel").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 40)}.zip`;
       enlace.click();
       setTimeout(() => URL.revokeObjectURL(url), 30_000);
     } catch (e) {
@@ -321,7 +455,7 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
     try {
       const nuevo = await corregirTramo({ clienteId, modelo: paraTramo, video, ...tramoCambio, ejemplos: ejemplosTramo, segundos, carpetaId: carpeta.current, seguir: () => vivo.current });
       if (!vivo.current) return;
-      setVideos((v) => [nuevo, ...v]);
+      setVersiones((v) => [nuevo, ...v]);
       setTramoCambio((t) => ({ ...t, cambio: "" }));
       setEjemplosTramo([]);
       setAviso({ ok: true, texto: "Versión nueva arriba; la anterior se queda abajo y en la galería." });
@@ -335,12 +469,13 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
 
   const pedirConConfirmar = (que, costo, hacer) => (costo >= CONFIRMAR_DESDE ? setConfirmar(que) : hacer());
   const indice = PASOS.findIndex(([x]) => x === paso);
+  const costoLanzar = costoFotos + (revisar ? 0 : costoVideo);
 
   // Qué video: por planos (este flujo) o la receta del producto. Mientras se crea algo no se cambia (se perdería).
   const selectorForma = (paso === "idea" || forma !== "guion") && (
     <div className="est-formas-video flujo-reel-formas" role="radiogroup" aria-label="Qué video">
       {FORMAS.map(([id, nombre, ayuda]) => (
-        <button key={id} type="button" role="radio" aria-checked={forma === id} className="est-forma-video" disabled={Boolean(ocupado)} onClick={() => setForma(id)}>
+        <button key={id} type="button" role="radio" aria-checked={forma === id} className="est-forma-video" disabled={Boolean(ocupado)} onClick={() => { setAbrirVideoId(null); setForma(id); }}>
           <strong>{nombre}</strong>
           <span>{ayuda}</span>
         </button>
@@ -353,9 +488,10 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
       <section className="card flujo-carrusel flujo-reel" aria-label="Video animado con código">
         {cabecera}
         {selectorForma}
+        {abrirVideoId && <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setForma("guion"); setAbrirVideoId(null); }}><Icon name="chevron-left" size={14} /> Volver al reel</button>}
         <Suspense fallback={<p className="hint">Cargando…</p>}>
-          <VideoAnimado client={client?.dbId ? { ...client, id: client.dbId } : client} estudio={estudio}
-            publicacion={inicial.postId ? { postId: inicial.postId, calendarId: inicial.calendarId ?? null, idea: inicial.idea ?? "" } : null} />
+          <VideoAnimado client={client?.dbId ? { ...client, id: client.dbId } : client} estudio={estudio} abrirId={abrirVideoId}
+            publicacion={inicial.postId && !abrirVideoId ? { postId: inicial.postId, calendarId: inicial.calendarId ?? null, idea: inicial.idea ?? "" } : null} />
         </Suspense>
       </section>
     );
@@ -372,6 +508,53 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
     );
   }
 
+  /** Qué sale y con qué: lo mismo al lanzar (sin revisar) y al seguir tras revisar el storyboard. */
+  const opcionesDelVideo = (
+    <fieldset className="field" style={{ margin: 0 }}>
+      <legend className="label">Qué sale de los fotogramas</legend>
+      <label className="est-logo-casilla">
+        <input type="radio" name={`${ids}-salida`} checked={salidaReal === "uno"} disabled={!modelosVideo.length} onChange={() => setSalida("uno")} />
+        <span><strong>Un solo video con todo</strong> · los fotogramas como storyboard, de {segundos} s{!modelosVideo.length ? " (ningún modelo con llave hace esta duración en un video)" : ""}</span>
+      </label>
+      <label className="est-logo-casilla">
+        <input type="radio" name={`${ids}-salida`} checked={salidaReal === "clips"} disabled={!modelosClips.length} onChange={() => setSalida("clips")} />
+        <span><strong>Un clip limpio por plano</strong> · {planos.length} clips sin texto, voz ni música, para montarlos aquí (o bajarlos para CapCut)</span>
+      </label>
+      {salidaReal === "uno" ? (
+        <div className="field">
+          <label className="label" htmlFor={`${ids}-mv`}>Modelo del video</label>
+          <select id={`${ids}-mv`} className="input" value={modeloVideo?.id ?? ""} onChange={(e) => setModeloVideoId(e.target.value)}>
+            {modelosVideo.map((m) => <option key={m.id} value={m.id}>{m.nombre}{m.motor === "prueba" ? "" : ` · ${etiquetaDeCosto(m)}`} · {m.referencias >= 2 ? "con el storyboard" : "desde el primer fotograma"}</option>)}
+          </select>
+        </div>
+      ) : (
+        <div className="field">
+          <label className="label" htmlFor={`${ids}-mc`}>Modelo de los clips</label>
+          <select id={`${ids}-mc`} className="input" value={modeloClips?.id ?? ""} onChange={(e) => setModeloClipsId(e.target.value)}>
+            {modelosClips.map((m) => <option key={m.id} value={m.id}>{m.nombre}{m.motor === "prueba" ? "" : ` · ${etiquetaDeCosto(m)}`}</option>)}
+          </select>
+          <p className="hint">Cada clip dura lo que su plano, en lo que el modelo admita.</p>
+        </div>
+      )}
+      <label className="est-logo-casilla">
+        <input type="checkbox" checked={montar} onChange={(e) => setMontar(e.target.checked)} />
+        <span><strong>Montarlo aquí al terminar</strong> · la voz de la marca, el gancho escrito, los subtítulos, el logo y el llamado, en un mp4 que va a la publicación. La voz pide confirmar su costo antes.</span>
+      </label>
+      {salidaReal === "uno" && !montar && modeloVideo?.ajustes?.voz && guion?.locucion?.trim() && (
+        <div className="field">
+          <label className="label" htmlFor={`${ids}-voz`}>Voz de Omni (la del propio video)</label>
+          <select id={`${ids}-voz`} className="input" value={voz} onChange={(e) => setVoz(e.target.value)}>
+            <option value="">La que escoja el modelo</option>
+            {Object.entries(VOCES_OMNI).map(([id, n]) => <option key={id} value={id}>{n}</option>)}
+          </select>
+        </div>
+      )}
+      {salidaReal === "uno" && !montar && !modeloVideo?.ajustes?.voz && guion?.locucion?.trim() && (
+        <p className="hint">{sinVozPropia(modeloVideo) ? `${modeloVideo?.nombre} va sin voz: con «Montarlo aquí», la pone la voz de la marca.` : `${modeloVideo?.nombre} pone su propia voz. Con «Montarlo aquí», la de la marca.`}</p>
+      )}
+    </fieldset>
+  );
+
   return (
     <section className="card flujo-carrusel flujo-reel" aria-labelledby={`${ids}-t`}>
       {cabecera}
@@ -384,12 +567,24 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
 
       {paso === "idea" && (
         <div className="carrusel-opciones">
+          {anteriores.length > 0 && !encargo && (
+            <div className="field">
+              <span className="label">Seguir con un reel de antes</span>
+              <div className="lote-fila">
+                {anteriores.slice(0, 4).map((e) => (
+                  <button key={e.id} type="button" className="btn btn-secondary btn-sm" onClick={() => retomar(e.id)}>
+                    <Icon name="refresh" size={14} /> {String(e.titulo || "Reel").slice(0, 40)} · {e.estado === "en_marcha" ? "en marcha" : e.nota ? String(e.nota).slice(0, 40) : e.estado}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           <IdeasDeFormato clienteId={clienteId} formato="reel" preset={preset} productoId={productoId} segundos={duracion} onUsar={(i) => setIdea(i.idea)} />
           <div className="field">
             <label className="label" htmlFor={`${ids}-idea`}>La idea central</label>
             <textarea id={`${ids}-idea`} className="input" rows={3} maxLength={1500} value={idea} onChange={(e) => setIdea(e.target.value)}
               placeholder="Caja grande de wipes Nateen: 960 por $45. Piel sensible protegida desde el primer uso." />
-            <p className="hint">La promoción, el beneficio o lo que quieres contar. La IA propone el guion de {duracion} s por planos, con la música y la locución, siguiendo el criterio comercial de la agencia.</p>
+            <p className="hint">La promoción, el beneficio o lo que quieres contar. La IA propone el guion de {duracion} s por planos, con lo que se dice y se lee, siguiendo el criterio comercial de la agencia{inicial.guionPost ? " y el guion que ya tiene la publicación" : ""}.</p>
             <button type="button" className="btn btn-ghost btn-sm" disabled={Boolean(ocupado) || !idea.trim()} onClick={revisarDirector}>
               <Icon name="sparkles" size={14} /> {ocupado === "director" ? "Revisando…" : "Revisar como director comercial"}
             </button>
@@ -465,17 +660,15 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
 
       {paso === "planos" && guion && (
         <div className="carrusel-opciones">
-          {/* Lo principal: el guion entero para Flow, en una sola instrucción, con la marca dentro. */}
-          <div className="notice reel-flow" style={{ display: "block" }}>
-            <p style={{ margin: 0 }}><strong>Para Flow (Gemini Omni)</strong>{largo ? ` · ${Math.ceil(segundos / SEGUNDOS_POR_CLIP)} clips de ${SEGUNDOS_POR_CLIP} s en una sola instrucción` : ""}</p>
-            <p className="hint" style={{ margin: 0 }}>Lleva la marca, la continuidad, cada plano, la música y la locución; el video, sin texto. Sube en Flow las imágenes que dice el prompt (logo, personajes, producto).</p>
-            <div className="reel-flow-acciones">
-              <button type="button" className="btn btn-primary btn-sm" onClick={() => navigator.clipboard.writeText(paraFlow).then(() => { setCopiado(true); setTimeout(() => setCopiado(false), 2000); }).catch(() => setAviso({ ok: false, texto: "No se pudo copiar: ábrelo en «Ver el prompt» y cópialo a mano." }))}>
-                <Icon name={copiado ? "check" : "copy"} size={14} /> {copiado ? "Copiado" : "Copiar para Flow"}
-              </button>
-              <span role="status" className="sr-only">{copiado ? "Prompt copiado" : ""}</span>
+          <div className="lote-fila">
+            <div className="field">
+              <label className="label" htmlFor={`${ids}-gancho`}>El gancho escrito (los primeros segundos)</label>
+              <input id={`${ids}-gancho`} className="input" maxLength={60} value={guion.gancho ?? ""} placeholder="¿Piel sensible?" onChange={(e) => setGuion((g) => ({ ...g, gancho: e.target.value }))} />
             </div>
-            <details><summary className="hint">Ver el prompt</summary><pre className="reel-flow-prompt">{paraFlow}</pre></details>
+            <div className="field">
+              <label className="label" htmlFor={`${ids}-cta`}>El llamado del cierre</label>
+              <input id={`${ids}-cta`} className="input" maxLength={30} value={guion.llamado ?? ""} placeholder="Escríbenos hoy" onChange={(e) => setGuion((g) => ({ ...g, llamado: e.target.value }))} />
+            </div>
           </div>
           <div className="field">
             <label className="label" htmlFor={`${ids}-hilo`}>Lo que comparten todos los planos</label>
@@ -490,6 +683,14 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
                   <textarea id={`${ids}-pe-${i}`} className="textarea" rows={2} maxLength={300} value={p.escena} placeholder="Qué se ve" onChange={(e) => cambiarPlano(i, "escena", e.target.value)} />
                   <label className="sr-only" htmlFor={`${ids}-pc-${i}`}>Cámara del plano {p.n}</label>
                   <input id={`${ids}-pc-${i}`} className="input" maxLength={160} value={p.camara} placeholder="Cámara" onChange={(e) => cambiarPlano(i, "camara", e.target.value)} />
+                  <label className="sr-only" htmlFor={`${ids}-pd-${i}`}>Lo que se dice en el plano {p.n}</label>
+                  <input id={`${ids}-pd-${i}`} className="input" maxLength={400} value={p.dice ?? ""} placeholder="Lo que se dice (voz)" onChange={(e) => cambiarPlano(i, "dice", e.target.value)} />
+                  {i > 0 && i < planos.length - 1 && (
+                    <>
+                      <label className="sr-only" htmlFor={`${ids}-pt-${i}`}>Lo que se lee en el plano {p.n}</label>
+                      <input id={`${ids}-pt-${i}`} className="input" maxLength={80} value={p.pantalla ?? ""} placeholder="Lo que se lee (opcional)" onChange={(e) => cambiarPlano(i, "pantalla", e.target.value)} />
+                    </>
+                  )}
                   {planos.length > MIN_PLANOS && <button type="button" className="btn btn-ghost btn-sm" onClick={() => quitarPlano(i)}><Icon name="trash" size={14} /> Quitar</button>}
                 </div>
               </li>
@@ -498,24 +699,24 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
           {planos.length < maxPlanos(segundos) && <button type="button" className="btn btn-ghost btn-sm" onClick={anadirPlano}><Icon name="plus" size={14} /> Añadir plano</button>}
           {selectorDuracion}
           <fieldset className="reel-sonido">
-            <legend className="label">El sonido (va en el mismo pedido del video)</legend>
+            <legend className="label">El sonido</legend>
             <div className="field">
               <label className="label" htmlFor={`${ids}-mus`}>Música</label>
               <input id={`${ids}-mus`} className="input" maxLength={300} value={guion.musica ?? ""} placeholder="Pop suave y alegre, ritmo medio, sube en el cierre"
                 onChange={(e) => setGuion((g) => ({ ...g, musica: e.target.value }))} />
             </div>
             <div className="field">
-              <label className="label" htmlFor={`${ids}-loc`}>Locución (lo que dice la voz) <span className="hint">({palabras}/{maxPalabras} palabras)</span></label>
-              <textarea id={`${ids}-loc`} className="input" rows={2} maxLength={500} value={guion.locucion ?? ""} placeholder="Vacío si va sólo con música"
+              <label className="label" htmlFor={`${ids}-loc`}>Locución entera <span className="hint">({palabras}/{maxPalabras} palabras)</span></label>
+              <textarea id={`${ids}-loc`} className="input" rows={2} maxLength={1200} value={guion.locucion ?? ""} placeholder="Vacío si va sólo con música"
                 onChange={(e) => setGuion((g) => ({ ...g, locucion: e.target.value }))} />
               {palabras > maxPalabras && <p className="revision-problema">No cabe en {segundos} s: quita {palabras - maxPalabras} palabra{palabras - maxPalabras === 1 ? "" : "s"}.</p>}
+              <p className="hint">Con «Montarlo aquí» la dice la voz de la marca (lo de cada plano, si lo escribiste; si no, esta repartida).</p>
             </div>
             <div className="field">
               <label className="label" htmlFor={`${ids}-efe`}>Efectos de sonido</label>
               <input id={`${ids}-efe`} className="input" maxLength={300} value={guion.efectos ?? ""} placeholder="Risas de bebé, ambiente de casa"
                 onChange={(e) => setGuion((g) => ({ ...g, efectos: e.target.value }))} />
             </div>
-            <p className="hint">La música de tendencia de Instagram no se puede poner por la API: si la quieres, deja la música vacía y añádela al publicar («La publico yo»).</p>
           </fieldset>
           {guion.descripcion && (
             <div className="field">
@@ -530,6 +731,23 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
               {modelosImagen.map((m) => <option key={m.id} value={m.id}>{m.nombre}{m.motor === "prueba" ? "" : ` · ${textoCosto(costoDePieza(m))} cada uno`}</option>)}
             </select>
           </div>
+          <label className="est-logo-casilla">
+            <input type="checkbox" checked={revisar} onChange={(e) => setRevisar(e.target.checked)} />
+            <span><strong>Revisar el storyboard antes de pagar el video</strong> · se para tras los fotogramas para corregirlos</span>
+          </label>
+          {!revisar && opcionesDelVideo}
+          {/* La opción manual: el guion entero para Flow, en una sola instrucción, con la marca dentro. */}
+          <details className="notice reel-flow" style={{ display: "block" }}>
+            <summary><strong>Hacerlo en Flow (opcional)</strong></summary>
+            <p className="hint" style={{ margin: 0 }}>Lleva la marca, la continuidad, cada plano, la música y la locución; el video, sin texto. Sube en Flow las imágenes que dice el prompt.</p>
+            <div className="reel-flow-acciones">
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => navigator.clipboard.writeText(paraFlow).then(() => { setCopiado(true); setTimeout(() => setCopiado(false), 2000); }).catch(() => setAviso({ ok: false, texto: "No se pudo copiar: cópialo a mano de abajo." }))}>
+                <Icon name={copiado ? "check" : "copy"} size={14} /> {copiado ? "Copiado" : "Copiar para Flow"}
+              </button>
+              <span role="status" className="sr-only">{copiado ? "Prompt copiado" : ""}</span>
+            </div>
+            <pre className="reel-flow-prompt">{paraFlow}</pre>
+          </details>
         </div>
       )}
 
@@ -537,18 +755,19 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
         <ol className="carrusel-laminas reel-fotogramas">
           {planos.map((p, i) => {
             const f = fotos[i];
+            const cargando = !f || f.cargando || tocando[i];
             return (
               <li key={i} className="revision-item carrusel-lamina">
                 <div className="carrusel-lamina-vista reel-vista">
-                  {f?.archivo && !f?.cargando ? <img src={f.archivo.src} alt={`Fotograma ${p.n}`} loading="lazy" /> : <span className="hint">{f?.cargando ? "Creando…" : f?.error ? "Falló" : p.n}</span>}
+                  {f?.archivo && !tocando[i] ? <img src={f.archivo.src} alt={`Fotograma ${p.n}`} loading="lazy" /> : <span className="hint">{cargando ? "Creando…" : f?.error ? "Falló" : p.n}</span>}
                 </div>
                 <div className="carrusel-lamina-texto">
                   <strong>{tramo(p)}</strong>
                   <p className="hint" style={{ margin: 0 }}>{p.escena}</p>
                   {f?.error && <p className="revision-problema">{f.error}</p>}
-                  {paso === "fotogramas" && !ocupado && f && !f.cargando && (
+                  {paso === "fotogramas" && !ocupado && res?.storyboardListo && !enMarcha && !tocando[i] && (
                     <div className="carrusel-lamina-acciones">
-                      {f.archivo && (
+                      {f?.archivo && (
                         <>
                           <form className="carrusel-corregir" onSubmit={(e) => { e.preventDefault(); if (correccion[i]?.trim()) corregirFotograma(i); }}>
                             <label className="sr-only" htmlFor={`${ids}-fc-${i}`}>Qué corregir en el fotograma {p.n}</label>
@@ -570,60 +789,9 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
         </ol>
       )}
 
-      {paso === "fotogramas" && !ocupado && listos.length > 0 && (
-        <fieldset className="field" style={{ margin: 0 }}>
-          <legend className="label">Qué sale de los fotogramas</legend>
-          <label className="est-logo-casilla">
-            <input type="radio" name={`${ids}-salida`} checked={salida === "uno"} onChange={() => setSalida("uno")} />
-            <span><strong>Un solo video con todo</strong> · los fotogramas como storyboard, de {segundos} s, listo para subir</span>
-          </label>
-          <label className="est-logo-casilla">
-            <input type="radio" name={`${ids}-salida`} checked={salida === "clips"} onChange={() => setSalida("clips")} />
-            <span><strong>Un clip limpio por fotograma</strong> · {conFotograma} videos sin texto, voz ni música, para editarlos en CapCut</span>
-          </label>
-        </fieldset>
-      )}
+      {paso === "fotogramas" && res?.esperaRevision && listos.length > 0 && !ocupado && opcionesDelVideo}
 
-      {paso === "fotogramas" && !ocupado && listos.length > 0 && salida === "clips" && (
-        <div className="lote-fila">
-          <div className="field">
-            <label className="label" htmlFor={`${ids}-mc`}>Modelo de los clips</label>
-            <select id={`${ids}-mc`} className="input" value={modeloClips?.id ?? ""} onChange={(e) => setModeloClipsId(e.target.value)}>
-              {modelosClips.map((m) => <option key={m.id} value={m.id}>{m.nombre}{m.motor === "prueba" ? "" : ` · ${etiquetaDeCosto(m)}`}</option>)}
-            </select>
-          </div>
-          {duracionesClip.length > 0 && (
-            <div className="field">
-              <label className="label" htmlFor={`${ids}-sc`}>Cada clip dura</label>
-              <select id={`${ids}-sc`} className="input" value={duracionesClip.find((d) => d >= segundosClip) ?? duracionesClip.at(-1)} onChange={(e) => setSegundosClip(Number(e.target.value))}>
-                {duracionesClip.map((d) => <option key={d} value={d}>{d} s</option>)}
-              </select>
-            </div>
-          )}
-        </div>
-      )}
-
-      {paso === "fotogramas" && !ocupado && listos.length > 0 && salida === "uno" && (
-        <div className="field" style={{ margin: 0 }}>
-          <label className="label" htmlFor={`${ids}-mv`}>Modelo del video</label>
-          <select id={`${ids}-mv`} className="input" value={modeloVideo?.id ?? ""} onChange={(e) => setModeloVideoId(e.target.value)}>
-            {modelosVideo.map((m) => <option key={m.id} value={m.id}>{m.nombre}{m.motor === "prueba" ? "" : ` · ${etiquetaDeCosto(m)}`} · {m.referencias >= 2 ? "con el storyboard" : "desde el primer fotograma"}</option>)}
-          </select>
-          {conVoz && guion?.locucion?.trim() && (
-            <>
-              <label className="label" htmlFor={`${ids}-voz`} style={{ marginTop: "var(--sp-2)" }}>Voz de la locución</label>
-              <select id={`${ids}-voz`} className="input" value={voz} onChange={(e) => setVoz(e.target.value)}>
-                <option value="">La que escoja el modelo</option>
-                {Object.entries(VOCES_OMNI).map(([id, n]) => <option key={id} value={id}>{n}</option>)}
-              </select>
-              <p className="hint">Voces fijas de Google: el idioma lo da el texto. Registrar la voz no cuesta nada.</p>
-            </>
-          )}
-          {!conVoz && guion?.locucion?.trim() && <p className="hint">{sinVozPropia(modeloVideo) ? `${modeloVideo?.nombre} va sin voz (la inventa mal en español): sólo música y efectos. Para la locución, Gemini Omni (Kie) con la voz de la marca.` : `${modeloVideo?.nombre} no deja escoger la voz: pone la suya. Para escogerla, Gemini Omni (Kie).`}</p>}
-        </div>
-      )}
-
-      {paso === "video" && salida === "clips" && (
+      {paso === "video" && salidaReal === "clips" && clips.some(Boolean) && (
         <div className="reel-video">
           <ol className="carrusel-laminas">
             {clips.map((c, i) => c && (
@@ -637,16 +805,16 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
         </div>
       )}
 
-      {paso === "video" && salida === "uno" && (
+      {paso === "video" && salidaReal === "uno" && (
         <div className="reel-video">
-          {videos.length === 0 && <p className="hint">{ocupado === "video" ? "Creando el video…" : "Todavía no hay video."}</p>}
+          {!videos.length && <p className="hint">{res?.videoError || (res?.videoCargando || enMarcha ? "Creando el video en el servidor…" : "Todavía no hay video.")}</p>}
           {videos.map((v, k) => (
             <figure key={v.id} className="reel-version">
               <video src={v.src} controls playsInline preload="metadata" aria-label={k === 0 ? "El reel, última versión" : `Versión anterior ${k}`} />
               <figcaption className="hint">{k === 0 ? "Última versión" : `Versión anterior ${videos.length - k}`}</figcaption>
             </figure>
           ))}
-          {videos.length > 0 && paraTramo && (
+          {videos.length > 0 && paraTramo && !montaje && (
             <form className="reel-tramo-form" onSubmit={(e) => { e.preventDefault(); corregirElTramo(); }}>
               <span className="label">Corregir un tramo</span>
               <div className="reel-tramo-fila">
@@ -656,75 +824,93 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
               <label className="sr-only" htmlFor={`${ids}-tc`}>Qué cambiar en ese tramo</label>
               <input id={`${ids}-tc`} className="input" maxLength={500} value={tramoCambio.cambio} placeholder="Que la mamá sonría y mire al bebé" onChange={(e) => setTramoCambio((t) => ({ ...t, cambio: e.target.value }))} />
               <ReferenciasGaleria compacto archivos={estudio?.archivos ?? []} elegidas={ejemplosTramo} onCambiar={setEjemplosTramo} max={3} etiqueta="Ejemplo de la galería" />
-              <p className="hint">Al corregir un tramo, el modelo puede rehacer también el sonido de esos segundos.</p>
               <button type="submit" className="btn btn-secondary btn-sm" disabled={Boolean(ocupado) || !tramoCambio.cambio.trim()}>
                 <Icon name="wand" size={14} /> {ocupado === "tramo" ? "Corrigiendo…" : `Corregir con ${paraTramo.nombre}`}
               </button>
             </form>
           )}
-          {videos.length > 0 && !paraTramo && <p className="hint">Para corregir un tramo hace falta Gemini Omni o Kling Omni por Kie.ai (KIE_API_KEY).</p>}
         </div>
       )}
+
+      {paso === "video" && montaje && (
+        <div className="notice" role="status" style={{ display: "block" }}>
+          <p style={{ margin: 0 }}><strong>Montaje:</strong> {montaje.fase === "fallido" ? `no salió (${montaje.error})` : montaje.fase === "confirmar" ? "montado; falta confirmar la voz de la marca." : montaje.fase === "espera" ? montaje.nota : montaje.fase === "hecho" ? (montaje.automatico ? "terminado: el mp4 está en la galería y en su publicación." : "listo para revisar en el video animado.") : FASE_MONTAJE[montaje.fase] ?? "en marcha…"}</p>
+          <div className="lote-fila">
+            {montaje.fase === "confirmar" && (
+              <button type="button" className="btn btn-primary btn-sm" disabled={Boolean(ocupado)} onClick={() => montarAqui({ confirmadoVoz: true })}>
+                <Icon name="check" size={14} /> Sí, generar la voz{montaje.costoTexto ? ` por ${montaje.costoTexto}` : ""}
+              </button>
+            )}
+            {montaje.videoId && (
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setAbrirVideoId(montaje.videoId); setForma("animado"); }}>
+                <Icon name="video" size={14} /> Abrir el video animado
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+      {paso === "video" && encargo?.reel?.puesto?.postId && <p className="hint" role="status">Ya está en su publicación (con su caption, guion y portada si estaban vacíos).</p>}
 
       <div className="lote-pie">
         {confirmar ? (
           <>
             <button type="button" className="btn btn-secondary" onClick={() => setConfirmar(null)}>No</button>
-            <button type="button" className="btn btn-primary" onClick={confirmar === "video" ? crearElVideo : confirmar === "clips" ? crearLosClips : crearLosFotogramas}>
-              Sí, {confirmar === "video" ? `crear el video por ${textoCosto(costoVideo)}` : confirmar === "clips" ? `crear ${conFotograma} clips por ${textoCosto(costoClips)}` : `crear ${planos.length} fotogramas por ${textoCosto(costoFotos)}`}
+            <button type="button" className="btn btn-primary" onClick={confirmar === "lanzar" ? lanzar : continuar}>
+              Sí, crear {confirmar === "lanzar" ? `${planos.length} fotogramas${revisar ? "" : salidaReal === "clips" ? " y los clips" : " y el video"} por ${textoCosto(costoLanzar)}` : `${salidaReal === "clips" ? "los clips" : "el video"} por ${textoCosto(costoVideo)}`}
             </button>
           </>
         ) : (
           <>
             {paso === "idea" && (
-              <button type="button" className="btn btn-primary" disabled={Boolean(ocupado) || (!idea.trim() && !referenciaId)} onClick={escribir}>
+              <button type="button" className="btn btn-primary" disabled={Boolean(ocupado) || (!idea.trim() && !referenciaId && !inicial.guionPost)} onClick={escribir}>
                 <Icon name="sparkles" size={18} /> {ocupado === "guion" ? "Escribiendo el guion…" : `Proponer el guion de ${duracion} s`}
               </button>
             )}
             {paso === "planos" && (
               <>
                 <button type="button" className="btn btn-ghost" onClick={() => setPaso("idea")}>Volver</button>
-                {largo ? <p className="lote-costo">{segundos} s: cópialo arriba y pégalo en Flow.</p> : (
-                  <>
-                    <p className="lote-costo">O aquí por API: {planos.length} fotogramas · <strong>{textoCosto(costoFotos)}</strong> (aprox.)</p>
-                    <button type="button" className="btn btn-secondary" disabled={!modeloImagen || planos.some((p) => !p.escena.trim())} onClick={() => pedirConConfirmar("fotogramas", costoFotos, crearLosFotogramas)}>
-                      <Icon name="image" size={18} /> Crear aquí por API
-                    </button>
-                  </>
-                )}
+                <p className="lote-costo">{planos.length} fotogramas{revisar ? "" : salidaReal === "clips" ? ` y ${planos.length} clips` : " y el video"} · <strong>{textoCosto(costoLanzar)}</strong> (aprox.){montar && !revisar ? " · la voz, aparte (se confirma)" : ""}</p>
+                <button type="button" className="btn btn-primary" disabled={Boolean(ocupado) || !modeloImagen || planos.some((p) => !p.escena.trim()) || (!revisar && salidaReal === "uno" ? !modeloVideo : !revisar && !modeloClips)}
+                  onClick={() => pedirConConfirmar("lanzar", costoLanzar, lanzar)}>
+                  <Icon name="image" size={18} /> {ocupado === "lanzar" ? "Enviando…" : "Crear aquí"}
+                </button>
               </>
             )}
             {paso === "fotogramas" && (
               <>
-                {!ocupado && <button type="button" className="btn btn-ghost" onClick={() => setPaso("planos")}>Volver a los planos</button>}
-                <p className="lote-costo">{ocupado ? "Creando los fotogramas, en orden…" : salida === "clips" ? `${conFotograma} clips · ${textoCosto(costoClips)} (aprox.)` : `Video de ${segundos} s · ${textoCosto(costoVideo)} (aprox.)`}</p>
-                {!ocupado && listos.length > 0 && salida === "uno" && (
-                  <button type="button" className="btn btn-primary" disabled={!pedidoVideo} onClick={() => pedirConConfirmar("video", costoVideo, crearElVideo)}>
-                    <Icon name="video" size={18} /> Crear el video
+                {!ocupado && !enMarcha && !encargo && <button type="button" className="btn btn-ghost" onClick={() => setPaso("planos")}>Volver a los planos</button>}
+                <p className="lote-costo">{enMarcha && !res?.storyboardListo ? `Creando los fotogramas en orden (${listos.length} de ${planos.length})…` : res?.esperaRevision ? `${salidaReal === "clips" ? `${planos.length} clips` : `Video de ${segundos} s`} · ${textoCosto(costoVideo)} (aprox.)` : ""}</p>
+                {res?.esperaRevision && listos.length > 0 && !ocupado && (
+                  <button type="button" className="btn btn-primary" disabled={salidaReal === "uno" ? !modeloVideo : !modeloClips} onClick={() => pedirConConfirmar("continuar", costoVideo, continuar)}>
+                    <Icon name="video" size={18} /> {salidaReal === "clips" ? `Crear ${listos.length} clips` : "Crear el video"}
                   </button>
                 )}
-                {!ocupado && listos.length > 0 && salida === "clips" && (
-                  <button type="button" className="btn btn-primary" disabled={!modeloClips} onClick={() => pedirConConfirmar("clips", costoClips, crearLosClips)}>
-                    <Icon name="video" size={18} /> Crear {conFotograma} clips limpios
-                  </button>
+                {res?.storyboardListo && !res?.esperaRevision && encargo?.reel?.salida !== "fotogramas" && (
+                  <button type="button" className="btn btn-secondary" onClick={() => setPaso("video")}>Ver el video</button>
                 )}
               </>
             )}
             {paso === "video" && !ocupado && (
               <>
-                <button type="button" className="btn btn-ghost" onClick={() => setPaso("fotogramas")}>Volver al storyboard</button>
-                {salida === "clips" && clips.some((c) => c?.archivo) && (
-                  <button type="button" className="btn btn-primary" disabled={bajando} onClick={bajarClips}>
-                    <Icon name="download" size={18} /> {bajando ? "Preparando el ZIP…" : `Descargar los ${clips.filter((c) => c?.archivo).length} clips (ZIP)`}
+                <button type="button" className="btn btn-ghost" onClick={() => setPaso("fotogramas")}>Ver el storyboard</button>
+                {salidaReal === "clips" && clips.some((c) => c?.archivo) && (
+                  <button type="button" className="btn btn-secondary" disabled={bajando} onClick={bajarClips}>
+                    <Icon name="download" size={18} /> {bajando ? "Preparando el ZIP…" : "Descargar los clips para CapCut"}
                   </button>
                 )}
-                {salida === "uno" && onPoner && videos[0] && (
-                  <button type="button" className="btn btn-primary" onClick={() => onPoner([videos[0]], { reemplazar: true })}>
+                {!enMarcha && (!montaje || ["fallido", "hecho"].includes(montaje.fase) && !montaje.automatico) && (videoListo || clips.some((c) => c?.archivo)) && (
+                  <>
+                    {!montaje?.videoId && <button type="button" className="btn btn-secondary" onClick={() => montarAqui({})}><Icon name="video" size={18} /> Montarlo aquí</button>}
+                    <button type="button" className="btn btn-primary" onClick={() => montarAqui({ automatico: true })}><Icon name="check" size={18} /> Montarlo y terminarlo</button>
+                  </>
+                )}
+                {onPoner && videos[0] && !encargo?.reel?.puesto?.postId && !montaje && (
+                  <button type="button" className="btn btn-secondary" onClick={() => onPoner([videos[0]], { reemplazar: true, descripcion: guion?.descripcion ?? "" })}>
                     <Icon name="check" size={18} /> Poner en la publicación
                   </button>
                 )}
-                {onListo && videos[0] && (
-                  <button type="button" className={`btn ${onPoner ? "btn-secondary" : "btn-primary"}`} onClick={onListo}>
+                {onListo && (videos[0] || encargo) && (
+                  <button type="button" className="btn btn-ghost" onClick={onListo}>
                     <Icon name="check" size={18} /> Listo
                   </button>
                 )}
@@ -733,6 +919,14 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
           </>
         )}
       </div>
+      {/* Un reel en el servidor: se puede cerrar y volver. */}
+      {encargo && enMarcha && <p className="hint">Se está haciendo en el servidor: puedes cerrar esto y seguir después.</p>}
+      {encargo && !enMarcha && paso === "fotogramas" && res?.storyboardListo && !res?.esperaRevision && encargo.reel?.salida === "fotogramas" && (
+        <p className="hint">El storyboard está listo.</p>
+      )}
+      {encargo && finalDePaso(encargo.pasos?.[0]) === null && !enMarcha && fotos.every((f) => f?.error) && (
+        <p className="hint">No salió ningún fotograma: vuelve a los planos y pruébalo otra vez.</p>
+      )}
     </section>
   );
 }

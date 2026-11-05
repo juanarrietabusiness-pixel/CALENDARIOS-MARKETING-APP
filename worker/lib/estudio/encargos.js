@@ -306,6 +306,11 @@ export async function avanzarEncargo(env, acceso, id) {
     const orden = pasos.filter((p) => p.fase === "hecho").map((p) => p.finales?.[0] ?? p.opciones?.[0]?.id).filter(Boolean);
     await ordenarCarpeta(acceso, fila.client_id, datos.carpetaId, orden).catch(() => null);
   }
+  // Un reel terminado, también: el video (o los clips) primero y luego el storyboard (una tarjeta en la galería).
+  if (listos && fila.tipo === "reel" && datos.carpetaId) {
+    const orden = [...archivosDelReel(datos, pasos), ...pasos.map((p) => (p.fase === "hecho" ? p.finales?.[0] ?? p.opciones?.[0]?.id : null))].filter(Boolean);
+    if (orden.length) await ordenarCarpeta(acceso, fila.client_id, datos.carpetaId, orden).catch(() => null);
+  }
   const delReel = fila.tipo === "reel" && listos && r.estado == null ? estadoDelReel(datos, pasos) : null;
   const estado = r.estado ?? delReel?.estado ?? (listos ? (pasos.every((p) => p.fase === "fallido") ? "fallido" : "hecho") : "en_marcha");
   // Las piezas que pidió Claude con su post_id se ponen solas en su publicación, una vez, al terminar.

@@ -52,7 +52,7 @@ export default function ReelIA({ client, post, cal = null, forma = "guion", onPo
             <p className="hint" style={{ margin: 0 }}>{{
               producto: "10 a 15 s: el primer fotograma y el cierre con la foto real del producto y el logo, y el video entre los dos.",
               animado: "Escenas dibujadas con código, una locución y subtítulos. La IA escribe el guion de esta publicación; el mp4 se pone en ella al renderizar.",
-            }[forma] ?? "Guion de 10 s por planos, el storyboard para revisar y el video; luego se corrige por tramos."}</p>
+            }[forma] ?? "Guion por planos, el storyboard para revisar y el video, montado aquí con la voz de la marca, el texto y el logo. Se hace en el servidor: puedes cerrar y volver."}</p>
           </div>
           <button type="button" className="btn-icon" onClick={onCerrar} disabled={creando} aria-label="Cerrar"><Icon name="close" /></button>
         </div>
@@ -66,8 +66,11 @@ export default function ReelIA({ client, post, cal = null, forma = "guion", onPo
                 inicial={{
                   idea, preset: presetDePilar(post.pilar, post.pilarSub) || "", productoId: post.productoId ?? "", postId: post.id ?? null, calendarId: cal ? cal.dbId || cal.id : null,
                   forma, post: { pilar: post.pilar ?? "", pilarSub: post.pilarSub ?? "", productoId: post.productoId ?? "", producto: post.producto ?? "", nivel: post.nivel ?? "", deseo: post.deseo ?? "", perfil: post.perfil ?? "" },
+                  // El guion que ya tiene la publicación: el reel lo sigue en vez de inventar otro.
+                  guionPost: String(post.guion ?? "").trim().slice(0, 3000),
                 }}
-                onPoner={(archivos, opciones) => { onPoner(archivos, opciones); onCerrar(); }}
+                // `quedarse`: el servidor ya lo puso en la publicación y la pantalla sólo se pone al día (no se cierra).
+                onPoner={(archivos, opciones = {}) => { onPoner(archivos, opciones); if (!opciones.quedarse) onCerrar(); }}
                 onListo={onCerrar}
               />
             </Suspense>

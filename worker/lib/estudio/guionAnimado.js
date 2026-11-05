@@ -9,14 +9,12 @@
 // ============================================================
 
 import { llamarIA } from "../cerebro/ia.js";
-import { contexto as contextoCerebro, textoParaEscribir } from "../cerebro/cerebro.js";
 import { kitDe } from "./kit.js";
+import { contextoDeGuion } from "./guionVideo.js";
 import { leerMercado } from "../mercado.js";
 import { productosActivos, lineaDeProducto } from "../../../src/lib/estudioMercado.js";
 import { validarGuion } from "../../../src/lib/videoEscenas.js";
 import { pedidoDeGuionAnimado, leerGuionAnimado, textoDePublicacion, duracionAnimado, MAX_IDEA_ANIMADO } from "../../../src/lib/guionAnimadoIA.js";
-
-const leerJSON = (t, def) => { try { return typeof t === "string" ? JSON.parse(t) : (t ?? def); } catch { return def; } };
 
 /** Un error de lo pedido, con su estado HTTP. */
 export class ErrorGuion extends Error {
@@ -24,19 +22,6 @@ export class ErrorGuion extends Error {
     super(mensaje);
     this.estado = estado;
   }
-}
-
-/** La publicación del cliente (de cualquiera de sus meses) por su id → el post o null. */
-async function publicacion(acceso, clienteId, postId) {
-  if (!postId) return null;
-  const cals = await acceso.leerColumnas("calendars", ["id", "days"], { client_id: clienteId });
-  for (const cal of cals) {
-    for (const d of leerJSON(cal.days, []) ?? []) {
-      const p = (d?.posts ?? []).find((x) => x?.id === postId);
-      if (p) return p;
-    }
-  }
-  return null;
 }
 
 /** El catálogo con los IDs de la galería de las fotos de cada producto (las que se pueden poner en una capa «imagen»). */
@@ -62,20 +47,19 @@ async function catalogoConFotos(acceso, clienteId) {
  */
 export async function escribirGuion(env, acceso, cliente, datos = {}) {
   const idea = String(datos.idea ?? "").trim().slice(0, MAX_IDEA_ANIMADO);
-  const post = await publicacion(acceso, cliente.id, String(datos.postId ?? ""));
+  // El contexto común de todo guion de video: la publicación (con su guion), el cerebro y el criterio comercial.
+  const ctx = await contextoDeGuion(env, acceso, cliente, {
+    postId: String(datos.postId ?? ""), consulta: `${idea} video animado guion`, presupuesto: 4000,
+  });
+  const post = ctx.post;
   const delPost = textoDePublicacion(post);
   if (!idea && !delPost) throw new ErrorGuion("Di de qué va el video (o créalo desde una publicación del calendario).");
   const segundos = duracionAnimado(datos.segundos);
-
-  let contexto = "";
-  try {
-    const c = await contextoCerebro(env, acceso, cliente.id, `${idea} ${post?.producto ?? ""} video animado guion`, { para: "texto", presupuesto: 4000 });
-    contexto = textoParaEscribir(c);
-  } catch { /* sin cerebro, la idea y el catálogo */ }
+  const contexto = ctx.contexto;
   const productos = await catalogoConFotos(acceso, cliente.id);
   const personaje = kitDe(cliente).personajeVideo ?? null;
 
-  const base = { marca: cliente.name, idea, publicacion: delPost, segundos, formato: datos.formato, contexto, productos, personaje };
+  const base = { marca: cliente.name, idea, publicacion: delPost, segundos, formato: datos.formato, contexto, productos, personaje, criterio: ctx.criterio };
   let r = await llamarIA(env, acceso, cliente, { prompt: pedidoDeGuionAnimado(base), salida: 8000, funcion: "guion de video" });
   let g = leerGuionAnimado(r.texto);
   let v = g ? validarGuion(g) : { ok: false, errores: [{ donde: "guion", mensaje: "No es un JSON que se pueda leer." }] };
