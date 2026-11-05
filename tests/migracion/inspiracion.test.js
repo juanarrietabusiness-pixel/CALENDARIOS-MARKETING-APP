@@ -144,7 +144,7 @@ describe("Inspiración", () => {
     expect(d.avisos).toBe(2); // el reel de Instagram (4×) y el Short de YouTube
     const avisos = db.sqlite.prepare("select tipo, texto, enlace from avisos order by texto").all();
     expect(avisos).toHaveLength(2);
-    expect(avisos.every((a) => a.tipo === "inspiracion" && a.enlace === "/cliente/c1/inspiracion")).toBe(true);
+    expect(avisos.every((a) => a.tipo === "inspiracion" && /^\/cliente\/c1\/inspiracion\?pieza=(ig|yt)%3A/.test(a.enlace))).toBe(true);
     expect(avisos.map((a) => a.texto).join(" ")).toMatch(/@mueblesx publicó un reel que rinde 4× su promedio \(lo sigue Dcasa\)/);
     await actualizar();
     expect(db.sqlite.prepare("select count(*) as n from avisos").get().n).toBe(2);

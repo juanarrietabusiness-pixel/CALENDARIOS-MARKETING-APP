@@ -41,6 +41,8 @@ import { rutasFormulasUgc } from "./rutas/formulasUgc.js";
 import { rutasVideos } from "./rutas/videos.js";
 import { rutasInspiracion } from "./rutas/inspiracion.js";
 import { inspiracionPendiente } from "./lib/inspiracion.js";
+import { rutasLoMejor } from "./rutas/loMejor.js";
+import { loMejorPendiente } from "./lib/loMejor.js";
 import { rutaModelos, rutaConsumo, rutaGasto } from "./rutas/iaEspacio.js";
 import { rutaADN, rutaImagenADN } from "./rutas/adn.js";
 import { rutaGenerarImagen } from "./rutas/imagen.js";
@@ -433,6 +435,8 @@ export default {
       if (partes[0] === "mercado") return await rutasMercado(req, env, { acceso, usuario, partes, metodo });
       // Inspiración: lo que publican las cuentas que sigue cada cliente (competencia y las que le inspiran).
       if (partes[0] === "inspiracion") return await rutasInspiracion(req, env, { acceso, usuario, partes, metodo });
+      // «Lo mejor del momento»: lo que mejor funciona (inspiración, referencias, lo propio y los anuncios) y recrearlo.
+      if (partes[0] === "lo-mejor") return await rutasLoMejor(req, env, { acceso, usuario, partes, metodo });
       // Lo que el servidor terminó del Estudio y espera a la pantalla (el texto de la plantilla, el logo estampado).
       if (partes[0] === "encargos" && partes[1] === "por-terminar" && metodo === "GET") return json({ encargos: await encargosPorTerminar(acceso) });
       // El Estudio: imágenes por trabajos, con su galería por cliente.
@@ -549,7 +553,11 @@ export default {
       const encargos = await encargosDelCron(env, cuando).catch((e) => { console.error("cron encargos:", e); return 1; });
       if (encargos) return;
       // Y por último Inspiración: el feed de un cliente que lleva un día sin leerse (hasta diez llamadas a Meta o Google).
-      await inspiracionPendiente(env, cuando).catch((e) => console.error("cron inspiración:", e));
+      const inspiracion = await inspiracionPendiente(env, cuando).catch((e) => { console.error("cron inspiración:", e); return 1; });
+      if (inspiracion) return;
+      // «Lo mejor»: los anuncios de las búsquedas guardadas una vez por semana (con su tope de créditos) o, si no, unas
+      // pocas piezas sin clasificar (una llamada barata a la IA). Sólo si nada de lo de arriba tuvo trabajo.
+      await loMejorPendiente(env, cuando).catch((e) => console.error("cron lo mejor:", e));
     })());
   },
 };

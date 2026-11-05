@@ -41,6 +41,7 @@ import { verVideo, ErrorVideo, MAX_BYTES_VIDEO } from "./geminiVideo.js";
 import { claveDelCliente } from "./estudio/archivos.js";
 import { pedidoDeTranscripcion, leerTranscripcion, pedidoDeAdaptacionUgc, leerAdaptacionUgc, duracionUgc } from "../../src/lib/ugc.js";
 import { enlaceDeYouTube } from "../../src/lib/inspiracion.js";
+import { claveDeEnlace } from "../../src/lib/loMejor.js";
 import { bloqueoPorPresupuesto } from "./configIA.js";
 import { textoPaleta } from "../../src/lib/kitMarca.js";
 import {
@@ -366,6 +367,11 @@ async function analizar(env, acceso, cliente, archivo, datos, estudio) {
 /** Añade una referencia: la captura (ya subida a la galería) va a «Competencia», la IA la analiza y va al cerebro. */
 export async function agregarReferencia(env, acceso, cliente, entrada = {}) {
   const { referencias, estudio, borrador } = await leerMercado(acceso, cliente.id);
+  // La misma pieza (el mismo archivo de la galería, o el mismo enlace) ya analizada no se paga dos veces: se devuelve
+  // la que había. Antes cada «Analizar» de la misma publicación volvía a mandar el video a Gemini.
+  const clave = entrada.enlace ? claveDeEnlace(entrada.enlace) : "";
+  const repetida = referencias.find((r) => r.analisis && ((entrada.archivoId && r.archivoId === String(entrada.archivoId)) || (clave && r.enlace && claveDeEnlace(r.enlace) === clave)));
+  if (repetida) return { referencia: repetida, aviso: null, repetida: true };
   if (referencias.length >= MAX_REFERENCIAS) throw new ErrorMercado(`Ya hay ${MAX_REFERENCIAS} referencias: borra las que ya no sirvan.`, 409);
   const archivo = await acceso.leerUno("estudio_archivos", { id: String(entrada.archivoId ?? ""), client_id: cliente.id });
   if (!archivo || archivo.borrado_at) throw new ErrorMercado("Esa captura no está en la galería de este cliente.", 404);
@@ -485,17 +491,23 @@ export async function extraerUgc(env, acceso, cliente, { archivoId = "", clave =
   const enlaceYT = youtube ? enlaceDeYouTube(youtube) : "";
   if (youtube && !enlaceYT) throw new ErrorMercado("Ese no es el enlace de un video de YouTube.", 400);
   if (enlaceYT) {
-    const bloqueo = await bloqueoPorPresupuesto(acceso);
-    if (bloqueo) throw new ErrorMercado(bloqueo, 402);
-    let texto;
-    try {
-      texto = await verVideo(env, acceso, { youtube: enlaceYT, clienteId: cliente.id, prompt: pedidoDeTranscripcion(), funcion: "guion de video", json: true });
-    } catch (e) {
-      if (e instanceof ErrorVideo) throw new ErrorMercado(e.message, e.estado, e.codigo);
-      throw e;
+    // La transcripción de un video de YouTube se recuerda en «Lo mejor» (`lo_mejor_piezas`, por su clave «yt:<id>»):
+    // no tiene ficha en la galería, y sin esto cada «Extraer guion», «Fórmula» o «Recrear» pagaba otra vez a Gemini.
+    let original = await transcripcionRecordada(acceso, enlaceYT);
+    if (!original) {
+      const bloqueo = await bloqueoPorPresupuesto(acceso);
+      if (bloqueo) throw new ErrorMercado(bloqueo, 402);
+      let texto;
+      try {
+        texto = await verVideo(env, acceso, { youtube: enlaceYT, clienteId: cliente.id, prompt: pedidoDeTranscripcion(), funcion: "guion de video", json: true });
+      } catch (e) {
+        if (e instanceof ErrorVideo) throw new ErrorMercado(e.message, e.estado, e.codigo);
+        throw e;
+      }
+      original = leerTranscripcion(texto);
+      if (!original) throw new ErrorMercado("La IA no devolvió la transcripción del video. Inténtalo otra vez.", 502);
+      await recordarTranscripcion(acceso, enlaceYT, original);
     }
-    const original = leerTranscripcion(texto);
-    if (!original) throw new ErrorMercado("La IA no devolvió la transcripción del video. Inténtalo otra vez.", 502);
     return soloTranscribir ? { original } : adaptarUgc(env, acceso, cliente, { original, productoId, duracion, nota });
   }
 
@@ -540,6 +552,27 @@ export async function extraerUgc(env, acceso, cliente, { archivoId = "", clave =
   // «Guardar como fórmula» sólo necesita el ORIGINAL transcrito: sin adaptar, no se paga la llamada de texto.
   if (soloTranscribir) return { original };
   return adaptarUgc(env, acceso, cliente, { original, productoId, duracion, nota });
+}
+
+/** La fila de «Lo mejor» de un video de YouTube (su clave «yt:<id>» en este espacio). */
+const filaDeYouTube = (acceso, enlace) => `${acceso.ownerId}|${claveDeEnlace(enlace)}`.slice(0, 200);
+
+/** La transcripción ya pagada de un video de YouTube, o null. */
+async function transcripcionRecordada(acceso, enlace) {
+  const fila = await acceso.leerUno("lo_mejor_piezas", { id: filaDeYouTube(acceso, enlace) }).catch(() => null);
+  const t = leerJSON(fila?.datos, {}).transcripcion;
+  return t && Array.isArray(t.tramos) && t.tramos.length ? t : null;
+}
+
+/** La guarda (sin tocar lo demás que se sepa de esa pieza: su tipo, su idea). No puede tumbar la respuesta. */
+async function recordarTranscripcion(acceso, enlace, transcripcion) {
+  try {
+    const id = filaDeYouTube(acceso, enlace);
+    const fila = await acceso.leerUno("lo_mejor_piezas", { id });
+    const momento = ahora();
+    if (fila) await acceso.actualizar("lo_mejor_piezas", { id }, { datos: JSON.stringify({ ...leerJSON(fila.datos, {}), transcripcion }), updated_at: momento });
+    else await acceso.insertar("lo_mejor_piezas", { id, clave: claveDeEnlace(enlace), datos: JSON.stringify({ transcripcion }), created_at: momento, updated_at: momento });
+  } catch { /* se pierde el recuerdo, no la transcripción */ }
 }
 
 /** La transcripción de un video → el guion UGC adaptado a la marca (una llamada de texto). */

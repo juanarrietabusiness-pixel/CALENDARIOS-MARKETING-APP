@@ -15,6 +15,7 @@ import { navegar } from "../lib/rutas";
 const SECCIONES = [
   { vista: "panel", ruta: "/", nombre: "Inicio", icono: "home" },
   { vista: "tareas", ruta: "/tareas", nombre: "Mi día", icono: "clipboardCheck", contador: true },
+  { vista: "lo-mejor", ruta: "/lo-mejor", nombre: "Lo mejor", icono: "trending" },
   { vista: "programacion", ruta: "/programacion", nombre: "Programación", icono: "clock", fallidas: true },
   { vista: "bandeja", ruta: "/bandeja", nombre: "Bandeja", icono: "inbox", bandeja: true },
   { vista: "resultados", ruta: "/resultados", nombre: "Resultados", icono: "chart" },

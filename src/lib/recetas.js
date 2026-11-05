@@ -352,6 +352,15 @@ export function limpiarHandoff(d = {}) {
     referencias: (Array.isArray(d?.referencias) ? d.referencias : []).map(String).filter((x) => ID_FILA.test(x)).slice(0, 6),
     productos: (Array.isArray(d?.productos) ? d.productos : []).map(String).filter((x) => /^[\w-]{1,80}$/.test(x)).slice(0, 4),
     indicacion: corto(d?.indicacion, 600),
+    // La pieza de «Lo mejor» de la que sale (su enlace, de quién es, su cifra, su tipo y por qué funciona): así Claude
+    // la recrea sabiendo QUÉ funcionó, no sólo mirándola.
+    ...(d?.referencia && typeof d.referencia === "object" ? {
+      referencia: {
+        enlace: /^https:\/\//.test(String(d.referencia.enlace ?? "")) ? corto(d.referencia.enlace, 600) : "",
+        cuenta: corto(d.referencia.cuenta, 80), cifra: corto(d.referencia.cifra, 120), tipo: corto(d.referencia.tipo, 60),
+        idea: corto(d.referencia.idea, 400), texto: corto(d.referencia.texto, 600),
+      },
+    } : {}),
   };
 }
 

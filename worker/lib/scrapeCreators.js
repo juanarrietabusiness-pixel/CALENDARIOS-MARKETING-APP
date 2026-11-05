@@ -18,8 +18,9 @@
 // `fetch` de mentira que contesta como su documentación.
 // ============================================================
 
-import { sha256 } from "./ids.js";
+import { sha256, uuid } from "./ids.js";
 import { bajarALaGaleria } from "./competencia.js";
+import { semanaDe } from "../../src/lib/loMejor.js";
 import {
   SC_BASE, consultaSC, pedidoDeAnuncios, anuncioSC, empresaSC, mensajeErrorSC, claveDeCache, esDelCdnDeMeta,
 } from "../../src/lib/scrapeCreators.js";
@@ -62,14 +63,26 @@ async function pedirSC(env, ruta, params) {
   throw new ErrorSC(mensajeErrorSC(ultimo), 502);
 }
 
+/**
+ * Apunta un crédito gastado (una búsqueda que NO salió de la caché) en la semana: el tope semanal de «Lo mejor» se
+ * cuenta con esto, lo buscado a mano (`manual`) y lo que relee el cron (`auto`). No puede tumbar la búsqueda.
+ */
+async function apuntarCredito(acceso, ruta, fuente) {
+  await acceso.insertar("creditos_sc", {
+    id: uuid(), semana: semanaDe(), fuente: fuente === "auto" ? "auto" : "manual", creditos: 1, ruta: String(ruta).slice(0, 120),
+    created_at: new Date().toISOString(),
+  }).catch(() => {});
+}
+
 /** Un pedido con la caché del espacio delante. Devuelve los datos y si salieron de la caché (no costaron). */
-async function consultar(env, acceso, ruta, params, { horas = HORAS_CACHE } = {}) {
+async function consultar(env, acceso, ruta, params, { horas = HORAS_CACHE, fuente = "manual" } = {}) {
   const id = `${acceso.ownerId}:${(await sha256(claveDeCache(ruta, params))).slice(0, 40)}`;
   const guardada = await acceso.leerUno("biblioteca_cache", { id });
   if (guardada && Date.now() - Date.parse(guardada.created_at) < horas * 3_600_000) {
     try { return { datos: JSON.parse(guardada.respuesta), cache: true }; } catch { /* rota: se vuelve a pedir */ }
   }
   const datos = await pedirSC(env, ruta, params);
+  await apuntarCredito(acceso, ruta, fuente);
   const texto = JSON.stringify(datos);
   if (texto.length <= MAX_CACHE) {
     // Guardar la caché no puede tumbar la búsqueda: si falla, la próxima se vuelve a pagar y ya.
@@ -89,12 +102,12 @@ export async function buscarEmpresas(env, acceso, q) {
   return { empresas, creditos: creditos(datos), cache };
 }
 
-/** Los anuncios de una empresa o de una palabra clave, una página. */
-export async function buscarAnunciosSC(env, acceso, entrada, cursor = "") {
+/** Los anuncios de una empresa o de una palabra clave, una página. `fuente`: «auto» si la pide la relectura semanal. */
+export async function buscarAnunciosSC(env, acceso, entrada, cursor = "", { fuente = "manual" } = {}) {
   const { consulta, errores } = consultaSC(entrada);
   if (errores.length) throw new ErrorSC(errores.join(" "), 400);
   const { ruta, params } = pedidoDeAnuncios(consulta, cursor);
-  const { datos, cache } = await consultar(env, acceso, ruta, params);
+  const { datos, cache } = await consultar(env, acceso, ruta, params, { fuente });
   const lista = datos.results ?? datos.searchResults ?? [];
   return {
     consulta,

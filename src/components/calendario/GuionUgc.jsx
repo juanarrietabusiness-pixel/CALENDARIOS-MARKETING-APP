@@ -114,6 +114,11 @@ export default function GuionUgc({ form, sf, setForm, client, onAviso }) {
         </div>
       )}
 
+      {/* Qué audio usar al publicarlo (la API no lo pone: lo escoge quien publica en Instagram o TikTok). */}
+      {form.audioUgc && (
+        <p className="hint" style={{ margin: 0 }}><Icon name="mic" size={12} /> Audio al publicar: {form.audioUgc}</p>
+      )}
+
       {client && (
         <button type="button" className="btn btn-secondary btn-sm" style={{ alignSelf: "flex-start" }} onClick={() => setExtrayendo(true)}>
           <Icon name="video" size={14} /> Extraer guion de un video y adaptarlo
@@ -132,7 +137,7 @@ export default function GuionUgc({ form, sf, setForm, client, onAviso }) {
             onUsar={(pub) => {
               // Pone el guion, los ganchos, la duración y el caption (éste sólo si estaba vacío); lo demás se queda.
               setForm((p) => ({
-                ...p, guion: pub.guion, ganchosUgc: pub.ganchosUgc ?? [], duracionUgc: pub.duracionUgc,
+                ...p, guion: pub.guion, ganchosUgc: pub.ganchosUgc ?? [], duracionUgc: pub.duracionUgc, ...(pub.audioUgc ? { audioUgc: pub.audioUgc } : {}),
                 ...(String(p.descripcion ?? "").trim() || !pub.descripcion ? {} : { descripcion: pub.descripcion }),
                 ...(String(p.title ?? "").trim() || !pub.title ? {} : { title: pub.title }),
               }));

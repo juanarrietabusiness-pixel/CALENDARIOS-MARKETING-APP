@@ -86,6 +86,14 @@ export function crearHerramientasRecetas({ env, acceso, buscarPublicacion = null
       }
       if (d.productos?.length) lineas.push(`· Productos del catálogo: ${d.productos.join(", ")} (sus ids para «productos»).`);
       if (d.indicacion) lineas.push(`· Lo que pide la agencia (manda): ${d.indicacion}`);
+      if (d.referencia) {
+        const ref = d.referencia;
+        lineas.push(`· La pieza que está funcionando (de «Lo mejor»)${ref.cuenta ? `, de ${ref.cuenta}` : ""}${ref.cifra ? `: ${ref.cifra}` : ""}${ref.tipo ? ` · ${ref.tipo}` : ""}.`);
+        if (ref.idea) lineas.push(`  Por qué funciona: ${ref.idea}`);
+        if (ref.texto) lineas.push(`  Su texto (para entender la idea; NO se copia): ${ref.texto}`);
+        if (ref.enlace) lineas.push(`  Enlace: ${ref.enlace}`);
+        lineas.push("  Es de OTRA cuenta: se toma la idea y el gancho, nunca su marca, su producto, su texto ni su logo.");
+      }
 
       let imagenes = [];
       if (d.referencias?.length && cliente) {

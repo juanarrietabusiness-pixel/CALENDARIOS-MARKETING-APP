@@ -123,7 +123,16 @@ export default function ExtraerUgc({ client, videos = [], duracion: duracionInic
     if (!pub) return;
     setOcupado("Guardando en el banco de ideas…");
     try {
-      await anadirAlBanco({ ...nuevaIdea({ id: crypto.randomUUID(), idea: pub.idea, format: "reel", guion: pub.guion, descripcion: pub.descripcion ?? "" }), ...pub }, clienteId);
+      // Con el enlace del original y su video de la galería como REFERENCIA: antes se guardaba sólo el guion y, al
+      // llevarlo al calendario, ya no se sabía de qué video salía.
+      const enlace = inicial?.enlace || video?.youtube || "";
+      const archivos = video?.id && video?.src
+        ? [{ src: video.src, tipo: "video", id: video.id, ...(inicial?.cuenta ? { cuenta: inicial.cuenta } : {}), ...(enlace ? { enlace } : {}) }]
+        : [];
+      await anadirAlBanco({
+        ...nuevaIdea({ id: crypto.randomUUID(), idea: pub.idea, format: "reel", guion: pub.guion, descripcion: pub.descripcion ?? "", referenceLink: enlace }),
+        ...pub, ...(archivos.length ? { archivos } : {}),
+      }, clienteId);
       setAviso("Guardado en el banco de ideas de este cliente. Desde allí se lleva a un día del calendario.");
     } catch (e) {
       setError(`No se pudo guardar: ${e.message}`);
