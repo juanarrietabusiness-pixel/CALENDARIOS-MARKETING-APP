@@ -6,6 +6,45 @@ import { modeloPorId } from "./estudioCatalogo.js";
 import { rellenarVacios, conVideoEnPost } from "./resultadoEnPost.js";
 import { pedidoDeVideo, pedidoDeFotogramaReel } from "./reelPedidos.js";
 import { resultadoDeReel } from "./encargoReelPuro.js";
+import { acabadoDelGuion, conAcabado, pedidoDeRevisionVideo, leerRevisionVideo } from "./revisionVideo.js";
+import { lineaDelGuionPost, lineasComunesDeGuion } from "./guionVideo.js";
+
+describe("«¿Está listo?» sobre el mp4 montado aprueba lo que antes reprobaba por faltar texto y logo", () => {
+  const guion = guionDeMontaje({
+    reel: { planos: [{ n: 1, desde: 0, hasta: 3, escena: "a" }, { n: 2, desde: 3, hasta: 6, escena: "b" }], locucion: "Hola. Escríbenos hoy.", gancho: "¿Piel sensible?", llamado: "Pídelos hoy" },
+    fuente: { tipo: "clips", clips: [{ archivoId: "a1", duracion: 5 }, { archivoId: "a2", duracion: 5 }] },
+  });
+  const acabado = acabadoDelGuion(guion);
+  it("el guion dice lo que puso la aplicación", () => {
+    expect(acabado).toMatchObject({ subtitulos: true, logo: true, llamado: "Pídelos hoy", voz: true });
+    expect(acabado.textos).toContain("¿Piel sensible?");
+    expect(pedidoDeRevisionVideo({ marca: "BC", acabado })).toMatch(/MONTADO en la aplicación[\s\S]*«¿Piel sensible\?»[\s\S]*No los cuentes como texto mal escrito/);
+    expect(acabadoDelGuion({ escenas: [] })).toBeNull();
+  });
+  it("sin sonido, la marca y el cierre que el modelo de video no tenía, ahora se cumplen y el veredicto cambia", () => {
+    const antes = leerRevisionVideo(JSON.stringify({ puntaje: 8, criterios: { gancho: { ok: true }, sinSonido: { ok: false }, marca: { ok: false }, cierre: { ok: false }, voz: { ok: true }, defectos: { ok: true } } }));
+    expect(antes.veredicto).not.toBe("listo");
+    const despues = conAcabado(antes, acabado);
+    expect(despues.criterios.find((c) => c.id === "marca")).toMatchObject({ ok: true });
+    expect(despues.criterios.find((c) => c.id === "sinSonido").nota).toMatch(/subtítulos/);
+    expect(despues.veredicto).toBe("listo");
+    // Un defecto de verdad (del clip) sigue mandando.
+    const conDefecto = conAcabado({ ...antes, criterios: antes.criterios.map((c) => (c.id === "defectos" ? { ...c, ok: false } : c)) }, acabado);
+    expect(conDefecto.veredicto).toBe("no");
+    expect(conAcabado(antes, null)).toBe(antes);
+  });
+});
+
+describe("la base común de los guiones de video", () => {
+  it("el guion de la publicación, el producto, el criterio y lo de la marca, en el mismo orden para todos", () => {
+    expect(lineaDelGuionPost("")).toBe("");
+    const l = lineasComunesDeGuion({ criterio: "CRITERIO", producto: "Wipes · $45", guionPost: "Hook", contexto: "Marca" });
+    expect(l[0]).toBe("CRITERIO");
+    expect(l[1]).toMatch(/precio EXACTO/);
+    expect(l[2]).toMatch(/EL GUION QUE YA TIENE LA PUBLICACIÓN/);
+    expect(l[3]).toMatch(/Lo que se sabe de la marca/);
+  });
+});
 
 const PLANOS = [
   { n: 1, desde: 0, hasta: 3, escena: "El bebé llora", camara: "Acercamiento" },

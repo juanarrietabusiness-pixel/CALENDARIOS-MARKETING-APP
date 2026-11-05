@@ -14,10 +14,18 @@ import { ErrorEstudio } from "./trabajos.js";
 import { kitDe } from "./kit.js";
 import { leerMercado } from "../mercado.js";
 import { productosActivos, lineaDeProducto } from "../../../src/lib/estudioMercado.js";
-import { pedidoDeRevisionVideo, leerRevisionVideo } from "../../../src/lib/revisionVideo.js";
+import { pedidoDeRevisionVideo, leerRevisionVideo, acabadoDelGuion, conAcabado } from "../../../src/lib/revisionVideo.js";
 
 const leerJSON = (t, d) => { try { return JSON.parse(t) ?? d; } catch { return d; } };
 const FORMATOS = new Set(["reel", "historia", "youtube"]);
+
+/** Lo que el render del video animado puso encima del mp4 (su guion), o null si el video no salió de ahí. */
+async function acabadoDelVideo(acceso, clienteId, ajustes, conLogo) {
+  if (!ajustes?.videoId) return null;
+  const p = await acceso.leerUno("videos_proyectos", { id: String(ajustes.videoId), client_id: clienteId }).catch(() => null);
+  if (!p) return null;
+  return acabadoDelGuion(leerJSON(p.guion, {}), { conLogo });
+}
 
 /** → { revision, guardada } (`guardada`: venía de antes, sin pagar). */
 export async function revisarVideo(env, acceso, cliente, { archivoId = "", clave = "", fotogramas = null, idea = "", productoId = "", formato = "reel", otraVez = false } = {}) {
@@ -46,8 +54,11 @@ export async function revisarVideo(env, acceso, cliente, { archivoId = "", clave
 
   const { catalogo, inventario } = await leerMercado(acceso, cliente.id).catch(() => ({ catalogo: [], inventario: false }));
   const producto = productoId ? productosActivos(catalogo).find((p) => p.id === productoId) : null;
+  const conLogo = Boolean(kitDe(cliente).logo);
+  // El mp4 de un video animado (o del MONTAJE de un reel): lo que lleva encima lo puso el código, sin faltas.
+  const acabado = await acabadoDelVideo(acceso, cliente.id, ajustes, conLogo);
   const prompt = pedidoDeRevisionVideo({
-    marca: cliente.name, idea, formato: FORMATOS.has(formato) ? formato : "reel", conLogo: Boolean(kitDe(cliente).logo),
+    marca: cliente.name, idea, formato: FORMATOS.has(formato) ? formato : "reel", conLogo, acabado,
     producto: producto ? lineaDeProducto(producto, { inventario }).slice(2) : "",
   });
   let texto;
@@ -60,7 +71,7 @@ export async function revisarVideo(env, acceso, cliente, { archivoId = "", clave
     if (e instanceof ErrorVideo) throw new ErrorEstudio(e.message, e.estado, e.codigo ? { codigo: e.codigo } : {});
     throw e;
   }
-  const revision = leerRevisionVideo(texto);
+  const revision = conAcabado(leerRevisionVideo(texto), acabado);
   if (!revision) throw new ErrorEstudio("La IA no devolvió una revisión que se pueda leer. Inténtalo otra vez.", 502);
   const guardar = { ...revision, at: new Date().toISOString(), porFotogramas: Boolean(fotogramas?.length) };
   // Sólo se recuerda en una ficha de la galería (un video suelto de una publicación no tiene dónde).
