@@ -32,7 +32,12 @@ const esVideoArchivo = (f) => f?.type?.startsWith("video/");
 // Medios
 // ------------------------------------------------------------
 
-export function EditorMedios({ post, clientId, client = null, driveFolder, onChange, onError, entradaRef = null, onPortada = null, onCrearConIA = null, onCrearCarrusel = null, onCrearReel = null, onVideoProducto = null, onVideoAnimado = null, onDeLaGaleria = null, onOtraVersion = null, onRecrear = null, onCrearAqui = null, onCorregir = null, onVerEnEstudio = null, versionando = null }) {
+/**
+ * @param botones        si viene (aunque sea null), sustituye a la fila de botones de siempre: la pestaña Pieza del panel
+ *                       pone los suyos («Diseñar con el director», «Subir archivo», «De la galería» y «Más formas»).
+ * @param abrirBancoRef  un ref donde se deja la función que abre «De Drive» / «Del banco» (para un botón de fuera).
+ */
+export function EditorMedios({ post, clientId, client = null, driveFolder, onChange, onError, entradaRef = null, onPortada = null, onCrearConIA = null, onCrearCarrusel = null, onCrearReel = null, onVideoProducto = null, onVideoAnimado = null, onDeLaGaleria = null, onOtraVersion = null, onRecrear = null, onCrearAqui = null, onCorregir = null, onVerEnEstudio = null, versionando = null, botones = undefined, abrirBancoRef = null }) {
   const ids = useId();
   const [eligiendoPortada, setEligiendoPortada] = useState(null);
   const propia = useRef(null);
@@ -47,6 +52,12 @@ export function EditorMedios({ post, clientId, client = null, driveFolder, onCha
   const maximo = LIMITES.instagram.carruselMax;
 
   const poner = (lista) => onChange(lista.slice(0, maximo));
+  // «De Drive» desde un botón de fuera (la pestaña Pieza lo tiene en «Más formas»).
+  useEffect(() => {
+    if (!abrirBancoRef) return undefined;
+    abrirBancoRef.current = () => setEscogiendo(true);
+    return () => { abrirBancoRef.current = null; };
+  }, [abrirBancoRef]);
 
   // Las imágenes que ya estaban en la publicación sin medir (traídas de
   // Drive antes de que se midieran): se miden una vez al abrir, para que
@@ -239,21 +250,21 @@ export function EditorMedios({ post, clientId, client = null, driveFolder, onCha
                   <button type="button" className="btn btn-sm editor-medios-version"
                     disabled={Boolean(versionando)} aria-busy={versionando === m.src || undefined}
                     onClick={() => (onOtraVersion ? onOtraVersion(m) : onCrearConIA({ tipo: "imagen", version: m }))}
-                    title="Otra imagen con la misma información y otro diseño; vuelve a este mismo sitio">
+                    title="Otra versión: la misma información con otra composición; vuelve a este mismo sitio">
                     <Icon name="sparkles" size={14} /> {versionando === m.src ? "Creando…" : "Otra versión"}
                   </button>
                 )}
                 {/* La MISMA imagen con sólo lo que se pide en «¿Qué quieres?» (seccionPublicar). */}
                 {m.tipo === "imagen" && onCorregir && (
                   <button type="button" className="editor-medios-portada-btn" disabled={Boolean(versionando)} onClick={() => onCorregir(m)}
-                    title="Editar esta misma imagen (con tu comentario y ejemplos de la galería): el resto se conserva y vuelve a este sitio">
-                    <Icon name="pencil" size={13} /> Corregir esta
+                    title="Corregir: edita esta misma imagen con lo que escribas en «¿Qué quieres?»; el resto se conserva y vuelve a este sitio">
+                    <Icon name="pencil" size={13} /> Corregir
                   </button>
                 )}
                 {/* Una referencia subida al post (un anuncio que funciona, un video de IA): rehecha con la marca, aquí. */}
                 {onRecrear && (
                   <button type="button" className="editor-medios-portada-btn" disabled={Boolean(versionando)} onClick={() => onRecrear(m)}
-                    title="Usar esto de referencia: su idea, con el producto, el texto y la marca de este cliente. Sale en su sitio.">
+                    title="Para una pieza de OTRA cuenta subida aquí: el director toma su idea y la rehace con el producto, el texto y la marca de este cliente, sin copiarla. Sale en su sitio.">
                     <Icon name="wand" size={13} /> Recrear con mi marca
                   </button>
                 )}
@@ -310,7 +321,7 @@ export function EditorMedios({ post, clientId, client = null, driveFolder, onCha
         // resetear el campo, y la subida no llegaba a salir.
         onChange={(e) => { const fs = [...(e.target.files ?? [])]; e.target.value = ""; if (fs.length) void subir(fs); }}
       />
-      <div className="editor-medios-botones">
+      {botones !== undefined ? botones : <div className="editor-medios-botones">
         {/* Con archivos ya puestos, subir más es la ficha «Añadir» de la rejilla. */}
         {!medios.length && (
           <button type="button" className="btn btn-sm btn-primary" onClick={() => entrada.current?.click()} disabled={!!subiendo}>
@@ -332,12 +343,12 @@ export function EditorMedios({ post, clientId, client = null, driveFolder, onCha
         {onCrearAqui && (
           <button type="button" className="btn btn-sm btn-primary" onClick={onCrearAqui} disabled={!!subiendo || Boolean(versionando)} aria-busy={versionando === "nueva" || undefined}
             title="Con su idea, su texto, el kit y el modelo del cliente. Sale en la publicación y en la galería.">
-            <Icon name="sparkles" size={16} /> {versionando === "nueva" ? "Creando…" : "Crear la imagen aquí"}
+            <Icon name="sparkles" size={16} /> {versionando === "nueva" ? "Diseñando…" : "Diseñar con el director"}
           </button>
         )}
         {clientId && onCrearConIA && (
           <button type="button" className="btn btn-secondary btn-sm" onClick={() => onCrearConIA({ tipo: "imagen" })} disabled={!!subiendo || medios.length >= maximo}>
-            <Icon name="sparkles" size={16} /> Crear con IA
+            <Icon name="sparkles" size={16} /> Crear en el Estudio
           </button>
         )}
         {onCrearCarrusel && (
@@ -360,7 +371,7 @@ export function EditorMedios({ post, clientId, client = null, driveFolder, onCha
             <Icon name="sparkles" size={16} /> Video animado
           </button>
         )}
-      </div>
+      </div>}
       <p className="hint editor-medios-ayuda">
         {medios.length > 1 ? "Arrastra las miniaturas para cambiar el orden. " : ""}También puedes arrastrarlos aquí o pegarlos con Ctrl+V.
       </p>

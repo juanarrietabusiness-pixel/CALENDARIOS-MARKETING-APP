@@ -26,7 +26,8 @@ const EditorEstrategia = lazy(() => import("../EstrategiaMes").then((m) => ({ de
  * luego había que abrirla y buscar la pestaña. Ahora se escoge qué se
  * quiere hacer y se abre directamente ahí, sin rellenar nada:
  *
- *   · Subir contenido → la pestaña Subir; el formato sale del archivo y
+ *   · Subir contenido → la pestaña Pieza (pide «publicar», el nombre de
+ *     antes: PostSidePanel lo traduce); el formato sale del archivo y
  *     queda aprobada (sale directo, como el botón «Subir»).
  *   · Agregar idea    → la pestaña Idea, para que el cliente la revise.
  *
