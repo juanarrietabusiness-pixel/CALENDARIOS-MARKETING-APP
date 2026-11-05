@@ -262,8 +262,15 @@ src/
     recrear.js            «Recrear un anuncio»: el análisis en pocas líneas, la versión de partida y lo que va al
                           compositor (el anuncio sólo por su forma, las fotos del producto delante) (puro)
     otraVersion.js        «Otra versión» y «Recrear con mi marca» de un medio de la PUBLICACIÓN: se hacen ahí y ocupan
-                          su sitio (lazy)
-    piezaChat.js          La imagen o el video que pide el asistente, por el Estudio con el kit del cliente (lazy)
+                          su sitio; «Recrear un anuncio» en imagen y «Generar en 4:5 con IA» (todo por el servidor) (lazy)
+    piezaServidor.js      UNA pieza (o unas pocas) con las reglas del lote: el pedido listo como encargo del servidor
+                          (proporción, control con su corrección, logo estampado), seguirlo y devolver la final
+    marcaDeHoy.js         Un pedido de antes con la MARCA DE HOY: cambia el bloque de la marca, el acabado y el logo por los
+                          del kit actual y acorta la escena, nunca el final (puro)
+    visorEstudio.js       «Otra igual», «Otra versión distinta» y «Editar» del visor, por el servidor (lazy: el chunk del
+                          Estudio está en su tope)
+    piezaChat.js          La imagen o el video que pide el asistente, por el Estudio con el kit del cliente; la imagen, con el
+                          director y por el servidor (lazy)
     referencias.js        Qué se toma de cada imagen de referencia (estilo, composición, producto…), la foto
                           REAL del producto (y si es de otra marca), el producto que nombra la idea (puro)
     galeriaPura.js        Lo PURO de la galería que necesitan la pantalla y el Worker: fotos de un producto, piezas de un
@@ -1619,8 +1626,8 @@ son del servidor.
   del tono, no se copian). Una persona lo revisa y guarda; «Corregir antes»
   abre el formulario. Los presets PROPIOS (hasta 6) no los toca la IA.
   · **La marca va en TODA pieza, no dentro del preset** (`bloqueDeMarca`: paleta,
-  estilo, luz, tipografía, «nunca»), mientras el kit tenga algo y no se apague
-  «Usar el kit en esta pieza». Antes sólo viajaba dentro del preset: con «Sin
+  estilo, luz, tipografía, «nunca»), SIEMPRE que el kit tenga algo (la casilla «Usar el kit
+  en esta pieza» se quitó: cambiaba el resultado por navegador). Antes sólo viajaba dentro del preset: con «Sin
   preset» —lo que salía desde un post sin tipo— la imagen no sabía nada de la
   marca, el logo tampoco iba, y «Revisar marca» daba 4 de 10.
   · **Un preset por TIPO DE CONTENIDO** (`TIPOS_PRESET`, mismos ids que
@@ -1824,8 +1831,8 @@ son del servidor.
   aspecto: `limpiarKit` los pasa a ESTILOS propios (`kit.estilos`, ids `estilo-…`) con sus referencias. Las líneas
   visuales de las 7 maletas son «composición sugerida (si la escena no dice otra)». El `acabado` de antes (mismos
   ids) se sigue aceptando.
-- **«Mejorar idea» se lanza SOLA al abrir «Crear con IA» desde una publicación** (apagable, se recuerda por
-  navegador): la idea + el texto de la pieza + el contexto llegan juntos y largos; en una imagen la reescribe el
+- **«Mejorar idea» se lanza SOLA al abrir «Crear con IA» desde una publicación** (siempre: la casilla que la apagaba
+  por navegador se quitó; con «¿Qué quieres?» escrito, el director rediseña aunque haya pedido listo): la idea + el texto de la pieza + el contexto llegan juntos y largos; en una imagen la reescribe el
   director de arte como FICHA DE DISEÑO (ver «Mejorar idea ya NO resume», más abajo). El texto entre comillas se conserva EXACTO (lo dice el pedido de la mejora). «Volver a mi idea».
   **Salvo que el post ya traiga su pedido LISTO** (`src/lib/promptImagen.js`): el motor de ideas (lote, «Planificar
   mes», «Completar los textos», «Generar», «Otra») escribe por cada pieza de una imagen el campo `imagen` —la escena
@@ -1844,16 +1851,15 @@ son del servidor.
   «Corregir esta» lo NECESITA y EDITA la misma imagen (`rehacerConComentario`, como «Rehacer con lo que pidió el
   cliente») en su sitio. Se vacía al salir bien. CalendarView importa el motor de ideas EN DIFERIDO (al pulsar
   «Completar los textos»): con la huella dentro, la carga inicial pasaba de 180 kB.
-- **«Otra versión», «Corregir esta» y «Recrear con mi marca» de una imagen del post se hacen EN EL ESTUDIO por defecto**
-  (decisión de la agencia: lo hecho a ciegas en el post, sobre todo una lámina suelta de un carrusel, salía peor que en
-  la galería). `abrirEnEstudio` (seccionPublicar) pasa la imagen por `archivoEnGaleria` (lib/estudio.js: la ficha que
-  ya había por ruta o clave; si se subió directo al post o vino de Drive, la SUBE —la huella evita la copia doble—) y
-  abre el diálogo del Estudio con `inicial.abrir`: el visor (sus versiones; «Editar» ya abierto con lo escrito en «¿Qué
-  quieres?») o el recreador. Lo escogido —esa pieza o cualquiera de la galería— va al SITIO de la imagen tocada
-  (`onReemplazar` de `useCrearConIA`; el botón dice «Poner en la lámina N»), no al final. «Otra versión» de una imagen
-  que no salió del Estudio (subida: no hay pedido que repetir) abre el compositor con ella de referencia. Con
-  `inicial.abrir` el diálogo NO lanza «Mejorar idea» (`listo`): se viene a corregir, no a crear. «Aquí, rápido» (se
-  recuerda por navegador, `post-acciones-donde`) es el camino de antes. «Animar» se quitó del post.
+- **«Otra versión», «Corregir esta» y «Recrear con mi marca» de una imagen del post se hacen EN EL POST, por el director
+  y el servidor** (decisión de la agencia del 5 de noviembre: fuera el interruptor «En el Estudio / Aquí, rápido», que se
+  recordaba por navegador como `post-acciones-donde`). Lo «a ciegas» de antes ya no lo es: el director MIRA la original
+  (papel «original») y la pieza sale revisada (lib/piezaServidor.js); ocupa su sitio con «Deshacer». Al lado de cada
+  imagen, «Ver en el Estudio» (`verEnEstudio` en seccionPublicar) pasa la imagen por `archivoEnGaleria` (lib/estudio.js:
+  la ficha que ya había por ruta o clave; si se subió directo al post o vino de Drive, la SUBE —la huella evita la copia
+  doble—) y abre el visor con `inicial.abrir` (`accion: "ver"`): sus versiones, «Editar» con ejemplos de la galería; lo
+  escogido va al SITIO de la imagen tocada (`onReemplazar` de `useCrearConIA`; el botón dice «Poner en la lámina N»). Con
+  `inicial.abrir` el diálogo NO lanza «Mejorar idea» (`listo`): se viene a corregir, no a crear. «Animar» se quitó del post.
 - **La papelera no borra lo que usa la MARCA** (`clavesDeLaMarca`, `sinClavesPerdidas` en kitMarca.js; `clavesPerdidas` en
   worker/lib/estudio/galeria.js). El logo, la muestra de la tipografía, los personajes, las plantillas, las referencias
   de cada tipo y las fotos del catálogo son archivos de la galería sin `usado_en`: vaciar la papelera (o la purga de 30
@@ -1973,7 +1979,7 @@ son del servidor.
   diseño que salió bien. Un precio, el logo o una deformación no se corrigen solos: «Revisar», y decide una persona.
   · **Va solo** al terminar cada pieza del lote, cada lámina del carrusel (ANTES de que vaya de referencia a la
   siguiente: si no, el error se copiaría en la serie), «Diseñar las que ya hay» y el compositor (`terminarTrabajo`, que
-  también estampa el logo). Se apaga por navegador («Revisar cada pieza…», `controlEncendido`). Con la plantilla, el
+  también estampa el logo). Va SIEMPRE: la casilla «Revisar cada pieza…» (`controlEncendido`, por navegador) se quitó. Con la plantilla, el
   texto lo pone la aplicación: no se controla. Si el control falla (sin saldo, sin red), la pieza sigue sin él.
   · En el visor, `ControlDeCalidad` (EstudioVisor.jsx): lo leído, lo mal escrito, «Corregir el texto» y «Revisar otra vez».
 - **La tipografía REAL de la marca** (`kit.fuente`: { clave, nombre, muestra }; `FuenteDeMarca.jsx`, `POST
@@ -2358,8 +2364,8 @@ son del servidor.
   navegador pega el original al terminar: en el compositor (al acabar el trabajo, `paraEstampar` en Estudio.jsx), en
   cada lámina del carrusel (la CRUDA sigue sin logo: es la que va de referencia y la que se corrige), en el lote y en
   «Producir el mes». Sale como pieza NUEVA con `origenId` (la original se queda). «Estampar el logo» del visor funciona
-  en cualquier modo. El asistente y Claude por MCP no pueden estampar (no hay lienzo en el Worker): con «estampado»
-  piden sin logo.
+  en cualquier modo. Lo que piden el asistente y Claude por MCP va por un encargo del servidor y el logo lo estampa el
+  Container (`acabarPieza`); sin Container, la pantalla al abrirse (`terminarPendientes`).
 - **Los personajes de la marca** (`kit.personajes`, hasta 4: nombre, descripción, retrato y cuerpo de la galería): el
   bebé de Baby Caleb tiene que ser EL MISMO en cada lámina y cada pieza. Van de referencia con `toma: ["persona"]` y una
   nota de quién son (`referenciasDePersonajes`), en el compositor («Personajes de la marca») y en el carrusel; el
@@ -3683,8 +3689,9 @@ son del servidor.
   equipo); vacío, el del cliente si admite referencias o el mejor que sí (`modeloDeHistorias`).
   La ruta vieja (`historiaDe` en /api/generar-imagen) sigue, pero ya no la llama la pantalla.
 - **«Crear la imagen aquí» escoge tipo, estilo, modelo y plantilla** (`OpcionesCrearAqui.jsx`, lazy: arrastra el
-  catálogo; se recuerda por cliente en `crear-aqui:<cliente>`). Vacío es lo de siempre: el tipo del post, el estilo de ese
-  tipo, el modelo fijado y ninguna plantilla.
+  catálogo; sólo para esa publicación: recordado por navegador en `crear-aqui:<cliente>`, la siguiente salía con la
+  plantilla o el estilo de otra sin que nadie lo viera). Vacío es lo de siempre: el tipo del post, el estilo de ese tipo, el
+  modelo fijado y ninguna plantilla (o la que escoja el director, que ahora también llega al motor).
 - **El texto bien colocado** (donde más se equivoca el diseño no es la ortografía: es dónde va el texto y de qué tamaño).
   · **La ficha lleva medidas:** `FORMATO_FICHA` pide la composición y el tamaño del texto en % de la pieza («titular entre
   el 8 y el 22 % de la altura, 80 % del ancho») y el manual de la casa lo exige («arriba» o «grande» no le dicen nada al
@@ -3747,8 +3754,9 @@ son del servidor.
   delante, aunque se dijera «sólo la composición», el motor la calcaba. Ahora el DIRECTOR la mira (`papel: "inspiracion"`:
   la idea, el gancho y el tipo de composición, en una versión propia ligeramente distinta) y escribe la ficha con el
   catálogo; la imagen de otra marca NO va al motor de imagen. Si la publicación no dice qué producto, el director escoge
-  del catálogo y van las fotos de los que nombra (`fotosDeLaPieza`). Sin director (sin saldo), la de antes, con
-  `NOTA_OTRA_MARCA` («ligeramente distinta… que no se reconozca como copia»).
+  del catálogo y van las fotos de los que nombra (`fotosDeLaPieza`). Sin director (sin saldo, caído) NO se recrea y se
+  dice por qué: la referencia ya no va al motor ni de respaldo. Lo mismo en «Recrear un anuncio» del Estudio en imagen
+  (`recrearAnuncioConLaMarca`); en video sigue el camino de video (`motorParaRecrear`, sólo modelos con llave).
 - **Una publicación puede llevar VARIOS productos** (`post.productoIds`; `productosDelPost`, `conProductos` en pilares.js;
   `fotosDelPost` en estudio.js). `productoId` sigue siendo el principal —el primero que se escoge; lo usa la matriz— y
   `producto` junta los nombres («Sofá cama + Mesa»), que es lo que lee la IA al escribir. En «Tipo de contenido» se
@@ -3760,6 +3768,50 @@ son del servidor.
   cada pieza) y sus fotos REALES van de referencia también en un carrusel (`fotosDeLaPiezaDelChat`); antes sólo se
   buscaban por el nombre en la ficha y, si no lo nombraba igual, el motor se inventaba el producto y la marca. Si no sabe
   de qué producto va, se le pide que PREGUNTE (con las opciones del catálogo); sin catálogo, que pregunte cuál y cómo es.
+- **Toda pieza NUEVA de imagen de un cliente pasa por las mismas reglas que el lote** (fase 1 de
+  docs/propuesta-lo-mejor-y-creacion.md; en producción, 151 de 430 piezas salían sin control). Lo que va por el servidor
+  (lote, «Producir el mes», carrusel, `disenar_piezas`) ya lo hacía; ahora también el visor, «Otra versión», «Crear la
+  imagen aquí», «Corregir esta», «Recrear con mi marca», «Recrear un anuncio», las historias con IA, «Generar en 4:5 con
+  IA», `generar_imagen` del asistente y `crear_en_estudio`. Cosas que no se ven:
+  · **El pedido listo va como un ENCARGO de una pieza** (`pasoListo`/`crearUnaEnServidor` en src/lib/piezaServidor.js,
+  `mejorar: false`, la escena ya dentro, sin «{{ESCENA}}»): la proporción (se recompone si no casa), el control con UNA
+  corrección (con el `texto` que debe decir) y el logo estampado si el kit lo pide (`navegador.logo`), aunque se cierre la
+  pantalla. Lo que necesita lienzo lo pone la pantalla SÓLO con el encargo ya cerrado (`esperarEnServidor`): si hay
+  Container, el servidor no lo cierra sin intentarlo, y así no se estampa dos veces. Una EDICIÓN (corregir, editar,
+  recomponer) no se estampa otra vez (`estampar: false`, o si la pieza ya lleva `plantilla: "logo"`).
+  · **La versión de una pieza va con la MARCA DE HOY** (src/lib/marcaDeHoy.js): «Otra igual» y «Otra versión»
+  repetían el bloque de la marca, el logo y el acabado del día de la original (con el logo pasado a «estampado», salían
+  dos) y cortaban el pedido con `slice(0, MAX_PROMPT)`, que se llevaba la marca y el logo. `conMarcaDeHoy` parte el
+  pedido por sus trozos (los separa una línea en blanco), quita el logo de antes (la última referencia), las líneas de las
+  referencias que ya no caben y pone el kit actual; si no cabe, `ajustarFicha` acorta la escena.
+  · **«Versión distinta» la diseña el director también sin ficha** (`versionesDeIdea` en worker/lib/estudio/prompt.js: en
+  imagen siempre por `encargoDeVersion`, «LA ESCENA DE LA PIEZA ORIGINAL»; sólo un video o el director caído van por las
+  escenas cortas). El texto que se manda: el de la ficha, el del control o el del pedido (`textoDePieza` en
+  lib/visorEstudio.js). Tras «Editar», el control compara el texto que debe QUEDAR (`textoTrasEditar`: con «X» → «Y», el
+  cambio; si no se sabe, el del pedido).
+  · **`crear_en_estudio` de una imagen es un encargo** (`imagenPorEncargo` en worker/lib/estudio/herramientas.js) con el
+  modelo FIJADO del cliente si no se pide otro (y su relevo si no hace el formato con las referencias), el director si no
+  llega una ficha, el control y el logo estampado. La confirmación de 0,50 $ y el presupuesto se miran ANTES de crear. El
+  ID que devuelve es del encargo: `estado_trabajo` lo acepta (y `ver_estudio` lo enseña en marcha); su `origen`
+  («asistente», «claude») llega a cada trabajo (`datos.origen` en encargos.js). encargos.js y vistaEstudio.js se importan
+  en el momento (`import()`): estáticos cerrarían el ciclo con herramientasServidor.js. Un video, sin cambios.
+  · **Las historias con IA enseñan el costo y piden el sí** (`costoDeHistorias`, `modelosParaHistorias` → `costos`; el
+  botón dice «· unos X $» y un segundo toque las crea) y van en UN encargo de tres piezas. «¿Qué quieres?» del post les
+  llega, y también al diálogo «Crear con IA» (que entonces no usa el pedido listo) y al director del carrusel
+  (`indicacion` en `pedidoDeCarrusel`). «Crear con IA» lleva los productos secundarios (`inicial.post.productoIds`) y la
+  plantilla que escoge el director va al motor (compositor, «Crear la imagen aquí», «Otra versión», «Recrear»).
+  · **«Generar en 4:5 con IA»** (ajusteImagen.jsx) ya no va por /api/generar-imagen: `recomponerEnProporcion`
+  (pedidoDeRecomponer, el modelo del cliente si edita y hace la proporción, si no el relevo) por el servidor con el
+  control; el navegador sigue recortando a la medida exacta (Instagram no admite 896×1152).
+  · **Fuera las preferencias por navegador que cambiaban el resultado** (decisión de la agencia): el control
+  (`controlEncendido`, `estudio-control`), «Usar el kit en esta pieza» (`estudio-usar-kit:<cliente>`), «Diseñarla sola
+  al abrir» (`estudio-mejorar-solo`), «En el Estudio / Aquí, rápido» (`post-acciones-donde`) y las opciones recordadas
+  de «Crear la imagen aquí» (`crear-aqui:<cliente>`). Las claves viejas se quedan en los navegadores sin que nadie las
+  lea. Las comodidades (pestaña, plegados, `historias-solas`) siguen.
+  · **El visor del Estudio no espera**: manda el encargo, cierra y avisa si una pieza no salió (`alFallo`); la galería la
+  enseña al llegar el aviso del encargo. La lógica vive en lib/visorEstudio.js (lazy): el chunk del Estudio estaba en
+  20,3 de 20 kB y quedó en 19,7.
+  · **Nada de esto se ha probado contra los servicios reales**: los tests hablan con dobles del servidor y de los motores.
 - **Dos carruseles no se parecen: la ESTRUCTURA la pone el código** (`src/lib/estructurasCarrusel.js`). Todas las ideas
   salían «Portada / Slide 1…5 / CTA», y las de un mismo tipo, casi iguales. Hay 14 estructuras propias (errores comunes,
   mito o realidad, paso a paso, antes y después, comparación, lista, señales, preguntas, caso real, qué incluye, guía para
