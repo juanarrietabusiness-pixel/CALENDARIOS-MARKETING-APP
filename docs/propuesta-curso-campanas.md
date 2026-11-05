@@ -261,7 +261,8 @@ con una regla más (`REGLA_ANUNCIO`, en palabras propias) cuando la publicación
 Un caption que cumple esto también sirve en orgánico, así que la publicación sale igual en su día y luego se pauta sin
 tocarla.
 
-**A.4 Si va como «anuncio nuevo»: sus textos aparte (S-M).** Cuando el anuncio se monta subiendo la pieza (no la
+**A.4 Sus textos de anuncio aparte, siempre (S-M).** La agencia monta de las dos formas (decisión 8), así que toda
+publicación «Va a pauta» los lleva, por si se monta subiendo la pieza. Cuando el anuncio se monta así (no con la
 publicación), el Ads Manager deja escribir hasta 5 textos principales y 5 títulos, y Meta prueba combinaciones. El
 calendario los escribe en `post.anuncio`: de 3 a 5 textos principales, cada uno por un ángulo o nivel distinto; títulos
 de hasta 40 caracteres; descripción de hasta 30 (`LIMITES_ANUNCIO`, que ya existe); y el botón. Todo con botón de
@@ -282,6 +283,58 @@ comisiones como Tafi, otros), ITBMS para separar bruto y neto, costos fijos opci
 eso salen el ROAS y el CPA de equilibrio y el costo máximo por conversación. Se guarda en `anuncios_clientes` y lo leen
 el diagnóstico, el informe y el estratega sin teclearlo. La calculadora de presupuesto (meta de ventas → inversión →
 reparto por etapas) va aquí.
+
+**Las fórmulas: lo que dicen los apuntes y lo que falta.** Los apuntes dan las ENTRADAS de cada Excel, no sus fórmulas.
+Lo que sí está:
+
+- El número mágico depende del objetivo: mensajes, costo por conversación; tráfico, costo por clic único; clientes
+  potenciales, costo por cliente potencial; ventas por catálogo, ROAS o costo por compra; tráfico al negocio, CPM.
+- En mensajes: el % de quienes escriben y compran × el costo por compra objetivo = el costo por conversación. El % se
+  mide a mano (5 % de partida).
+- La calculadora de equilibrio pide, como % del BRUTO: producción, envíos, devoluciones, comisiones y otros costos
+  variables; además la tasa de cierre (no en e-commerce) y los costos fijos. Meta reporta en bruto (con impuestos y
+  devoluciones).
+- El equilibrio es una alarma, no el objetivo: se optimiza buscando lo más alto por encima del ROAS de equilibrio y el
+  menor costo posible por debajo del CAC de equilibrio.
+- El presupuesto pide la meta de ventas, el ticket y el % de la ganancia que se invierte en clientes nuevos, y devuelve
+  las ventas necesarias, la inversión y los márgenes. No dice cómo.
+- Del simulador sólo se sabe que existe («simular los mejores resultados y fijar un objetivo»). Los costos fijos de
+  leads y mensajes están en blanco en los apuntes.
+
+**Las fórmulas reconstruidas, POR CONFIRMAR con los Excels** (son las de finanzas de siempre, pero el Excel puede
+redondear, tratar el ITBMS o los fijos de otra forma):
+
+| Cálculo | Fórmula |
+|---|---|
+| Venta neta | precio con ITBMS ÷ 1,07 |
+| Margen de contribución | 1 − la suma de los % variables (sobre la venta neta) |
+| Ganancia por venta | venta neta × margen de contribución |
+| ROAS de equilibrio (neto) | 1 ÷ margen de contribución |
+| ROAS de equilibrio en bruto (el que enseña Meta) | el neto × 1,07 (y ÷ (1 − devoluciones) si Meta cuenta lo devuelto) |
+| CPA de equilibrio | ganancia por venta (menos la parte de los fijos si se cargan: fijos ÷ ventas del mes) |
+| Costo máximo por conversación | CPA de equilibrio × tasa de cierre |
+| Costo objetivo por conversación | costo por compra objetivo × tasa de cierre |
+| Ventas necesarias | meta de ventas ÷ ticket |
+| Conversaciones necesarias | ventas necesarias ÷ tasa de cierre |
+| Inversión | conversaciones × costo objetivo, o ganancia del mes × % que se invierte |
+
+Ejemplo (inventado): precio 107 $ con ITBMS → 100 $ netos; producto 40 %, envío 5 %, devoluciones 2 %, comisión 4 %,
+otros 2 % → margen 47 % → 47 $ por venta. ROAS de equilibrio 2,13 (2,28 en bruto). Con 5 % de cierre, el costo máximo
+por conversación es 2,35 $; con 20 %, 9,40 $. Por eso la tasa de cierre por defecto (decisión 4) cambia todo.
+
+**Lo que hace falta para replicarlas exactas:**
+
+1. De cada Excel (presupuesto, número mágico / equilibrio, costo por conversación, simulador): las celdas de entrada y
+   la fórmula de cada celda de salida. Basta con el archivo o con capturas que enseñen la barra de fórmulas.
+2. Por cliente: ticket promedio; cada costo variable en % (producto, envío, devoluciones, comisión de Tafi o pasarela,
+   otros); si los precios llevan ITBMS; costos fijos del mes y si se cargan a la pauta; meta de ventas; y la tasa de
+   cierre real, con cómo se cuenta (etiquetas de WhatsApp, CRM, a mano).
+3. El costo por conversación de cada cliente ya lo lee la app de lo que corre en el Ads Manager (30 y 7 días): no hace
+   falta pedirlo.
+
+Las skills de Felipe Vergara instaladas en Claude no traen las fórmulas: sólo llaman a su servidor (que no siempre
+conecta), y su licencia no deja copiar su contenido. Las cuentas son finanzas comunes; lo que va a la app se escribe con
+palabras propias.
 
 **B.2 Las métricas que faltan (S).** Clics únicos en el enlace, CTR único y su costo, reproducciones de 3 s, tiempo
 promedio de reproducción y los rankings de calidad. Con ellos, el **% de mensajes** = conversaciones ÷ clics únicos.
@@ -386,16 +439,16 @@ campaña completa sugerida. La D necesita A y B funcionando un tiempo para tener
 
 | # | Decisión | Propuesta |
 |---|---|---|
-| 0 | ¿Montar en el Ads Manager con el calendario como plan, guía y seguimiento? | Sí; «Nueva campaña» de la app, congelada |
+| 0 | ¿Montar en el Ads Manager con el calendario como plan, guía y seguimiento? | **Decidido (agencia, 5-nov):** sí; «Nueva campaña» de la app, congelada |
 | 1 | Reparto: 60/20/10/10 (lámina) o 60-80 / 30 / 5-10 / 5-10 (nota) | 60/20/10/10 por defecto, editable en el Manual |
 | 2 | Advantage+ en cuentas nuevas | Sólo como conjunto de prueba en presentación; nunca en evaluación ni ascensión |
 | 3 | Cuenta nueva: 4 campañas o presentación + evaluación | Nueva = presentación + evaluación; con historial = las 4 |
-| 4 | Tasa de cierre por defecto: 20 % (hoy) o 5 % (curso) | 5 % hasta medir la del cliente; cambia todos los números mágicos |
+| 4 | Tasa de cierre por defecto: 20 % (hoy) o 5 % (curso) | 5 % hasta medir la del cliente; cambia todos los números mágicos. Pendiente de los Excels (B.1) |
 | 5 | Nombres de etapas y maletas | Los del curso, con alias para lo ya escrito |
 | 6 | Tamaño del feed | Se queda 4:5 |
 | 7 | Cuándo se pausa un anuncio | Fuera del número mágico con el doble gastado, y nunca si el conjunto está sano |
-| 8 | ¿Lo normal es pautar la publicación existente o montar un anuncio nuevo? | Publicación existente por defecto (A.3); «anuncio nuevo» cuando se pida (A.4) |
-| 9 | ¿Qué publicaciones se marcan «Va a pauta» solas? | Las del tipo «Anuncio» del plan semanal y las de la oferta del mes, quitables |
+| 8 | ¿Lo normal es pautar la publicación existente o montar un anuncio nuevo? | **Decidido (agencia, 5-nov): las dos.** Toda publicación «Va a pauta» lleva su caption como anuncio (A.3) Y sus textos de anuncio aparte (A.4); `como` sólo dice cuál se espera |
+| 9 | ¿Qué publicaciones se marcan «Va a pauta» solas? | Las del tipo «Anuncio» del plan semanal y las de la oferta del mes, quitables (pendiente: se volvió a explicar) |
 | 10 | ¿Hashtags en lo que va a pauta? | Ninguno o casi |
 
 ---
@@ -407,4 +460,4 @@ campaña completa sugerida. La D necesita A y B funcionando un tiempo para tener
 - Los módulos 5.1 a 5.6 y del 7 en adelante (el 6.2 cita el 9: potenciar con IA).
 - Los documentos que el curso cita y no están en los apuntes: el Excel de presupuesto, el del número mágico (ROAS y CPA
   de equilibrio), el de costo por conversación, el simulador y la plantilla de preguntas para clientes. Con ellos, la
-  fase B.1 replica las fórmulas exactas en vez de reconstruirlas.
+  fase B.1 replica las fórmulas exactas en vez de reconstruirlas (qué hace falta de cada uno, en B.1).
