@@ -29,9 +29,10 @@ import {
   registrarClienteMCP, clienteMCP, crearCodigoMCP, canjearCodigoMCP, renovarTokenMCP, usuarioDeTokenMCP,
 } from "../lib/sesion.js";
 import { HERRAMIENTAS_MCP, crearHerramientasMCP } from "../lib/mcp.js";
+import { REGLA_RECETAS } from "../../src/lib/recetas.js";
 
 const VERSIONES = ["2025-06-18", "2025-03-26", "2024-11-05"];
-const INSTRUCCIONES = "Herramientas de la agencia Juancito Ads: sus clientes, sus calendarios de contenido, la cola de publicación en Instagram, Facebook y TikTok, las tareas, el banco de ideas y los resultados. Consulta antes de escribir (listar_clientes, ver_calendario) y confirma con la persona antes de borrar o cancelar. Las horas son de Panamá.";
+const INSTRUCCIONES = `Herramientas de la agencia Juancito Ads: sus clientes, sus calendarios de contenido, la cola de publicación en Instagram, Facebook y TikTok, las tareas, el banco de ideas y los resultados. Consulta antes de escribir (listar_clientes, ver_calendario) y confirma con la persona antes de borrar o cancelar. Las horas son de Panamá. Para DISEÑAR piezas de un cliente, lee antes guia_de_diseno. ${REGLA_RECETAS}`;
 
 // Claude (y cualquier cliente MCP) llama desde otro origen, con Bearer:
 // sin cookies, así que abrir CORS no expone ninguna sesión.

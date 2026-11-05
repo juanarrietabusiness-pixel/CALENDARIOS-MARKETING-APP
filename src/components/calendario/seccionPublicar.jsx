@@ -50,6 +50,7 @@ import { presetDePilar } from "../../lib/pilares";
 import { fechasQueVienen, fraseDeFalta } from "../../lib/temporada";
 import { MODOS_FOTO, instruccionDeTemporada } from "../../lib/modosFoto";
 import { fechaEnZona } from "../../lib/agenda";
+import { navegar } from "../../lib/rutas";
 import BotonGuardarDrive from "./botonGuardarDrive";
 
 // «Crear carrusel con IA»: sólo se descarga al abrirlo.
@@ -61,6 +62,7 @@ const GaleriaSelector = lazy(() => import("../GaleriaSelector"));
 // El tipo, el estilo y la plantilla de «Crear la imagen aquí»: lee el kit, va aparte.
 const OpcionesCrearAqui = lazy(() => import("./OpcionesCrearAqui"));
 const VideoListo = lazy(() => import("../VideoListo"));
+const Recetas = lazy(() => import("../Recetas"));
 
 /**
  * @param formatoAuto  true cuando la publicación se creó con «Subir
@@ -189,6 +191,8 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
   // «¿Qué quieres?»: lo que la persona pide para la imagen. Lo leen «Crear la imagen aquí», «Otra versión», «Recrear
   // con mi marca» y «Corregir esta» (ésta lo necesita). Se vacía cuando sale bien: no se cuela en la siguiente.
   const [indicacion, setIndicacion] = useState("");
+  // Las RECETAS de la agencia para esta publicación: «Crear con Claude» (con el pedido) o «Crear aquí» (la pestaña Diseño).
+  const [recetas, setRecetas] = useState(false);
   // «De temporada»: las fechas especiales del cliente que vienen (sin las delicadas), para reutilizar la pieza en ellas.
   const temporada = useMemo(() => fechasQueVienen(client?.fechasEspeciales, fechaEnZona()), [client?.fechasEspeciales]);
   const campoIndicacion = useRef(null);
@@ -478,6 +482,28 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
                   );
                 })}
               </div>
+            )}
+            <div className="que-quieres-atajos">
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setRecetas(true)}>
+                <Icon name="list" size={14} /> Con una receta…
+              </button>
+              <span className="hint">Aquí con el director o en claude.ai, con lo que escribiste arriba.</span>
+            </div>
+            {recetas && (
+              <Suspense fallback={null}>
+                <Recetas
+                  clienteId={clientId}
+                  publicacion={cal && post.id ? { calendarId: cal.dbId || cal.id, postId: post.id, etiqueta: post.title || post.idea?.slice(0, 50) || "esta publicación" } : null}
+                  indicacion={indicacion}
+                  onCrearAqui={window.location.pathname.startsWith("/cliente/") && post.id ? (r) => {
+                    const base = window.location.pathname.split("/").slice(0, 3).join("/");
+                    const q = new URLSearchParams({ receta: r.id, post: post.id, ...(indicacion.trim() ? { pide: indicacion.trim() } : {}) });
+                    setRecetas(false);
+                    navegar(`${base}/diseno?${q}`);
+                  } : null}
+                  onCerrar={() => setRecetas(false)}
+                />
+              </Suspense>
             )}
             <p id={`${ids}-quiero-ayuda`} className="hint" style={{ margin: 0 }}>
               {!conImagen

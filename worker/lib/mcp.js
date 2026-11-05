@@ -27,6 +27,7 @@ import { fechaEnZona, sumarDias } from "../../src/lib/agenda.js";
 import { obtenerOCrearMes, moverDeMes, ErrorMes } from "./meses.js";
 import { DEFINICIONES_ESTUDIO, crearHerramientasEstudio, ErrorHerramientaEstudio } from "./estudio/herramientas.js";
 import { DEFINICIONES_DISENO_MCP, crearHerramientasDiseno, ErrorDiseno } from "./estudio/herramientasDiseno.js";
+import { DEFINICIONES_RECETAS, crearHerramientasRecetas, ErrorReceta } from "./estudio/herramientasRecetas.js";
 import { ESCRIBEN_VIDEO } from "./estudio/herramientasVideo.js";
 
 const FORMATOS = ["post", "reel", "carrusel", "historia", "live"];
@@ -105,6 +106,7 @@ export const HERRAMIENTAS_MCP = Object.freeze([
   })),
   // El DIRECTOR CREATIVO por MCP (worker/lib/estudio/herramientasDiseno.js): diseñar en lote, ver, corregir y poner en un post.
   ...DEFINICIONES_DISENO_MCP,
+  ...DEFINICIONES_RECETAS,
 ]);
 
 /** Un error de lo pedido: vuelve a Claude como resultado con `isError`, no como fallo del servidor. */
@@ -371,7 +373,7 @@ export function crearHerramientasMCP({ env, acceso, usuario }) {
       }
       return { content: [{ type: "text", text: `Herramienta desconocida: ${nombre}` }], isError: true };
     } catch (e) {
-      const delPedido = e instanceof ErrorHerramienta || e instanceof ErrorHerramientaEstudio || e instanceof ErrorDiseno;
+      const delPedido = e instanceof ErrorHerramienta || e instanceof ErrorHerramientaEstudio || e instanceof ErrorDiseno || e instanceof ErrorReceta;
       if (!delPedido) console.error("mcp:", nombre, e);
       return { content: [{ type: "text", text: delPedido ? e.message : `No se pudo: ${e?.message ?? e}` }], isError: true };
     }
@@ -380,6 +382,7 @@ export function crearHerramientasMCP({ env, acceso, usuario }) {
   const estudio = crearHerramientasEstudio({ env, acceso, resolverCliente, usuario, por, origen: "claude" });
   Object.assign(acciones, estudio);
   Object.assign(acciones, crearHerramientasDiseno({ env, acceso, resolverCliente, usuario, por, buscarPublicacion: buscar, guardarDias }));
+  Object.assign(acciones, crearHerramientasRecetas({ env, acceso, buscarPublicacion: buscar }));
 
   return { llamar };
 }

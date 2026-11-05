@@ -90,6 +90,9 @@ export default function ChatPanel({
   // y el calendario que recibe sólo deja pasar sus cambios. `lateral`: a lo ancho, al lado del panel y sin fondo.
   publicacionFija = null,
   lateral = false,
+  // Un encargo que llega de fuera para dejarlo ESCRITO en la caja (no se envía solo): «Crear aquí» de una receta.
+  // `{ texto, n }`: `n` cambia en cada pedido, así la misma receta dos veces vuelve a escribirse.
+  borrador = null,
 }) {
   // Dos pestañas en el asistente de un cliente: «Asistente» y «Director». Cada una con SUS conversaciones (las del
   // director son las mismas de la pestaña Diseño) y la última abierta de cada una se recuerda aparte. Antes era un
@@ -146,6 +149,12 @@ export default function ChatPanel({
   const [modeloVivo, setModeloVivo] = useState(null);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
+  // «Crear aquí» de una receta: el encargo queda escrito en la caja, listo para completar y enviar.
+  useEffect(() => {
+    if (!borrador?.texto) return;
+    setInput(borrador.texto);
+    inputRef.current?.focus({ preventScroll: true });
+  }, [borrador]);
   const fileRef = useRef(null);
   const recognitionRef = useRef(null);
   // Ampliado tapa toda la pantalla: es un diálogo aunque esté acoplado, y Escape primero lo REDUCE.

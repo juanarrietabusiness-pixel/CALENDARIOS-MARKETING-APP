@@ -35,6 +35,7 @@ import { buscar as buscarCerebro, leerNota } from "./cerebro/cerebro.js";
 import { pack } from "./cerebro/memoria.js";
 import { lineaDeIdea, ideaDeFila as publicaIdea } from "../../src/lib/bancoIdeas.js";
 import { DEFINICIONES_ESTUDIO, crearHerramientasEstudio } from "./estudio/herramientas.js";
+import { DEFINICIONES_RECETAS, crearHerramientasRecetas } from "./estudio/herramientasRecetas.js";
 import {
   kpis, porFormato, mejoresMomentos, mejoresPublicaciones, resumenCompetencia, numeroCorto, DIAS_SEMANA, BLOQUES_HORA,
 } from "../../src/lib/resultados.js";
@@ -140,8 +141,8 @@ export const DEFINICIONES_DE_LECTURA = Object.freeze([
   },
 ]);
 
-/** Todas las herramientas de servidor del asistente: las de lectura y las del Estudio. */
-export const DEFINICIONES = Object.freeze([...DEFINICIONES_DE_LECTURA, ...DEFINICIONES_ESTUDIO]);
+/** Todas las herramientas de servidor del asistente: las de lectura, las del Estudio y las recetas. */
+export const DEFINICIONES = Object.freeze([...DEFINICIONES_DE_LECTURA, ...DEFINICIONES_ESTUDIO, ...DEFINICIONES_RECETAS]);
 
 export const NOMBRES = new Set([...DEFINICIONES.map((d) => d.name), ...HERRAMIENTAS_WEB.map((d) => d.name)]);
 
@@ -332,6 +333,8 @@ export function crearEjecutor({ env, acceso, clienteActual = null, estudio = nul
   };
 
   if (estudio) Object.assign(acciones, crearHerramientasEstudio({ env, acceso, resolverCliente, ...estudio }));
+  // Las recetas (el mismo «/receta» que llega de claude.ai): sólo leen, así que no necesitan a quien firma.
+  Object.assign(acciones, crearHerramientasRecetas({ env, acceso, buscarPublicacion: (id) => buscarEn(acceso, id) }));
 
   /** Ejecuta una herramienta y devuelve SIEMPRE un tool_result. */
   async function ejecutar(bloque) {
@@ -358,6 +361,17 @@ export function crearEjecutor({ env, acceso, clienteActual = null, estudio = nul
   return { ejecutar, esDelServidor: (nombre) => nombre in acciones };
 }
 
+/** La publicación de un handoff, en los calendarios del espacio → { cal, dia, post } (o lanza). */
+async function buscarEn(acceso, postId) {
+  for (const cal of await acceso.leer("calendars", {}, "year desc, month desc")) {
+    for (const d of JSON_SEGURO(cal.days, [])) {
+      const post = (d.posts ?? []).find((p) => p?.id === postId);
+      if (post) return { cal, dia: d, post };
+    }
+  }
+  throw new Error("No encontré esa publicación.");
+}
+
 /** Lo que se le cuenta al usuario de cada herramienta de servidor. */
 export function describirUso(nombre, entrada = {}) {
   switch (nombre) {
@@ -372,6 +386,8 @@ export function describirUso(nombre, entrada = {}) {
     case "ver_estudio": return `Miró el Estudio${entrada.cliente ? ` de ${entrada.cliente}` : ""}`;
     case "crear_en_estudio": return `Pidió al Estudio ${entrada.tipo === "video" ? "un video" : "una imagen"}: «${String(entrada.prompt ?? "").slice(0, 80)}»`;
     case "estado_trabajo": return "Miró cómo va un pedido del Estudio";
+    case "ver_recetas": return "Miró las recetas de la agencia";
+    case "receta": return entrada.handoff_id ? "Leyó la receta y el pedido de la aplicación" : `Leyó la receta «${entrada.id ?? ""}»`;
     case "ver_pieza": return `Miró ${Array.isArray(entrada.archivo_ids) && entrada.archivo_ids.length > 1 ? `${entrada.archivo_ids.length} piezas` : "una pieza"} de la galería`;
     case "listar_voces": return `Miró las voces${entrada.cliente ? ` de ${entrada.cliente}` : ""}`;
     case "previsualizar_voz": return `Pidió la muestra de una voz${entrada.confirmado === true ? "" : " (sin confirmar)"}`;

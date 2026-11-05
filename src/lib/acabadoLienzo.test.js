@@ -15,7 +15,7 @@ function lienzo() {
     fillRect: (...r) => hechos.rects.push(r),
     createLinearGradient: () => ({ addColorStop() {} }),
     beginPath() {}, moveTo() {}, arcTo() {}, closePath() {}, fill() {},
-    drawImage: (img, ...r) => hechos.imagenes.push(r),
+    drawImage: (_img, ...r) => hechos.imagenes.push(r),
   };
   return ctx;
 }

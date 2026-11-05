@@ -1,0 +1,43 @@
+/* Las recetas de la agencia (Recetas.jsx). Va con su chunk: no entra en la carga inicial. */
+.recetas { max-width: 760px; width: 100%; display: flex; flex-direction: column; max-height: min(90vh, 900px); overflow-y: auto; }
+.recetas-cabecera { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); }
+.recetas-lista { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-2); }
+.recetas-item {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: var(--sp-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+.recetas-texto { min-width: 0; }
+.recetas-salida {
+  display: inline-block;
+  margin-left: var(--sp-1);
+  padding: 0 var(--sp-2);
+  border-radius: var(--radius-pill);
+  background: var(--accent-soft);
+  color: var(--text);
+  font-size: var(--fs-3xs);
+  vertical-align: middle;
+}
+.recetas-acciones { display: flex; flex-direction: column; gap: var(--sp-1); flex-shrink: 0; align-items: stretch; }
+.recetas-acciones .btn { min-height: var(--tap-sm); }
+.recetas-editor { display: flex; flex-direction: column; gap: var(--sp-3); }
+.recetas-metodo { font-family: inherit; line-height: 1.45; }
+.recetas-botones { display: flex; gap: var(--sp-2); }
+.recetas-aviso { display: flex; flex-direction: column; gap: var(--sp-1); margin-top: var(--sp-3); font-size: var(--fs-sm); }
+.recetas-mensaje {
+  display: block;
+  padding: var(--sp-2);
+  border-radius: var(--radius-sm);
+  background: var(--surface-3);
+  font-size: var(--fs-xs);
+  user-select: all;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 599px) {
+  .recetas-item { flex-direction: column; }
+  .recetas-acciones { flex-direction: row; flex-wrap: wrap; }
+}
