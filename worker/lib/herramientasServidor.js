@@ -160,8 +160,13 @@ const JSON_SEGURO = (v, porDefecto) => {
  * `estudio` = { usuario, por, origen }: con ella el ejecutor también sabe
  * pedir al Estudio (ver_estudio, crear_en_estudio, estado_trabajo). Sin ella,
  * no: esas herramientas gastan y necesitan saber quién firma.
+ *
+ * `mas({ resolverCliente, buscarPublicacion })` → más acciones: las que no
+ * pueden importarse aquí sin cerrar el ciclo de siempre (el reel por planos,
+ * worker/lib/estudio/herramientasReel.js, llega a mercado.js, que importa este
+ * archivo): las pone quien llama (worker/rutas/chat.js).
  */
-export function crearEjecutor({ env, acceso, clienteActual = null, estudio = null }) {
+export function crearEjecutor({ env, acceso, clienteActual = null, estudio = null, mas = null }) {
   let clientes = null;
 
   async function resolverCliente(nombre) {
@@ -335,6 +340,7 @@ export function crearEjecutor({ env, acceso, clienteActual = null, estudio = nul
   if (estudio) Object.assign(acciones, crearHerramientasEstudio({ env, acceso, resolverCliente, ...estudio }));
   // Las recetas (el mismo «/receta» que llega de claude.ai): sólo leen, así que no necesitan a quien firma.
   Object.assign(acciones, crearHerramientasRecetas({ env, acceso, buscarPublicacion: (id) => buscarEn(acceso, id) }));
+  if (mas) Object.assign(acciones, mas({ resolverCliente, buscarPublicacion: (id) => buscarEn(acceso, id) }));
 
   /** Ejecuta una herramienta y devuelve SIEMPRE un tool_result. */
   async function ejecutar(bloque) {
@@ -398,6 +404,12 @@ export function describirUso(nombre, entrada = {}) {
     case "formato_video": return "Leyó el formato de escenas del video animado";
     case "listar_videos": return `Miró los videos animados${entrada.cliente ? ` de ${entrada.cliente}` : ""}`;
     case "ver_video": return "Miró un video animado";
+    case "crear_reel": return entrada.confirmado === true ? "Creó un reel por planos en el servidor" : "Escribió el guion de un reel y su costo (sin crear nada)";
+    case "estado_reel": return "Miró cómo va un reel";
+    case "continuar_reel": return entrada.confirmado === true ? "Siguió un reel tras revisar el storyboard" : "Miró el costo de seguir un reel";
+    case "montar_reel": return "Montó un reel con la voz, el texto, los subtítulos y el logo";
+    case "video_listo": return "Revisó si un video está listo para publicar";
+    case "extraer_guion_ugc": return "Extrajo el guion de un video y lo adaptó como UGC";
     case "crear_video": return "Creó un video animado (borrador)";
     case "guardar_video": return "Guardó el guion de un video animado";
     case "editar_escena": return entrada.quitar ? `Quitó la escena «${entrada.quitar}» de un video animado` : "Editó una escena de un video animado";
