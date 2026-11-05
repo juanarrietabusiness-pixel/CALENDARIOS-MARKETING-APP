@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   ideaDelPedido, PREFIJO_TIPO, referenciasDePreset, MAX_REFS_PRESET, limpiarKit, kitVacio, textoPaleta, textoPreset, componerPedido, ponerLogo, pedidoDeKit, leerKit, fundirKit,
   pedidoDeRevision, leerRevision, TIPOS_PRESET, IDS_PRESET, LINEA_VIDEO, LINEA_LOGO, ACABADOS, bloqueDeMarca, presetValido, presetActual,
-  nombreDePreset, pedidoConMarca, estiloDeMarca, ESTILOS_VISUALES, estiloDeLaPieza, lineaDeEstilo, nombreDeEstilo, referenciasDePersonajes, MAX_PERSONAJES,
+  nombreDePreset, pedidoConMarca, LINEA_OFICIO, estiloDeMarca, ESTILOS_VISUALES, estiloDeLaPieza, lineaDeEstilo, nombreDeEstilo, referenciasDePersonajes, MAX_PERSONAJES,
 } from "./kitMarca";
 import { PILARES, presetDePilar } from "./pilares";
 
@@ -138,6 +138,22 @@ describe("el pedido", () => {
     expect(componerPedido({ idea: " sola " })).toBe("sola");
     expect(componerPedido({ idea: "x", preset: "P.", acabado: "grafico", marca: "MARCA.", logo: true }))
       .toBe(`Escena: x\n\n${PREFIJO_TIPO} P.\n\n${ACABADOS.grafico.linea}\n\nMARCA.\n\n${LINEA_LOGO}`);
+  });
+
+  it("el acabado profesional va en toda IMAGEN con el kit puesto, detrás del estilo; ni en video ni sin el kit", () => {
+    const p = pedidoConMarca({ kit: KIT, idea: "Una excavadora", preset: "anuncio", marca: "Rofer" });
+    expect(p).toContain(LINEA_OFICIO);
+    expect(p.indexOf(LINEA_OFICIO)).toBeGreaterThan(p.indexOf(PREFIJO_TIPO));
+    expect(ideaDelPedido(p)).toBe("Una excavadora");
+    expect(pedidoConMarca({ kit: {}, idea: "una sala" })).toContain(LINEA_OFICIO);
+    expect(pedidoConMarca({ kit: KIT, idea: "x", video: true })).not.toContain(LINEA_OFICIO);
+    expect(pedidoConMarca({ kit: KIT, idea: "x", usarKit: false })).toBe("x");
+    // No prohíbe la placa o la banda que pida el diseño: sólo la que no pide.
+    expect(LINEA_OFICIO).toMatch(/que el diseño no pida/);
+  });
+
+  it("ningún estilo de la casa pide «espacio negativo» (el motor dibujaba una franja plana) ni luz pareja", () => {
+    for (const e of Object.values(ESTILOS_VISUALES)) expect(e.linea).not.toMatch(/espacio negativo|luz pareja/);
   });
 
   it("SIN tipo, la marca va igual: era lo que faltaba desde un post sin tipo", () => {

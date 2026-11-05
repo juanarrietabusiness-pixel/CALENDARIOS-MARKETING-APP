@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { lineaDeReferencia, lineasDeReferencias, productoNombrado, TOMAS, MAX_NOTA } from "./referencias";
+import { lineaDeReferencia, lineasDeReferencias, productoNombrado, TOMAS, MAX_NOTA, LINEA_FOTOS_PRODUCTO } from "./referencias";
 import { componerPedido, conOtraEscena, ideaDelPedido, PREFIJO_TIPO } from "./kitMarca";
 import { fotosDelProducto } from "./estudio";
 
@@ -36,9 +36,18 @@ describe("qué se toma de cada referencia", () => {
 
   it("numera en el orden en que se mandan, saltándose las mudas", () => {
     const t = lineasDeReferencias([{ producto: { nombre: "Sofá" } }, {}, { toma: ["persona"] }]);
-    expect(t.split("\n")).toHaveLength(2);
+    // Dos referencias que dicen algo y, como va una foto del producto, UNA línea de cómo usarla.
+    expect(t.split("\n")).toHaveLength(3);
     expect(t).toMatch(/^Imagen de referencia 1: es la foto REAL/);
     expect(t).toMatch(/\nImagen de referencia 3: toma SÓLO la persona o su pose/);
+    expect(t.split("\n").at(-1)).toBe(LINEA_FOTOS_PRODUCTO);
+  });
+
+  it("con fotos del producto: enderezar su punto de vista y lo impreso tal cual, dicho UNA vez", () => {
+    const t = lineasDeReferencias([{ producto: { nombre: "Sofá" } }, { producto: { nombre: "Mesa" } }]);
+    expect(t.match(/endereza el producto/g)).toHaveLength(1);
+    expect(t).toMatch(/sin traducirlo/);
+    expect(lineasDeReferencias([{ toma: ["estilo"] }])).not.toMatch(/endereza/);
   });
 
   it("las fotos del catálogo llegan al compositor con su producto y su marca", () => {

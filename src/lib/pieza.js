@@ -24,6 +24,7 @@ import { deMisGustos } from "./aprendizajeVisual.js";
 import { ajustesDe, MAX_PROMPT, modeloQueRespeta } from "./estudioCatalogo.js";
 import { pedidoConMarca, ponerLogo, limpiarKit, referenciasDePreset, estiloDeLaPieza, referenciaDeTipografia, referenciasDePersonajes } from "./kitMarca.js";
 import { lineasDeReferencias } from "./referencias.js";
+import { lineaSinTexto } from "./director.js";
 
 const limpio = (t) => String(t ?? "").trim();
 
@@ -33,8 +34,8 @@ export const lineaDeTexto = (texto) => {
   return t ? `Texto en la imagen, exacto, legible y bien jerarquizado (lo primero grande): ${t}.` : "";
 };
 
-/** La orden de NO escribir (el texto lo pone la plantilla encima) y qué zona dejar libre. Pura. */
-export const lineaSinTexto = (zona = "la franja inferior") => `NO escribas ningún texto, letra ni número en la imagen: el texto se pone después. Deja ${zona} limpio y despejado, con buen contraste.`;
+/** La orden de NO escribir (el texto lo pone la plantilla encima) y dónde queda su zona tranquila: vive en director.js. */
+export { lineaSinTexto };
 
 /**
  * Lo que entra a «Mejorar idea»: la escena, la composición sugerida, el texto exacto (si lo escribe el motor) y el

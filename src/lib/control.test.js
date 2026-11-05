@@ -116,6 +116,24 @@ describe("la revisión del director", async () => {
       .toEqual(["el logo más pequeño"]);
   });
 
+  it("el ACABADO (luz plana, plástico, franja plana…) se pide, se lee y entra en la corrección del director detrás del diseño", () => {
+    expect(pedidoDeControl({ texto: "Hola" })).toMatch(/Mira el ACABADO[\s\S]*franja o un bloque de color plano[\s\S]*"aspecto":\[/);
+    const c = leerControl(JSON.stringify({
+      textoLeido: "Hola", logo: "no aplica", puntajeDiseno: 6,
+      diseno: [{ problema: "abajo", arreglo: "sube el titular al 10 %" }],
+      aspecto: [{ defecto: "luz plana", arreglo: "luz lateral cálida desde la izquierda" }, { defecto: "franja plana", arreglo: "integra el fondo en la escena" }, { defecto: "x", arreglo: "y" }],
+    }), { texto: "Hola" });
+    expect(c.aspecto).toHaveLength(2);
+    const e = correccionDelDirector(c, "Hola");
+    expect(e).toMatch(/sube el titular al 10 %; luz lateral cálida desde la izquierda; integra el fondo en la escena\./);
+    // Sólo el acabado, con buena nota: se dice, no cambia el veredicto ni se corrige solo.
+    const bien = leerControl('{"textoLeido":"Hola","puntajeDiseno":9,"aspecto":[{"defecto":"luz plana","arreglo":"luz lateral"}]}', { texto: "Hola" });
+    expect(bien).toMatchObject({ estado: "ok", corregible: false });
+    expect(correccionDelDirector(bien, "Hola")).toBe("");
+    // Un defecto sin arreglo no sirve de orden de edición.
+    expect(leerControl('{"textoLeido":"Hola","aspecto":[{"defecto":"luz plana"}]}', { texto: "Hola" }).aspecto).toBeUndefined();
+  });
+
   it("se queda la corregida sólo si mejoró", () => {
     const antes = { estado: "revisar", errores: [], puntajeDiseno: 6 };
     expect(mejoro(antes, { estado: "revisar", errores: [], puntajeDiseno: 7 })).toBe(true);

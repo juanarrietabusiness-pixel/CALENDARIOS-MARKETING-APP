@@ -65,9 +65,17 @@ export function lineaDeReferencia(ref, n, { cliente = "la marca" } = {}) {
   ].filter(Boolean).join(" ");
 }
 
+/**
+ * Lo que se dice UNA vez cuando van fotos reales del producto: suelen estar tomadas con el celular, inclinadas o desde
+ * arriba, y el motor copiaba también ese punto de vista y ese fondo; y traducía o inventaba lo impreso.
+ */
+export const LINEA_FOTOS_PRODUCTO = "Fotos del producto: si alguna está inclinada, tomada desde arriba o con otro fondo, endereza el producto y ponlo en ESTA escena (no copies su punto de vista ni su fondo). Lo impreso en él (nombre, etiqueta) va tal cual, sin traducirlo; lo que no se lee, como forma fiel.";
+
 /** Las líneas de todas las referencias, en el orden en que se mandan. Vacío si ninguna dice nada. Pura. */
 export function lineasDeReferencias(refs = [], opciones = {}) {
-  return (refs ?? []).map((r, i) => lineaDeReferencia(r, i + 1, opciones)).filter(Boolean).join("\n");
+  const lineas = (refs ?? []).map((r, i) => lineaDeReferencia(r, i + 1, opciones)).filter(Boolean);
+  if ((refs ?? []).some((r) => r?.producto?.nombre)) lineas.push(LINEA_FOTOS_PRODUCTO);
+  return lineas.join("\n");
 }
 
 /** Para comparar nombres sin tildes ni mayúsculas. */

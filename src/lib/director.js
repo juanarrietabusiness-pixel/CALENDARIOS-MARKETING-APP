@@ -119,14 +119,40 @@ export const FORMATO_FICHA = [
   "Pieza: <formato y proporción> — <para qué es, en una frase>.",
   "Composición: <dónde va cada cosa CON MEDIDAS en % de la pieza: «titular entre el 8 y el 22 % de la altura, 80 % del ancho, centrado; producto del 30 al 85 %; logo abajo a la derecha, 10 % del ancho»>.",
   "Fondo: <color con su código #HEX, foto a sangre, degradado, textura>.",
-  "Imagen principal: <qué se ve: sujeto o producto, acción, lugar, luz y encuadre>.",
+  "Imagen principal: <qué se ve: sujeto o producto, acción, lugar y encuadre>.",
+  "Fotografía: <como la haría un fotógrafo: de dónde viene la luz y cómo es («ventana grande a la izquierda, luz suave»; «contraluz cálido»), su temperatura en K, el lente en mm y la apertura (qué queda nítido y qué desenfocado), la superficie y cómo cae la sombra; en una pieza ilustrada o tipográfica, la técnica y el acabado>.",
   "Texto (exacto, sin cambiar una letra): titular «…» (<alto de letra en % de la altura de la pieza, peso, color, zona>); apoyo «…» (…); botón «…» (<forma, color y zona>).",
   "Marca: <dónde va el logo y de qué tamaño; qué colores de la paleta mandan>.",
-  "Evitar: <lo que no debe salir>.",
+  "Evitar: <lo propio de ESTA pieza: con personas, manos y caras raras; con producto, la etiqueta deformada o traducida; con texto, letras de más>.",
 ].join("\n");
 
-/** Una pieza que NO lleva texto (lo pone la plantilla encima, o es un video): la línea de texto cambia por esto. */
-export const FICHA_SIN_TEXTO = "Texto: NINGUNO. No escribas letras ni números en la imagen; deja libre y limpia la zona indicada.";
+/**
+ * Una pieza que NO lleva texto (lo pone la plantilla encima, o es un video): la línea de texto cambia por esto. Ni
+ * «espacio negativo» ni «hueco»: el motor dibuja una franja de color plana encima de la escena. Se pide una zona
+ * TRANQUILA de la propia escena.
+ */
+export const FICHA_SIN_TEXTO = "Texto: NINGUNO. No escribas letras ni números en la imagen; donde irá el texto, la propia escena tiene una zona de tono uniforme y poco detalle (una pared, el cielo, una superficie, el fondo desenfocado), nunca una franja ni un bloque de color plano.";
+
+/**
+ * La orden de NO escribir (el texto lo pone la aplicación encima) y dónde queda una zona TRANQUILA de la propia escena
+ * para él. La usan el lote, el carrusel en modo plantilla y lo que la pieza suma detrás de la escena. Pura.
+ */
+export const lineaSinTexto = (zona = "el tercio inferior") =>
+  `NO escribas ningún texto, letra ni número en la imagen: el texto se pone después. En ${zona}, la propia escena tiene una zona tranquila de tono uniforme y poco detalle (una pared, el cielo, una superficie, el fondo desenfocado) con buen contraste para ese texto; nunca una franja ni un bloque de color plano pegado encima.`;
+
+/**
+ * El OFICIO que hace que una pieza se vea profesional, con el manual que sea (el de la agencia lo sustituye entero; esto
+ * no): la foto dicha como la haría un fotógrafo, el texto según quién lo pone y los clichés que delatan una pieza hecha
+ * sin pensar. Va en todo pedido de fichas, de carrusel y en lo que sabe el asistente.
+ */
+export const OFICIO_VISUAL = [
+  "OFICIO (lo que separa una pieza profesional de una genérica):",
+  "- La foto se describe como la haría un fotógrafo: de dónde viene la luz y cómo es, su temperatura, el lente y la apertura, la superficie y la sombra. Palabras vagas, prohibidas: «buena luz», «alta calidad», «realista», «moderno», «profesional», «impactante».",
+  "- El texto, según quién lo pone: si lo escribe el generador, integrado en la escena con su sitio, su tamaño y su contraste dichos; si lo pone la aplicación después, una zona de tono uniforme DENTRO de la escena (pared, cielo, superficie, fondo desenfocado), nunca «espacio negativo», «hueco» ni una franja plana; si no lleva texto, ni lo nombres.",
+  "- Nada de clichés: hojas para decir natural, destellos para premium, escudos para confianza, degradados para moderno, dorado con serifa para lujo, la bombilla para la idea. Busca la imagen que sólo funciona para ESTA marca.",
+  "- Un solo gesto expresivo por pieza (un color fuerte, un ángulo, una tipografía grande, un recorte audaz): lo demás, sobrio.",
+  "- Materiales y piel creíbles: nada de aspecto plástico, brillo de IA, HDR exagerado ni de foto de banco.",
+].join("\n");
 
 /** La ficha limpia: sin líneas en blanco (el pedido del motor separa sus partes con una línea en blanco) y con tope. Pura. */
 export function limpiarFicha(texto) {
@@ -202,6 +228,8 @@ export function instruccionDeDiseno(manual, { canal = "chat" } = {}) {
       "MANUAL DEL DIRECTOR (síguelo siempre):",
       manualDeDiseno(manual),
       "",
+      OFICIO_VISUAL,
+      "",
       bloqueDeDisenoPorTipo([], manual, { todos: true }),
       "Cuando una plantilla del cliente «ES LA DE» un tipo, las piezas de ese tipo la siguen (pasa su id en «plantilla_id»).",
       "",
@@ -217,6 +245,8 @@ export function instruccionDeDiseno(manual, { canal = "chat" } = {}) {
     "",
     "MANUAL DEL DIRECTOR (síguelo siempre):",
     manualDeDiseno(manual),
+    "",
+    OFICIO_VISUAL,
     "",
     bloqueDeDisenoPorTipo([], manual, { todos: true }),
     "Cuando una plantilla del cliente «ES LA DE» un tipo, las piezas de ese tipo la siguen (pasa su id en «plantilla»).",
@@ -313,7 +343,7 @@ function lineaDeEncargo(p) {
     `${p.n}. ${NOMBRE_FORMATO[p.formato] ?? p.formato}${p.proporcion ? ` ${p.proporcion}` : ""}${p.fecha ? ` · ${p.fecha}` : ""}${p.tipo ? ` · tipo: ${p.tipo}` : ""}`,
     p.idea ? `   de qué va: ${p.idea}` : "",
     p.escena ? `   qué se ve (lo escribió la agencia: respétalo): ${p.escena}` : "",
-    p.sinTexto ? "   SIN TEXTO en la imagen: el texto se pone después encima; deja la zona libre." : p.texto ? `   texto EXACTO de la pieza: ${lineasDelTexto(p.texto).map((l) => `«${l}»`).join(" / ")}` : "   sin texto escrito: propón un titular corto y, si hace falta, un apoyo.",
+    p.sinTexto ? "   SIN TEXTO en la imagen: el texto se pone después encima; donde irá, la escena tiene una zona de tono uniforme y poco detalle (nunca una franja ni un bloque plano)." : p.texto ? `   texto EXACTO de la pieza: ${lineasDelTexto(p.texto).map((l) => `«${l}»`).join(" / ")}` : "   sin texto escrito: propón un titular corto y, si hace falta, un apoyo.",
     p.producto
       ? (p.producto.includes("\n")
         ? `   productos que salen JUNTOS en esta pieza (reales; precio exacto si se nombra; todos visibles y reconocibles):\n${p.producto.split("\n").map((l) => `     ${l.replace(/^-\s*/, "- ")}`).join("\n")}`
@@ -341,6 +371,8 @@ export function pedidoDeFichas({ cliente = "la marca", rubro = "", piezas = [], 
     "",
     "MANUAL DEL DIRECTOR (síguelo siempre):",
     manualDeDiseno(manual),
+    "",
+    OFICIO_VISUAL,
     "",
     marca ? `LA MARCA (obligatorio en toda pieza):\n${marca}` : "Este cliente aún no tiene kit de marca: toma los colores y el estilo de la identidad de abajo; si no hay, usa una paleta sobria de dos colores y dilo en la ficha.",
     sobreLaMarca ? `\nLO QUE SE SABE DE ${String(cliente).toUpperCase()} (su ficha técnica en el cerebro: qué vende, a quién, cómo habla):\n${largo(sobreLaMarca, MAX_SOBRE_LA_MARCA)}` : "",
@@ -489,6 +521,8 @@ export function pedidoDeCarrusel({ cliente = "la marca", rubro = "", laminas = [
     "",
     "MANUAL DEL DIRECTOR (síguelo siempre):",
     manualDeDiseno(manual),
+    "",
+    OFICIO_VISUAL,
     "",
     marca ? `LA MARCA (obligatorio en toda lámina):\n${marca}` : "Este cliente aún no tiene kit de marca: toma los colores y el estilo de la identidad de abajo.",
     sobreLaMarca ? `\nLO QUE SE SABE DE ${String(cliente).toUpperCase()} (su ficha técnica en el cerebro):\n${largo(sobreLaMarca, MAX_SOBRE_LA_MARCA)}` : "",

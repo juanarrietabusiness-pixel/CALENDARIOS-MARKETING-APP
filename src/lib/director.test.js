@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   asegurarTexto, limpiarFicha, leerFichas, pedidoDeFichas, instruccionDeDiseno, resumenDelKit, manualDeDiseno,
-  MANUAL_DISENO_BASE, FORMATO_FICHA, MAX_FICHA,
+  MANUAL_DISENO_BASE, FORMATO_FICHA, MAX_FICHA, OFICIO_VISUAL, FICHA_SIN_TEXTO, lineaSinTexto, pedidoDeCarrusel,
 } from "./director.js";
 import { limpiarKit, bloqueDeMarca, referenciaDePlantilla, lineaDePlantillaEnPedido, fundirKit, MAX_PLANTILLAS } from "./kitMarca.js";
 
@@ -171,5 +171,42 @@ describe("cómo se diseña cada tipo y las plantillas por tipo", async () => {
     expect(plantillaParaTipo(kit.plantillas, "educativo", "carrusel")?.id).toBe("plantilla-b");
     expect(plantillaParaTipo(kit.plantillas, "educativo", "historia")).toBeNull();
     expect(plantillaParaTipo(kit.plantillas, "Anuncio", "post")).toBeNull();
+  });
+});
+
+describe("el oficio: lo que separa una pieza profesional de una genérica", () => {
+  it("la ficha pide la FOTOGRAFÍA como un fotógrafo (luz, temperatura, lente, apertura, sombra)", () => {
+    const linea = FORMATO_FICHA.split("\n").find((l) => l.startsWith("Fotografía:"));
+    expect(linea).toMatch(/de dónde viene la luz/);
+    expect(linea).toMatch(/en K/);
+    expect(linea).toMatch(/lente en mm y la apertura/);
+    expect(linea).toMatch(/cómo cae la sombra/);
+    // Va detrás de «Imagen principal» y antes del texto: la ficha se lee de arriba abajo.
+    const orden = FORMATO_FICHA.split("\n").map((l) => l.split(":")[0]);
+    expect(orden.indexOf("Fotografía")).toBe(orden.indexOf("Imagen principal") + 1);
+  });
+
+  it("va con el manual que sea: el de la agencia lo sustituye, el oficio no", () => {
+    const propio = { diseno: "Nuestro manual: todo en azul." };
+    for (const p of [
+      pedidoDeFichas({ piezas: [{ n: 1, formato: "post", idea: "x" }], manual: propio }),
+      pedidoDeCarrusel({ tema: "x", manual: propio }),
+      instruccionDeDiseno(propio),
+      instruccionDeDiseno(propio, { canal: "mcp" }),
+    ]) {
+      expect(p).toContain("Nuestro manual: todo en azul.");
+      expect(p).toContain(OFICIO_VISUAL);
+    }
+    expect(OFICIO_VISUAL).toMatch(/Palabras vagas, prohibidas/);
+    expect(OFICIO_VISUAL).toMatch(/Nada de clichés/);
+    expect(OFICIO_VISUAL).toMatch(/Un solo gesto expresivo/);
+  });
+
+  it("sin texto en la imagen: una zona TRANQUILA de la escena, nunca «espacio negativo», «hueco» ni una franja plana", () => {
+    for (const t of [FICHA_SIN_TEXTO, lineaSinTexto(), pedidoDeFichas({ piezas: [{ n: 1, formato: "post", idea: "x", sinTexto: true }] })]) {
+      expect(t).toMatch(/zona (tranquila )?de tono uniforme/);
+      expect(t).not.toMatch(/deja (la zona )?libre|limpio y despejado/i);
+    }
+    expect(OFICIO_VISUAL).toMatch(/nunca «espacio negativo», «hueco» ni una franja plana/);
   });
 });

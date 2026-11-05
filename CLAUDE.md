@@ -3437,6 +3437,26 @@ son del servidor.
   Antes iban detrás como «Además, la agencia pide…» y, si chocaban con la escena, el motor se quedaba con la escena.
   · **El pedido listo del post (`promptImagen`) es la ficha**, con su huella: «Crear la imagen aquí» y «Producir el mes»
   la usan sin esperar; un comentario o una plantilla escogida la rediseñan (y esa no se guarda).
+- **El OFICIO va en toda pieza, con el manual que sea** (`OFICIO_VISUAL` en src/lib/director.js; `LINEA_OFICIO` en
+  kitMarca.js; `LINEA_FOTOS_PRODUCTO` en referencias.js; `aspecto` en control.js). La prueba con Feria del Lente salió
+  con el texto bien y TODAS las piezas con la misma plantilla de bandas apiladas (texto, foto, banda) y fotos de banco
+  con luz plana: lo pedía el propio formato. Cosas que no se ven:
+  · **La ficha tiene una línea «Fotografía»** (luz con dirección, temperatura en K, lente y apertura, superficie y
+  sombra) y el oficio prohíbe las palabras vagas («buena luz», «alta calidad», «realista»…), los clichés (hojas para
+  natural, destellos para premium, escudos, degradados, dorado con serifa) y pide UN solo gesto expresivo.
+  · **El oficio va APARTE del manual**: un manual escrito por la agencia sustituye al de la casa entero (`manualDeDiseno`);
+  el oficio no se sustituye. Va en las fichas, el carrusel y lo que sabe el asistente (chat y MCP).
+  · **Sin texto en la imagen, una zona TRANQUILA de la escena** (`lineaSinTexto`, `FICHA_SIN_TEXTO`, ahora en
+  director.js): «deja libre», «limpio y despejado» y «espacio negativo» hacían que el motor dibujara una franja de color
+  plana encima. Ningún estilo de la casa dice «espacio negativo» ni «luz pareja» (un test lo recorre).
+  · **El acabado va en toda IMAGEN con el kit puesto** (`oficio` en `componerPedido`, detrás del estilo): sin el kit, la
+  idea va tal cual (lo decidió la persona), y en video no (va limpio). No prohíbe la placa o la banda que pida el diseño.
+  · **Las fotos del producto se ENDEREZAN** (una línea, una vez, si va alguna): las del catálogo suelen ser del celular,
+  inclinadas o desde arriba, y el motor copiaba ese ángulo y ese fondo; lo impreso, tal cual y sin traducir.
+  `crear_en_estudio` (asistente y MCP) ya las nombra como el producto REAL (`refsDelCatalogo`): antes iban sin línea.
+  · **El control mira el ACABADO** (`aspecto`: luz plana, plástico, HDR, franja plana, foto de banco, restos sueltos),
+  hasta 2 con su arreglo. Solo no cambia el veredicto; si el director deja la pieza floja, va en su corrección DETRÁS
+  de los arreglos de diseño, tres como mucho.
 - **El PROMPT MAESTRO de Meta AI no lo lee NINGUNA IA** (decisión de la agencia: instrucciones viejas de otro proyecto).
   `fueraDeUso` (worker/lib/cerebro/cerebro.js) deja fuera de todos los usos —también del asistente— las notas de tipo
   `maquetacion` y las que se titulan «Prompt maestro», «Meta AI» o «Nano Banana vN» (`esDelPromptMaestro`), y

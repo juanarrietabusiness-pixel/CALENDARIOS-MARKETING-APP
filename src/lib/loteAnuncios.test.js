@@ -139,8 +139,8 @@ describe("cada pieza", () => {
     expect(m).not.toMatch(/Fondo/);
     // Con plantilla el motor no escribe: no va el texto, y detrás va la zona libre.
     expect(ideaParaMejorar(ideaDeLote(conForma, { modo: "plantilla" }))).not.toMatch(/Texto en la imagen/);
-    expect(colaDeLote(conForma, { modo: "plantilla" })).toMatch(/^Composición: En uso\. NO escribas ningún texto.*Deja .* limpio/);
-    expect(colaDeLote({ ...idea, composicion: "heroe" }, { modo: "plantilla", formato: "historia" })).toMatch(/Deja el centro de la lámina limpio/);
+    expect(colaDeLote(conForma, { modo: "plantilla" })).toMatch(/^Composición: En uso\. NO escribas ningún texto.*la propia escena tiene una zona tranquila/);
+    expect(colaDeLote({ ...idea, composicion: "heroe" }, { modo: "plantilla", formato: "historia" })).toMatch(/En el centro de la lámina, la propia escena tiene una zona tranquila/);
     expect(colaDeLote(conForma, { modo: "ia" })).toBe("Composición: En uso.");
     expect(ideaSinMejorar(ideaDeLote({ ...conForma, conProducto: false }))).toMatch(/El producto NO aparece/);
     expect(plantillaDeFormato("historia")).toBe("centro");
