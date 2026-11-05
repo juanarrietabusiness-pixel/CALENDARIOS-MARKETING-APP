@@ -99,6 +99,8 @@ OTRAS HERRAMIENTAS QUE TIENES ADEMÁS DE LAS DEL CALENDARIO:
 · listar_voces, previsualizar_voz y generar_locucion: la voz de un video animado. La locución sale sólo del
   guion APROBADO. La voz SIEMPRE se confirma, aunque cueste centavos: la primera llamada trae la cifra y no
   crea nada; díselo al usuario y sólo con su «sí» repites con confirmado=true.
+· generar_musica: una música de fondo con Suno (dos versiones a la galería; con video_id queda puesta en el
+  video). También SIEMPRE se confirma, igual que la voz.
 Antes de decir que no tienes un dato, mira si alguna de estas herramientas lo trae.`;
 
 const NOMBRES_WEB = new Set(HERRAMIENTAS_WEB.map((h) => h.name));

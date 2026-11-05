@@ -201,6 +201,26 @@ describe("hacer el render (la alarma del objeto)", () => {
     expect(JSON.parse(fila(id2).render).aviso).toMatch(/música de fondo ya no está/);
   });
 
+  it("sin música en «Sonido», usa la del GUION por su clave (su volumen 0–1 en dB); la de «Sonido» manda sobre ella", async () => {
+    const { id, encargo } = await encargado();
+    const MUSICA = new Uint8Array([0x49, 0x44, 0x33, 4, 0, 0, 9, 9, 9, 9]);
+    env.MEDIA.objetos.set("clientes/bc/estudio/guion.mp3", MUSICA);
+    const g = JSON.parse(fila(id).guion);
+    g.musica = { clave: "clientes/bc/estudio/guion.mp3", volumen: 0.7, bajarConVoz: true };
+    db.sqlite.prepare("update videos_proyectos set guion = ? where id = ?").run(JSON.stringify(g), id);
+    const recibidos = [];
+    expect((await ejecutarRender(env, encargo, container(recibidos))).estado).toBe("listo");
+    expect(recibidos[0].cuerpo.musica).toEqual({ audio: Buffer.from(MUSICA).toString("base64"), volumen: 6 });
+    // Una clave de OTRO cliente en el guion no se usa.
+    g.musica.clave = "clientes/otro/estudio/x.mp3";
+    env.MEDIA.objetos.set("clientes/otro/estudio/x.mp3", MUSICA);
+    db.sqlite.prepare("update videos_proyectos set guion = ?, estado = 'con_voz' where id = ?").run(JSON.stringify(g), id);
+    await renderizar(id);
+    const otros = [];
+    await ejecutarRender(env, encargos.at(-1).cuerpo, container(otros));
+    expect(otros[0].cuerpo.musica).toBeUndefined();
+  });
+
   it("otro render del mismo video ocupa el sitio del anterior en la publicación", async () => {
     const { id, encargo } = await encargado();
     await ejecutarRender(env, encargo, container([]));

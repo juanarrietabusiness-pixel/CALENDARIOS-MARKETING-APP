@@ -26,6 +26,7 @@
 //     después, y la vista previa no se rompe.
 // ============================================================
 
+import { dibujarPersonaje, expresionDe, PROPORCION_PERSONAJE } from "./personajeVideo.js";
 import { FORMATOS_VIDEO, FPS, tiempoDeCapa } from "./videoEscenas.js";
 import { gruposDeSubtitulos, grupoEn, estadoDePalabras } from "./subtitulos.js";
 import {
@@ -33,7 +34,7 @@ import {
 } from "./motorPiezas.js";
 
 /** Los componentes que este motor ya dibuja. El resto sale como marcador hasta que se escriban. */
-export const COMPONENTES_LISTOS = Object.freeze(["texto", "sello", "imagen", "forma", "logo", "llamado", "cifra", "icono", "anillo", "dibujo"]);
+export const COMPONENTES_LISTOS = Object.freeze(["texto", "sello", "imagen", "forma", "logo", "llamado", "cifra", "icono", "anillo", "dibujo", "personaje"]);
 
 export const FUENTE_RESPALDO = "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif";
 
@@ -938,6 +939,15 @@ function dibujarCapa(ctx, capa, estado, c, ancho = capa.tam * c.lado) {
       }
       return { w: s, h: s };
     }
+    case "personaje": {
+      // La figura de la casa con el aspecto del cliente (src/lib/personajeVideo.js): alto = 1,2 × ancho.
+      let pw = w;
+      if (pw * PROPORCION_PERSONAJE > maxAlto) pw = maxAlto / PROPORCION_PERSONAJE;
+      return dibujarPersonaje(ctx, {
+        variante: capa.variante, pose: capa.pose, expresion: expresionDe(capa), aspecto: c.personaje, vida: estado.vida, ancho: pw,
+        colorDe: (t) => colorDe(t, paleta),
+      });
+    }
     case "dibujo": {
       // La caja del dibujo: `tam` de ancho y `proporcion` de alto; si no cabe de alto, se encoge entera.
       let dw = w; let dh = w * (capa.proporcion ?? 1);
@@ -1202,7 +1212,7 @@ function contextoDe({ guion, formato, paleta, recursos = {}, fuentes = {} }) {
   const { ancho, alto } = FORMATOS_VIDEO[f] ?? FORMATOS_VIDEO["9:16"];
   return {
     ancho, alto, lado: Math.min(ancho, alto), formato: f, paleta: paleta ?? paletaDelGuion(guion),
-    ritmo: guion?.estilo?.ritmo ?? "medio", recursos, fuentes, subtitulos: guion?.subtitulos,
+    ritmo: guion?.estilo?.ritmo ?? "medio", recursos, fuentes, subtitulos: guion?.subtitulos, personaje: guion?.estilo?.personaje ?? null,
     // Lo más alto que puede ser una imagen: el 62 % del área segura; en 16:9 lo visual tiene su columna y llega al 82 %.
     altoUtil: areaSegura(f, ancho, alto).h * (ancho > alto * 1.2 ? 0.82 : 0.62),
   };

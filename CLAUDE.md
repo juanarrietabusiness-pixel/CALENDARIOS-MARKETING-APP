@@ -168,6 +168,8 @@ src/
                           comparten la vista previa y el render del Container
     motorPiezas.js        Las PIEZAS del motor: iconos dibujados, cifra que cuenta, el dibujo libre (formas), los fondos de
                           estrellas y líneas, quitar el fondo liso del logo y su tono (puro: navegador y Container)
+    personajeVideo.js     El PERSONAJE del video animado dibujado con código (bebé, niño, adulto; 5 expresiones, 6 poses) y su
+                          aspecto por cliente (`kit.personajeVideo`) (puro: navegador y Container)
     motorVideoNavegador.js  Lo que ese motor necesita en el navegador: las imágenes de la galería, el logo, la letra del kit
                           y la textura del grano (no es puro)
     videosApi.js          Cliente de /api/videos/<cliente>
@@ -177,6 +179,8 @@ src/
                           ganancia a -14 LUFS, cuándo se puede renderizar (puro: lo leen el Container, el Worker y la pantalla)
     sonidoVideo.js        Lo que suena DEBAJO de la voz (aparte del guion): limpiar el sonido del video, la música con ducking,
                           fundido y repetida (puro: Worker, Container y pantalla)
+    musica.js             La música con SUNO por Kie: modelos V6, el pedido limpio, el cuerpo de createTask, leer las dos
+                          pistas, el costo (puro; también el Worker)
     efectosSonido.js      Los efectos del video animado: whoosh en las transiciones y pop en sellos y llamados, sintetizados
                           (sin archivos) y mezclados bajitos (puro: el Container)
     revisionEscenas.js    La revisión antes de renderizar: subtítulos que tapan, texto que se sale o se parte, fuera de la zona
@@ -4084,7 +4088,8 @@ son del servidor.
   cualquier modelo, terminan el trabajo con su motivo y ya no se reintentan (`errorDeKie`).
   · **Claude trabaja el video por MCP** (`worker/lib/estudio/herramientasVideo.js`, también en el asistente):
   `formato_video`, `listar_videos`, `ver_video`, `crear_video` (con `publicacion_id`), `guardar_video`, `editar_escena`
-  (cambia, mueve, añade o quita UNA escena) y `aprobar_video`. Van por `worker/lib/videosProyectos.js`, el MISMO camino
+  (cambia, mueve, añade o quita una escena; con `id` + `cambiar`, sólo unos campos sin mandarla entera; con `cambios`,
+  hasta 20 en UNA versión, en orden y todos o ninguno: el error dice «Cambio n») y `aprobar_video`. Van por `worker/lib/videosProyectos.js`, el MISMO camino
   que la pantalla: el guion se valida en el servidor, la `version` leída evita pisar, editar devuelve a borrador.
   Aprobar es de la persona: la descripción le dice a Claude que sólo con su sí. Con eso `generar_locucion` ya tiene un
   video aprobado que nombrar. Ninguna gasta.
@@ -4173,6 +4178,14 @@ son del servidor.
   caja, cada una con su `retraso` y su `entrada` (`dibuja` traza las líneas; lo relleno se descubre con un recorte puesto
   ANTES de trazarlo, o rellenaría el recorte). Fondos `estrellas` (titilan con t) y `lineas`, sembrados. Sin `Path2D`:
   no existe en el Container.
+  · **El PERSONAJE se dibuja de verdad** (`src/lib/personajeVideo.js`, decisión de la agencia: el bebé de Baby Caleb en
+  todos sus videos): una figura plana de la casa —bebé, niño o adulto— con 5 expresiones (`expresion`: neutral, feliz,
+  triste, preocupado, dormido; «auto» la saca de la pose) y 6 poses, animada con `vida` (parpadeo, la lágrima, las «Z»,
+  el saludo). El ASPECTO (piel, pelo, ropa —un token de la marca o #RRGGBB—, accesorio: chupete, lazo, gorro) es del
+  CLIENTE: `kit.personajeVideo`, que fija `personaje_video` (asistente y MCP) y que `conPersonajeDelKit` pone en el guion
+  en la vista previa y en el servidor (`pedidoDelVideo`) si el guion no trae su `estilo.personaje`. `fundirKit` lo
+  conserva. Sólo arc, bezier y líneas: ni Path2D ni ellipse (el lienzo del Container no los garantiza). El kit de
+  Baby Caleb aún no lo tiene: sale con el aspecto de partida hasta que alguien lo fije.
   · **El logo se recorta de su fondo liso** (`quitarFondoLiso`): si las cuatro esquinas son opacas y del mismo color,
   ese color se borra DESDE EL BORDE (el blanco dentro de una «O» se queda), sólo si es entre el 5 y el 97 % de la
   imagen. Y lleva PLACA (clara sobre oscuro, oscura sobre claro) cuando más del 20 % de lo que se ve de él no llega a 2 a
@@ -4202,9 +4215,17 @@ son del servidor.
   voz con DUCKING (9 dB bajo la voz en los huecos, 20 mientras se habla; baja en 80 ms y sube en 450), fundido de 0,4 s al
   entrar y 2 s al salir, repetida si es corta, ±12 dB a mano. Todo antes de la ganancia, así guarda su distancia con la voz
   sea cual sea la toma. Una música que ya no está no tumba el render: sale sin ella y lo dice en `render.aviso`.
-  · **Generar la música con Suno por Kie (`generar_musica`) NO está hecho**: la documentación de Kie (docs.kie.ai y sus
-  espejos) no se pudo leer desde la sesión, y la forma de su API no se adivina. Lo que falta es poner su extracto en
-  `docs/kie/` y la llamada; la mezcla, la galería y el cambio sin rehacer la voz ya están.
+  · **La música con SUNO por Kie** (`src/lib/musica.js`, `worker/lib/estudio/musica.js`, `docs/kie/suno.md`;
+  `POST /api/videos/<c>/musicas/generar`, herramienta `generar_musica`, «Generar la música con IA (Suno)» en «Sonido»):
+  un trabajo del Estudio de `tipo: "audio"` por la MISMA cola de Kie que la voz (`MODELOS_MUSICA_KIE` en kie.js,
+  `terminarMusica` en trabajos.js). Siempre MODO PERSONALIZADO (es el único que admite `duration` y `title`): la
+  descripción va en `style`, la letra en `lyrics` y NUNCA en `prompt` (se cantaría tal cual); una instrumental lleva las
+  voces en `negative_tags`. Suno da DOS versiones: las dos van a la galería (`modelo: "musica-suno"`) y, con `videoId`,
+  la primera queda en el SONIDO del video (sin subir la versión; no pisa otra música escogida DESPUÉS del pedido ni a un
+  video renderizando). Con video, el estilo y la duración salen del campo `musica` del guion (`estilo`, `instrumental`).
+  **El precio no viene en la documentación**: se cotiza `CREDITOS_SUNO` como aproximado y al entregar se apunta
+  `creditsConsumed` si llega. Se confirma SIEMPRE (409 `confirmar`), como la voz. El render usa además la música del
+  GUION por su clave si «Sonido» no tiene otra (`dbDeVolumenGuion`). **Nada de Suno se ha probado contra Kie real.**
   · **El HISTORIAL** (`videos_versiones`, 0060; `versionesDe`, `volverAVersion` en videosProyectos.js; `GET|POST
   /api/videos/<c>/<id>/versiones`, `versiones_video`, `volver_a_version`): cada cambio del guion guarda el de ANTES (hasta
   `MAX_VERSIONES`, 30). Volver crea una versión NUEVA con ese guion, en borrador; nunca se reescribe la historia.

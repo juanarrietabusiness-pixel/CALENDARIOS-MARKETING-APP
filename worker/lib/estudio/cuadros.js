@@ -12,6 +12,7 @@
 
 import { ErrorVideo } from "../videosProyectos.js";
 import { kitDe } from "./kit.js";
+import { conPersonajeDelKit } from "../../../src/lib/personajeVideo.js";
 import { claveDelCliente } from "./archivos.js";
 import { validarGuion, archivosDelGuion, FORMATOS_VIDEO } from "../../../src/lib/videoEscenas.js";
 
@@ -48,10 +49,11 @@ async function deR2(env, clave, cuenta) {
 export async function pedidoDelVideo(env, acceso, cliente, fila, { formato } = {}) {
   const v = validarGuion(leerJSON(fila.guion, null));
   if (!v.ok) throw new ErrorVideo("El guion tiene errores: corrígelos antes de mirarlo.", 400, { errores: v.errores });
-  const guion = v.guion;
+  const kit = kitDe(cliente);
+  // El personaje se dibuja con el aspecto del kit si el guion no trae uno propio.
+  const guion = conPersonajeDelKit(v.guion, kit);
   const locucion = leerJSON(fila.locucion, {});
   const palabras = locucion.estado === "lista" && Array.isArray(locucion.palabras) ? locucion.palabras : null;
-  const kit = kitDe(cliente);
   const cuenta = { bytes: 0 };
 
   // Las imágenes: los ids del guion que ESTÁN en la galería de este cliente (lo demás sale como marcador).
