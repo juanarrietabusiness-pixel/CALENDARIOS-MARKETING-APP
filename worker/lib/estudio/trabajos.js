@@ -37,7 +37,9 @@ import { abrirDescarga, guardarDescarga, TOPE_VIDEO, TOPE_IMAGEN } from "./desca
 import { claveDeArchivo, claveDelCliente, medidasDe, medidasDeVideo, tipoPorBytes } from "./archivos.js";
 import { crearAcceso, estudioPendiente } from "../acceso.js";
 import { terminarAudio } from "./locucion.js";
+import { terminarMusica } from "./musica.js";
 import { modeloDelEstudio as modeloDeVozDelEstudio } from "../../../src/lib/voces.js";
+import { modeloDelEstudio as modeloDeMusicaDelEstudio } from "../../../src/lib/musica.js";
 import {
   modeloPorId, MODELOS_RETIRADOS, retirado, validarPedido, pideConfirmar, textoCosto, estaVivo, MEDIDAS, proporcionDe, estimar, enCola,
 } from "../../../src/lib/estudioCatalogo.js";
@@ -287,7 +289,7 @@ export async function avanzarTrabajo(env, acceso, id, { por = null } = {}) {
   if (t - Date.parse(fila.created_at) > plazoDe(fila)) {
     const hechos = leerJSON(fila.archivos, []).length;
     const sinTiempo = fila.tipo === "audio"
-      ? `Kie.ai no terminó la voz en 12 minutos${fila.nota ? ` (se quedó en «${fila.nota}»)` : ""}. Suele ser de su lado: vuelve a intentarlo más tarde.`
+      ? `Kie.ai no terminó ${String(fila.modelo).startsWith("suno") ? "la música" : "la voz"} en 12 minutos${fila.nota ? ` (se quedó en «${fila.nota}»)` : ""}. Suele ser de su lado: vuelve a intentarlo más tarde.`
       : "No terminó a tiempo. Vuelve a intentarlo.";
     await acceso.actualizar("estudio_trabajos", { id, estado: fila.estado }, {
       ...(hechos ? cerrada("hecho", { nota: `Llegaron ${hechos} de ${fila.n}: el resto no terminó a tiempo.` }) : cerrada("fallido", { error: sinTiempo })),
@@ -324,7 +326,7 @@ export async function avanzarTrabajo(env, acceso, id, { por = null } = {}) {
 /** El paso en sí. Devuelve los cambios que hay que escribir en el trabajo. */
 async function paso(env, acceso, fila) {
   // Una toma de voz (la locución del video animado) no es del catálogo de imagen y video: va por su modelo de Kie.
-  const modelo = modeloPorId(fila.modelo) ?? modeloDeVozDelEstudio(fila.modelo);
+  const modelo = modeloPorId(fila.modelo) ?? modeloDeVozDelEstudio(fila.modelo) ?? modeloDeMusicaDelEstudio(fila.modelo);
   const motor = modelo ? MOTORES[modelo.motor] : null;
   if (!modelo || !motor) return cerrada("fallido", { error: MODELOS_RETIRADOS[fila.modelo] ? retirado(fila.modelo) : "Ese modelo ya no está en el Estudio." });
   if (!motor.activo(env)) {
@@ -517,12 +519,13 @@ async function pasoDeCola(env, acceso, fila, { modelo, motor, hechos, termina, f
     r.proximo = en(listo.cada ?? CADA_POR_DEFECTO);
     return { remoto: escribirRemoto(), nota: listo.nota ?? "Generando…", intentos: 0 };
   }
-  if (listo.estado === "fallido") return perder(listo.error || `${modelo.nombre} no pudo hacer ${esVideo ? "el video" : modelo.tipo === "audio" ? "la voz" : "la imagen"}.`);
+  if (listo.estado === "fallido") return perder(listo.error || `${modelo.nombre} no pudo hacer ${esVideo ? "el video" : modelo.musica ? "la música" : modelo.tipo === "audio" ? "la voz" : "la imagen"}.`);
 
-  // Una toma de voz: la baja, la apunta y la entrega su propio módulo (la muestra de una voz o la locución de un video).
+  // Una toma de voz o una música: la baja, la apunta y la entrega su propio módulo (la muestra de una voz, la locución
+  // de un video o las pistas de Suno).
   if (modelo.tipo === "audio") {
     try {
-      const cambios = await terminarAudio(env, acceso, fila, { listo, modelo });
+      const cambios = await (modelo.musica ? terminarMusica : terminarAudio)(env, acceso, fila, { listo, modelo });
       r.hecho = true;
       return { remoto: escribirRemoto(), ...cambios };
     } catch (e) {

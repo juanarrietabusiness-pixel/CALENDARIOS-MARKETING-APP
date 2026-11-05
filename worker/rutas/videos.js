@@ -36,6 +36,11 @@
 //   POST   /api/videos/<c>/<id>/versiones   { version, aVersion }: volver a una (crea una versión nueva con su guion)
 //   GET    /api/videos/<c>/musicas          Las músicas de fondo del cliente (audio de su galería)
 //   POST   /api/videos/<c>/musicas          Subir una (multipart: archivo; MP3 o WAV, ≤ 15 MB)
+//   POST   /api/videos/<c>/musicas/generar  { estilo, instrumental?, letra?, duracion?, titulo?, evitar?, modelo?, videoId?,
+//                                           confirmado }: GENERARLA con Suno por Kie (un trabajo del Estudio; dos
+//                                           versiones a la galería). Siempre pide confirmar: sin `confirmado`, 409 con el
+//                                           costo. Con `videoId`, el estilo y la duración salen de su guion si no se dicen,
+//                                           y la primera versión queda puesta en su sonido
 //
 // El guion lo valida `validarGuion` (src/lib/videoEscenas.js) aquí, en el servidor: lo que llega del navegador, del
 // asistente o de Claude por MCP no se cree. Un guion con errores NO se guarda: vuelve 400 con la lista de errores,
@@ -44,7 +49,8 @@
 // `version` en el PUT y en aprobar es la que se leyó: si otra persona guardó entremedias, 409 en vez de pisarla (dos
 // personas del equipo pueden tener el mismo video abierto).
 //
-// Lo único que gasta aquí es la voz (worker/lib/estudio/locucion.js), y siempre con su confirmación de costo.
+// Lo único que gasta aquí es la voz (worker/lib/estudio/locucion.js) y la música de Suno (worker/lib/estudio/musica.js),
+// y siempre con su confirmación de costo.
 // ============================================================
 
 import { json, error, cuerpo, noEncontrado } from "../lib/respuesta.js";
@@ -58,6 +64,7 @@ import { ErrorEstudio } from "../lib/estudio/trabajos.js";
 import { listarVoces, pedirMuestra, pedirLocucion, locucionAlDia, claveDeMuestra, HUELLA, ErrorVoz, viaDeVoz, fijarVozDeMarca } from "../lib/estudio/locucion.js";
 import { buscarEnBiblioteca, anadirDeLaBiblioteca, previaGratis, ACENTOS_BIBLIOTECA } from "../lib/estudio/elevenlabs.js";
 import { ErrorMotor } from "../lib/estudio/gemini.js";
+import { pedirMusica, ErrorMusica } from "../lib/estudio/musica.js";
 import { pedidoDelVideo, alContenedor } from "../lib/estudio/cuadros.js";
 import { pedirRender, renderAlDia, ligarAPublicacion } from "../lib/estudio/render.js";
 import { costoDeVoz, fraseDeMuestra, modeloDeVoz, esIdDeVoz } from "../../src/lib/voces.js";
@@ -177,6 +184,28 @@ async function rutasDelCliente(req, env, { acceso, usuario, partes, metodo }) {
       }
     }
     return error("Método no permitido.", 405);
+  }
+
+  // Generar una música con Suno: siempre con su confirmación de costo.
+  if (id === "musicas" && accion === "generar") {
+    if (metodo !== "POST") return error("Método no permitido.", 405);
+    const b = (await cuerpo(req)) ?? {};
+    let video = null;
+    if (b.videoId) {
+      if (!ID.test(String(b.videoId))) return noEncontrado("Video");
+      video = await acceso.leerUno("videos_proyectos", { id: String(b.videoId), client_id: clienteId });
+      if (!video) return noEncontrado("Video");
+    }
+    try {
+      const r = await pedirMusica(env, acceso, cliente, {
+        estilo: b.estilo, letra: b.letra, instrumental: typeof b.instrumental === "boolean" ? b.instrumental : undefined,
+        duracion: b.duracion, titulo: b.titulo, evitar: b.evitar, modelo: b.modelo, video, confirmado: b.confirmado === true, usuario,
+      });
+      return json(r, 202);
+    } catch (e) {
+      if (e instanceof ErrorMusica) return respuestaDeVoz(e);
+      throw e;
+    }
   }
 
   if (!ID.test(String(id))) return noEncontrado("Video");
