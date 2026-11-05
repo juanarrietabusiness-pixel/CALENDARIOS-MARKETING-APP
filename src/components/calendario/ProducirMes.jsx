@@ -1,6 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import Icon from "../Icon";
 import { useDialogA11y } from "../../hooks/useDialogA11y";
+import { Envoltura } from "./envolturaMes";
 import { FORMATS } from "../../constants";
 import { mediosDe, conMedios } from "../../lib/publicacion";
 import { presetDePilar, nombreDePilar, productosDelPost } from "../../lib/pilares";
@@ -54,7 +55,7 @@ const fechaCorta = (iso) => new Date(`${iso}T12:00:00`).toLocaleDateString("es-P
 const tipoDe = (format) => (format === "reel" || format === "live" ? "video" : "imagen");
 const proporcionDe = (format, tipo) => (format === "reel" || format === "historia" || tipo === "video" ? "9:16" : "4:5");
 
-export default function ProducirMes({ client, cal, onPoner, onClose }) {
+export default function ProducirMes({ client, cal, onPoner, onClose, incrustado = false, ponerSolas = false, sinReels = false }) {
   const ids = useId();
   const [estudio, setEstudio] = useState(null); // { kit, motores }
   const [marcadas, setMarcadas] = useState(null); // Set de ids de publicación
@@ -80,7 +81,8 @@ export default function ProducirMes({ client, cal, onPoner, onClose }) {
   // El control de calidad va SIEMPRE (decisión de la agencia): ya no es una casilla recordada por navegador.
   const controlar = true;
   // Cuántas versiones de cada imagen (para escoger).
-  const [versiones, setVersiones] = useState(2);
+  // Con «se ponen solas» (el asistente del mes), una: la que sale va a su publicación.
+  const [versiones, setVersiones] = useState(ponerSolas ? 1 : 2);
   const [modoTexto, setModoTexto] = useState("ia");
   const [plantilla, setPlantilla] = useState("banda");
   const vivo = useRef(true);
@@ -127,12 +129,13 @@ export default function ProducirMes({ client, cal, onPoner, onClose }) {
     ref.current?.focus({ preventScroll: true });
     window.dispatchEvent(new Event("ia:gasto"));
     const n = Object.keys(r.mejores).length;
-    setAviso({ ok: n > 0, texto: n ? `Listas ${n} de ${trabajos.length}. Revisa cada una y ponla en su publicación.` : "No llegó ninguna pieza: mira el motivo de cada una." });
-    if (!fichasGuardadas.current && Object.keys(r.fichas).length) {
+    setAviso({ ok: n > 0, texto: n ? (ponerSolas ? `Listas ${n} de ${trabajos.length}: ya están en su publicación (y en la galería).` : `Listas ${n} de ${trabajos.length}. Revisa cada una y ponla en su publicación.`) : "No llegó ninguna pieza: mira el motivo de cada una." });
+    // Con «se ponen solas» el SERVIDOR escribe esas publicaciones: escribir aquí el calendario entero las pisaría.
+    if (!ponerSolas && !fichasGuardadas.current && Object.keys(r.fichas).length) {
       fichasGuardadas.current = true;
       onPoner((p) => (r.fichas[p.id] && !promptListo(p) ? conPromptListo(p, r.fichas[p.id]) : p));
     }
-  }, [r, paso, trabajos.length, onPoner, ref]);
+  }, [r, paso, trabajos.length, onPoner, ref, ponerSolas]);
 
   useEffect(() => {
     vivo.current = true;
@@ -149,6 +152,8 @@ export default function ProducirMes({ client, cal, onPoner, onClose }) {
     if (!estudio) return [];
     return [...(cal.days ?? [])].sort((a, b) => (a.date < b.date ? -1 : 1)).flatMap((d) => (d.posts ?? [])
       .filter((p) => p.status !== "published" && !mediosDe(p).length && String(p.idea || p.title || p.descripcion || "").trim())
+      // En el asistente del mes los reels van por su encargo (el reel por planos) y un directo no se diseña.
+      .filter((p) => !sinReels || (p.format !== "reel" && p.format !== "live"))
       .map((post) => {
         // Un carrusel con guion de dos láminas o más: lámina a lámina.
         const laminas = post.format === "carrusel" ? partirGuion(post.guion) : [];
@@ -177,15 +182,16 @@ export default function ProducirMes({ client, cal, onPoner, onClose }) {
           costo: v.ok ? v.pedido.costoEstimado : 0, error: v.ok ? "" : v.error,
         };
       }));
-  }, [estudio, cal.days, activos, client.name, client.industry]);
+  }, [estudio, cal.days, activos, client.name, client.industry, sinReels]);
 
   // Marcadas de entrada: las APROBADAS por dentro («Revisar las ideas»), si hay alguna; si no, todas las que se pueden.
   useEffect(() => {
     if (!estudio || marcadas !== null) return;
     const posibles = candidatas.filter((c) => c.tipo !== "video" && !c.error);
     const aprobadas = posibles.filter((c) => aprobadaPorDentro(c.post));
-    setMarcadas(new Set((aprobadas.length ? aprobadas : posibles).map((c) => c.post.id)));
-  }, [estudio, candidatas, marcadas]);
+    // En el asistente del mes, sólo las aprobadas por dentro: las demás se aprueban (o no) en el paso de las ideas.
+    setMarcadas(new Set((aprobadas.length || ponerSolas ? aprobadas : posibles).map((c) => c.post.id)));
+  }, [estudio, candidatas, marcadas, ponerSolas]);
 
   const alternar = (set, valor) => { const n = new Set(set); if (n.has(valor)) n.delete(valor); else n.add(valor); return n; };
   const visibles = useMemo(() => ordenarProduccion(filtrarProduccion(candidatas, { semanas, dias }), orden), [candidatas, semanas, dias, orden]);
@@ -225,7 +231,7 @@ export default function ProducirMes({ client, cal, onPoner, onClose }) {
       });
       try {
         const vistas = mejorar ? await api.vistasDelCliente(clienteId).catch(() => []) : [];
-        const { encargo } = await crearEncargo(clienteId, { tipo: "lote", titulo: "Producir el mes", pasos, mejorar, controlar, paralelo: 2, vistas });
+        const { encargo } = await crearEncargo(clienteId, { tipo: "lote", titulo: "Producir el mes", pasos, mejorar, controlar, paralelo: 2, vistas, poner: ponerSolas });
         nuevas.push({ id: encargo.id, tipo: "lote" });
       } catch (e) {
         setAviso({ ok: false, texto: e.message });
@@ -246,7 +252,7 @@ export default function ProducirMes({ client, cal, onPoner, onClose }) {
             logo: estampaSola(kit) ? "" : kit.logo, tipografia: referenciaDeTipografia(kit), calendarId, postId: c.post.id,
           },
           propuesta: mejorar ? { guion: c.post.guion ?? "", tema: c.post.idea || c.post.title || "", preset, productoId: c.post.productoId || undefined, productoIds: productosDelPost(c.post), estructura: c.post.estructura || undefined } : null,
-          laminas: c.laminas,
+          laminas: c.laminas, poner: ponerSolas,
         });
         nuevas.push({ id: encargo.id, tipo: "carrusel", postId: c.post.id, laminas: c.laminas.length });
       } catch (e) {
@@ -259,7 +265,9 @@ export default function ProducirMes({ client, cal, onPoner, onClose }) {
     const todas = [...metas, ...nuevas];
     setMetas(todas);
     try { localStorage.setItem(claveGuardado, JSON.stringify({ metas: todas, t: Date.now() })); } catch { /* sin almacenamiento: se sigue aquí */ }
-    setAviso({ ok: true, texto: "Se está creando en el servidor: puedes cerrar. Al volver a abrir «Diseñar las que ya hay» verás lo que salió para ponerlo; también queda en la galería." });
+    setAviso({ ok: true, texto: ponerSolas
+      ? "Se está creando en el servidor: puedes cerrar. Cada pieza se pone SOLA en su publicación al terminar (y queda en la galería)."
+      : "Se está creando en el servidor: puedes cerrar. Al volver a abrir «Diseñar las que ya hay» verás lo que salió para ponerlo; también queda en la galería." });
   };
 
   // Una pieza suelta es un archivo; un carrusel, sus láminas en orden.
@@ -284,14 +292,13 @@ export default function ProducirMes({ client, cal, onPoner, onClose }) {
   const porPoner = trabajos.filter((t) => piezas[t.postId] && !puestas.has(t.postId));
 
   return (
-    <div className="overlay overlay-sheet">
-      <div ref={ref} role="dialog" aria-modal="true" aria-labelledby={`${ids}-t`} className="sheet revision-mes" tabIndex={-1}>
+    <Envoltura incrustado={incrustado} refDialogo={ref} titulo={`${ids}-t`}>
         <div className="sheet-header">
           <div>
-            <h2 id={`${ids}-t`} style={{ fontSize: "var(--fs-md)", margin: 0 }}>Producir el mes con IA</h2>
+            <h2 id={`${ids}-t`} style={{ fontSize: "var(--fs-md)", margin: 0 }}>{ponerSolas ? "Diseñar las aprobadas" : "Producir el mes con IA"}</h2>
             <p className="hint" style={{ margin: 0 }}>Las publicaciones sin contenido, cada una con el estilo de su tipo y su idea. Queda todo en la galería.</p>
           </div>
-          <button type="button" className="btn-icon" onClick={onClose} disabled={creando} aria-label="Cerrar"><Icon name="close" /></button>
+          {!incrustado && <button type="button" className="btn-icon" onClick={onClose} disabled={creando} aria-label="Cerrar"><Icon name="close" /></button>}
         </div>
         <div className="sheet-body">
           <div aria-live="polite">{aviso && <p role={aviso.ok ? "status" : "alert"} className={aviso.ok ? "hint" : "cerebro-error"}>{aviso.texto}</p>}</div>
@@ -333,10 +340,10 @@ export default function ProducirMes({ client, cal, onPoner, onClose }) {
               <label className="est-logo-casilla">
                 <input type="checkbox" checked={mejorar} onChange={(e) => setMejorar(e.target.checked)} /> Que el director diseñe cada imagen y cada carrusel antes de crear (recomendado: una ficha de diseño por pieza o lámina, todas como una serie; las que ya la tienen no esperan; costo de texto mínimo)
               </label>
-              <div className="produccion-filtro" role="group" aria-label="Versiones de cada imagen">
+              {!ponerSolas && <div className="produccion-filtro" role="group" aria-label="Versiones de cada imagen">
                 <span className="hint">Versiones</span>
                 {[1, 2].map((n) => <button key={n} type="button" className="filter-chip" aria-pressed={versiones === n} onClick={() => setVersiones(n)}>{n === 1 ? "Una" : "Dos para escoger"}</button>)}
-              </div>
+              </div>}
               <div className="produccion-filtro" role="group" aria-label="Orden">
                 <span className="hint">Orden</span>
                 <button type="button" className="filter-chip" aria-pressed={orden === "dia"} onClick={() => setOrden("dia")}>De lunes a domingo</button>
@@ -403,7 +410,8 @@ export default function ProducirMes({ client, cal, onPoner, onClose }) {
                         </span>
                       )}
                       {a ? (
-                        puestas.has(t.postId)
+                        ponerSolas ? <span className="hint"><Icon name="check" size={12} /> {t.estado === "hecho" ? "Puesta sola en su publicación" : "Se pondrá sola al terminar"}</span>
+                          : puestas.has(t.postId)
                           ? <span className="hint"><Icon name="check" size={12} /> Puesta en la publicación</span>
                           : <button type="button" className="btn btn-secondary btn-sm" onClick={() => poner([{ postId: t.postId }])}>Poner en la publicación</button>
                       ) : <span className="revision-problema">{t.error || "No llegó."}</span>}
@@ -417,8 +425,8 @@ export default function ProducirMes({ client, cal, onPoner, onClose }) {
         <div className="sheet-footer">
           {paso === "listo" ? (
             <>
-              <button type="button" className="btn btn-secondary" onClick={onClose}>Cerrar</button>
-              <button type="button" className="btn btn-primary" disabled={!porPoner.length} onClick={() => poner(porPoner)}>Poner todas ({porPoner.length})</button>
+              {!incrustado && <button type="button" className="btn btn-secondary" onClick={onClose}>Cerrar</button>}
+              {!ponerSolas && <button type="button" className="btn btn-primary" disabled={!porPoner.length} onClick={() => poner(porPoner)}>Poner todas ({porPoner.length})</button>}
             </>
           ) : paso === "confirmar" ? (
             <>
@@ -437,7 +445,6 @@ export default function ProducirMes({ client, cal, onPoner, onClose }) {
             </>
           )}
         </div>
-      </div>
-    </div>
+    </Envoltura>
   );
 }
