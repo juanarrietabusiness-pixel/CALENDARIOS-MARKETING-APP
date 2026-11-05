@@ -27,6 +27,7 @@
 //   POST   /<cliente>/carrusel/ideas               { preset?, tema?, productoId?, n?, usados? }: ideas de carrusel con su guion (texto)
 //   POST   /<cliente>/reel/ideas                   { preset?, tema?, productoId?, n?, usados?, segundos? }: ideas de reel IA (texto)
 //   POST   /<cliente>/reel/guion                   { idea, segundos?, preset?, estilo?, productoId?, personajes? }: el guion por planos (texto)
+//   POST   /<cliente>/reel/mes                     { calendarId, postIds | postId, confirmado? }: los reels del mes (asistente del mes)
 //   POST   /<cliente>/guion-corto                  { idea, segundos, post? }: guion de un video de 8 o 10 s (texto)
 //   POST   /<cliente>/video-producto/guion         { productoId, segundos?, idea?, post? }: la receta «Video del producto» (texto)
 //   PUT    /<cliente>/kit                          { kit }: guarda el kit de marca (paleta, presets, logo…)
@@ -85,6 +86,7 @@ import { produccionDeLote } from "../lib/estudio/lote.js";
 import { ideasDelEstudio } from "../lib/estudio/ideas.js";
 import { propuestaDeCarrusel } from "../lib/estudio/carrusel.js";
 import { guionDeReel } from "../lib/estudio/reel.js";
+import { reelsDelMes } from "../lib/estudio/reelDelMes.js";
 import { ideasDeFormato } from "../lib/estudio/ideasFormato.js";
 import { estrategiaDelMes } from "../lib/estudio/estrategiaMes.js";
 import { leerMercado, guardarCatalogo } from "../lib/mercado.js";
@@ -414,6 +416,18 @@ export async function rutasEstudio(req, env, { acceso, usuario, partes, metodo }
         return json(await guionDeReel(env, acceso, cliente, datos));
       } catch (e) {
         if (e?.estado) return error(e.message, e.estado);
+        throw e;
+      }
+    }
+
+    // ---------- Los reels de un mes (el asistente del mes): el costo sin crear nada, y con confirmado, el encargo ----------
+    if (b === "reel" && c === "mes" && metodo === "POST") {
+      const datos = await cuerpo(req);
+      if (!datos) return error("JSON inválido");
+      try {
+        return json(await reelsDelMes(env, acceso, cliente, datos, { usuario }));
+      } catch (e) {
+        if (e instanceof ErrorEstudio) return fallo(e);
         throw e;
       }
     }
