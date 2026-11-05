@@ -30,6 +30,8 @@ import { FiltroDeModelo } from "./SelectorModelo";
 import "./Estudio.css";
 
 const EstudioLote = lazy(() => import("./EstudioLote"));
+// La tarjeta «Muchas de una vez» (casi todo texto): aparte, el chunk del Estudio está en su tope.
+const EstudioMuchas = lazy(() => import("./EstudioMuchas"));
 // Sólo cuando una imagen de la galería cabe en más de un sitio: aparte, el chunk del Estudio está en su tope.
 const EleccionRanura = lazy(() => import("./EleccionRanura"));
 const EstudioRecrear = lazy(() => import("./EstudioRecrear"));
@@ -974,16 +976,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
 
       {/* ---------- Muchas de una vez (anuncios en matriz, por tipo o el mes) y recrear un anuncio de otra cuenta ---------- */}
       {!lectura && !dialogo && motores && (
-        <div className="card est-lote-entrada">
-          <div>
-            <strong>Muchas de una vez</strong>
-            <p className="hint">Anuncios en matriz (deseos × perfiles × niveles), por tipo de pieza o el MES completo con el ritmo del cliente. La IA escribe cada pieza, tú revisas y ves el costo, y cada una llega al calendario lista para revisión. O recrea con tu marca un anuncio de otra cuenta que te guste.</p>
-          </div>
-          <div className="est-lote-botones">
-            <button type="button" className="btn btn-secondary" onClick={() => setLoteAbierto(true)}><Icon name="megaphone" size={16} /> Producir varias piezas</button>
-            <button type="button" className="btn btn-secondary" onClick={() => setRecrear({ archivo: null })}><Icon name="refresh" size={16} /> Recrear con mi marca</button>
-          </div>
-        </div>
+        <Suspense fallback={null}><EstudioMuchas onLote={() => setLoteAbierto(true)} onRecrear={() => setRecrear({ archivo: null })} /></Suspense>
       )}
       </div>
       {recrear && (
