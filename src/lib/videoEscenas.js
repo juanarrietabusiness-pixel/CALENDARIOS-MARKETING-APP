@@ -468,10 +468,14 @@ export function validarGuion(entrada) {
     acento: validarProp(C("acento"), sub.acento, "subtitulos.acento", errores),
   };
   const mu = esObjeto(g.musica) ? g.musica : null;
+  // `estilo` e `instrumental` dicen QUÉ música lleva (lo lee generar_musica de Suno); `clave` es un archivo ya escogido
+  // (el render lo usa si el SONIDO del video no tiene otra). La música escogida en «Sonido» manda sobre la del guion.
   const musica = mu ? {
     clave: recorta(mu.clave).slice(0, 200),
     volumen: validarProp(N(0, 1, 0.35), mu.volumen, "musica.volumen", errores),
     bajarConVoz: validarProp(B(true), mu.bajarConVoz, "musica.bajarConVoz", errores),
+    ...(recorta(mu.estilo) ? { estilo: recorta(mu.estilo).replace(/\s+/g, " ").slice(0, 300) } : {}),
+    ...(mu.instrumental === false ? { instrumental: false } : {}),
   } : null;
   if (musica?.clave && (!/^clientes\/[^/]+\//.test(musica.clave) || musica.clave.includes(".."))) errores.push({ donde: "musica.clave", mensaje: "La música es un archivo del cliente (clientes/<cliente>/…)." });
 
