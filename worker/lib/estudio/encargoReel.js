@@ -520,7 +520,8 @@ export async function continuarReel(env, acceso, cliente, fila, cuerpo = {}) {
   }
   Object.assign(datos, {
     salida, revisar: false, video: { ...video, fase: "nuevo" },
-    montaje: cuerpo.montaje ? limpiarMontaje(cuerpo.montaje) : salida === datos.salida ? datos.montaje : null,
+    // Lo que diga ahora la persona manda (null: sin montaje); si no dice nada, el que se pidió al lanzar.
+    montaje: "montaje" in cuerpo ? limpiarMontaje(cuerpo.montaje) : salida === datos.salida ? datos.montaje : null,
   });
   delete datos.textosPuestos;
   const momento = new Date().toISOString();
