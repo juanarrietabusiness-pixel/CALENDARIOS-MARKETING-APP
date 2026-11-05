@@ -315,6 +315,41 @@ reconstruirla.
 
 ## 10. Lo que falta, en orden (contra `main` del 2026-11-05)
 
+### Comprobado en el código, punto por punto
+
+Cada sugerencia de esta propuesta, buscada en `main` del 2026-11-05 (el código, no la memoria). «En parte» dice qué
+existe y qué falta:
+
+| Sugerencia | Estado | Lo que ya hay / lo que falta |
+|---|---|---|
+| Ficha fotográfica (luz, Kelvin, lente, apertura, sombra) | En parte | Cada estilo visual del kit trae UNA línea de acabado (`ESTILOS_VISUALES`, p. ej. «lente de 50 a 85 mm»). Falta que la ficha del director lo pida por pieza, con su vocabulario |
+| Regla del texto en tres casos | No | Siguen «deja la zona libre» (`director.js`) y «mucho espacio negativo» (`kitMarca.js`) |
+| Bloques «Evitar» por caso | No | La ficha tiene una línea «Evitar» genérica |
+| Copiar la foto real del producto tal cual | **Ya existe** | `referencias.js`: «cópialo tal cual (forma, etiqueta, marca y colores)». Falta sólo «endereza la perspectiva de la foto» |
+| Anti-clichés y «un solo gesto expresivo» | No | |
+| Corrección de defectos visuales | En parte | El control ya mira deformaciones (manos, caras, objetos fundidos, texto fantasma), el logo y los precios, y el director revisa texto, jerarquía y márgenes con una corrección. Faltan los defectos de ASPECTO: luz plana, plástico, brillo de IA, foto de banco, franja plana, paleta que se desvía |
+| Compuerta de verdad | **Casi entera** | El lote ya dice «sólo los del catálogo y EXACTOS; no inventes reseñas, testimonios, seguidores, porcentajes ni plazos», el director «nada inventado» y el control marca precios fuera del catálogo. Falta que el control revise también las otras afirmaciones y el aviso de patrocinado si llega el UGC con presentador IA |
+| Director y lote por MCP; imagen en `estado_trabajo` | No | El camino de las imágenes por MCP ya existe (video animado) |
+| Recetas como dato, «Crear con Claude», handoff | No | |
+| Movimientos de cámara de producto | No | Hay «Video del producto» (una receta, con tramos), no una biblioteca de movimientos |
+| Tarjetas informativas de una imagen | En parte | Ya hay tipos Beneficios y Educativo y la composición «tipografica» en el lote. Lo nuevo serían formatos concretos: 4 beneficios con icono, ficha técnica, consejo para guardar, mito o realidad en UNA imagen |
+| Pack de anuncios con sistema fijo | **Casi entero** | El lote de anuncios ya tiene la matriz deseos × perfiles × niveles, las tácticas, la tanda como SERIE (el concepto de la primera pasa a las demás), una plantilla para toda la tanda y las ideas revisables con el costo total antes de gastar. Falta mezclar ubicaciones en el mismo pack (4:5, 9:16 y 1:1 a la vez) |
+| Texto de anuncio por creativo hacia «Nueva campaña» | En parte | El estudio de mercado ya escribe «Textos de anuncio» por producto y «Nueva campaña» escoge medios de la galería. Falta el puente: las piezas del lote a un borrador de campaña con su titular, texto y botón |
+| Ficha de producto desde un enlace | No | «Proponer catálogo» lee el cerebro, no una página web |
+| «Otro gancho» | No | Depende de la fase F |
+| Terminar en el Container (plantilla, logo, copias para redes) | No | El Container sólo tiene `/cuadro`, `/hoja`, `/revisar` y `/render` |
+| Render con video de entrada | No | |
+| Video animado: anticipar anclas, escalonado | No | Las salidas ya se anclan al final por defecto |
+| Cifra abreviada («412K») | En parte | Se puede escribir con el `sufijo` de la cifra; no se abrevia sola |
+| Lista, teléfono, burbuja, reloj, antes y después | No | Siguen como marcador |
+| Compuerta de la voz | En parte | `palabrasMudas` detecta el final comido; falta medir el ritmo y reescribir |
+| Estéticas para el restyle | En parte | Hay 7 estilos visuales y los propios del kit, más «De temporada». Las estéticas nuevas serían atajos |
+| Banner panorámico | **Ya existe** | El Estudio hace 16:9 y 21:9; sólo faltaría 3:1 |
+| Portada con el texto pintado encima | No | El titular lo escribe el modelo y el control lo revisa |
+| Retención calibrada, hoja de personaje, mockups, logos, lote de videos animados | No | |
+
+### Las fases
+
 El circuito de Higgsfield tiene tres partes: **escoger** (una galería de recetas con ejemplos), **pedir** (un botón que
 lleva el pedido a Claude) y **producir viendo** (Claude crea en lote, mira cada pieza, corrige y entrega). El calendario
 tiene la tercera DENTRO de la aplicación (el director) y, en el video animado, también por MCP. Le faltan las dos
@@ -322,10 +357,10 @@ primeras, llevar la tercera al MCP para las imágenes, y que lo que se produce s
 
 | Fase | Qué | Para qué le sirve a la agencia | Tamaño | Depende de |
 |---|---|---|---|---|
-| **A. Calidad** | Todo el §5: ficha fotográfica (luz, Kelvin, lente, apertura, sombra), la regla del texto en tres casos (y quitar «espacio negativo» y «deja la zona libre»), bloques «Evitar» por caso, las dos frases del producto, anti-clichés, refinamiento por categoría visual en el control, compuerta de verdad | Mejora TODO lo que ya sale (lote, mes, carruseles, director, historias) sin pantalla nueva ni costo por pieza. Es lo que hace que las recetas de Higgsfield se vean profesionales. Ninguna está hecha | Pequeño: prompt y tests | Nada |
+| **A. Calidad** | Lo que falta del §5: la ficha fotográfica por pieza (luz, Kelvin, lente, apertura, sombra), la regla del texto en tres casos (y quitar «espacio negativo» y «deja la zona libre»), bloques «Evitar» por caso, «endereza la perspectiva de la foto», anti-clichés, los defectos de ASPECTO en el control (luz plana, plástico, brillo de IA, foto de banco, franja plana). La compuerta de verdad ya está casi entera | Mejora TODO lo que ya sale (lote, mes, carruseles, director, historias) sin pantalla nueva ni costo por pieza. Es lo que hace que las recetas de Higgsfield se vean profesionales | Pequeño: prompt y tests | Nada |
 | **B. Claude produce en lote por MCP** | `estado_trabajo` y `ver_pieza` con la imagen (copia de 768 px en el Container); el director por MCP (`disenar_piezas` con `carrusel`, `corregir_pieza`, `poner_en_publicacion`) con la confirmación del costo de siempre; un pedido de lote que lance un encargo del servidor (`estudio_encargos` ya existe) | «Diséñame los 12 posts de diciembre de D'CASA» en una conversación de claude.ai, viendo cada pieza, con ficha, control y corrección, y que quede puesta en el calendario. El razonamiento lo paga la suscripción de Claude | Medio: las piezas ya existen en la aplicación; es llevarlas al Worker | Mejor con E |
 | **C. Recetas y «Crear con Claude»** | Recetas como dato (de la casa en el código, propias en D1); una galería de recetas con ejemplos de la galería real; «Crear aquí» (el director de la aplicación) y «Crear con Claude» (claude.ai con `/receta` y `HANDOFF`); `ver_recetas` y `receta` en el MCP; desde el post, el lote, Inspiración y la Biblioteca | El «fácil»: hoy hay que saber qué pantalla hace qué (lote, compositor, Reel IA, carrusel, recrear, video animado). Una receta empaqueta el CÓMO y la agencia sólo escoge el QUÉ; la agencia escribe sus propias recetas sin tocar el código | Medio | B (para «Crear con Claude») |
-| **D. Recetas nuevas** | Las de valor alto del §6: movimientos de producto, tarjetas informativas de una imagen, pack de anuncios con sistema fijo y un esquema que se confirma antes de gastar, texto de anuncio por creativo hacia «Nueva campaña», ficha de producto desde un enlace | Contenido que hoy no se puede hacer o sale por caminos largos: tomas de apoyo de producto, piezas para guardar, anuncios de Meta listos con su texto | Pequeño cada una | C |
+| **D. Recetas nuevas** | Movimientos de cámara de producto; los formatos concretos de tarjeta informativa (4 beneficios con icono, ficha técnica, consejo para guardar, mito o realidad en una imagen); el puente de las piezas del lote a un borrador de «Nueva campaña» con su texto; mezclar ubicaciones en el pack de anuncios; ficha de producto desde un enlace. El pack de anuncios y su esquema ya existen | Contenido que hoy no se puede hacer o sale por caminos largos: tomas de apoyo de producto, piezas para guardar, anuncios de Meta listos con su texto | Pequeño cada una | C |
 | **E. Terminar en el servidor** | El Container ya tiene lienzo (`@napi-rs/canvas`): el texto de la plantilla, el logo estampado, el JPEG y la copia 4:5 de Instagram, la de 1080p de TikTok y la historia encajada pueden hacerse ahí | El lote sin pantalla de verdad. Hoy los encargos esperan a que alguien abra la aplicación para poner sus `finales` (`terminarPendientes`) y «Programar al aprobar» depende de que el navegador prepare las piezas. Pedir el mes desde el teléfono o desde claude.ai y que quede listo para programar | Medio: cómputo del Container, sin IA | Nada |
 | **F. El render acepta VIDEO** | Una capa `video` en el formato v1: un clip de la galería (de Kie, de Drive o grabado por el cliente) que el Container decodifica con ffmpeg y el motor dibuja como una imagen, con su audio mezclado. En la vista previa, un `<video>` dibujado en el lienzo | La mitad de video de Higgsfield: montar lo que graba el cliente (los UGC de «Guiones para grabar»: cortes, subtítulos, música, gancho escrito), unir clips de Kie de más de 15 s, «Otro gancho» para una prueba A/B en Meta, UGC con presentador IA en varios clips, gráficos animados sobre un video real | Grande | Nada (el render ya existe) |
 | **G. Pulir el video animado** | Lo que falta del §7: anticipar anclas, escalonado, movimiento, cifra abreviada, lista y los otros marcadores, texto detrás del producto, zonas estrictas, escenas quietas, la compuerta de la voz | Que cada video animado se vea de agencia sin retocarlo | Pequeño cada uno | Nada |
