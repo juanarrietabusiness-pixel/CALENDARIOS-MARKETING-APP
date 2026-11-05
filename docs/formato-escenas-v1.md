@@ -76,6 +76,7 @@ Duración total: **de 5 s a 150 s**.
 | `grano` | 0–1 (0,25) |
 | `ritmo` | `calmado`, `medio`, `rapido` |
 | `ilustracion` | `plana`, `papel`, `linea`, `poster` |
+| `personaje` | El aspecto del personaje en ESTE video: `{ piel, pelo, ropa, accesorio, nombre }` (opcional; sin él, el del kit del cliente) |
 
 ## Escena
 
@@ -111,7 +112,7 @@ Los 16 componentes de la librería v1 y lo propio de cada uno:
 | `telefono` | `pantalla` (chat/imagen/color/notificacion), `mensajes` [{ `de`: cliente/marca, `texto` }] (≤ 6), `archivo`, `notificacion`, `color` |
 | `burbuja` | `texto`*, `lado` (izq/der), `color` |
 | `imagen` | `archivo`* (id de la galería: la foto REAL del producto), `rol` (producto/foto/persona), `recorte` (contener/cubrir), `marco` |
-| `personaje` | `variante` (adulto/nino/bebe), `pose` (de-pie/saluda/senala/piensa/celebra/preocupado), `color` — figura genérica de la casa |
+| `personaje` | `variante` (adulto/nino/bebe), `pose` (de-pie/saluda/senala/piensa/celebra/preocupado), `expresion` (auto/neutral/feliz/triste/preocupado/dormido; «auto» la toma de la pose), `color` — figura de la casa dibujada con código; su ASPECTO (piel, pelo, ropa, accesorio) es el del kit del cliente (`personaje_video`) o el de `estilo.personaje` |
 | `icono` | `nombre` (check, cruz, corazon, estrella, rayo, reloj, bolsa, carrito, chat, telefono, ubicacion, regalo, escudo, hoja, gota, bebe, casa, flecha, alerta, sonrisa, dinero, camion), `color`, `fondo` (un círculo de ese color detrás; el icono toma el color que más contraste) |
 | `cifra` | La **cifra gigante**: `valor`*, `prefijo` («$»), `sufijo` («%», «años»; más pequeño, al lado), `etiqueta` (≤ 30, debajo), `contar` (sube desde 0 en 1,2 s), `decimales`, `color`. Coma decimal y punto de miles desde 5 cifras; el ancho es el del valor final (no baila mientras cuenta) |
 | `anillo` | Un porcentaje que se llena: `valor`* (0–100), `texto` (≤ 10, en medio; vacío, el porcentaje que cuenta), `etiqueta` (≤ 30), `contar`, `color`, `pista` (el aro de fondo) |

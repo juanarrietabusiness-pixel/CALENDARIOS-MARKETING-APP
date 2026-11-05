@@ -168,6 +168,8 @@ src/
                           comparten la vista previa y el render del Container
     motorPiezas.js        Las PIEZAS del motor: iconos dibujados, cifra que cuenta, el dibujo libre (formas), los fondos de
                           estrellas y líneas, quitar el fondo liso del logo y su tono (puro: navegador y Container)
+    personajeVideo.js     El PERSONAJE del video animado dibujado con código (bebé, niño, adulto; 5 expresiones, 6 poses) y su
+                          aspecto por cliente (`kit.personajeVideo`) (puro: navegador y Container)
     motorVideoNavegador.js  Lo que ese motor necesita en el navegador: las imágenes de la galería, el logo, la letra del kit
                           y la textura del grano (no es puro)
     videosApi.js          Cliente de /api/videos/<cliente>
@@ -4173,6 +4175,14 @@ son del servidor.
   caja, cada una con su `retraso` y su `entrada` (`dibuja` traza las líneas; lo relleno se descubre con un recorte puesto
   ANTES de trazarlo, o rellenaría el recorte). Fondos `estrellas` (titilan con t) y `lineas`, sembrados. Sin `Path2D`:
   no existe en el Container.
+  · **El PERSONAJE se dibuja de verdad** (`src/lib/personajeVideo.js`, decisión de la agencia: el bebé de Baby Caleb en
+  todos sus videos): una figura plana de la casa —bebé, niño o adulto— con 5 expresiones (`expresion`: neutral, feliz,
+  triste, preocupado, dormido; «auto» la saca de la pose) y 6 poses, animada con `vida` (parpadeo, la lágrima, las «Z»,
+  el saludo). El ASPECTO (piel, pelo, ropa —un token de la marca o #RRGGBB—, accesorio: chupete, lazo, gorro) es del
+  CLIENTE: `kit.personajeVideo`, que fija `personaje_video` (asistente y MCP) y que `conPersonajeDelKit` pone en el guion
+  en la vista previa y en el servidor (`pedidoDelVideo`) si el guion no trae su `estilo.personaje`. `fundirKit` lo
+  conserva. Sólo arc, bezier y líneas: ni Path2D ni ellipse (el lienzo del Container no los garantiza). El kit de
+  Baby Caleb aún no lo tiene: sale con el aspecto de partida hasta que alguien lo fije.
   · **El logo se recorta de su fondo liso** (`quitarFondoLiso`): si las cuatro esquinas son opacas y del mismo color,
   ese color se borra DESDE EL BORDE (el blanco dentro de una «O» se queda), sólo si es entre el 5 y el 97 % de la
   imagen. Y lleva PLACA (clara sobre oscuro, oscura sobre claro) cuando más del 20 % de lo que se ve de él no llega a 2 a

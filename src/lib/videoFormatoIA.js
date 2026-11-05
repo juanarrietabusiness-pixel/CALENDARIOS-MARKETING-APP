@@ -97,7 +97,7 @@ export function formatoParaLaIA() {
     "",
     "RAÍZ: version (1), titulo (≤ 120), formatos (el primero es el principal: " + Object.keys(FORMATOS_VIDEO).join(", ") + "), estilo, escenas, subtitulos, musica (null por ahora).",
     `Duración total de ${MIN_SEGUNDOS} a ${MAX_SEGUNDOS} s; de 1 a ${MAX_ESCENAS} escenas; hasta ${MAX_CAPAS} capas por escena.`,
-    `estilo: paleta {token: "#RRGGBB"} (opcional), fuentes {titular, cuerpo: "kit"}, grano (0–1), ritmo (${RITMOS.join("|")}), ilustracion (${ILUSTRACIONES.join("|")}).`,
+    `estilo: paleta {token: "#RRGGBB"} (opcional), fuentes {titular, cuerpo: "kit"}, grano (0–1), ritmo (${RITMOS.join("|")}), ilustracion (${ILUSTRACIONES.join("|")}), personaje {piel, pelo, ropa, accesorio} (opcional: sin él, el aspecto del kit del cliente, que fija personaje_video).`,
     "subtitulos: activo (sí/no), pos (abajo|centro|arriba), maxPalabras (1–4), maxCaracteres (10–30), acento (color). Tienen su franja propia: nada se pone encima.",
     "",
     "ESCENA",
