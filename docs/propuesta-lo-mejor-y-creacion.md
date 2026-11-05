@@ -256,13 +256,21 @@ calidad.*
 **Recomendación:** empezar por la fase 1 (es lo que más cambia la calidad y no mueve pantallas) y la fase 3 en
 paralelo (es lo que pediste y apenas toca lo demás).
 
-## 5. Decisiones que necesito de ti
+## 5. Decisiones tomadas (5 de noviembre de 2026)
 
-1. **Quitar el interruptor «En el Estudio / Aquí, rápido»** y que todo se haga en la publicación por el director (con
-   «Ver en el Estudio» como enlace). ¿De acuerdo?
-2. **Quitar las preferencias por navegador** (control siempre encendido, el kit siempre puesto). ¿De acuerdo?
-3. **«Lo mejor»:** ¿global y además dentro de cada cliente? ¿Cuántos créditos de Scrape Creators por semana para
-   anuncios y tendencias (fases 3 y 7)?
-4. **Pasar de 10 a 5 pestañas por cliente** (fase 7): es el cambio más visible para el equipo. ¿Lo hacemos al final o
-   antes?
-5. **Por dónde empiezo:** ¿fase 1 y fase 3, como recomiendo?
+1. **Fuera el interruptor «En el Estudio / Aquí, rápido»:** todo se hace en la publicación por el director, con «Ver en
+   el Estudio» como enlace.
+2. **Fuera las preferencias por navegador que cambian el resultado:** el control va siempre (cada pieza cuesta una
+   revisión más) y el kit siempre puesto.
+3. **«Lo mejor» global y dentro de cada cliente, SIN limitarse a unas categorías.** Primero lo que más hace la agencia
+   (anuncios que venden, imágenes, carruseles, UGC con rostro, videos, educativos, motion graphics, guiones de marca
+   personal), pero también los virales y las tendencias que valga la pena captar. Cada pieza trae su forma de
+   recrearse: **con IA** (el director: imagen, carrusel, video animado o con IA) o **para grabar** (guion con tomas,
+   texto en pantalla y qué audio usar, que por API no se pone).
+4. **Scrape Creators sólo para anuncios y para TikTok;** Instagram sigue por la API de Meta. Tope de **10 créditos por
+   semana** en lo automático (se cambia en Ajustes; la agencia lo pondría entre 5 y 10). Lo que se busca a mano se suma
+   al contador.
+5. **Las 5 pestañas por cliente, sí** (fase 7, al final).
+6. **El ZIP de clips para CapCut se queda** junto a «Montarlo aquí»: la agencia quiere dejar Flow y CapCut y que todo
+   pase dentro de la aplicación, pero lo manual sigue disponible.
+7. **Todo el plan, de la fase 1 a la 7.**
