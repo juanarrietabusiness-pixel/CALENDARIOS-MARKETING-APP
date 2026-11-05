@@ -340,10 +340,10 @@ export default function ProducirMes({ client, cal, onPoner, onClose, incrustado 
               <label className="est-logo-casilla">
                 <input type="checkbox" checked={mejorar} onChange={(e) => setMejorar(e.target.checked)} /> Que el director diseñe cada imagen y cada carrusel antes de crear (recomendado: una ficha de diseño por pieza o lámina, todas como una serie; las que ya la tienen no esperan; costo de texto mínimo)
               </label>
-              {!ponerSolas && <div className="produccion-filtro" role="group" aria-label="Versiones de cada imagen">
+              <div className="produccion-filtro" role="group" aria-label="Versiones de cada imagen">
                 <span className="hint">Versiones</span>
-                {[1, 2].map((n) => <button key={n} type="button" className="filter-chip" aria-pressed={versiones === n} onClick={() => setVersiones(n)}>{n === 1 ? "Una" : "Dos para escoger"}</button>)}
-              </div>}
+                {[1, 2].map((n) => <button key={n} type="button" className="filter-chip" aria-pressed={versiones === n} onClick={() => setVersiones(n)}>{n === 1 ? "Una" : ponerSolas ? "Dos (la segunda queda en la galería)" : "Dos para escoger"}</button>)}
+              </div>
               <div className="produccion-filtro" role="group" aria-label="Orden">
                 <span className="hint">Orden</span>
                 <button type="button" className="filter-chip" aria-pressed={orden === "dia"} onClick={() => setOrden("dia")}>De lunes a domingo</button>

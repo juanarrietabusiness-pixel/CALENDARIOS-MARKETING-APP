@@ -4,6 +4,7 @@ import {
   avanceDelMes, paraDisenar,
 } from "./asistenteMes.js";
 import { ritmoDelMes } from "./pilares.js";
+import { fusionarEnMes } from "./meses.js";
 
 // ============================================================
 // El asistente del mes (fase 6): el paso que le toca a un mes, las casillas
@@ -54,6 +55,15 @@ describe("lo del asistente en el calendario", () => {
     const c = conAsistente(cal([], { estrategia: { objetivo: "vender" } }), { paso: 2 }, { por: "Ana", ahora: "2026-11-05T10:00:00Z" });
     expect(c.opciones.estrategia).toEqual({ objetivo: "vender" });
     expect(c.opciones.asistente).toMatchObject({ paso: 2, por: "Ana", actualizadoAt: "2026-11-05T10:00:00Z" });
+  });
+});
+
+describe("un mes sin cajón", () => {
+  it("lo del asistente y la estrategia llegan al cajón al crearlo, sin pisar lo que ya tenía", () => {
+    const escrito = conAsistente({ days: [], opciones: { estrategia: { objetivo: "vender" } } }, { paso: 1 }, { por: "Ana" });
+    const real = fusionarEnMes({ id: "k", days: [], opciones: { enviadoAt: "x" } }, escrito);
+    expect(real.opciones).toMatchObject({ enviadoAt: "x", estrategia: { objetivo: "vender" }, asistente: { paso: 1 } });
+    expect(fusionarEnMes({ id: "k", days: [], opciones: { estrategia: { objetivo: "crecer" } } }, escrito).opciones.estrategia.objetivo).toBe("crecer");
   });
 });
 

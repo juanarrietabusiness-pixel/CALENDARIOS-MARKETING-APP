@@ -1,0 +1,56 @@
+/* El asistente del mes (AsistenteMes.jsx): cinco pasos en una pantalla, con su avance arriba. Va con su chunk. */
+.asistente-mes { max-width: 960px; }
+.asistente-mes .sheet-footer { display: flex; align-items: center; gap: var(--sp-2); }
+.asistente-mes-donde { flex: 1; text-align: center; }
+
+.asistente-mes-pasos { padding: 0 var(--sp-4) var(--sp-2); border-bottom: 1px solid var(--border); }
+.asistente-mes-pasos ol { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--sp-1); }
+.asistente-mes-pasos button {
+  width: 100%; min-height: var(--tap); display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-areas: "num nombre" "num avance";
+  align-items: center; column-gap: var(--sp-2); padding: var(--sp-1) var(--sp-2); text-align: left; cursor: pointer;
+  background: var(--surface-2); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-sm);
+}
+.asistente-mes-pasos button[aria-current="step"] { border-color: var(--accent); background: var(--accent-soft); }
+.asistente-mes-num {
+  grid-area: num; width: 24px; height: 24px; border-radius: var(--radius-pill); display: inline-flex; align-items: center; justify-content: center;
+  background: var(--surface-3); font-size: var(--fs-2xs); font-weight: 700;
+}
+.asistente-mes-pasos button[aria-current="step"] .asistente-mes-num { background: var(--accent); color: #fff; }
+.asistente-mes-nombre { grid-area: nombre; font-size: var(--fs-xs); font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.asistente-mes-avance { grid-area: avance; font-size: var(--fs-3xs); color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.asistente-mes-paso { display: flex; flex-direction: column; gap: var(--sp-4); }
+.asistente-mes-bloque { display: flex; flex-direction: column; gap: var(--sp-2); border: 1px solid var(--border); border-radius: var(--radius); padding: var(--sp-3); margin: 0; }
+.asistente-mes-bloque h3 { margin: 0; font-size: var(--fs-sm); }
+.asistente-mes-bloque-cabeza { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); flex-wrap: wrap; }
+.asistente-mes-fila { display: flex; flex-wrap: wrap; gap: var(--sp-2) var(--sp-3); align-items: flex-end; }
+.asistente-mes-fila .field { flex: 1 1 220px; margin: 0; }
+.asistente-mes-acciones { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; }
+.asistente-mes-mas { width: 100%; }
+.asistente-mes-mas summary { cursor: pointer; min-height: var(--tap-sm); display: flex; align-items: center; }
+
+.asistente-mes-semanas { border: none; padding: 0; margin: 0; display: grid; gap: var(--sp-2); }
+.asistente-mes-semana-fila { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 200px); gap: var(--sp-2); }
+
+.asistente-mes-semana-plan { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--sp-1); }
+.asistente-mes-semana-plan li { display: grid; grid-template-columns: 3.5em minmax(0, 1fr); gap: 0 var(--sp-2); font-size: var(--fs-xs); }
+.asistente-mes-semana-plan li .hint { grid-column: 2; }
+.asistente-mes-chips { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--sp-1); }
+
+.asistente-mes-plan-semana ul { list-style: none; margin: var(--sp-1) 0 0; padding: 0; display: grid; gap: 2px; }
+.asistente-mes-plan-semana li { display: flex; flex-wrap: wrap; gap: var(--sp-2); font-size: var(--fs-xs); padding: 2px 0; border-bottom: 1px solid var(--border); }
+
+/* Las pantallas incrustadas (envolturaMes.jsx): sin el marco de diálogo. */
+.mes-incrustado { display: flex; flex-direction: column; gap: var(--sp-2); }
+.mes-incrustado .sheet-header, .mes-incrustado .sheet-body, .mes-incrustado .sheet-footer { padding-left: 0; padding-right: 0; }
+.mes-incrustado .sheet-body { overflow: visible; max-height: none; }
+.mes-incrustado .sheet-footer { position: static; border-top: 1px solid var(--border); }
+
+@media (max-width: 599px) {
+  .asistente-mes-pasos { padding: 0 var(--sp-3) var(--sp-2); }
+  .asistente-mes-pasos button { grid-template-columns: 1fr; grid-template-areas: "num" "nombre"; justify-items: center; text-align: center; padding: var(--sp-1); }
+  .asistente-mes-avance { display: none; }
+  .asistente-mes-nombre { font-size: var(--fs-3xs); white-space: normal; line-height: 1.15; }
+  .asistente-mes-semana-fila { grid-template-columns: 1fr; }
+  .asistente-mes-donde { display: none; }
+}

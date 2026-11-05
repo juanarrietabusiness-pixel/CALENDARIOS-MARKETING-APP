@@ -839,6 +839,17 @@ function Workspace({ session, ruta }) {
     navegar(construirRuta({ cliente: slug, calendario: slugDeMes(year, month) }));
   }, [clients]);
 
+  /**
+   * «Planificar mes» (y «Nuevo calendario» del buscador): el ASISTENTE DEL MES del mes que se mira, en el calendario
+   * (calendario/AsistenteMes.jsx). Va por la dirección (`?asistente=1`): CalendarView lo abre al llegar o, si ya estaba
+   * en ese mes, al oír el cambio de dirección. «Planificar a mano» (PlanWizard) se abre desde dentro del asistente.
+   */
+  const abrirAsistenteDelMes = useCallback(() => {
+    if (!selectedClientId) return;
+    const slug = slugsDeClientes(clients).get(selectedClientId) ?? selectedClientId;
+    navegar(`${construirRuta({ cliente: slug, calendario: slugDeMes(mesVisto.year, mesVisto.month) })}?asistente=1`);
+  }, [clients, selectedClientId, mesVisto]);
+
   // Una dirección que no resuelve —cliente borrado, enlace viejo, un
   // nombre cambiado— vuelve al inicio en vez de dejar la pantalla vacía
   // sin explicar nada. Se hace REEMPLAZANDO: no es navegar, es corregir,
@@ -1342,7 +1353,7 @@ function Workspace({ session, ruta }) {
     else if (a.tipo === "asistente") setShowChat(true);
     else if (a.tipo === "subir") setShowSubir(true);
     else if (a.tipo === "nuevo-cliente") openNewClient();
-    else if (a.tipo === "nuevo-calendario") setShowWizard(true);
+    else if (a.tipo === "nuevo-calendario") abrirAsistenteDelMes();
     else if (a.tipo === "cliente") irA(a.clienteId);
     else if (a.tipo === "calendario") irA(a.clienteId, a.calId);
     else if (a.tipo === "publicacion") {
@@ -1629,7 +1640,7 @@ function Workspace({ session, ruta }) {
                       </button>
                       {/* Ya no se crea un calendario por mes: el asistente
                           PLANIFICA el mes que se elija, dentro del mismo calendario. */}
-                      <button className="btn btn-primary" onClick={() => setShowWizard(true)}>
+                      <button className="btn btn-primary" onClick={abrirAsistenteDelMes}>
                         <Icon name="sparkles" size={18} /> Planificar mes
                       </button>
                     </div>
@@ -1721,6 +1732,7 @@ function Workspace({ session, ruta }) {
                     onMoveBankToCal={ideaAlCalendario}
                     onGuardarFechas={guardarFechasCliente}
                     onGuardarPlan={guardarPlanCliente}
+                    onPlanificar={() => setShowWizard(true)}
                     onPersistClient={persistClient}
                   />
                 ) : null)}
