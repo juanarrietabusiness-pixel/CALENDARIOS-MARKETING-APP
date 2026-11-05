@@ -493,6 +493,8 @@ src/
                           pasos con revisión, y las referencias de la competencia (lazy)
     EstudioLote.jsx       «Producir en lote»: qué (anuncios, por tipo o el mes; post, historia, carrusel o reel), ideas por
                           tandas («Sólo las ideas al calendario») y crear; cada pieza «Llevar al calendario» (lazy)
+    EstudioMuchas.jsx     La tarjeta «Muchas de una vez» de «Avanzado» (el lote y «Recrear con mi marca»), aparte: el chunk del
+                          Estudio está en su tope (lazy)
     EstudioRecrear.jsx    «Recrear un anuncio»: el anuncio (subir, galería o Drive), el análisis y la versión editable (lazy)
     EstudioKit.jsx        El kit de marca (Marca → Kit y voz; la voz va en su tarjeta, VozDeMarca): prepararlo con IA desde el cerebro, revisarlo, guardarlo (también las reglas que no se
                           rompen y quién pone el logo)
