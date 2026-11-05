@@ -50,6 +50,7 @@ import { pack } from "../cerebro/memoria.js";
 import { kitDe } from "./kit.js";
 import { pedidoConMarca, ponerLogo, kitVacio, IDS_PRESET, TIPOS_PRESET } from "../../../src/lib/kitMarca.js";
 import { productosActivos } from "../../../src/lib/estudioMercado.js";
+import { lineasDeReferencias } from "../../../src/lib/referencias.js";
 import { listarVoces, pedirMuestra, pedirLocucion, ErrorVoz } from "./locucion.js";
 import { pedirMusica, ErrorMusica } from "./musica.js";
 import { DURACION_MUSICA } from "../../../src/lib/musica.js";
@@ -285,6 +286,7 @@ export function lineaDePieza(f, n) {
     control
       ? `control: ${control.estado === "ok" ? "bien" : "revisar"}${control.errores?.length ? ` (${control.errores.length} error${control.errores.length > 1 ? "es" : ""} de texto)` : ""}${control.puntajeDiseno ? `, diseño ${control.puntajeDiseno}/10` : ""}`
       : "sin control de calidad",
+    control?.aspecto?.length ? `acabado: ${control.aspecto.map((x) => x.defecto).join("; ")}` : "",
     Array.isArray(usos) && usos.length ? (usos.length > 1 ? `la usan ${usos.length} publicaciones` : "la usa una publicación") : "",
     pedido ? `pedido: «${pedido.slice(0, 280)}${pedido.length > 280 ? "…" : ""}»` : "",
   ];
@@ -315,6 +317,19 @@ export function crearHerramientasEstudio({ env, acceso, resolverCliente, usuario
     if (!f || f.borrado_at) throw new ErrorHerramientaEstudio(`No encontré la imagen «${id}» en la galería (${para}). Los IDs salen de ver_estudio.`);
     if (!String(f.mime).startsWith("image/")) throw new ErrorHerramientaEstudio(`«${id}» no es una imagen (${f.mime}); ${para} tiene que ser una imagen.`);
     return f.clave;
+  }
+
+  /**
+   * Las referencias (claves, en orden) con el producto del catálogo de cada una, si es una foto suya: así su línea dice
+   * que es el producto REAL. Una consulta; si el catálogo no se lee, van sin nombre (como antes).
+   */
+  async function refsDelCatalogo(clienteId, claves) {
+    const fila = await acceso.leerUno("mercado_clientes", { client_id: clienteId }).catch(() => null);
+    const catalogo = catalogoDeLaFila(fila);
+    return claves.map((clave) => {
+      const p = catalogo.find((x) => x.fotos.includes(clave));
+      return p ? { clave, producto: { nombre: p.nombre, ...(p.marca ? { marca: p.marca } : {}) } } : { clave };
+    });
   }
 
   /** La identidad visual del cliente que el cerebro puede dar a un prompt de imagen: nunca notas internas. */
@@ -412,9 +427,14 @@ export function crearHerramientasEstudio({ env, acceso, resolverCliente, usuario
       if (kit.logo && !(await env.MEDIA.head(kit.logo).catch(() => true))) kit.logo = "";
       const conLogo = entrada.sin_logo !== true && !kitVacio(kit) && ponerLogo({ kit, tipo, modelo, referencias: medios.reference ?? [] });
       if (conLogo) medios.reference = [...(medios.reference ?? []), kit.logo];
+      // Las fotos del catálogo entre las referencias son el producto REAL: se dice así, como en la pantalla (si no, el
+      // motor las toma por una imagen de estilo, copia su ángulo y se inventa el empaque).
+      const referencias = tipo === "imagen" && entrada.referencias?.length
+        ? lineasDeReferencias(await refsDelCatalogo(c.id, medios.reference.slice(0, entrada.referencias.length)), { cliente: c.name })
+        : "";
       const prompt = pedidoConMarca({
         kit, idea: entrada.prompt, preset: entrada.estilo ?? "", marca: c.name, rubro: c.industry ?? "",
-        video: tipo === "video", logo: conLogo, usarKit: !kitVacio(kit),
+        video: tipo === "video", logo: conLogo, usarKit: !kitVacio(kit), referencias,
       });
 
       let fila;

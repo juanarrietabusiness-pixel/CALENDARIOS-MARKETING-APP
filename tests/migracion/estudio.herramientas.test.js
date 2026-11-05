@@ -167,6 +167,10 @@ describe("ver_estudio", () => {
     // Y los IDs que da sirven de verdad para pedir.
     const r = await usar(asistente(), "crear_en_estudio", { cliente: "Baby Caleb", prompt: "la caja", modelo: "prueba", referencias: ["foto-pants"] });
     expect(r.error).toBe(false);
+    // La foto del catálogo va como el producto REAL (como en la pantalla), con cómo usarla: no de estilo.
+    const t = trabajos().find((x) => x.client_id === "c2");
+    expect(t.prompt).toMatch(/Imagen de referencia 1: es la foto REAL del producto «Pañales Nateen tipo pants»/);
+    expect(t.prompt).toMatch(/endereza el producto/);
   });
 
   it("sin catálogo ni logo, no hay sección de catálogo", async () => {
@@ -224,7 +228,7 @@ describe("crear_en_estudio", () => {
   it("SIN estilo, la marca va igual (antes la imagen no sabía nada de ella); un estilo que no existe se dice", async () => {
     db.sqlite.prepare("update clients set kit_marca = ? where id = 'c1'").run(JSON.stringify({ paleta: [{ hex: "#1E2A5A", nombre: "azul" }], estilo: "cálido" }));
     expect((await usar(asistente(), "crear_en_estudio", { cliente: "Dcasa", prompt: "una cuna", modelo: "prueba" })).error).toBe(false);
-    expect(trabajos()[0].prompt).toMatch(/^Escena: una cuna\n\nIdentidad de la marca/);
+    expect(trabajos()[0].prompt).toMatch(/^Escena: una cuna\n\nAcabado profesional[^\n]*\n\nIdentidad de la marca/);
     const r = await usar(asistente(), "crear_en_estudio", { cliente: "Dcasa", prompt: "x", modelo: "prueba", estilo: "producto" });
     expect(r.error).toBe(true);
   });

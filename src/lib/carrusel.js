@@ -17,7 +17,7 @@
 // se pide y cómo se coloca.
 // ============================================================
 
-import { asegurarTexto, limpiarFicha } from "./director.js";
+import { asegurarTexto, limpiarFicha, lineaSinTexto } from "./director.js";
 
 export const MAX_LAMINAS = 10; // lo que admite un carrusel de Instagram
 const MAX_TEXTO = 400;
@@ -146,13 +146,13 @@ export function pedidoDeLamina({ lamina, total, idea = "", preset = "", modo = "
       : "Define un estilo limpio y reconocible: las siguientes láminas lo van a repetir.",
     // El sistema de la portada aprobada, en palabras (src/lib/sistemaCarrusel.js): la referencia sola dice «algo así».
     sistema,
-    conFotos ? "Una de las referencias es la foto real del producto: si aparece, que sea ese producto, igual." : "",
+    conFotos ? "Una de las referencias es la foto real del producto: si aparece, que sea ese producto, igual; si la foto está inclinada o tomada desde arriba, enderézalo en esta escena (no copies su punto de vista ni su fondo), y lo impreso en él, tal cual." : "",
     // Sin decirlo, el logo de referencia era una imagen más y el modelo no lo ponía.
     conLogo
       ? `La ÚLTIMA imagen de referencia es el logo de la marca: ponlo en esta lámina, pequeño y nítido, en el mismo sitio en todas las láminas (una esquina, sin tapar el texto), copiado tal cual —forma, colores y letras—, sin redibujarlo ni inventar otro.${lamina.rol === "portada" || lamina.rol === "cierre" ? " En esta lámina es obligatorio." : ""}`
       : "",
     modo === "plantilla"
-      ? `NO escribas ningún texto, letra ni número en la imagen: el texto se pone después. Deja ${zona} limpio y despejado, con buen contraste, para ese texto.\nLo que dice esta lámina (sólo para inspirar la imagen): ${String(lamina.texto).slice(0, 300)}`
+      ? `${lineaSinTexto(zona)}\nLo que dice esta lámina (sólo para inspirar la imagen): ${String(lamina.texto).slice(0, 300)}`
       : `Escribe en la lámina este texto, EXACTO, legible y bien jerarquizado (lo primero grande, lo demás más pequeño): ${comillas(lamina.texto)}. Ningún otro texto.`,
   ].filter(Boolean).join("\n\n").slice(0, 3800);
 }

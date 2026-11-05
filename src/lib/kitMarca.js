@@ -107,7 +107,7 @@ export const ESTILOS_VISUALES = Object.freeze({
   },
   editorial: {
     nombre: "Editorial premium", ayuda: "Como una revista de estilo de vida.",
-    linea: "Acabado editorial premium, como una revista de estilo de vida: luz natural cálida y envolvente, tonos suaves y armónicos, mucho espacio negativo, composición elegante y asimétrica, textura fina.",
+    linea: "Acabado editorial premium, como una revista de estilo de vida: luz natural cálida con dirección (de ventana, lateral), tonos suaves y armónicos, composición elegante y asimétrica con aire y zonas tranquilas de tono uniforme, textura fina.",
   },
   estudio: {
     nombre: "Producto en estudio", ayuda: "El producto nítido y protagonista, sin distracciones.",
@@ -115,7 +115,7 @@ export const ESTILOS_VISUALES = Object.freeze({
   },
   corporativo: {
     nombre: "Corporativo", ayuda: "Sobrio y confiable: personas e instalaciones reales.",
-    linea: "Acabado corporativo: sobrio y confiable, encuadres ordenados, luz pareja y limpia, personas en un entorno profesional real, los colores de la paleta en superficies y detalles.",
+    linea: "Acabado corporativo: sobrio y confiable, encuadres ordenados, luz suave con dirección (de ventana o de estudio), personas en un entorno profesional real, los colores de la paleta en superficies y detalles.",
   },
   creativo: {
     nombre: "Creativo", ayuda: "Una idea visual que sorprende.",
@@ -483,6 +483,12 @@ export const LINEA_VIDEO = `Video corto: movimiento de cámara suave y natural, 
  * la letra, el motor no sabía cuál era y se inventaba uno. El Worker lo busca en el pedido (`pideLogoDeReferencia`) para no
  * dejarlo fuera el primero si Muse no acepta todas las referencias.
  */
+/**
+ * El acabado profesional que va en TODA imagen (no en video): lo que delata una pieza hecha por IA sin oficio. Dicho
+ * según el estilo (una ilustración no lleva «piel creíble») y sin prohibir la placa o la banda que pida el diseño.
+ */
+export const LINEA_OFICIO = "Acabado profesional, según el estilo pedido: en una foto, luz con dirección y materiales y piel creíbles; nunca aspecto plástico, brillo artificial, HDR exagerado ni de foto de banco. Ningún texto, letra ni logo que no se haya pedido, y ninguna franja de color plana que el diseño no pida.";
+
 export const LINEA_LOGO = "La ÚLTIMA imagen de referencia es el logo REAL de la marca: la firma de la pieza es ése, copiado tal cual (forma, colores y letras), pequeño y nítido, sin redibujarlo, sin cambiarle nada y sin inventar otro.";
 /** La de antes: sigue en los pedidos guardados en la galería («Otra igual» los repite tal cual). */
 export const LINEA_LOGO_ANTERIOR = "Una de las imágenes de referencia es el logo de la marca: si aparece en la pieza, cópialo tal cual (forma, colores y letras), sin redibujarlo ni inventar otro.";
@@ -548,13 +554,14 @@ export function nombreDeEstilo(kitGuardado, id) {
  * video, cómo se mueve. Sin nada de eso, la idea tal cual. Lo que se manda es lo que queda escrito en la galería.
  * `estilo` es la LÍNEA ya resuelta; `acabado` (el id de antes) se acepta por compatibilidad. Pura.
  */
-export function componerPedido({ idea, preset = "", estilo = "", acabado = "", referencias = "", marca = "", logo = false, sinLogo = "", video = false }) {
+export function componerPedido({ idea, preset = "", estilo = "", acabado = "", referencias = "", marca = "", logo = false, sinLogo = "", video = false, oficio = false }) {
   const escena = String(idea ?? "").trim();
   const lineaEstilo = String(estilo || ACABADOS[acabado]?.linea || "").trim();
   const lineasRefs = String(referencias ?? "").trim();
-  if (!preset && !lineaEstilo && !lineasRefs && !marca && !logo && !sinLogo) return escena;
+  const conOficio = oficio && !video;
+  if (!preset && !lineaEstilo && !lineasRefs && !marca && !logo && !sinLogo && !conOficio) return escena;
   const tipo = String(preset ?? "").trim();
-  return [`Escena: ${escena}`, tipo ? `${PREFIJO_TIPO} ${tipo}` : "", lineaEstilo, lineasRefs, String(marca).trim(), logo ? LINEA_LOGO : String(sinLogo ?? "").trim(), video ? LINEA_VIDEO : ""]
+  return [`Escena: ${escena}`, tipo ? `${PREFIJO_TIPO} ${tipo}` : "", lineaEstilo, conOficio ? LINEA_OFICIO : "", lineasRefs, String(marca).trim(), logo ? LINEA_LOGO : String(sinLogo ?? "").trim(), video ? LINEA_VIDEO : ""]
     .filter(Boolean).join("\n\n");
 }
 
@@ -593,6 +600,8 @@ export function pedidoConMarca({ kit, idea, preset = "", estilo = "", acabado = 
     // donde más se inventaba (la guía del cerebro pide el logo y el motor no lo tiene).
     sinLogo: usarKit && !logo && !video ? lineaSinLogo(kit) : "",
     video,
+    // El acabado profesional va en toda imagen con el kit puesto (sin él, la idea va tal cual: lo decidió la persona).
+    oficio: usarKit && !video,
   });
 }
 
@@ -624,7 +633,7 @@ export function ponerLogo({ kit, tipo, modelo, referencias = [] }) {
 // ------------------------------------------------------------
 
 /** Ejemplos de la agencia: así escribe sus presets en Flow (sirven de muestra del TONO, no se copian). */
-const EJEMPLOS = `Ejemplo 1 (bebés, orgánico): Fotografía publicitaria de producto para marca de bebés hipoalergénica y orgánica. Paleta estrictamente limitada a: azul profundo #1B3246 (estructura/tipografía), verde suave #91C9A2 (acento natural), naranja cálido #EE924A (detalle/CTA), crema #F9F6ED y #F2EFE5 (fondos). Estilo limpio, cálido, suave y confiable, abundante espacio negativo, luz natural difusa, composición sencilla y aireada. Tipografía únicamente Montserrat. Sin colores fuera de la paleta, sin elementos recargados, sin texto inventado ni logos de otras marcas.
+const EJEMPLOS = `Ejemplo 1 (bebés, orgánico): Fotografía publicitaria de producto para marca de bebés hipoalergénica y orgánica. Paleta estrictamente limitada a: azul profundo #1B3246 (estructura/tipografía), verde suave #91C9A2 (acento natural), naranja cálido #EE924A (detalle/CTA), crema #F9F6ED y #F2EFE5 (fondos). Estilo limpio, cálido, suave y confiable, luz natural difusa desde una ventana lateral, composición sencilla y aireada con zonas tranquilas de tono uniforme. Tipografía únicamente Montserrat. Sin colores fuera de la paleta, sin elementos recargados, sin texto inventado ni logos de otras marcas.
 
 Ejemplo 2 (maquinaria pesada): Fotografía publicitaria de maquinaria pesada para marca de movimiento de tierra y alquiler/venta de equipos. Paleta estrictamente limitada a: azul marino #152473 (dominante: estructura, fondos oscuros, tipografía) y amarillo de máquina #FFB400 (solo acento: detalles, CTA, cifras). El azul domina siempre; el amarillo nunca al revés. Estilo industrial, sólido y confiable, iluminación fuerte y directa, estética técnica y de autoridad de oficio, composición con espacio para texto. Tipografía estilo Anton/Archivo Black para títulos e Inter/Barlow para apoyo. Sin colores fuera de la paleta, sin logos de otras marcas, sin texto inventado.`;
 

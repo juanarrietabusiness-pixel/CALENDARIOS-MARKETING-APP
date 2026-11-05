@@ -16,7 +16,9 @@ describe("una pieza, por el mismo camino", () => {
     ]);
     expect(ideaSinMejorar({ escena: "Una sala", contexto: "Brief" })).toBe("Una sala");
     expect(lineaDeTexto("")).toBe("");
-    expect(lineaSinTexto("el centro")).toMatch(/Deja el centro limpio/);
+    expect(lineaSinTexto("el centro")).toMatch(/En el centro, la propia escena tiene una zona tranquila/);
+    // Ni «espacio negativo» ni «hueco» ni «limpio y despejado»: el motor dibujaba una franja plana encima.
+    expect(lineaSinTexto("el centro")).not.toMatch(/espacio negativo|hueco|despejado/);
   });
 
   it("las referencias: producto primero, lo puesto a mano, la del tipo, los «Me gusta»; sin repetir y dejando sitio al logo", () => {

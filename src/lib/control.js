@@ -105,6 +105,8 @@ export function pedidoDeControl({ marca = "la marca", texto = "", precios = [], 
     precios.length ? `3. Los únicos precios válidos son los del catálogo: ${precios.slice(0, 20).join(", ")}. Di cualquier precio, porcentaje o cifra de venta que no esté ahí.` : "3. Di cualquier precio, porcentaje o cifra de venta que aparezca (no se pidió ninguno).",
     logo ? `4. La pieza debía llevar el logo de ${marca}: di si falta, si está deformado o redibujado, o si está bien.` : "4. Di si aparece el logo de otra marca o un logo inventado.",
     "5. Busca deformaciones: manos, dedos, caras, ojos, objetos fundidos, perspectivas imposibles, texto fantasma de fondo.",
+    // El ACABADO: lo que hace que una pieza se vea hecha por IA sin oficio. Se mira en los píxeles, no se adivina.
+    "5b. Mira el ACABADO como un fotógrafo y un diseñador: luz plana sin dirección, piel o producto con aspecto de plástico, brillo o HDR de IA, colores fuera de la paleta de la marca, una franja o un bloque de color plano pegado encima que el diseño no necesita, aspecto de foto de banco, rayas o restos sueltos. En \"aspecto\", hasta 2 defectos que SE VEAN, cada uno con su ARREGLO como una orden de edición precisa; si no hay, vacío.",
     evitar || reglas.length ? `6. La marca pide: ${[evitar && `nunca ${corto(evitar, 300)}`, ...reglas.map((r) => corto(r, 120))].filter(Boolean).join("; ")}. Di lo que no se cumpla.` : "",
     // Una lámina de un carrusel: lo que se sale del sistema de su portada (src/lib/sistemaCarrusel.js).
     sistema ? `7. Esta pieza es parte de una serie. ${corto(sistema, 900)} Di en "serie" lo que se salga de ese sistema y se note a simple vista (titular de otro tamaño o peso, el texto en otra zona, otros márgenes, otros colores, falta un elemento que se repite); si lo respeta, vacío.` : "",
@@ -113,7 +115,7 @@ export function pedidoDeControl({ marca = "la marca", texto = "", precios = [], 
     ficha ? `8. Ahora mira la pieza como el DIRECTOR CREATIVO que la diseñó con esta ficha:\n${String(ficha).trim().slice(0, 2500)}\nCompara dónde está el texto y de qué tamaño (en % del alto y del ancho de la pieza) con lo que pide la ficha, y la jerarquía, el contraste, los márgenes y el producto. En "diseno", hasta 3 problemas que se noten a simple vista, cada uno con su ARREGLO como una orden de edición precisa y con números («baja el titular hasta el 10–24 % de la altura», «reduce el titular al 70 % del ancho»); si está bien, vacío. En "puntajeDiseno", del 1 al 10 como director (8 o más: se entrega así).` : "",
     "",
     "Responde SOLO con JSON, sin texto alrededor:",
-    `{"textoLeido":"…","errores":[{"escrito":"lo que dice","esperado":"lo que debía decir"}],"precios":["precio que no está en el catálogo"],"logo":"bien|falta|deformado|no aplica","deformaciones":["…"],"otros":["…"],${sistema ? '"serie":["…"],' : ""}${ficha ? '"diseno":[{"problema":"…","arreglo":"…"}],"puntajeDiseno":1-10,' : ""}"puntaje":0-10}`,
+    `{"textoLeido":"…","errores":[{"escrito":"lo que dice","esperado":"lo que debía decir"}],"precios":["precio que no está en el catálogo"],"logo":"bien|falta|deformado|no aplica","deformaciones":["…"],"aspecto":[{"defecto":"…","arreglo":"…"}],"otros":["…"],${sistema ? '"serie":["…"],' : ""}${ficha ? '"diseno":[{"problema":"…","arreglo":"…"}],"puntajeDiseno":1-10,' : ""}"puntaje":0-10}`,
   ].filter((l) => l !== "").join("\n");
 }
 
@@ -152,12 +154,17 @@ export function leerControl(respuesta, { texto = "", logo = false } = {}) {
   const diseno = (Array.isArray(d.diseno) ? d.diseno : [])
     .map((x) => ({ problema: corto(x?.problema, 160), arreglo: corto(x?.arreglo, 200) }))
     .filter((x) => x.arreglo).slice(0, 3);
+  // El acabado (luz plana, plástico, franja plana…): se dice y, si el director la deja floja, va en su corrección.
+  const aspecto = (Array.isArray(d.aspecto) ? d.aspecto : [])
+    .map((x) => ({ defecto: corto(x?.defecto, 140), arreglo: corto(x?.arreglo, 200) }))
+    .filter((x) => x.defecto && x.arreglo).slice(0, 2);
   const nota = Number(d.puntajeDiseno);
   const puntajeDiseno = Number.isFinite(nota) && nota > 0 ? Math.max(1, Math.min(10, Math.round(nota))) : null;
   const flojo = puntajeDiseno !== null && puntajeDiseno < NOTA_MINIMA && diseno.length > 0;
   const estado = errores.length || graves || serie.length || flojo ? "revisar" : "ok";
   return {
     estado, textoLeido, errores, precios, logo: logoEstado, deformaciones, otros, ...(serie.length ? { serie } : {}),
+    ...(aspecto.length ? { aspecto } : {}),
     ...(puntajeDiseno !== null ? { puntajeDiseno, diseno } : {}),
     puntaje: Math.max(0, Math.min(10, Math.round(Number(d.puntaje) || (estado === "ok" ? 9 : 5)))),
     soloTexto: errores.length > 0 && graves === 0,
@@ -180,7 +187,8 @@ export const PREFIJO_AJUSTE = "Ajuste del director:";
 export function correccionDelDirector(control, textoEsperado = "") {
   const texto = control?.errores?.length ? correccionDeTexto(control, textoEsperado) : "";
   const flojo = control?.puntajeDiseno != null && control.puntajeDiseno < NOTA_MINIMA;
-  const arreglos = flojo ? (control.diseno ?? []).map((x) => x.arreglo).filter(Boolean) : [];
+  // Lo de diseño primero; el acabado detrás. Tres como mucho: una edición con diez órdenes no hace ninguna bien.
+  const arreglos = flojo ? [...(control.diseno ?? []), ...(control.aspecto ?? [])].map((x) => x.arreglo).filter(Boolean).slice(0, 3) : [];
   if (!arreglos.length) return texto;
   return [
     `${PREFIJO_AJUSTE} ${arreglos.join("; ")}.`,
