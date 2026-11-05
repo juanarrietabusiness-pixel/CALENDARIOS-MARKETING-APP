@@ -30,6 +30,7 @@ import { DEFINICIONES_DISENO_MCP, crearHerramientasDiseno, ErrorDiseno } from ".
 import { DEFINICIONES_RECETAS, crearHerramientasRecetas, ErrorReceta } from "./estudio/herramientasRecetas.js";
 import { ESCRIBEN_VIDEO } from "./estudio/herramientasVideo.js";
 import { DEFINICIONES_VISTA, crearHerramientasVista, ErrorVista } from "./estudio/vistaEstudio.js";
+import { DEFINICIONES_REEL_MCP, crearHerramientasReel } from "./estudio/herramientasReel.js";
 
 const FORMATOS = ["post", "reel", "carrusel", "historia", "live"];
 const REDES = ["instagram", "facebook", "tiktok", "youtube"];
@@ -107,6 +108,8 @@ export const HERRAMIENTAS_MCP = Object.freeze([
   })),
   // El DIRECTOR CREATIVO por MCP (worker/lib/estudio/herramientasDiseno.js): diseñar en lote, ver, corregir y poner en un post.
   ...DEFINICIONES_DISENO_MCP,
+  // El VIDEO terminado en el servidor (worker/lib/estudio/herramientasReel.js): el reel, el montaje, «¿Está listo?» y el UGC.
+  ...DEFINICIONES_REEL_MCP,
   ...DEFINICIONES_RECETAS,
   // Las que sólo llama la VISTA PREVIA del chat (MCP Apps: `visibility: ["app"]`, ver rutas/mcp.js).
   ...DEFINICIONES_VISTA,
@@ -392,6 +395,7 @@ export function crearHerramientasMCP({ env, acceso, usuario }) {
   Object.assign(acciones, estudio);
   Object.assign(acciones, crearHerramientasDiseno({ env, acceso, resolverCliente, usuario, por, buscarPublicacion: buscar, guardarDias }));
   Object.assign(acciones, crearHerramientasRecetas({ env, acceso, buscarPublicacion: buscar }));
+  Object.assign(acciones, crearHerramientasReel({ env, acceso, resolverCliente, usuario, buscarPublicacion: buscar }));
   Object.assign(acciones, crearHerramientasVista({ env, acceso, por }));
 
   return { llamar };

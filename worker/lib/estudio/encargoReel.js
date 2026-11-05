@@ -32,7 +32,7 @@ import { pedirRender, renderAlDia } from "./render.js";
 import { modeloPorId, estaVivo, textoCosto } from "../../../src/lib/estudioCatalogo.js";
 import { pedidoDeFotogramaReel, pedidoDeVideo, pedidoDeClip } from "../../../src/lib/reelPedidos.js";
 import { repartirTiempos, sinVozPropia } from "../../../src/lib/reel.js";
-import { duracionDeClip, duracionesDe } from "../../../src/lib/duracionesVideo.js";
+import { duracionDeClip, duracionesDe, haceDuracion } from "../../../src/lib/duracionesVideo.js";
 import { conVideoEnPost, rellenarVacios } from "../../../src/lib/resultadoEnPost.js";
 import { textoDelGuionReel } from "../../../src/lib/montajeReel.js";
 import { SALIDAS_REEL, FIN_MONTAJE, PLANOS_REEL_MAX } from "../../../src/lib/encargoReelPuro.js";
@@ -106,6 +106,8 @@ export function prepararReel(cuerpo = {}) {
     const m = modeloPorId(video.modelo);
     if (!m || m.tipo !== "video") throw new ErrorEstudio("Falta el modelo del video.", 400);
     if (salida === "clips" && !m.inicial) throw new ErrorEstudio(`${m.nombre} no anima una imagen: escoge otro para los clips.`, 400);
+    // Nunca un guion de 30 s con un modelo que hace 10: lo que pasa de lo que hace un modelo, por clips y montaje.
+    if (salida === "uno" && !haceDuracion(m, reel.segundos)) throw new ErrorEstudio(`${m.nombre} no hace videos de ${reel.segundos} s: escoge otro o hazlo por clips y montaje.`, 400);
   }
   const montaje = salida === "fotogramas" ? null : limpiarMontaje(cuerpo.montaje);
   const postId = cuerpo.postId ? texto(cuerpo.postId, 80) : null;
@@ -499,6 +501,7 @@ export async function continuarReel(env, acceso, cliente, fila, cuerpo = {}) {
   const m = modeloPorId(video.modelo);
   if (!m || m.tipo !== "video") throw new ErrorEstudio("Falta el modelo del video.", 400);
   if (salida === "clips" && !m.inicial) throw new ErrorEstudio(`${m.nombre} no anima una imagen: escoge otro para los clips.`, 400);
+  if (salida === "uno" && !haceDuracion(m, datos.reel?.segundos)) throw new ErrorEstudio(`${m.nombre} no hace videos de ${datos.reel?.segundos} s: escoge otro o hazlo por clips y montaje.`, 400);
   const permiso = await reservar(acceso, fila);
   if (!permiso) return { ocupado: true };
   // Los fotogramas corregidos a mano (sólo de la galería de ESTE cliente).

@@ -61,11 +61,11 @@ const pedir = (ruta, opciones = {}) => worker.fetch(new Request(`https://calenda
 }), env);
 
 const REEL = {
-  segundos: 9, hilo: "Una mamá y su bebé en casa, luz cálida",
+  segundos: 8, hilo: "Una mamá y su bebé en casa, luz cálida",
   planos: [
     { desde: 0, escena: "El bebé llora en su cuna", camara: "Acercamiento", dice: "¿Tu bebé tiene la piel sensible?" },
     { desde: 3, escena: "La mamá abre la caja de wipes", camara: "Fija", dice: "Los wipes Nateen la cuidan." },
-    { desde: 6, escena: "El bebé sonríe con la caja al lado", camara: "Abre", dice: "Escríbenos y pídelos hoy." },
+    { desde: 5, escena: "El bebé sonríe con la caja al lado", camara: "Abre", dice: "Escríbenos y pídelos hoy." },
   ],
   musica: "Acústica suave", locucion: "", descripcion: "Piel sensible protegida desde el primer uso.", gancho: "¿Piel sensible?", llamado: "Pídelos hoy",
 };
@@ -210,8 +210,9 @@ describe("el reel por planos sigue en el servidor", () => {
     expect(r2.status).toBe(409);
   });
 
-  it("un reel sin modelo de video (o con uno que no anima una imagen para los clips) no se crea", async () => {
+  it("un reel sin modelo de video (o con uno que no anima una imagen, o que no hace esa duración) no se crea", async () => {
     expect((await lanzar({ video: { modelo: "" } })).status).toBe(400);
+    expect((await lanzar({ reel: { ...REEL, segundos: 30 } })).status).toBe(400);
     expect((await lanzar({ salida: "clips", video: { modelo: "gemini-omni-video-kie" } })).status).toBe(400);
     expect(db.sqlite.prepare("select count(*) n from estudio_encargos").get().n).toBe(0);
   });
