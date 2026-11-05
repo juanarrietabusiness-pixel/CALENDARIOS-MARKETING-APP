@@ -329,8 +329,10 @@ export async function clasificarPendientes(env, acceso, { claves = null, max = C
     const set = new Set(claves.map(String));
     candidatas = todas.filter((p) => set.has(p.clave) && pendiente(p));
   } else {
+    // Primero lo mejor de la semana y del mes; después todo lo demás de los últimos días: lo que la consulta del cron ve
+    // sin clasificar TIENE que poder clasificarse aquí, o el cron volvería a este espacio cada minuto.
     const vistas = new Set();
-    candidatas = [...ordenarLoMejor(todas, "semana"), ...ordenarLoMejor(todas, "mes")]
+    candidatas = [...ordenarLoMejor(todas, "semana"), ...ordenarLoMejor(todas, "mes"), ...todas]
       .filter((p) => pendiente(p) && !vistas.has(p.clave) && vistas.add(p.clave));
   }
   const tanda = candidatas.slice(0, Math.max(1, Math.min(CLASIFICAR_POR_VUELTA, Number(max) || CLASIFICAR_POR_VUELTA)));
@@ -473,7 +475,8 @@ export async function loMejorPendiente(env, ahoraFecha = new Date()) {
     }
   }
   if (sinIADeTexto(env)) return 0;
-  const [c] = await espaciosPorClasificar(env.DB, new Date(t - DIAS_MAX * DIA).toJSON(), 1);
+  // Dos días de margen sobre lo que se reúne (DIAS_MAX): el cron no debe ver como pendiente algo que no se va a clasificar.
+  const [c] = await espaciosPorClasificar(env.DB, new Date(t - (DIAS_MAX - 2) * DIA).toJSON(), 1);
   if (!c) return 0;
   await clasificarPendientes(env, crearAcceso(env.DB, c.owner_id)).catch((x) => console.error("cron lo mejor (clasificar):", c.owner_id, x?.message));
   return 1;

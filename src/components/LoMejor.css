@@ -51,6 +51,13 @@
 .lo-mejor-camino-sugerido { font-size: var(--fs-3xs); }
 .lo-mejor-llevar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); margin-top: var(--sp-1); }
 
+/* Junto al calendario (el ojo, 380 px): la tarjeta en horizontal, con la vista a la izquierda. */
+.bank-panel:not(.bank-panel-pagina) .lo-mejor-tarjeta { flex-direction: row; align-items: flex-start; }
+.bank-panel:not(.bank-panel-pagina) .lo-mejor-vista { flex: 0 0 104px; width: 104px; }
+.bank-panel:not(.bank-panel-pagina) .lo-mejor-etiqueta-fuente { display: none; }
+.bank-panel:not(.bank-panel-pagina) .lo-mejor-cuerpo { padding: var(--sp-2); }
+.bank-panel:not(.bank-panel-pagina) .lo-mejor-cifra { font-size: var(--fs-md); }
+
 /* «Recrear para…» */
 .lo-mejor-recrear { max-width: 560px; width: 100%; display: flex; flex-direction: column; gap: var(--sp-3); }
 .lo-mejor-recrear-cabecera { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); }

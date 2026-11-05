@@ -6,6 +6,7 @@ import { anadirAlBanco } from "../lib/bancoIdeasApi";
 import { nuevaIdea } from "../lib/bancoIdeas";
 import { PAISES } from "../lib/biblioteca";
 import { MODOS_SC, ESTADOS_SC, MEDIOS_SC, ORDENES_SC, consultaSC, esDelCdnDeMeta } from "../lib/scrapeCreators";
+import { cifraDe, diasDeAnuncio } from "../lib/loMejor";
 
 // ============================================================
 // La Biblioteca de anuncios por Scrape Creators
@@ -256,7 +257,10 @@ function TarjetaSC({ a, cliente, lectura, onAviso }) {
       descripcion: [a.texto, transcripcion && `Lo que dice el video: ${transcripcion}`].filter(Boolean).join("\n\n"),
       format: video ? "reel" : a.formato === "carrusel" ? "carrusel" : "post",
     });
-    await anadirAlBanco(idea, cliente?.id ?? null);
+    // La cifra y la vista viajan con la idea (como desde «Lo mejor»): cuántos días lleva y su imagen del CDN de Meta.
+    const dias = cifraDe({ fuente: "anuncio", cifras: { dias: diasDeAnuncio(a), activo: a.activo, versiones: Math.max(a.versiones?.length ?? 0, a.relacionados ?? 0) } });
+    const vista = [a.imagenes?.[0], a.videos?.[0]?.portada].find((u) => u && esDelCdnDeMeta(u));
+    await anadirAlBanco({ ...idea, cifra: [dias.texto, dias.detalle].filter(Boolean).join(" · "), ...(vista ? { miniatura: vista } : {}) }, cliente?.id ?? null);
     onAviso(`Guardado en el banco de ideas${cliente ? ` de ${cliente.name}` : " (general)"}.`);
   });
   const transcribir = () => hacer("transcribir", async () => {
