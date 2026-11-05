@@ -4088,7 +4088,8 @@ son del servidor.
   cualquier modelo, terminan el trabajo con su motivo y ya no se reintentan (`errorDeKie`).
   · **Claude trabaja el video por MCP** (`worker/lib/estudio/herramientasVideo.js`, también en el asistente):
   `formato_video`, `listar_videos`, `ver_video`, `crear_video` (con `publicacion_id`), `guardar_video`, `editar_escena`
-  (cambia, mueve, añade o quita UNA escena) y `aprobar_video`. Van por `worker/lib/videosProyectos.js`, el MISMO camino
+  (cambia, mueve, añade o quita una escena; con `id` + `cambiar`, sólo unos campos sin mandarla entera; con `cambios`,
+  hasta 20 en UNA versión, en orden y todos o ninguno: el error dice «Cambio n») y `aprobar_video`. Van por `worker/lib/videosProyectos.js`, el MISMO camino
   que la pantalla: el guion se valida en el servidor, la `version` leída evita pisar, editar devuelve a borrador.
   Aprobar es de la persona: la descripción le dice a Claude que sólo con su sí. Con eso `generar_locucion` ya tiene un
   video aprobado que nombrar. Ninguna gasta.
