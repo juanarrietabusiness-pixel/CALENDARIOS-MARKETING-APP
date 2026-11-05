@@ -2317,6 +2317,8 @@ son del servidor.
   si no cabe, el espacio queda `sc_lleno` = ese lunes y la consulta no lo vuelve a ver hasta la semana siguiente (sin eso el
   cron lo miraría cada minuto). Cambiar el tope suelta la marca. Sin la primera búsqueda intentada, los anuncios NO cuentan
   como releídos (van primero el lunes). Va detrás de todo el cron, y la clasificación de lo leído en las vueltas siguientes.
+  Lo buscado a mano en la Biblioteca también suma y NO se bloquea: su respuesta trae `semana` ({ total, tope }) y la
+  pantalla avisa si se pasó.
   · **Una cuenta de TikTok se lee como mucho una vez por semana** (`tiktokLeToca`). Quién la lee: el cron de «Lo mejor»
   (`tiktok: "auto"`), la primera lectura de una cuenta recién añadida (la pantalla pide las que `faltan`: también «auto», sólo
   si cabe en el tope; si no, espera y se dice) y «Actualizar» a mano (`manual`: cuenta para el tope y NO se bloquea; la

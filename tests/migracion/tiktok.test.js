@@ -355,6 +355,13 @@ describe("el reparto del tope", () => {
     expect(d.avisoSC).toMatch(/se pasó del tope/);
   });
 
+  it("lo buscado a mano en la Biblioteca tampoco se bloquea, y dice cómo va la semana", async () => {
+    await pedir("/api/lo-mejor/creditos", { method: "PUT", body: { tope: 0 } });
+    const r = await pedir(`/api/biblioteca/sc/anuncios?c=${encodeURIComponent(JSON.stringify({ modo: "palabra", q: "cunas" }))}`);
+    expect(r.status).toBe(200);
+    expect((await r.json()).semana).toEqual({ total: 1, tope: 0 });
+  });
+
   it("la cuenta que el cliente ya no sigue no se lee: se borra", async () => {
     expect(await inspiracionPendiente(env)).toBe(1);
     // Se quita de la lista sin que el cron de 20 h haya pasado todavía.
