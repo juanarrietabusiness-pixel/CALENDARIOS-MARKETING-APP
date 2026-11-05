@@ -91,7 +91,7 @@ export function lineaDeLoQueFalta(faltan = []) {
 export function avisoDeLoQueFalta(faltan = []) {
   const lista = faltan.map((k) => MATERIAL[k]?.que).filter(Boolean);
   if (!lista.length) return "";
-  return `Al cerebro le falta material para algunas piezas: ${lista.join("; ")}. La IA no lo inventó; añádelo en la pestaña Cerebro${faltan.includes("rubro") ? " (o pulsa «Saber del rubro»)" : ""} y vuelve a pedirlas.`;
+  return `Al cerebro le falta material para algunas piezas: ${lista.join("; ")}. La IA no lo inventó; añádelo en Marca → Cerebro${faltan.includes("rubro") ? " (o pulsa «Saber del rubro»)" : ""} y vuelve a pedirlas.`;
 }
 
 // ------------------------------------------------------------

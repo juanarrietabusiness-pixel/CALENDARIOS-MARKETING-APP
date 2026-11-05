@@ -162,7 +162,7 @@ export async function avisarFallo(env, acceso, fila, mensaje) {
     await avisar(env, acceso, {
       para, tipo: "fallo",
       texto: `«${titulo}» no se publicó en ${fila.red}: ${String(mensaje).slice(0, 200)}`,
-      enlace: "/programacion", por: { userId: "sistema", nombre: "Publicación" },
+      enlace: "/produccion", por: { userId: "sistema", nombre: "Publicación" },
     });
   } catch (e) {
     console.error("aviso de fallo:", e);

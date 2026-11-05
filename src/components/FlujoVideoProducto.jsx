@@ -229,7 +229,7 @@ export default function FlujoVideoProducto({ client, estudio, inicial = {}, onPo
               </div>
             )}
           </div>
-          {!kit.logo && <p className="hint">El kit de marca no tiene logo: el cierre saldrá sin él. Se pone en la pestaña Estudio → Kit de marca.</p>}
+          {!kit.logo && <p className="hint">El kit de marca no tiene logo: el cierre saldrá sin él. Se pone en Marca → Kit y voz.</p>}
         </div>
       )}
 

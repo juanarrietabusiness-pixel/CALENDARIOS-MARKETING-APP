@@ -177,13 +177,14 @@ describe("documentos que se sueltan", () => {
 });
 
 describe("la dirección de la pestaña", () => {
-  it("/cliente/<slug>/cerebro es la pestaña, no un calendario llamado «cerebro»", () => {
+  it("/cliente/<slug>/cerebro (la dirección de antes) es Marca → Cerebro, no un calendario llamado «cerebro»", () => {
     expect(PESTANAS_CLIENTE).toContain("cerebro");
-    expect(analizarRuta({ pathname: "/cliente/dcasa/cerebro" })).toMatchObject({ vista: "panel", cliente: "dcasa", pestana: "cerebro", calendario: null });
+    expect(analizarRuta({ pathname: "/cliente/dcasa/cerebro" })).toMatchObject({ vista: "panel", cliente: "dcasa", pestana: "marca", seccion: "cerebro", calendario: null });
   });
 
   it("construir y analizar son inversos", () => {
-    expect(construirRuta({ vista: "panel", cliente: "dcasa", pestana: "cerebro" })).toBe("/cliente/dcasa/cerebro");
+    expect(construirRuta({ vista: "panel", cliente: "dcasa", pestana: "marca", seccion: "cerebro" })).toBe("/cliente/dcasa/marca/cerebro");
+    expect(analizarRuta({ pathname: "/cliente/dcasa/marca/cerebro" })).toMatchObject({ pestana: "marca", seccion: "cerebro" });
   });
 
   it("un calendario llamado «Cerebro» no se queda con la dirección de la pestaña", () => {

@@ -20,7 +20,15 @@ export function buscarEnEspacio({ clients = [], client = null, texto = "", meses
   const acciones = [
     { clave: "mi-dia", titulo: "Mi día", icono: "clipboardCheck", accion: { tipo: "ruta", ruta: "/tareas" } },
     { clave: "auditorias", titulo: "Auditar un perfil de Instagram", icono: "search", accion: { tipo: "ruta", ruta: "/auditorias" } },
-    { clave: "programacion", titulo: "Programación: lo que sale y lo que falló", icono: "clock", accion: { tipo: "ruta", ruta: "/programacion" } },
+    { clave: "programacion", titulo: "Producción: lo por producir, lo que sale y lo que falló", icono: "clock", accion: { tipo: "ruta", ruta: "/produccion" } },
+    { clave: "lo-mejor", titulo: "Lo mejor del momento", icono: "trending", accion: { tipo: "ruta", ruta: "/lo-mejor" } },
+    { clave: "anuncios", titulo: "Anuncios: campañas y Biblioteca de anuncios", icono: "megaphone", accion: { tipo: "ruta", ruta: "/campanas" } },
+    // Las pestañas del cliente abierto (fase 7), con lo que tienen dentro para que se encuentren por su nombre de antes.
+    ...(client ? [
+      { clave: "crear", titulo: `Crear para ${client.name}: director, galería, Estudio`, icono: "sparkles", accion: { tipo: "pestana", pestana: "crear" } },
+      { clave: "referencias", titulo: `Referencias de ${client.name}: ideas, inspiración, competencia`, icono: "bulb", accion: { tipo: "pestana", pestana: "referencias" } },
+      { clave: "marca", titulo: `Marca de ${client.name}: ficha, kit, voz, cerebro, plan semanal, fechas, Drive`, icono: "palette", accion: { tipo: "pestana", pestana: "marca" } },
+    ] : []),
     { clave: "subir", titulo: "Subir contenido: publicar o programar", icono: "upload", accion: { tipo: "subir" } },
     { clave: "asistente", titulo: "Abrir el asistente", icono: "messageCircle", accion: { tipo: "asistente" } },
     ...(client ? [{ clave: "nuevo-cal", titulo: `Nuevo calendario de ${client.name}`, icono: "plus", accion: { tipo: "nuevo-calendario" } }] : []),

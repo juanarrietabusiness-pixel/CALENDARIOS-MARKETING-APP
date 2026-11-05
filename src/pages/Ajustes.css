@@ -24,6 +24,10 @@
   margin-bottom: var(--sp-1);
 }
 .ajustes-titulo svg { color: var(--accent); }
+/* «Cómo trabajamos»: cada cosa con su botón y lo que es. */
+.como-trabajamos { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: var(--sp-3); }
+.como-trabajamos li { display: flex; flex-direction: column; align-items: flex-start; gap: var(--sp-1); }
+.como-trabajamos .btn { text-decoration: none; }
 .ajustes-intro { font-size: var(--fs-2xs); color: var(--text-dim); margin-bottom: var(--sp-4); max-width: 70ch; }
 
 .ajustes-consumo {

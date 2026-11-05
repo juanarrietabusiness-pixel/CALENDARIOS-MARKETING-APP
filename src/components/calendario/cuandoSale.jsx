@@ -90,7 +90,7 @@ export default function CuandoSale({
       // Lo que estuviera en la cola ya no debe salir solo.
       const programadas = vivas.filter((f) => f.estado === "programada");
       return hacer("mano", async () => { for (const f of programadas) await onCancelar(f.id); },
-        "Guardada para publicarla a mano: sale en Mi día y en Programación a su hora.");
+        "Guardada para publicarla a mano: sale en Mi día y en Producción a su hora.");
     }
     if (modo === "ahora") {
       if (!window.confirm(`¿Publicar ahora en ${pendientes.map((r) => REDES[r].nombre).join(" y ")}?`)) return undefined;
@@ -185,7 +185,7 @@ export default function CuandoSale({
           {modo === "mano" && (
             <>
               <p className="hint" style={{ margin: 0 }}>
-                Para la música de Instagram, los stickers o las encuestas, que la API no deja poner. Te sale en Mi día y en Programación
+                Para la música de Instagram, los stickers o las encuestas, que la API no deja poner. Te sale en Mi día y en Producción
                 a su hora, con el archivo para guardar y el texto para copiar.
               </p>
               <label className="sr-only" htmlFor={`${ids}-nota`}>Qué hay que poner a mano</label>

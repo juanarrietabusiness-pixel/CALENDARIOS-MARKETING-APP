@@ -1,5 +1,6 @@
 import Icon from "./Icon";
 import { idDeCarpeta, enlaceCarpeta } from "../lib/drive";
+import "./FichaCliente.css";
 
 // ============================================================
 // La ficha del cliente, para consultarla sin abrir el formulario

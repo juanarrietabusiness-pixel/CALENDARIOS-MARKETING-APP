@@ -2,6 +2,7 @@
 .programacion { display: flex; flex-direction: column; gap: var(--sp-4); }
 
 .prog-filtros { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; }
+.prog-filtros[hidden] { display: none; }
 .prog-filtros .segmented { width: auto; flex: 0 0 auto; }
 .prog-filtros .input { width: auto; flex: 1 1 160px; max-width: 240px; }
 
@@ -93,6 +94,8 @@
   min-height: var(--tap); padding: 0 var(--sp-3); font: inherit; font-size: var(--fs-sm); font-weight: 600; cursor: pointer;
   display: inline-flex; align-items: center; gap: var(--sp-2); white-space: nowrap;
 }
+/* Cuatro pestañas (con «Por producir», fase 7): en el teléfono, más juntas para que quepan. */
+@media (max-width: 599px) { .prog-pestana { padding: 0 var(--sp-2); font-size: var(--fs-xs); flex-shrink: 0; } }
 .prog-pestana[aria-selected="true"] { color: var(--accent); border-bottom-color: var(--accent); }
 .prog-pestana[data-aviso] .prog-cuenta { color: var(--danger); font-weight: 700; }
 .prog-buscar { flex: 2 1 220px !important; max-width: 360px !important; }

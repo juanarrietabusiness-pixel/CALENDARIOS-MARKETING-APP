@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useId, useRef, lazy, Suspense } from 
 import Icon from "./Icon";
 import * as db from "../lib/db";
 import { tamanoLegible, enlaceCarpeta } from "../lib/drive";
+import "./Drive.css";
 
 // ============================================================
 // La carpeta de Drive de un cliente, navegable

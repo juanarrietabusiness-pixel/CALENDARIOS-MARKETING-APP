@@ -38,7 +38,8 @@ const guardarVista = (v) => { try { localStorage.setItem(CLAVE_VISTA, v); } catc
 
 const fecha = (iso) => (iso ? new Date(iso).toLocaleDateString("es-PA", { day: "numeric", month: "short", year: "numeric" }) : "");
 
-export default function Cerebro({ client }) {
+/** `abrirMercado` ({ tab, n }): abre el estudio de mercado en esa pestaña (el semáforo del kit: el catálogo). */
+export default function Cerebro({ client, abrirMercado = null }) {
   const ids = useId();
   const lectura = soloLectura();
   const [datos, setDatos] = useState(null);
@@ -401,7 +402,7 @@ export default function Cerebro({ client }) {
                         Borrar {d.memorias.length === 1 ? "esa memoria" : "esas memorias"} del asistente
                       </button>
                     )}
-                    {d.fuentes.includes("cliente") && <span className="hint">Corrígelo en la pestaña Ficha del cliente (teléfono o WhatsApp).</span>}
+                    {d.fuentes.includes("cliente") && <span className="hint">Corrígelo en Marca → Ficha del cliente (teléfono o WhatsApp).</span>}
                   </div>
                 )}
               </li>
@@ -442,7 +443,7 @@ export default function Cerebro({ client }) {
       </div>
 
       <Suspense fallback={null}>
-        <EstudioMercado client={client} onCambio={cargar} />
+        <EstudioMercado client={client} onCambio={cargar} abrir={abrirMercado} />
       </Suspense>
 
       {vacio ? (

@@ -14,13 +14,15 @@ import PorProgramar from "../components/PorProgramar";
 const HistoriasAutomaticas = lazy(() => import("../components/HistoriasAutomaticas"));
 
 // ============================================================
-// Programación, como en Meta Business Suite
+// Producción (era «Programación»; `/programacion` sigue abriéndola), como en Meta Business Suite
 //
-// Tres pestañas —Publicadas, Programadas, No publicadas—, los filtros en una
-// fila (texto, cliente, red, formato, cuántos días) y una tabla: lo publicado
-// con sus cifras (alcance, visualizaciones, interacciones), lo programado con
-// «Publicar ahora» y «Cancelar» (también varias a la vez), y lo que no salió
-// con su motivo, lo aprobado que falta programar y lo que va a mano.
+// Cuatro pestañas —Por producir, Publicadas, Programadas, No publicadas—, los
+// filtros en una fila (texto, cliente, red, formato, cuántos días) y una tabla:
+// lo aprobado que falta programar y las ideas aprobadas por producir (fase 7:
+// eran un bloque dentro de «No publicadas»), lo publicado con sus cifras
+// (alcance, visualizaciones, interacciones), lo programado con «Publicar
+// ahora» y «Cancelar» (también varias a la vez), y lo que no salió con su
+// motivo y lo que va a mano.
 //
 // Se relee con cada `pulso`: la cola la mueve el cron sin nadie delante, y cada
 // paso avisa al espacio. Borrar de Instagram lo ya publicado NO se puede por la
@@ -59,13 +61,18 @@ function Publicacion({ fila, cliente }) {
   );
 }
 
+/** Las pestañas: «Por producir» (fase 7) y las de la cola (lib/cola.js). */
+const PESTANAS = [["producir", "Por producir"], ...PESTANAS_PROGRAMACION];
+
 export default function Programacion({ clients = [], pulso = 0, onAbrir, onSubir, onCalendarioGuardado, soltarPendiente }) {
   const ids = useId();
   const [filas, setFilas] = useState(null);
   const [fallo, setFallo] = useState("");
   const [aviso, setAviso] = useState("");
   const [ocupada, setOcupada] = useState("");
-  const [pestana, setPestana] = useState("programadas");
+  // «Por producir» primero (fase 7: esta página es «Producción»): lo aprobado por programar y las ideas por producir.
+  const [pestana, setPestana] = useState("producir");
+  const [porProducir, setPorProducir] = useState(null);
   const [dias, setDias] = useState(30);
   const [cliente, setCliente] = useState("");
   const [red, setRed] = useState("");
@@ -136,13 +143,13 @@ export default function Programacion({ clients = [], pulso = 0, onAbrir, onSubir
   };
 
   const cuentaNo = vista.cuentas.no + aMano.length;
-  const cuentas = { ...vista.cuentas, no: cuentaNo };
+  const cuentas = { ...vista.cuentas, no: cuentaNo, producir: porProducir ?? "" };
 
   return (
     <div className="programacion">
       <div className="page-header">
         <div className="page-header-top">
-          <h1 className="page-title">Programación</h1>
+          <h1 className="page-title">Producción</h1>
           {onSubir && (
             <div className="page-header-actions">
               <button type="button" className="btn btn-primary" onClick={onSubir}>
@@ -151,19 +158,19 @@ export default function Programacion({ clients = [], pulso = 0, onAbrir, onSubir
             </div>
           )}
         </div>
-        <p className="page-meta">Lo que sale en las cuentas de todos los clientes, a la hora de Panamá.</p>
+        <p className="page-meta">Lo que está por producir y la cola de todos los clientes: lo que sale, lo que salió y lo que falló, a la hora de Panamá.</p>
       </div>
 
       <div className="prog-pestanas" role="tablist" aria-label="Qué mirar" onKeyDown={(e) => {
         // Pestañas: las flechas pasan a la de al lado (el patrón de pestañas de WAI-ARIA).
         if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
-        const i = PESTANAS_PROGRAMACION.findIndex(([k]) => k === pestana);
-        const sig = PESTANAS_PROGRAMACION[(i + (e.key === "ArrowRight" ? 1 : PESTANAS_PROGRAMACION.length - 1)) % PESTANAS_PROGRAMACION.length][0];
+        const i = PESTANAS.findIndex(([k]) => k === pestana);
+        const sig = PESTANAS[(i + (e.key === "ArrowRight" ? 1 : PESTANAS.length - 1)) % PESTANAS.length][0];
         setPestana(sig);
         setMarcadas(new Set());
         document.getElementById(`${ids}-t-${sig}`)?.focus();
       }}>
-        {PESTANAS_PROGRAMACION.map(([k, nombre]) => (
+        {PESTANAS.map(([k, nombre]) => (
           <button key={k} type="button" role="tab" id={`${ids}-t-${k}`} aria-selected={pestana === k} aria-controls={`${ids}-p-${k}`} tabIndex={pestana === k ? 0 : -1}
             className="prog-pestana" data-aviso={k === "no" && cuentaNo > 0 ? "si" : undefined} onClick={() => { setPestana(k); setMarcadas(new Set()); }}>
             {nombre} <span className="prog-cuenta">{filas ? cuentas[k] : ""}</span>
@@ -171,7 +178,8 @@ export default function Programacion({ clients = [], pulso = 0, onAbrir, onSubir
         ))}
       </div>
 
-      <div className="prog-filtros">
+      {/* Los filtros son de la cola: «Por producir» tiene los suyos (cada publicación con su revisión). */}
+      <div className="prog-filtros" hidden={pestana === "producir"}>
         <label className="sr-only" htmlFor={`${ids}-q`}>Buscar por texto</label>
         <input id={`${ids}-q`} className="input prog-buscar" type="search" placeholder="Buscar por texto" value={texto} onChange={(e) => setTexto(e.target.value)} />
         <label className="sr-only" htmlFor={`${ids}-c`}>Cliente</label>
@@ -204,6 +212,12 @@ export default function Programacion({ clients = [], pulso = 0, onAbrir, onSubir
       </div>
       {fallo && <p role="alert" className="notice notice-error">{fallo}</p>}
       {!filas && !fallo && <p role="status" className="hint">Cargando la cola…</p>}
+
+      {/* Siempre montado (escondido fuera de su pestaña): su cifra va en la pestaña aunque se mire otra. */}
+      <section id={`${ids}-p-producir`} role="tabpanel" aria-labelledby={`${ids}-t-producir`} hidden={pestana !== "producir"}>
+        <PorProgramar clients={clients} pulso={pulso} onAbrir={onAbrir} onCalendarioGuardado={onCalendarioGuardado} soltarPendiente={soltarPendiente} onProgramado={cargar} onCuenta={setPorProducir} />
+        {porProducir === 0 && <Vacio texto="Nada por producir ni por programar: lo aprobado ya está en la cola, y no hay ideas aprobadas esperando su pieza." />}
+      </section>
 
       {filas && pestana === "publicadas" && (
         <section id={`${ids}-p-publicadas`} role="tabpanel" aria-labelledby={`${ids}-t-publicadas`}>
@@ -293,7 +307,7 @@ export default function Programacion({ clients = [], pulso = 0, onAbrir, onSubir
                 ))}
               </tbody>
             </table>
-          ) : <Vacio texto={(filas ?? []).length ? "Nada programado con estos filtros." : "Todavía no hay nada programado. Programa desde una publicación o desde «No publicadas → Aprobadas, por programar»."} />}
+          ) : <Vacio texto={(filas ?? []).length ? "Nada programado con estos filtros." : "Todavía no hay nada programado. Programa desde una publicación o desde «Por producir → Aprobadas, por programar»."} />}
           <p className="hint">Para cambiar el día o la hora, ábrela: «¿Cuándo sale?» la reprograma.</p>
         </section>
       )}
@@ -325,8 +339,6 @@ export default function Programacion({ clients = [], pulso = 0, onAbrir, onSubir
             </div>
           )}
 
-          <PorProgramar clients={clients} pulso={pulso} onAbrir={onAbrir} onCalendarioGuardado={onCalendarioGuardado} soltarPendiente={soltarPendiente} onProgramado={cargar} />
-
           {aMano.length > 0 && (
             <div className="prog-bloque">
               <h2 className="prog-titulo"><Icon name="photo" size={16} /> Para publicar a mano ({aMano.length})</h2>
@@ -348,7 +360,7 @@ export default function Programacion({ clients = [], pulso = 0, onAbrir, onSubir
               </ul>
             </div>
           )}
-          {!vista.no.length && !aMano.length && <p className="hint">Nada falló ni espera a mano. Lo aprobado por el cliente que falta programar sale arriba.</p>}
+          {!vista.no.length && !aMano.length && <p className="hint">Nada falló ni espera a mano. Lo aprobado por el cliente que falta programar está en «Por producir».</p>}
         </section>
       )}
 

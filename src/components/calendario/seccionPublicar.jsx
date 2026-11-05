@@ -66,6 +66,8 @@ const GaleriaSelector = lazy(() => import("../GaleriaSelector"));
 const OpcionesCrearAqui = lazy(() => import("./OpcionesCrearAqui"));
 const VideoListo = lazy(() => import("../VideoListo"));
 const Recetas = lazy(() => import("../Recetas"));
+// El aviso del kit (fase 7): sin logo, o un producto que nombra sin fotos. Lee la galería del cliente: aparte.
+const AvisoKitPieza = lazy(() => import("./AvisoKitPieza"));
 
 /**
  * @param seccion      «pieza» (el archivo y todas las formas de hacerlo) o «publicar» (dónde, el texto, cómo se va a
@@ -440,7 +442,7 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
               const base = window.location.pathname.split("/").slice(0, 3).join("/");
               const q = new URLSearchParams({ receta: r.id, post: post.id, ...(indicacion.trim() ? { pide: indicacion.trim() } : {}) });
               setRecetas(false);
-              navegar(`${base}/diseno?${q}`);
+              navegar(`${base}/crear/director?${q}`);
             } : null}
             onCerrar={() => setRecetas(false)}
           />
@@ -566,6 +568,11 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
       <div className="pestana-pieza">
         {/* Lo que pidió cambiar el cliente, con «Rehacer la imagen» (la misma imagen, sólo ese cambio). */}
         <CambiosDelCliente post={post} setForm={setForm} clientId={clientId} uso={cal && post.id ? { calendarId: cal.dbId || cal.id, postId: post.id } : null} />
+        {clientId && (
+          <Suspense fallback={null}>
+            <AvisoKitPieza clientId={clientId} post={post} />
+          </Suspense>
+        )}
         <section className="compositor" aria-label="La pieza de la publicación">
           <EditorMedios
             post={post}

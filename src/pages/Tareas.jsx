@@ -49,12 +49,17 @@ const leerVista = () => {
   try { const v = localStorage.getItem("midia-vista"); return VISTAS.includes(v) ? v : "semana"; } catch { return "semana"; }
 };
 
+// «Tareas» de un cliente (su cabecera, fase 7: ya no es una pestaña) llega con `?empresa=<id>`: la vista por empresa
+// con la suya sola, hasta «Ver todas». No se recuerda como vista del navegador: es una visita.
+const empresaPedida = () => { try { return new URLSearchParams(window.location.search).get("empresa") ?? ""; } catch { return ""; } };
+
 export default function Tareas({
   clients = [], pulso = 0, onSelectClient, yo = null, presentes = [], foco = null, onFoco, onDiasEmpresa,
 }) {
   const acciones = useTareas(pulso);
   const { todas, loading, error, alternarHecha, actualizar, alternarHoy, moverA, crear: crearTarea, reordenar } = acciones;
-  const [vista, setVistaEstado] = useState(leerVista);
+  const [soloEmpresa, setSoloEmpresa] = useState(empresaPedida);
+  const [vista, setVistaEstado] = useState(() => (empresaPedida() ? "empresa" : leerVista()));
   const setVista = (v) => {
     setVistaEstado(v);
     try { localStorage.setItem("midia-vista", v); } catch { /* sin almacenamiento */ }
@@ -223,7 +228,11 @@ export default function Tareas({
       )}
 
       {!loading && vista === "empresa" && (
-        <PorEmpresa todas={visibles} nombreDe={nombreDe} filaProps={filaProps} hoy={hoy} />
+        <PorEmpresa
+          todas={visibles} nombreDe={nombreDe} filaProps={filaProps} hoy={hoy}
+          soloEmpresa={soloEmpresa}
+          onTodas={() => { setSoloEmpresa(""); navegar("/tareas", { reemplazar: true }); }}
+        />
       )}
     </div>
   );
@@ -405,10 +414,13 @@ function Foco({ clients, foco, onFoco, presentes, yo, nombreDe }) {
   );
 }
 
-/** La vista de antes: todo agrupado por empresa, las rápidas primero. */
-function PorEmpresa({ todas, nombreDe, filaProps, hoy }) {
+/**
+ * La vista de antes: todo agrupado por empresa, las rápidas primero. Con `soloEmpresa` (se llegó desde un cliente),
+ * sólo las suyas, con la salida a todas y a su lista entera (las que se repiten, las plantillas).
+ */
+function PorEmpresa({ todas, nombreDe, filaProps, hoy, soloEmpresa = "", onTodas }) {
   const [filtro, setFiltro] = useState("pending");
-  const pasa = (t) => filtro === "all" || (filtro === "pending" ? !hecha(t) : hecha(t));
+  const pasa = (t) => (!soloEmpresa || t.client_id === soloEmpresa) && (filtro === "all" || (filtro === "pending" ? !hecha(t) : hecha(t)));
   const grupos = new Map();
   for (const t of todas.filter(pasa)) {
     const nombre = t._rapida ? "Sin empresa" : (nombreDe(t.client_id) || "Empresa sin nombre");
@@ -420,6 +432,16 @@ function PorEmpresa({ todas, nombreDe, filaProps, hoy }) {
 
   return (
     <>
+      {soloEmpresa && (
+        <div className="notice" role="note" style={{ display: "flex", alignItems: "center", gap: "var(--sp-2)", flexWrap: "wrap", marginBottom: "var(--sp-3)" }}>
+          <Icon name="building" size={16} />
+          <span style={{ flex: "1 1 220px" }}>Sólo las de <strong>{nombreDe(soloEmpresa) || "esta empresa"}</strong>.</span>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={() => navegar(`/cliente/${encodeURIComponent(soloEmpresa)}/tareas`)}>
+            Su lista entera (las que se repiten)
+          </button>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={onTodas}>Ver todas las empresas</button>
+        </div>
+      )}
       <div className="filter-bar" role="group" aria-label="Filtrar tareas" style={{ marginBottom: "var(--sp-4)" }}>
         {[["pending", "Pendientes"], ["completed", "Completadas"], ["all", "Todas"]].map(([k, label]) => (
           <button key={k} className={`filter-chip ${filtro === k ? "active" : ""}`} aria-pressed={filtro === k} onClick={() => setFiltro(k)}>
@@ -503,7 +525,7 @@ function PublicacionesDeHoy({ pulso, nombreDe, clients, yo }) {
   };
   const nOcultos = [fallidas.length > 0 && !ver.fallidas, (nProgramar || nProducir) && !ver.aprobadas, aMano.length > 0 && !ver.aMano].filter(Boolean).length;
   if (!ver.fallidas && !ver.aprobadas && !ver.aMano && !hoy.length && !nOcultos) return null;
-  const ir = (e) => { e.preventDefault(); navegar("/programacion"); };
+  const ir = (e) => { e.preventDefault(); navegar("/produccion"); };
   const linea = (f) => `${nombreDe(f.clientId) || "Cliente"} · ${REDES[f.red]?.nombre ?? f.red}${f.variante === "historia" ? " (historia)" : ""}`;
   const descartar = async (f) => {
     if (!window.confirm("¿Descartar este fallo? No se volverá a intentar.")) return;
@@ -542,7 +564,7 @@ function PublicacionesDeHoy({ pulso, nombreDe, clients, yo }) {
             ))}
           </ul>
           {fallo && <p role="alert" style={{ fontSize: "var(--fs-2xs)" }}>{fallo}</p>}
-          <a href="/programacion" onClick={ir}>Revisar y reintentar en Programación</a>
+          <a href="/produccion" onClick={ir}>Revisar y reintentar en Producción</a>
         </div>
       )}
       {ver.aprobadas && (
@@ -560,7 +582,7 @@ function PublicacionesDeHoy({ pulso, nombreDe, clients, yo }) {
           <p style={{ fontSize: "var(--fs-2xs)", color: "var(--text-dim)", margin: "var(--sp-1) 0" }}>
             Lo aprobado no sale solo: revísalo y dale el paso final.
           </p>
-          <a href="/programacion" onClick={ir}>Revisar y programar en Programación</a>
+          <a href="/produccion" onClick={ir}>Revisar y programar en Producción</a>
         </div>
       )}
       {ver.aMano && (
@@ -587,12 +609,12 @@ function PublicacionesDeHoy({ pulso, nombreDe, clients, yo }) {
         <p style={{ fontSize: "var(--fs-2xs)", color: "var(--text-dim)", display: "flex", alignItems: "center", gap: "var(--sp-2)", flexWrap: "wrap" }}>
           <Icon name="clock" size={14} />
           Hoy {hoy.length === 1 ? "sale 1 publicación" : `salen ${hoy.length} publicaciones`}; la próxima a las {horaDe(hoy[0].programadaPara)} ({linea(hoy[0])}).
-          <a href="/programacion" onClick={ir}>Ver la cola</a>
+          <a href="/produccion" onClick={ir}>Ver la cola</a>
         </p>
       )}
       {nOcultos > 0 && (
         <p style={{ fontSize: "var(--fs-3xs)", color: "var(--text-faint)", margin: 0 }}>
-          {nOcultos === 1 ? "Un aviso oculto" : `${nOcultos} avisos ocultos`}: vuelven si cambia algo, y siguen en <a href="/programacion" onClick={ir}>Programación</a>.
+          {nOcultos === 1 ? "Un aviso oculto" : `${nOcultos} avisos ocultos`}: vuelven si cambia algo, y siguen en <a href="/produccion" onClick={ir}>Producción</a>.
         </p>
       )}
     </section>

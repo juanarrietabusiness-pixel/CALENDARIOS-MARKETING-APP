@@ -2327,6 +2327,7 @@ button.campana-semana-boton:hover { border-color: var(--accent-line); }
 
 /* Secciones (barra lateral y cajón) */
 .nav-principal ul { list-style: none; display: flex; flex-direction: column; gap: 2px; }
+.nav-principal ul + ul { margin-top: var(--sp-2); padding-top: var(--sp-2); border-top: 1px solid var(--border); }
 .nav-principal-item {
   position: relative;
   display: flex;
@@ -2360,9 +2361,9 @@ button.campana-semana-boton:hover { border-color: var(--accent-line); }
   margin-bottom: calc(-1 * var(--sp-4) - 1px);
 }
 .pestanas-cliente::-webkit-scrollbar { display: none; }
-/* En el teléfono un degradado a la derecha avisa de que la barra sigue: sin él, las últimas pestañas no se sabía que existían. */
+/* En el teléfono caben las cinco (fase 7: eran diez y desplazaban de lado): el icono encima del nombre, a partes iguales. */
 @media (max-width: 719px) {
-  .pestanas-cliente { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 36px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 36px), transparent); padding-right: 36px; }
+  .pestana-cliente { flex: 1 1 0; min-width: 0; flex-direction: column; gap: 2px; padding: var(--sp-1) 2px; font-size: var(--fs-3xs); }
 }
 .pestana-cliente {
   scroll-snap-align: center;
@@ -2381,8 +2382,8 @@ button.campana-semana-boton:hover { border-color: var(--accent-line); }
   cursor: pointer;
 }
 .pestana-cliente:hover { color: var(--text); }
-.pestana-cliente[aria-current="page"] { color: var(--text); border-bottom-color: var(--accent); }
-.pestana-cliente[aria-current="page"] svg { color: var(--accent); }
+.pestana-cliente[aria-selected="true"] { color: var(--text); border-bottom-color: var(--accent); }
+.pestana-cliente[aria-selected="true"] svg { color: var(--accent); }
 
 /* Resumen del cliente */
 .resumen-cliente { list-style: none; display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; }
@@ -2564,230 +2565,6 @@ button.campana-semana-boton:hover { border-color: var(--accent-line); }
   align-items: center;
 }
 @media (max-width: 599px) { .buscador-pie { display: none; } }
-
-/* ============================================================
-   Google Drive: el banco de contenido
-   ============================================================ */
-
-.drive { display: flex; flex-direction: column; gap: var(--sp-3); }
-/* El visor grande de Drive (VisorDrive.jsx): el archivo a toda la pantalla, con anterior y siguiente. */
-.visor-drive {
-  width: min(1100px, 100%); height: min(92dvh, 100%);
-  display: flex; flex-direction: column; gap: var(--sp-2);
-  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg);
-  box-shadow: var(--elev-2); padding: var(--sp-3); min-height: 0;
-}
-.visor-drive-cabecera { display: flex; align-items: center; gap: var(--sp-2); min-width: 0; }
-.visor-drive-titulo { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: var(--sp-2); }
-.visor-drive-titulo h3 { margin: 0; font-size: var(--fs-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.visor-drive-cuenta { flex-shrink: 0; font-size: var(--fs-2xs); color: var(--text-dim); font-variant-numeric: tabular-nums; }
-.visor-drive-escenario {
-  position: relative; flex: 1; min-height: 0;
-  display: flex; align-items: center; justify-content: center;
-  background: var(--bg); border-radius: var(--radius); overflow: hidden;
-  touch-action: pan-y;
-}
-.visor-drive-medio { max-width: 100%; max-height: 100%; object-fit: contain; display: block; user-select: none; }
-.visor-drive-flecha {
-  position: absolute; top: 50%; transform: translateY(-50%);
-  width: var(--tap); height: var(--tap); border-radius: 50%;
-  display: inline-flex; align-items: center; justify-content: center;
-  border: 1px solid var(--border-strong); background: var(--surface-2); color: var(--text);
-  cursor: pointer; box-shadow: var(--elev-1);
-}
-.visor-drive-flecha[data-lado="izq"] { left: var(--sp-2); }
-.visor-drive-flecha[data-lado="der"] { right: var(--sp-2); }
-.visor-drive-flecha:disabled { opacity: .3; cursor: default; }
-.visor-drive-flecha:not(:disabled):hover { background: var(--surface-3); }
-.visor-drive-ayuda { margin: 0; text-align: center; font-size: var(--fs-3xs); color: var(--text-faint); }
-@media (max-width: 599px) {
-  .visor-drive { height: 100dvh; width: 100vw; border-radius: 0; border: 0; }
-}
-.drive-barra { display: flex; flex-direction: column; gap: var(--sp-2); }
-.drive-migas { display: flex; align-items: center; flex-wrap: wrap; gap: 2px; font-size: var(--fs-2xs); min-width: 0; }
-.drive-miga {
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  cursor: pointer;
-  font-size: inherit;
-  min-height: var(--tap-sm);
-  padding: 0 var(--sp-1);
-  border-radius: var(--radius-sm);
-  max-width: 220px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.drive-miga:hover { color: var(--text); background: var(--surface-2); }
-.drive-miga-actual { font-weight: 600; padding: 0 var(--sp-1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.drive-controles { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
-.drive-controles .segmented { flex: 0 0 auto; }
-.drive-buscar {
-  flex: 1 1 200px;
-  display: flex;
-  align-items: center;
-  gap: var(--sp-2);
-  padding-left: var(--sp-3);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  color: var(--text-faint);
-}
-.drive-buscar .input { border: none; background: transparent; padding-left: 0; }
-.drive-buscar .input:focus { box-shadow: none; }
-.drive-buscar:focus-within { border-color: var(--accent); }
-.drive-nueva-carpeta { display: flex; gap: var(--sp-2); flex-wrap: wrap; }
-.drive-nueva-carpeta .input { flex: 1 1 220px; }
-.drive-vacio {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--sp-2);
-  padding: var(--sp-8) var(--sp-4);
-  border: 2px dashed var(--border);
-  border-radius: var(--radius);
-  color: var(--text-dim);
-  font-size: var(--fs-xs);
-}
-.drive-rejilla {
-  list-style: none;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: var(--sp-3);
-}
-@media (max-width: 599px) { .drive-rejilla { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-2); } }
-.drive-item { position: relative; }
-.drive-tarjeta {
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-  padding: 0;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  overflow: hidden;
-  cursor: pointer;
-  color: var(--text);
-  text-decoration: none;
-  text-align: left;
-  transition: border-color .15s, box-shadow .15s;
-}
-.drive-tarjeta:hover { border-color: var(--accent-line); box-shadow: var(--elev-1); }
-.drive-item[data-marcado="true"] .drive-tarjeta { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
-.drive-vista {
-  position: relative;
-  aspect-ratio: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--surface-2);
-  color: var(--text-faint);
-}
-.drive-item[data-tipo="carpeta"] .drive-vista { aspect-ratio: auto; height: 72px; color: var(--accent); }
-.drive-vista img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.drive-insignia {
-  position: absolute;
-  left: 6px;
-  bottom: 6px;
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  padding: 2px 6px;
-  border-radius: var(--radius-pill);
-  background: rgba(0,0,0,.66);
-  color: #fff;
-  font-size: var(--fs-3xs);
-  font-variant-numeric: tabular-nums;
-}
-.drive-marca {
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  padding: 2px;
-  display: flex;
-  border-radius: var(--radius-pill);
-  background: var(--accent);
-  color: #fff;
-}
-.drive-nombre {
-  padding: var(--sp-2) var(--sp-2) 0;
-  font-size: var(--fs-2xs);
-  font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.drive-item[data-tipo="carpeta"] .drive-nombre { padding-bottom: var(--sp-2); }
-.drive-meta { padding: 0 var(--sp-2) var(--sp-2); font-size: var(--fs-3xs); color: var(--text-faint); min-height: 1.4em; }
-.drive-acciones {
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  display: flex;
-  gap: 4px;
-  opacity: 0;
-  transition: opacity .15s;
-}
-.drive-acciones .btn-icon { background: rgba(5, 13, 31, .78); color: #fff; min-width: var(--tap-sm); min-height: var(--tap-sm); }
-.drive-item:hover .drive-acciones, .drive-item:focus-within .drive-acciones { opacity: 1; }
-@media (hover: none) { .drive-acciones { opacity: 1; } }
-.drive-confirmar {
-  position: sticky;
-  bottom: 0;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--sp-3);
-  padding: var(--sp-3) 0 0;
-  background: var(--surface);
-  border-top: 1px solid var(--border);
-}
-
-.pestana-contenido { display: flex; flex-direction: column; gap: var(--sp-4); }
-.contenido-cabecera { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); flex-wrap: wrap; }
-.contenido-carpeta { display: flex; flex-direction: column; gap: var(--sp-2); }
-.tarjeta {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: var(--sp-4);
-}
-.banco-anterior {
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: var(--sp-3) var(--sp-4);
-  background: var(--surface);
-}
-.banco-anterior > summary {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-2);
-  min-height: var(--tap-sm);
-  cursor: pointer;
-  font-size: var(--fs-xs);
-  font-weight: 600;
-  color: var(--text-dim);
-}
-
-/* Ficha */
-.ficha-cliente { display: flex; flex-direction: column; gap: var(--sp-4); }
-.ficha-cliente-cabecera { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); }
-.ficha-colores { display: flex; gap: var(--sp-2); }
-.ficha-colores span { width: 28px; height: 28px; border-radius: 50%; border: 2px solid var(--border-strong); }
-.ficha-lista {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: var(--sp-3);
-}
-.ficha-lista > div {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: var(--sp-3);
-}
-.ficha-lista dt { font-size: var(--fs-3xs); font-weight: 700; color: var(--text-faint); text-transform: uppercase; letter-spacing: .04em; margin-bottom: var(--sp-1); }
-.ficha-lista dd { font-size: var(--fs-xs); white-space: pre-wrap; overflow-wrap: anywhere; }
 
 @media print {
   .barra-inferior, .medidor-ia, .buscador-disparador, .menu-cuenta, .chat-acoplado, .panel-tareas-acoplado, .boton-tareas { display: none !important; }

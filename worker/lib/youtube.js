@@ -88,8 +88,8 @@ export function mensajeYouTube(e) {
   const porRazon = {
     invalid_grant: "Google retiró el permiso de YouTube. Vuelve a conectar el canal en Ajustes → Integraciones.",
     youtubeSignupRequired: "Esa cuenta de Google no tiene canal de YouTube. Crea el canal y vuelve a conectarla.",
-    quotaExceeded: "Se acabó el cupo diario de YouTube del proyecto de Google. Reinténtala mañana desde Programación.",
-    uploadLimitExceeded: "YouTube no deja subir más videos a este canal por hoy. Reinténtala mañana desde Programación.",
+    quotaExceeded: "Se acabó el cupo diario de YouTube del proyecto de Google. Reinténtala mañana desde Producción.",
+    uploadLimitExceeded: "YouTube no deja subir más videos a este canal por hoy. Reinténtala mañana desde Producción.",
     insufficientPermissions: "El canal no dio todos los permisos. Vuelve a conectarlo y acepta todo.",
     authError: "El permiso de YouTube caducó. Vuelve a conectar el canal en Ajustes → Integraciones.",
     invalidTitle: "YouTube no aceptó el título del video.",

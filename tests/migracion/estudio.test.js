@@ -734,6 +734,23 @@ describe("subir a mano, carpetas y papelera", () => {
       expect((await galeria(JEFE, "c1")).perdidas).toBeUndefined();
     });
 
+    it("la galería dice qué productos activos NO tienen fotos (el semáforo del kit), también si las que tenía se perdieron", async () => {
+      env.MEDIA.objetos.set("clientes/c1/estudio/viva.png", { bytes: PNG, tipo: "image/png" });
+      db.sqlite.prepare("insert into mercado_clientes (id, owner_id, client_id, catalogo) values ('m1', ?, 'c1', ?)").run(JEFE, JSON.stringify([
+        { id: "p1", nombre: "Pañal de bambú", fotos: ["clientes/c1/estudio/viva.png"] },
+        { id: "p2", nombre: "Toallitas", fotos: [] },
+        { id: "p3", nombre: "Cuna", fotos: ["clientes/c1/estudio/borrada.png"] },
+        { id: "p4", nombre: "Retirado", fotos: [], activo: false },
+      ]));
+      const g = await galeria(JEFE, "c1");
+      expect(g.productos.map((p) => p.id)).toEqual(["p1"]);
+      expect(g.sinFotos).toEqual([{ id: "p2", nombre: "Toallitas" }, { id: "p3", nombre: "Cuna" }]);
+    });
+
+    it("sin estudio de mercado, `sinFotos` vacío (el semáforo dice «sin catálogo»)", async () => {
+      expect((await galeria(JEFE, "c1")).sinFotos).toEqual([]);
+    });
+
     it("lo que ya se borró antes no se ofrece de referencia, y pedirlo crea la pieza SIN ella y dice CUÁL faltó", async () => {
       env.MEDIA.objetos.set("clientes/c1/estudio/viva.png", { bytes: PNG, tipo: "image/png" });
       marca({ logo: "clientes/c1/estudio/logo-borrado.png", fotos: ["clientes/c1/estudio/foto-borrada.png", "clientes/c1/estudio/viva.png"] });

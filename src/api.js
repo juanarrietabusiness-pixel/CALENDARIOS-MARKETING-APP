@@ -614,7 +614,7 @@ export async function resumirChat(conversacionId) {
 export function avisoDelCerebro({ usado = false, notas = 0 } = {}) {
   if (usado) return "\n\nPARA MÁS DETALLE de este cliente (precios, personas, límites, pautas, lo que se le ha subido) usa buscar_cerebro: lo de arriba es sólo su ficha técnica y sus cifras. No digas que no sabes algo sin buscarlo antes.";
   if (notas > 0) return `\n\nESTE CLIENTE YA TIENE CEREBRO (${notas} ${notas === 1 ? "nota" : "notas"}), aún sin ficha técnica: lo de arriba es su ADN de antes y puede estar desactualizado. Busca con buscar_cerebro antes de responder sobre su marca, sus productos o sus reglas; si el cerebro dice otra cosa, gana el cerebro.`;
-  return "\n\nEl cerebro de este cliente aún está vacío: lo que sabes de él es lo de arriba. Si falta algo, pídelo o sugiere añadirlo como nota en la pestaña Cerebro.";
+  return "\n\nEl cerebro de este cliente aún está vacío: lo que sabes de él es lo de arriba. Si falta algo, pídelo o sugiere añadirlo como nota en Marca → Cerebro.";
 }
 
 export function buildChatSystemPrompt(client, calendar, adnExtra = "", memories = [], cerebro = null, { notasCerebro = 0 } = {}) {

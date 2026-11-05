@@ -14,6 +14,8 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { listarVoces, pedirMuestraVoz, urlMuestraVoz, avanzarTrabajoVoz, fijarVozDeMarca, urlPreviaVoz } from "../lib/videosApi";
 import { MAX_TEXTO_MUESTRA, MODELOS_VOZ } from "../lib/voces";
+// Sus estilos (va-voz-*) son los del video animado: también se abre desde Marca → Kit y voz, sin él cargado.
+import "./VideoAnimado.css";
 import BibliotecaVoces from "./BibliotecaVoces";
 
 const VIVOS = ["en_cola", "en_marcha"];
