@@ -156,13 +156,15 @@ export const OFICIO_VISUAL = [
 
 /** La ficha limpia: sin líneas en blanco (el pedido del motor separa sus partes con una línea en blanco) y con tope. Pura. */
 export function limpiarFicha(texto) {
-  return String(texto ?? "")
+  const limpio = String(texto ?? "")
     .replace(/\r/g, "")
     .replace(/```[a-z]*|```/g, "")
     .split("\n").map((l) => l.replace(/\s+/g, " ").trim()).filter(Boolean)
     .join("\n")
-    .slice(0, MAX_FICHA)
     .trim();
+  // Una ficha larga se ACORTA por lo prescindible (`ajustarFicha`), nunca por el final: ahí van el texto exacto, la marca
+  // y lo que hay que evitar. Cortada a 1.800, la del director llegaba al motor con «titular «Tus lentes en 40 mi».
+  return limpio.length > MAX_FICHA ? ajustarFicha(limpio, MAX_FICHA) : limpio;
 }
 
 const sinMarcas = (t) => String(t ?? "").normalize("NFC").replace(/["“”«»]/g, "").replace(/\s+/g, " ").trim().toLowerCase();
@@ -207,8 +209,15 @@ export function ajustarFicha(ficha, max) {
     if (i < 0) break;
     const sobra = largo() - max;
     const quedan = Math.max(60, lineas[i].length - sobra - 1);
+    if (quedan >= lineas[i].length) break;
     const corte = lineas[i].slice(0, quedan);
     lineas[i] = `${corte.slice(0, Math.max(40, corte.lastIndexOf(" "))).replace(/[,;:\s]+$/, "")}.`;
+  }
+  // Aún larga: fuera líneas enteras, la más larga primero, antes que cortar por el final (que se llevaría el texto).
+  while (largo() > max) {
+    const i = lineas.reduce((m, l, j) => (!INTOCABLES.test(l) && l.length > (lineas[m]?.length ?? -1) ? j : m), -1);
+    if (i < 0) break;
+    lineas.splice(i, 1);
   }
   return lineas.join("\n").slice(0, Math.max(0, max));
 }
@@ -228,7 +237,9 @@ export function asegurarTexto(ficha, texto) {
   const dentro = sinMarcas(f);
   const faltan = lineas.filter((l) => !dentro.includes(sinMarcas(l)));
   if (!faltan.length) return f;
-  return limpiarFicha(`${f}\nTexto exacto que va en la imagen (gana sobre cualquier otro texto de esta ficha): ${faltan.map((l) => `«${l.slice(0, 120)}»`).join(" / ")}.`);
+  // La línea va SIEMPRE: si no cabe, se acorta lo demás (antes se añadía y el tope de la ficha la volvía a quitar).
+  const linea = `Texto exacto que va en la imagen (gana sobre cualquier otro texto de esta ficha): ${faltan.map((l) => `«${l.slice(0, 120)}»`).join(" / ")}.`;
+  return `${ajustarFicha(f, Math.max(0, MAX_FICHA - linea.length - 1))}\n${linea}`;
 }
 
 // ------------------------------------------------------------

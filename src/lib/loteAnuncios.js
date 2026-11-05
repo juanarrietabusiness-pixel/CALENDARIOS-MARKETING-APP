@@ -46,7 +46,7 @@ import { PLANTILLAS_TEXTO } from "./carrusel.js";
 import { PILARES, pilarDe, nombreDePilar } from "./pilares.js";
 import { estructuraDe, estructuraPara, limpiarEstructurasRecientes, lineaDeEstructura } from "./estructurasCarrusel.js";
 import { camposDePromptListo } from "./promptImagen.js";
-import { FORMATO_FICHA, limpiarFicha, asegurarTexto } from "./director.js";
+import { FORMATO_FICHA, limpiarFicha, asegurarTexto, ajustarFicha } from "./director.js";
 
 export const POR_NIVEL = 5;
 export const MAX_POR_NIVEL = 10;
@@ -409,7 +409,7 @@ export function leerProduccion(texto, plan = [], formato = "post") {
     // El pedido listo (la ficha de diseño) lleva SIEMPRE el texto exacto: si la IA lo reescribió, se le repone
     // (asegurarTexto) en vez de tirar la ficha entera por una letra.
     const apoyo = corto(x?.apoyo, MAX_APOYO).replace(/\s*·\s*/g, ". ");
-    const ficha = esGuiado(r.formato ?? formato) ? "" : limpiarFicha(String(x?.imagen ?? "").replace(/\\n/g, "\n")).slice(0, MAX_IMAGEN);
+    const ficha = esGuiado(r.formato ?? formato) ? "" : ajustarFicha(limpiarFicha(String(x?.imagen ?? "").replace(/\\n/g, "\n")), MAX_IMAGEN);
     const imagen = ficha ? asegurarTexto(ficha, [titular, apoyo].filter(Boolean).join("\n")) : "";
     const imagenValida = Boolean(imagen);
     const grupo = r.fecha ? `mes-${r.fecha}` : r.tipo === "anuncio" ? r.nivel : r.tipo;

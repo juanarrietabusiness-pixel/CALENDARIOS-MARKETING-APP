@@ -50,6 +50,10 @@ describe("el control de calidad de una pieza", () => {
     expect(t).toMatch(/EXACTAMENTE así: "Sofá cama de diseño"/);
     expect(t).toMatch(/Conserva todo lo demás exactamente igual/);
     expect(correccionDeTexto({ errores: [] })).toBe("");
+    // Titular, apoyo y botón van como líneas, cada una en su sitio: en una frase salían todas del tamaño del titular.
+    const tres = correccionDeTexto({ errores: [{ esperado: "minutos", escrito: "" }] }, "Tus lentes en 40 minutos\nCiudad de Panamá y La Chorrera\nAgenda tu examen");
+    expect(tres).toMatch(/en 3 líneas separadas y cada una en su sitio y con su tamaño \(la primera es el titular, lo más grande/);
+    expect(tres).toContain('"Tus lentes en 40 minutos" / "Ciudad de Panamá y La Chorrera" / "Agenda tu examen"');
     expect(resumenControl(c)).toBe("Revisar: dice «cmaa» (debía decir «cama»)");
     expect(resumenControl({ estado: "ok" })).toBe("Revisada");
     expect(resumenControl({ estado: "revisar", errores: [], precios: [], logo: "falta", deformaciones: [] })).toBe("Revisar: falta el logo");
