@@ -14,6 +14,10 @@
 //   · RELEER los anuncios de las búsquedas guardadas de Scrape Creators una vez
 //     por semana, con el TOPE de créditos del espacio (lo buscado a mano también
 //     cuenta). Instagram no gasta créditos: va por la API de Meta (Inspiración).
+//     TikTok sí (las cuentas de cada cliente y las TENDENCIAS de sus palabras), y
+//     va en la MISMA cola semanal que los anuncios: lo más viejo primero, una
+//     tarea por vuelta del cron, sin pasarse nunca del tope; lo que no cabe
+//     espera al lunes (`sc_lleno`).
 //   · RECREAR una pieza para un cliente: la publicación en su próximo día libre,
 //     con el original como REFERENCIA (nunca en `medios`), y lo que la crea —el
 //     director con un ENCARGO del servidor (imagen o carrusel), el guion de un
@@ -26,11 +30,16 @@
 import { uuid, ahora } from "./ids.js";
 import { difundir } from "./vivo.js";
 import { obtenerOCrearMes, ErrorMes } from "./meses.js";
-import { crearAcceso, espaciosConAnunciosPorReleer, espaciosPorClasificar } from "./acceso.js";
+import { crearAcceso, tareasScPendientes, espaciosPorClasificar } from "./acceso.js";
 import { llamarIA, ErrorIA } from "./cerebro/ia.js";
 import { MODELO_HAIKU, sinIADeTexto, prepararIA } from "./configIA.js";
 import { traerPublicacion, ErrorCompetencia } from "./competencia.js";
-import { scConfigurado, buscarAnunciosSC, traerAnuncio, ErrorSC } from "./scrapeCreators.js";
+import {
+  scConfigurado, buscarAnunciosSC, traerAnuncio, traerTikTok, ErrorSC, creditosDeLaSemana, guardarAjustesDeCreditos, marcarLleno,
+  cambiarAjustesSC, TOPE_POR_DEFECTO, DIAS_SC,
+} from "./scrapeCreators.js";
+import { leerCuentaTikTokDelCron } from "./inspiracion.js";
+import { leerTendencia } from "./tendencias.js";
 import { leerMercado, extraerUgc, ErrorMercado } from "./mercado.js";
 import { crearEncargo } from "./estudio/encargos.js";
 import { ErrorEstudio } from "./estudio/trabajos.js";
@@ -50,7 +59,7 @@ import { estimar, ajustesDe, textoCosto, nombreDelModelo } from "../../src/lib/e
 import { limpiarKit, estiloDeMarca, referenciaDeTipografia } from "../../src/lib/kitMarca.js";
 import { consultaSC } from "../../src/lib/scrapeCreators.js";
 import {
-  claveDeInspiracion, claveDeAnuncio, claveDePropia, claveDeEnlace, formatoComun, rindeAjustado, senalDeAnuncio, diasDeAnuncio,
+  claveDeInspiracion, claveDeAnuncio, claveDeTendencia, claveDePropia, claveDeEnlace, formatoComun, rindeAjustado, senalDeAnuncio, diasDeAnuncio,
   unirRepetidas, ordenarLoMejor, filtrarLoMejor, marcarMejoresPropias, cifraDe, caminosPosibles, caminoPorDefecto, briefDeRecreacion,
   tituloDeRecreacion, proximoDiaLibre, semanaDe, pedidoDeClasificacion, leerClasificacion, nombreDelTipo,
   proxyMiniatura, proxyVideo, miniaturaPermitida, CAMINOS, FORMATO_DE_CAMINO, CLASIFICAR_POR_VUELTA, DIAS_MAX, VENTANAS,
@@ -60,8 +69,8 @@ import { mediana } from "../../src/lib/inspiracion.js";
 const DIA = 86_400_000;
 /** Lo más que se enseña de una ventana (la pantalla y Claude). */
 export const MAX_LISTA = 150;
-/** El tope semanal de créditos de Scrape Creators si el espacio no puso otro. */
-export const TOPE_POR_DEFECTO = 10;
+// El tope de créditos vive con Scrape Creators (lo comparten anuncios y TikTok); se reexporta para quien lo leía de aquí.
+export { TOPE_POR_DEFECTO, creditosDeLaSemana };
 /** Cuántos anuncios se guardan de cada búsqueda en cada relectura. */
 const POR_FILTRO = 30;
 /** Una clasificación que falló se vuelve a intentar (a pedido) pasado esto. */
@@ -102,29 +111,54 @@ function medianasPor(filas, grupo, valor) {
   return new Map([...por].map(([g, v]) => [g, { mediana: mediana(v), n: v.length }]));
 }
 
-async function deInspiracion(acceso, { cliente, desde }) {
+async function deInspiracion(acceso, { cliente, desde, sc }) {
   const filas = await acceso.leerColumnas("inspiracion_publicaciones",
-    ["id", "client_id", "cuenta_id", "red", "usuario", "externo_id", "codigo", "formato", "enlace", "texto", "miniatura", "video", "publicada_at", "me_gusta", "comentarios", "vistas", "interacciones", "rinde", "sin_archivo"],
+    ["id", "client_id", "cuenta_id", "red", "usuario", "externo_id", "codigo", "formato", "enlace", "texto", "miniatura", "video", "publicada_at", "me_gusta", "comentarios", "vistas", "compartidos", "interacciones", "rinde", "sin_archivo"],
     cliente ? { client_id: cliente } : {}, "publicada_at desc", 3000).catch(() => []);
   const cuentas = new Map((await acceso.leerColumnas("inspiracion_cuentas", ["id", "nombre"], cliente ? { client_id: cliente } : {}).catch(() => [])).map((c) => [c.id, c]));
   const medidas = medianasPor(filas, (f) => f.cuenta_id, (f) => Number(f.interacciones) || 0);
   const vistas = medianasPor(filas.filter((f) => f.red === "youtube"), (f) => f.cuenta_id, (f) => Number(f.vistas) || 0);
-  return filas.filter((f) => String(f.publicada_at ?? "") >= desde && f.red !== "tiktok").map((f) => {
+  return filas.filter((f) => String(f.publicada_at ?? "") >= desde).map((f) => {
     const n = medidas.get(f.cuenta_id)?.n ?? 0;
     const mv = vistas.get(f.cuenta_id)?.mediana;
-    const rindeVistas = f.red === "youtube" && mv > 0 && n >= 3 ? Math.round(((Number(f.vistas) || 0) / mv) * 10) / 10 : null;
+    // TikTok ya guarda su «rinde» en VISTAS (src/lib/inspiracion.js, `campoDeRendimiento`): la tarjeta dice «en vistas».
+    const rindeVistas = f.red === "tiktok" ? (Number.isFinite(f.rinde) ? f.rinde : null)
+      : f.red === "youtube" && mv > 0 && n >= 3 ? Math.round(((Number(f.vistas) || 0) / mv) * 10) / 10 : null;
     const rinde = Number.isFinite(f.rinde) ? f.rinde : null;
     const formato = formatoComun(f.formato);
+    const tiktok = f.red === "tiktok";
     return {
       clave: claveDeInspiracion(f), fuente: "inspiracion", red: f.red, formato, formatoOriginal: f.formato,
       cuenta: f.red === "youtube" ? cuentas.get(f.cuenta_id)?.nombre || `@${f.usuario}` : `@${f.usuario}`, usuario: f.usuario,
       texto: corto(f.texto, 600), enlace: f.enlace, fecha: f.publicada_at,
       miniaturaOriginal: f.miniatura, miniatura: proxyMiniatura(f.miniatura), video: proxyVideo(f.video),
-      conVideo: f.red === "youtube" || (formato === "video" && !f.sin_archivo), sinArchivo: Boolean(f.sin_archivo),
+      // De TikTok sólo se puede VER el video si se sabe su archivo o Scrape Creators puede dar otra dirección.
+      conVideo: f.red === "youtube" || (formato === "video" && !f.sin_archivo && (!tiktok || Boolean(f.video) || sc)),
+      sinArchivo: Boolean(f.sin_archivo) || (tiktok && formato === "video" && !f.video && !sc),
       clientes: [f.client_id], rinde, rindeVistas,
       senal: rindeAjustado(rindeVistas ?? rinde, n),
-      cifras: { meGusta: f.me_gusta, comentarios: f.comentarios, vistas: f.vistas },
-      origenes: [{ fuente: "inspiracion", id: f.id, clienteId: f.client_id, red: f.red, usuario: f.usuario, externoId: f.externo_id }],
+      cifras: { meGusta: f.me_gusta, comentarios: f.comentarios, vistas: f.vistas, compartidos: f.compartidos ?? 0 },
+      origenes: [{ fuente: "inspiracion", id: f.id, clienteId: f.client_id, red: f.red, usuario: f.usuario, externoId: f.externo_id, ...(tiktok ? { video: f.video, imagen: f.miniatura, enlace: f.enlace, formato: f.formato } : {}) }],
+    };
+  });
+}
+
+/** Los videos de tendencia de TikTok de las palabras de cada cliente (sólo con las tendencias encendidas). */
+async function deTendencias(acceso, { cliente, desde, sc }) {
+  const ajustes = await acceso.leerUno("lo_mejor_ajustes", { id: acceso.ownerId }).catch(() => null);
+  if (ajustes && ajustes.tiktok_tendencias === 0) return [];
+  const filas = await acceso.leer("tendencias_videos", cliente ? { client_id: cliente } : {}, "visto_at desc", 2000).catch(() => []);
+  return filas.filter((v) => String(v.visto_at ?? "") >= desde).map((v) => {
+    const formato = formatoComun(v.formato);
+    return {
+      clave: claveDeTendencia(v), fuente: "tendencia", red: "tiktok", formato, formatoOriginal: v.formato,
+      cuenta: v.usuario ? `@${v.usuario}` : v.nombre || "TikTok", usuario: v.usuario, texto: corto(v.texto, 600), enlace: v.enlace,
+      // Es «del momento» mientras sale en la búsqueda de su palabra: su fecha es la de la última lectura.
+      fecha: v.visto_at, publicadaAt: v.publicada_at, miniaturaOriginal: v.miniatura, miniatura: proxyMiniatura(v.miniatura), video: proxyVideo(v.video),
+      conVideo: formato === "video" && (Boolean(v.video) || sc), sinArchivo: formato === "video" && !v.video && !sc,
+      clientes: [v.client_id], rinde: null, senal: Number(v.vistas) || 0,
+      cifras: { vistas: v.vistas, meGusta: v.me_gusta, comentarios: v.comentarios, compartidos: v.compartidos, palabra: v.palabra },
+      origenes: [{ fuente: "tendencia", id: v.id, clienteId: v.client_id, red: "tiktok", usuario: v.usuario, externoId: v.externo_id, video: v.video, imagen: v.miniatura, enlace: v.enlace, formato: v.formato }],
     };
   });
 }
@@ -223,8 +257,10 @@ export async function piezasDelEspacio(env, acceso, { cliente = "", sinFecha = f
   const hoy = fechaEnZona();
   // `sinFecha`: para buscar UNA pieza por su clave (recrear, traer), también lo más viejo (una referencia de hace meses).
   const desde = sinFecha ? "" : sumarDias(hoy, -DIAS_MAX);
-  const opciones = { cliente: cliente || "", desde, hoy };
-  const listas = await Promise.all([deInspiracion(acceso, opciones), deAnuncios(acceso, opciones), dePropias(acceso, opciones), deReferencias(acceso, opciones)]);
+  const opciones = { cliente: cliente || "", desde, hoy, sc: scConfigurado(env) };
+  const listas = await Promise.all([
+    deInspiracion(acceso, opciones), deAnuncios(acceso, opciones), dePropias(acceso, opciones), deReferencias(acceso, opciones), deTendencias(acceso, opciones),
+  ]);
   const piezas = unirRepetidas(listas.flat().filter((p) => p.clave && !p.clave.endsWith(":undefined")));
   const sabidas = await clasificacionesDe(acceso, piezas.map((p) => p.clave));
   return piezas.map((p) => {
@@ -375,26 +411,37 @@ export async function clasificarPendientes(env, acceso, { claves = null, max = C
 // Los créditos de Scrape Creators y los anuncios de cada semana
 // ------------------------------------------------------------
 
-/** El tope y lo gastado esta semana (lunes a domingo, Panamá): { semana, tope, manual, auto, total, releidoAt }. */
-export async function creditosDeLaSemana(acceso, hoy = fechaEnZona()) {
-  const semana = semanaDe(hoy);
-  const [ajustes, manual, auto] = await Promise.all([
-    acceso.leerUno("lo_mejor_ajustes", { id: acceso.ownerId }).catch(() => null),
-    acceso.sumar("creditos_sc", "creditos", { semana, fuente: "manual" }).catch(() => 0),
-    acceso.sumar("creditos_sc", "creditos", { semana, fuente: "auto" }).catch(() => 0),
-  ]);
-  const tope = Number.isInteger(ajustes?.sc_tope_semana) ? ajustes.sc_tope_semana : TOPE_POR_DEFECTO;
-  return { semana, tope, manual, auto, total: manual + auto, releidoAt: ajustes?.sc_releido_at ?? null };
+/** Cambia el tope semanal (0 apaga lo automático) y/o el interruptor de las tendencias de TikTok. */
+export async function guardarTope(acceso, tope, { tendencias } = {}) {
+  try {
+    return await guardarAjustesDeCreditos(acceso, { ...(tope !== undefined ? { tope } : {}), ...(tendencias !== undefined ? { tendencias } : {}) });
+  } catch (e) {
+    if (e instanceof ErrorSC) throw new ErrorLoMejor(e.message, e.status);
+    throw e;
+  }
 }
 
-/** Cambia el tope semanal (0 apaga la relectura automática). */
-export async function guardarTope(acceso, tope) {
-  const n = Math.round(Number(tope));
-  if (!Number.isFinite(n) || n < 0 || n > 500) throw new ErrorLoMejor("El tope va de 0 a 500 créditos por semana.");
-  const previo = await acceso.leerUno("lo_mejor_ajustes", { id: acceso.ownerId });
-  if (previo) await acceso.actualizar("lo_mejor_ajustes", { id: acceso.ownerId }, { sc_tope_semana: n, updated_at: ahora() });
-  else await acceso.insertar("lo_mejor_ajustes", { id: acceso.ownerId, sc_tope_semana: n, sc_releido_at: null, updated_at: ahora() });
-  return creditosDeLaSemana(acceso);
+/**
+ * Lo que espera su lectura por Scrape Creators en este espacio (lleva una semana o nunca se leyó): las cuentas de
+ * TikTok, las palabras de tendencia (si están encendidas) y si los anuncios de las búsquedas guardadas esperan. Para
+ * Ajustes: «faltan 3 cuentas de TikTok por leer». → { tiktok, palabras, anuncios, busquedas }.
+ */
+export async function esperaDelEspacio(acceso, ahoraMs = Date.now()) {
+  const corte = new Date(ahoraMs - DIAS_SC * DIA).toJSON();
+  const viejo = (f) => !f || String(f) < corte;
+  const [cuentas, palabras, filtros, ajustes] = await Promise.all([
+    acceso.leerColumnas("inspiracion_cuentas", ["id", "leida_sc_at"], { red: "tiktok" }).catch(() => []),
+    acceso.leerColumnas("tendencias_palabras", ["id", "leida_at"], {}).catch(() => []),
+    acceso.leerColumnas("biblioteca_filtros", ["id", "consulta"], {}).catch(() => []),
+    acceso.leerUno("lo_mejor_ajustes", { id: acceso.ownerId }).catch(() => null),
+  ]);
+  const busquedas = filtros.filter((f) => leerJSON(f.consulta, {})?.fuente === "sc").length;
+  return {
+    tiktok: cuentas.filter((c) => viejo(c.leida_sc_at)).length,
+    palabras: ajustes?.tiktok_tendencias === 0 ? 0 : palabras.filter((p) => viejo(p.leida_at)).length,
+    anuncios: busquedas > 0 && viejo(ajustes?.sc_releido_at),
+    busquedas,
+  };
 }
 
 /** Un anuncio de Scrape Creators como fila de `lo_mejor_anuncios`. Pura. */
@@ -444,33 +491,35 @@ export async function releerAnuncios(env, acceso, { fuente = "auto" } = {}) {
   const viejos = (await acceso.leerColumnas("lo_mejor_anuncios", ["id", "visto_at"], {}, "visto_at asc", 500).catch(() => []))
     .filter((a) => String(a.visto_at ?? "") < new Date(Date.now() - 90 * DIA).toJSON()).map((a) => a.id);
   if (viejos.length) await acceso.borrarVarios("lo_mejor_anuncios", viejos);
-  const previo = await acceso.leerUno("lo_mejor_ajustes", { id: acceso.ownerId });
-  if (previo) await acceso.actualizar("lo_mejor_ajustes", { id: acceso.ownerId }, { sc_releido_at: momento, updated_at: momento });
-  else await acceso.insertar("lo_mejor_ajustes", { id: acceso.ownerId, sc_tope_semana: TOPE_POR_DEFECTO, sc_releido_at: momento, updated_at: momento });
+  // Si se paró en el tope, lo automático de este espacio (las cuentas y las tendencias de TikTok) espera al lunes.
+  await cambiarAjustesSC(acceso, { sc_releido_at: momento, ...(sinCreditos ? { sc_lleno: cuenta.semana } : {}) });
   difundir(env, acceso.ownerId, { tipo: "lo-mejor", que: "anuncios", n: filas.length, por: { userId: "sistema", nombre: "Lo mejor", color: "", tab: null } });
   return { filtros: filtros.length, anuncios: filas.length, creditos: gastados, tope: cuenta.tope, total, sinCreditos, errores };
 }
 
 /**
- * Una vuelta del cron (la última de la cadena: sólo si las otras no hicieron nada). Primero los anuncios de un espacio
- * que lleva una semana sin releerlos; si no, unas pocas piezas sin clasificar de un espacio. → 1 si hizo algo.
+ * Una vuelta del cron (la última de la cadena: sólo si las otras no hicieron nada). Primero UNA tarea de la cola de
+ * Scrape Creators —los anuncios de las búsquedas guardadas de un espacio, una cuenta de TikTok o una palabra de
+ * tendencia que lleven una semana sin leerse—, LO MÁS VIEJO PRIMERO y sin pasarse del tope semanal del espacio: si ya
+ * no cabe, el espacio se marca lleno y su cola espera al lunes (no se mira cada minuto). Si no hay nada que leer, unas
+ * pocas piezas sin clasificar de un espacio. → 1 si hizo algo.
  */
 export async function loMejorPendiente(env, ahoraFecha = new Date()) {
   const t = ahoraFecha.getTime();
   if (scConfigurado(env)) {
-    const [e] = await espaciosConAnunciosPorReleer(env.DB, new Date(t - 7 * DIA).toJSON(), 1);
-    if (e) {
-      const acceso = crearAcceso(env.DB, e.owner_id);
-      const { tope, total } = await creditosDeLaSemana(acceso);
-      // Sin créditos esta semana (o con el tope en 0) se apunta igual: el cron no lo repite cada minuto.
+    const hoy = fechaEnZona(ahoraFecha);
+    const [tarea] = await tareasScPendientes(env.DB, new Date(t - DIAS_SC * DIA).toJSON(), semanaDe(hoy), 1);
+    if (tarea) {
+      const acceso = crearAcceso(env.DB, tarea.owner_id);
+      const { tope, total, semana } = await creditosDeLaSemana(acceso, hoy);
       if (tope <= 0 || total >= tope) {
-        const momento = ahora();
-        const previo = await acceso.leerUno("lo_mejor_ajustes", { id: acceso.ownerId });
-        if (previo) await acceso.actualizar("lo_mejor_ajustes", { id: acceso.ownerId }, { sc_releido_at: momento, updated_at: momento });
-        else await acceso.insertar("lo_mejor_ajustes", { id: acceso.ownerId, sc_tope_semana: TOPE_POR_DEFECTO, sc_releido_at: momento, updated_at: momento });
+        await marcarLleno(acceso, semana);
         return 1;
       }
-      await releerAnuncios(env, acceso, { fuente: "auto" }).catch((x) => console.error("cron lo mejor (anuncios):", e.owner_id, x?.message));
+      const fallo = (x) => console.error(`cron lo mejor (${tarea.tipo}):`, tarea.owner_id, x?.message);
+      if (tarea.tipo === "anuncios") await releerAnuncios(env, acceso, { fuente: "auto" }).catch(fallo);
+      else if (tarea.tipo === "tiktok") await leerCuentaTikTokDelCron(env, acceso, tarea.id).catch(fallo);
+      else if (tarea.tipo === "tendencia") await leerTendencia(env, acceso, tarea.id, { fuente: "auto" }).catch(fallo);
       return 1;
     }
   }
@@ -488,8 +537,8 @@ export async function loMejorPendiente(env, ahoraFecha = new Date()) {
 
 /**
  * El archivo de la pieza en la galería de `cliente`: el que ya estaba (de una referencia de ese cliente, o lo bajado
- * antes: `bajarALaGaleria` no repite una descarga) o el que se baja ahora. null si no hay forma (YouTube, TikTok, lo
- * propio). Con `miniatura`, la imagen (para un reel con música, o para mirarla).
+ * antes: `bajarALaGaleria` no repite una descarga) o el que se baja ahora. null si no hay forma (YouTube, lo propio).
+ * De TikTok, por Scrape Creators (`traerTikTok`). Con `miniatura`, la imagen (para un reel con música, o para mirarla).
  */
 export async function traerArchivo(env, acceso, cliente, p, { miniatura = false } = {}) {
   for (const o of p.origenes ?? []) {
@@ -499,8 +548,14 @@ export async function traerArchivo(env, acceso, cliente, p, { miniatura = false 
     }
   }
   const ig = (p.origenes ?? []).find((o) => o.fuente === "inspiracion" && o.red === "instagram");
+  // TikTok (una cuenta que sigue el cliente o una tendencia): su archivo por su dirección o, si caducó, la que dé
+  // Scrape Creators; si TikTok no lo da, 409 `sin_archivo` y se trabaja con la miniatura y el texto.
+  const tt = (p.origenes ?? []).find((o) => o.red === "tiktok" && (o.fuente === "inspiracion" || o.fuente === "tendencia"));
   try {
     if (ig) return (await traerPublicacion(env, acceso, cliente, { usuario: ig.usuario, id: ig.externoId, miniatura: miniatura || p.sinArchivo })).archivo;
+    if (tt) {
+      return await traerTikTok(env, acceso, cliente, { id: tt.externoId, usuario: tt.usuario, video: tt.video, miniatura: tt.imagen, enlace: tt.enlace, formato: tt.formato }, { miniatura });
+    }
     const ad = (p.origenes ?? []).find((o) => o.fuente === "anuncio");
     if (ad) {
       const video = !miniatura && ad.video;

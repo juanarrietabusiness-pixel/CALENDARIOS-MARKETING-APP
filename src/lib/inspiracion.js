@@ -14,7 +14,9 @@
 //
 // Instagram y YouTube tienen feed (Instagram por `business_discovery`,
 // sólo empresa o creador; YouTube por su Data API). TikTok no deja ver lo
-// de otras cuentas: se guarda la cuenta y se abre su perfil.
+// de otras cuentas por su API: se lee por Scrape Creators (con su llave),
+// una vez por semana y dentro del tope de créditos, y «rinde» se mide por
+// VISTAS. Sin la llave, se guarda la cuenta y se abre su perfil.
 //
 // También lo importa el Worker.
 // ============================================================
@@ -160,14 +162,21 @@ export function mediana(numeros = []) {
  * media dejaría a todos los demás «por debajo»). Con menos de 3 publicaciones no hay promedio que valga: rinde null.
  * → { mediana, publicaciones: [{ …, rinde }] }. Pura.
  */
-export function conRendimiento(publicaciones = []) {
+export function conRendimiento(publicaciones = [], { campo = "interacciones" } = {}) {
   const lista = Array.isArray(publicaciones) ? publicaciones : [];
-  const m = lista.length >= 3 ? mediana(lista.map((p) => Number(p.interacciones) || 0)) : null;
+  const valor = (p) => Number(p?.[campo]) || 0;
+  const m = lista.length >= 3 ? mediana(lista.map(valor)) : null;
   return {
     mediana: m,
-    publicaciones: lista.map((p) => ({ ...p, rinde: m > 0 ? Math.round(((Number(p.interacciones) || 0) / m) * 10) / 10 : null })),
+    publicaciones: lista.map((p) => ({ ...p, rinde: m > 0 ? Math.round((valor(p) / m) * 10) / 10 : null })),
   };
 }
+
+/**
+ * Con qué se mide «rinde X×» en cada red: TikTok por VISTAS (es lo que da de verdad y lo que mide cuánto llegó un
+ * video); Instagram y YouTube por interacciones, como siempre. Pura.
+ */
+export const campoDeRendimiento = (red) => (red === "tiktok" ? "vistas" : "interacciones");
 
 /** «3,2×» (o "" sin dato). Pura. */
 export const etiquetaRinde = (r) => (Number.isFinite(r) ? `${String(r).replace(".", ",")}×` : "");

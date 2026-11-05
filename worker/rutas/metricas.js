@@ -22,7 +22,7 @@ import { fechaEnZona, sumarDias } from "../../src/lib/agenda.js";
 
 const leerJSON = (t, d) => { try { return JSON.parse(t) ?? d; } catch { return d; } };
 // Los CDN de Meta, de TikTok y de YouTube (las portadas de los videos).
-const CDN_META = /(^|\.)(cdninstagram\.com|fbcdn\.net|tiktokcdn\.com|tiktokcdn-us\.com|ytimg\.com)$/;
+const CDN_META = /(^|\.)(cdninstagram\.com|fbcdn\.net|tiktokcdn\.com|tiktokcdn-us\.com|tiktokcdn-eu\.com|ytimg\.com)$/;
 
 const salidaSerie = (f) => {
   const datos = leerJSON(f.datos, {});

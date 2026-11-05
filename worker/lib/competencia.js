@@ -102,21 +102,35 @@ async function recordar(acceso, codigo, usuario) {
 }
 
 /**
+ * Lo ya bajado a la galería del cliente con ese nombre (la cuenta y el id de la publicación), si sigue en R2: así no se
+ * baja dos veces ni se paga otra vez la dirección de su archivo. null si no.
+ */
+export async function yaBajado(env, acceso, cliente, nombre) {
+  if (!nombre) return null;
+  const previa = (await acceso.leer("estudio_archivos", { client_id: cliente.id, prompt: String(nombre).slice(0, 200), borrado_at: NULO }, "created_at desc", 1).catch(() => []))[0];
+  if (previa && (!env.MEDIA?.head || await env.MEDIA.head(previa.clave))) return { ...archivoPublico(previa), repetido: true };
+  return null;
+}
+
+/**
  * Baja de una dirección del CDN de Meta (con tope) y lo sube a la galería del cliente, carpeta «Competencia». Lo que ya
  * se bajó antes (el mismo nombre: la cuenta y el id de la publicación, o el del anuncio) NO se vuelve a bajar: se
  * devuelve la ficha que había (`repetido`). Un video no tiene huella, y cada «Analizar», «Extraer guion» o «Recrear»
- * de la misma publicación lo bajaba otra vez.
+ * de la misma publicación lo bajaba otra vez. `hosts` y `red`: los dominios de OTRA red (TikTok, desde
+ * worker/lib/scrapeCreators.js), con sus `cabeceras`; nunca la llave de nadie.
  */
-export async function bajarALaGaleria(env, acceso, cliente, url, nombre, tipoPorDefecto) {
-  const previa = nombre
-    ? (await acceso.leer("estudio_archivos", { client_id: cliente.id, prompt: String(nombre).slice(0, 200), borrado_at: NULO }, "created_at desc", 1).catch(() => []))[0]
-    : null;
-  if (previa && (!env.MEDIA?.head || await env.MEDIA.head(previa.clave))) return { ...archivoPublico(previa), repetido: true };
+export async function bajarALaGaleria(env, acceso, cliente, url, nombre, tipoPorDefecto, { hosts = CDN, red = "Instagram", cabeceras = undefined } = {}) {
+  const previa = await yaBajado(env, acceso, cliente, nombre);
+  if (previa) return previa;
   let host = "";
   try { host = new URL(url).hostname; } catch { /* sin dirección */ }
-  if (!url || !CDN.test(host)) throw new ErrorCompetencia("Instagram no da el archivo de esa publicación.", 409);
-  const res = await fetch(url);
-  if (!res.ok) throw new ErrorCompetencia(`No se pudo bajar el archivo de Instagram (respondió ${res.status}).`, 502);
+  if (!url || !hosts.test(host)) throw new ErrorCompetencia(`${red} no da el archivo de esa publicación.`, 409);
+  const res = await fetch(url, cabeceras ? { headers: cabeceras } : undefined);
+  // Una redirección no puede sacarlo de los dominios de esa red.
+  let final = host;
+  try { if (res.url) final = new URL(res.url).hostname; } catch { /* sin dirección final: la pedida */ }
+  if (!hosts.test(final)) throw new ErrorCompetencia(`${red} mandó el archivo a otro sitio: no se baja.`, 409);
+  if (!res.ok) throw new ErrorCompetencia(`No se pudo bajar el archivo de ${red} (respondió ${res.status}).`, 502);
   const largo = Number(res.headers.get("content-length") ?? 0);
   if (largo > MAX_BYTES) throw new ErrorCompetencia("El video pesa más de 50 MB: descárgalo y súbelo a mano.", 413);
   const bytes = await res.arrayBuffer();
