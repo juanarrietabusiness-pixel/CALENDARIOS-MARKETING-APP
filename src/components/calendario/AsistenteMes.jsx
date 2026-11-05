@@ -415,6 +415,9 @@ function PasoIdeas({ client, cal, escribir, onCompletarTextos, completando, esta
   const semanas = semanasDelPlan(cal.year, cal.month);
   const calVivo = useRef(cal);
   useEffect(() => { calVivo.current = cal; }, [cal]);
+  // La función de escribir MÁS NUEVA: las tandas vuelven tarde y, si el mes no tenía cajón al empezar, ya lo tiene.
+  const escribirVivo = useRef(escribir);
+  useEffect(() => { escribirVivo.current = escribir; }, [escribir]);
 
   /**
    * Las ideas del mes por el MOTOR del servidor (modo «plan»: la marca, el catálogo, el estudio de mercado, el cerebro, la
@@ -438,7 +441,7 @@ function PasoIdeas({ client, cal, escribir, onCompletarTextos, completando, esta
         for (const k of r.faltan ?? []) faltan.add(k);
         const porId = Object.fromEntries((r.ideas ?? []).map((i) => [i.clave, i]));
         if (Object.keys(porId).length) {
-          escribir((c) => ({ ...c, days: (c.days ?? []).map((d) => ({ ...d, posts: (d.posts ?? []).map((p) => (porId[p.id] && !String(p.idea ?? "").trim() ? conIdea(p, porId[p.id]) : p)) })) }));
+          escribirVivo.current((c) => ({ ...c, days: (c.days ?? []).map((d) => ({ ...d, posts: (d.posts ?? []).map((p) => (porId[p.id] && !String(p.idea ?? "").trim() ? conIdea(p, porId[p.id]) : p)) })) }));
           escritas += Object.keys(porId).length;
           usados = [...(r.ideas ?? []).map((i) => i.titular || i.titulo).filter(Boolean), ...usados];
         }

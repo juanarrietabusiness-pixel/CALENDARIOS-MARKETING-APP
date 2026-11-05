@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useId, useState, useRef } from "react";
+import { lazy, Suspense, useEffect, useId, useMemo, useState, useRef } from "react";
 import { uid, compressImage, createEmptyClient } from "../utils";
 import { fetchGitHubADN, extractClientADN, parseGitHubUrl, imagenDelADN } from "../api";
 import { elegirLogo, tresColores } from "../lib/colores";
@@ -24,6 +24,7 @@ export default function ClientModal({ initial, onSave, onDelete, onClose, onGuar
   const [tab, setTab] = useState("basico");
   // Lo que se guardó del plan semanal desde esta ficha (su propia ruta): se suma a la ficha para pintarla al día.
   const [camposPlan, setCamposPlan] = useState({});
+  const clientePlan = useMemo(() => ({ ...initial, ...camposPlan }), [initial, camposPlan]);
   const [ghStatus, setGhStatus] = useState("");
   const [ghFiles, setGhFiles] = useState([]);
   // El logo que se encontró en el repositorio, si hay uno importable.
@@ -973,7 +974,7 @@ export default function ClientModal({ initial, onSave, onDelete, onClose, onGuar
                 guarda en su propia ruta y al momento; el resto de la ficha, con «Guardar». */}
             {initial?.id && onGuardarPlan ? (
               <Suspense fallback={<p className="hint" role="status">Cargando el plan semanal…</p>}>
-                <EditorSemana client={{ ...initial, ...camposPlan }} onGuardar={async (cambio) => {
+                <EditorSemana client={clientePlan} onGuardar={async (cambio) => {
                   const g = await onGuardarPlan(cambio, initial.id);
                   // Lo guardado entra en la ficha abierta: si no, «Guardar» escribiría lo de antes encima.
                   if (g) { setCamposPlan(g); setForm((f) => ({ ...f, ...g })); }
