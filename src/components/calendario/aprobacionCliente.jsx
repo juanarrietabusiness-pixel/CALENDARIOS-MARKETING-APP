@@ -35,7 +35,7 @@ export function EstadoAprobacion({ post, setForm }) {
             </button>
           </>
         ) : (
-          <p className="hint">Sube la imagen o el video en «Subir».</p>
+          <p className="hint">Pon la imagen o el video en la pestaña «Pieza».</p>
         )}
       </div>
     );

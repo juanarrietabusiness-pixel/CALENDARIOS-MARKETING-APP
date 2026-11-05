@@ -26,13 +26,13 @@ export function CambiosPedidos({ post }) {
   return (
     <div className={`notice ${hecha ? "notice-ok" : "notice-warn"} aprobacion-estado`} role="status">
       <p><Icon name={hecha ? "check" : "alert"} size={16} /> <strong>{hecha ? "Corregida:" : "El cliente pidió cambios:"}</strong> {post.cambiosPedidos ? `«${post.cambiosPedidos}»` : "mira la conversación de abajo."}</p>
-      {!hecha && <p className="hint">Rehaz la imagen con lo que dijo en la pestaña «Subir».</p>}
+      {!hecha && <p className="hint">Rehaz la imagen con lo que dijo en la pestaña «Pieza».</p>}
     </div>
   );
 }
 
 /**
- * El bloque de la pestaña Subir. `uso`: { calendarId, postId } para apuntar que la publicación usa la imagen nueva
+ * El bloque de la pestaña Pieza. `uso`: { calendarId, postId } para apuntar que la publicación usa la imagen nueva
  * (sin `usado_en`, la papelera de la galería podría llevársela).
  */
 export default function CambiosDelCliente({ post, setForm, clientId, uso = null }) {

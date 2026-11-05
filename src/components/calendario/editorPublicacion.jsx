@@ -245,7 +245,7 @@ export function EditorMedios({ post, clientId, client = null, driveFolder, onCha
                 )}
                 {/* «Otra versión», «Corregir esta» y «Recrear con mi marca» se hacen AQUÍ, por el director y el servidor, y
                     ocupan su sitio (seccionPublicar); «Ver en el Estudio» abre la pieza con sus versiones. Sin quien lo
-                    haga (en «Subir»), el compositor de siempre. «Animar» se quitó: la agencia no lo usaba. */}
+                    haga (en el diálogo «Subir»), el compositor de siempre. «Animar» se quitó: la agencia no lo usaba. */}
                 {m.tipo === "imagen" && (onOtraVersion || onCrearConIA) && (
                   <button type="button" className="btn btn-sm editor-medios-version"
                     disabled={Boolean(versionando)} aria-busy={versionando === m.src || undefined}

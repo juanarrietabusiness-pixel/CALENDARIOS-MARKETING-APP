@@ -59,7 +59,7 @@ export default function CrearConIA({ client, post, tipo = "imagen", inicio = nul
 
   return (
     <div className="overlay overlay-sheet">
-      <div ref={ref} role="dialog" aria-modal="true" aria-label={abrir ? "Estudio: corregir la pieza" : "Crear con IA"} className="sheet sheet-estudio">
+      <div ref={ref} role="dialog" aria-modal="true" aria-label={abrir ? "Estudio: corregir la pieza" : "Crear en el Estudio"} className="sheet sheet-estudio">
         <Suspense fallback={<p role="status" className="est-nota" style={{ padding: "var(--sp-5)" }}>Abriendo el Estudio…</p>}>
           <Estudio client={client} modo="dialogo" inicial={inicial} uso={uso} onUsar={onUsar} onUsarVarias={onUsarVarias} onCerrar={onCerrar} />
         </Suspense>

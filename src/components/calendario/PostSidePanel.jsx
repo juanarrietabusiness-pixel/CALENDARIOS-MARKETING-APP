@@ -404,7 +404,7 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
             {/* Con algo escrito, la IA la completa o la mejora (el motor en su modo «campos»); vacía, la genera. */}
             <AiButton field="idea" label="la idea" accion={String(form.idea ?? "").trim() ? "Completar" : "Generar"} />
           </div>
-          <textarea id={`${ids}-idea`} className="textarea" value={form.idea || ""} onChange={(e) => sf("idea", e.target.value)} placeholder="Explicación o prompt para la generación con IA…" />
+          <textarea id={`${ids}-idea`} className="textarea" value={form.idea || ""} onChange={(e) => sf("idea", e.target.value)} placeholder="Qué se quiere contar y cómo (la IA lo usa para escribir y diseñar)…" />
         </div>
 
         {/* UGC: el guion en columnas, la duración, los ganchos, copiar y «Extraer guion de un video y adaptarlo». */}
@@ -440,7 +440,7 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
           {/* El pedido de la imagen ya escrito (lib/promptImagen.js): «Crear la imagen aquí» y «Crear con IA» no esperan
               a «Mejorar idea». Si se cambia qué se ve o el texto, deja de valer y se vuelve a preparar al crear. */}
           {promptListo(form) && (
-            <p className="hint" style={{ margin: 0 }}><Icon name="check" size={13} /> Lista para crear la imagen: sale sin esperar a «Mejorar idea».</p>
+            <p className="hint" style={{ margin: 0 }}><Icon name="check" size={13} /> El director ya la diseñó: «Diseñar con el director» (pestaña Pieza) sale sin esperar.</p>
           )}
         </div>
 
@@ -459,7 +459,7 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
               placeholder={"Titular corto\nFrase de apoyo\nPrecio (si va)"} />
             <p id={`${ids}-pieza-ayuda`} className="hint" style={{ margin: 0 }}>
               {llevaTextoPieza(form.format)
-                ? "Lo que va escrito sobre la imagen. «Crear con IA» y «Producir el mes» lo ponen tal cual."
+                ? "Lo que va escrito sobre la imagen. «Diseñar con el director» y «Producir el mes» lo ponen tal cual."
                 : "Este formato no lleva texto en la pieza (el video va limpio): se conserva lo que ya estaba escrito."}
             </p>
           </div>

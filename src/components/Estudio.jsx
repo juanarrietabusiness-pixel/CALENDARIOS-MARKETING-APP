@@ -871,11 +871,11 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
     <section className={`estudio${dialogo ? " estudio-dialogo" : ""}`} aria-labelledby={`${ids}-h`}>
       <header className="est-cabecera">
         <div>
-          <TituloH id={`${ids}-h`} className="est-titulo">{dialogo ? "Crear con IA" : "Estudio"}</TituloH>
+          <TituloH id={`${ids}-h`} className="est-titulo">{dialogo ? "Crear en el Estudio" : "Estudio"}</TituloH>
           <p className="est-sub">
             {dialogo
               ? "Crea una imagen o un video para esta publicación, o escoge uno que ya hayas hecho."
-              : `Crea imágenes y videos para ${client.name}. Cada uno queda aquí, con su prompt y lo que costó.`}
+              : `Crea imágenes y videos para ${client.name}. Cada uno queda aquí, con su pedido y lo que costó.`}
           </p>
         </div>
         {dialogo && onCerrar && <button type="button" className="btn-icon" aria-label="Cerrar" onClick={onCerrar}><Icon name="close" size={18} /></button>}
@@ -893,57 +893,9 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
       {soloPrueba && (
         <p className="est-aviso est-aviso-info">
           Ahora mismo sólo está activo el motor de <strong>prueba</strong> (gratis): saca una tarjeta con tu texto, no una imagen ni un video reales.
-          Para eso de verdad, el administrador tiene que poner la llave de un proveedor como secreto del Worker:{" "}
+          Para eso de verdad, el administrador tiene que poner la llave de un proveedor en los ajustes del servidor:{" "}
           {llavesQueFaltan.map((l, i) => <span key={l}>{i > 0 ? (i === llavesQueFaltan.length - 1 ? " o " : ", ") : ""}<code>{l}</code></span>)}.
         </p>
-      )}
-
-      {/* ---------- El kit de marca ---------- */}
-      {!dialogo && datos && (
-        <Suspense fallback={null}>
-          <EstudioKit
-            client={client}
-            kit={kit}
-            archivos={archivos}
-            perdidas={datos.perdidas}
-            onCambio={cargar}
-            lectura={lectura}
-            onPreparar={() => api.prepararKit(client.id)}
-            onGuardar={guardarKitDeMarca}
-          />
-        </Suspense>
-      )}
-
-      {/* ---------- Un lote de anuncios por nivel de consciencia ---------- */}
-      {!lectura && !dialogo && motores && (
-        <div className="card est-lote-entrada">
-          <div>
-            <strong>En lote</strong>
-            <p className="hint">De la idea a la imagen: anuncios en matriz (deseos × perfiles × niveles), por tipo de pieza o el MES completo con el ritmo del cliente. La IA escribe título, brief y texto de cada pieza, tú revisas y ves el costo, y cada una llega al calendario lista para revisión. O recrea con la marca un anuncio que te guste.</p>
-          </div>
-          <div className="est-lote-botones">
-            <button type="button" className="btn btn-secondary" onClick={() => setLoteAbierto(true)}><Icon name="megaphone" size={16} /> Producir en lote</button>
-            <button type="button" className="btn btn-secondary" onClick={() => setRecrear({ archivo: null })}><Icon name="refresh" size={16} /> Recrear un anuncio</button>
-          </div>
-        </div>
-      )}
-      {recrear && (
-        <Suspense fallback={null}>
-          <EstudioRecrear
-            client={client} archivos={datos?.archivos ?? []} productosConFotos={datos?.productos ?? []} inicial={recrear.archivo}
-            activos={activos}
-            onCerrar={() => { setRecrear(null); cargar(); }} onCrear={desdeRecrear}
-          />
-        </Suspense>
-      )}
-      {loteAbierto && motores && datos && (
-        <Suspense fallback={null}>
-          <EstudioLote
-            client={client} motores={motores} productosConFotos={datos?.productos ?? []} archivos={datos?.archivos ?? []} papelera={datos?.papelera ?? []} kit={kit}
-            inicial={loteAbierto?.alcance ? loteAbierto : null}
-            onCerrar={() => setLoteAbierto(false)} onHecho={cargar} onLlevar={onLlevarAlCalendario}
-          />
-        </Suspense>
       )}
 
       {/* ---------- Pedir ---------- */}
@@ -1006,6 +958,38 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
             onEscribir: escribirGuion, onUsar: usarGuion, onDescartar: () => setGuion(null),
           }}
         />
+      )}
+
+      {/* ---------- Muchas de una vez (anuncios en matriz, por tipo o el mes) y recrear un anuncio de otra cuenta ---------- */}
+      {!lectura && !dialogo && motores && (
+        <div className="card est-lote-entrada">
+          <div>
+            <strong>Muchas de una vez</strong>
+            <p className="hint">Anuncios en matriz (deseos × perfiles × niveles), por tipo de pieza o el MES completo con el ritmo del cliente. La IA escribe cada pieza, tú revisas y ves el costo, y cada una llega al calendario lista para revisión. O recrea con tu marca un anuncio de otra cuenta que te guste.</p>
+          </div>
+          <div className="est-lote-botones">
+            <button type="button" className="btn btn-secondary" onClick={() => setLoteAbierto(true)}><Icon name="megaphone" size={16} /> Producir varias piezas</button>
+            <button type="button" className="btn btn-secondary" onClick={() => setRecrear({ archivo: null })}><Icon name="refresh" size={16} /> Recrear con mi marca</button>
+          </div>
+        </div>
+      )}
+      {recrear && (
+        <Suspense fallback={null}>
+          <EstudioRecrear
+            client={client} archivos={datos?.archivos ?? []} productosConFotos={datos?.productos ?? []} inicial={recrear.archivo}
+            activos={activos}
+            onCerrar={() => { setRecrear(null); cargar(); }} onCrear={desdeRecrear}
+          />
+        </Suspense>
+      )}
+      {loteAbierto && motores && datos && (
+        <Suspense fallback={null}>
+          <EstudioLote
+            client={client} motores={motores} productosConFotos={datos?.productos ?? []} archivos={datos?.archivos ?? []} papelera={datos?.papelera ?? []} kit={kit}
+            inicial={loteAbierto?.alcance ? loteAbierto : null}
+            onCerrar={() => setLoteAbierto(false)} onHecho={cargar} onLlevar={onLlevarAlCalendario}
+          />
+        </Suspense>
       )}
 
       {/* ---------- En curso ---------- */}
@@ -1249,6 +1233,22 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
           />
         </Suspense>
       )}
+      {/* ---------- El kit de marca: al final (arriba, crear y la galería) ---------- */}
+      {!dialogo && datos && (
+        <Suspense fallback={null}>
+          <EstudioKit
+            client={client}
+            kit={kit}
+            archivos={archivos}
+            perdidas={datos.perdidas}
+            onCambio={cargar}
+            lectura={lectura}
+            onPreparar={() => api.prepararKit(client.id)}
+            onGuardar={guardarKitDeMarca}
+          />
+        </Suspense>
+      )}
+
       {driveRol && (
         <BancoSelector
           clientId={client.dbId || client.id}
