@@ -134,7 +134,7 @@ export default function Recetas({ clienteId = null, publicacion = null, indicaci
     <div className="overlay" onClick={(e) => { if (e.target === e.currentTarget && !ocupado) onCerrar(); }}>
       <div ref={ref} className="dialog recetas" role="dialog" aria-modal="true" aria-labelledby={`${ids}-t`} tabIndex={-1}>
         <div className="recetas-cabecera">
-          <h2 id={`${ids}-t`} style={{ margin: 0 }}><Icon name="list" size={18} /> Recetas</h2>
+          <h2 id={`${ids}-t`} style={{ margin: 0, display: "flex", alignItems: "center", gap: "var(--sp-2)" }}><Icon name="list" size={18} /> Recetas</h2>
           <button type="button" className="btn-icon" onClick={onCerrar} disabled={ocupado} aria-label="Cerrar"><Icon name="close" size={18} /></button>
         </div>
         <p className="hint" style={{ margin: "var(--sp-2) 0 var(--sp-3)" }}>
