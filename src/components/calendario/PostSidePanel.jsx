@@ -29,8 +29,8 @@ import "./publicar.css";
 
 import { lazy, Suspense, useCallback, useEffect, useId, useMemo, useState, useRef } from "react";
 import { FORMATS, FORMAT_ICONS, STATUSES } from "../../constants";
-import { generateFieldForPost } from "../../api";
 import { ideaComoElLote, ideaParaPublicacion, rellenarConIdea } from "../../lib/ideaPublicacion";
+import { llevaGuion, llevaTextoPieza, llevaCaption } from "../../lib/reglasFormato";
 import { vivo } from "../../lib/vivo";
 import { mediosDe } from "../../lib/publicacion";
 import { publicacionVacia } from "../../lib/subir";
@@ -108,6 +108,12 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
   }, [post.id]);
   const f = FORMATS[form.format] || FORMATS.post;
   const isPost = form.format === "post";
+  // Lo que lleva cada formato (lib/reglasFormato.js): una historia no lleva guion ni caption; un reel, texto en la pieza.
+  // Un campo que el formato no lleva no se enseña, salvo que ya tenga texto (no se esconde lo escrito).
+  const conTexto = (k) => Boolean(String(form[k] ?? "").trim());
+  const verGuion = llevaGuion(form.format) || conTexto("guion");
+  const verPieza = llevaTextoPieza(form.format) || conTexto("textoPieza");
+  const verCaption = llevaCaption(form.format) || conTexto("descripcion") || conTexto("script");
 
   const save = () => onUpdate(day.date, form);
 
@@ -175,27 +181,30 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
 
   const clientId = client?.dbId || client?.id;
 
+  // Todo texto por el MOTOR de ideas del servidor (src/lib/escribirTextos.js, en diferido): la idea vacía como el
+  // Estudio (modo «publicacion»: rellena lo vacío) y cada campo con su botón con todo lo ya escrito delante (modo
+  // «campos»: reescribe ESE campo, nada más). Sobre lo de AHORA: se pudo seguir escribiendo mientras la IA pensaba.
   const generateField = async (field) => {
     setFieldError("");
     setFieldAviso("");
     setFieldLoading((p) => ({ ...p, [field]: true }));
     try {
+      const textos = await import("../../lib/escribirTextos");
+      const deUnCampo = async (base, campo) => {
+        const t = await textos.textoDeUnCampo(clientId, { post: base, day, cal, campo });
+        setForm((p) => ({ ...p, ...textos.aplicarCampos(p, t, { reemplazar: [campo] }).cambios }));
+        return t;
+      };
       if (field === "idea" && ideaComoElLote(form)) {
-        // Vacía: como el Estudio (el formato, la matriz, el estudio de mercado, el catálogo y el mes). Sólo rellena, y
-        // sobre lo de AHORA: se pudo seguir escribiendo mientras la IA pensaba.
+        // Vacía: como el Estudio (el formato, la matriz, el estudio de mercado, el catálogo y el mes). Sólo rellena.
         const idea = await ideaParaPublicacion(clientId, { post: form, day, cal });
         const { campos } = rellenarConIdea(form, idea);
         setForm((p) => ({ ...p, ...rellenarConIdea(p, idea).cambios }));
         if (campos.length > 1) setFieldAviso(`La IA escribió: ${campos.join(", ")}. Lo que ya tenía texto no se tocó.`);
       } else if (field === "guion" && form.format === "reel" && form.rostro) {
         // UGC: sin idea, primero la idea por el motor de ideas (trae también su guion para grabar); con idea, el guion
-        // por tramos con la regla de lib/ugc.js y tres ganchos para probar. Lo escrito a mano en la idea se respeta.
-        // Con la FÓRMULA escogida (o la IA escoge entre las de la agencia y dice cuál) y la VOZ UGC de la marca.
-        const [ugc, fu, { listarFormulas }, { leerVozUgc }] = await Promise.all([
-          import("../../lib/ugc"), import("../../lib/formulasUgc"), import("../../lib/formulasUgcApi"), import("../../lib/cerebro"),
-        ]);
-        const [formulas, voz] = await Promise.all([listarFormulas().catch(() => []), leerVozUgc(clientId).catch(() => null)]);
-        const elegida = formulas.find((f) => f.id === form.formulaUgc) ?? null;
+        // por tramos con tres ganchos para probar, la FÓRMULA escogida (o la que escoja la IA entre las de la agencia)
+        // y la VOZ UGC de la marca: todo eso lo pone el motor. Lo escrito a mano en la idea se respeta.
         let base = form;
         if (ideaComoElLote(form)) {
           const idea = await ideaParaPublicacion(clientId, { post: form, day, cal });
@@ -205,25 +214,16 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
           if (String(base.guion ?? "").trim()) setFieldAviso("La IA escribió la idea y su guion para grabar. Revísalos.");
         }
         // Una fórmula escogida a mano manda: el guion que trajo la idea se reescribe con ella.
-        if (!String(base.guion ?? "").trim() || base === form || elegida) {
-          const duracion = ugc.duracionUgc(base.duracionUgc);
-          const regla = [
-            ugc.reglaUgc(duracion), ugc.LINEA_GANCHOS,
-            elegida ? fu.lineaDeFormula(elegida, duracion) : fu.bloqueDeFormulas(formulas, duracion),
-            ugc.lineaDeVozUgc(voz?.texto),
-          ].filter(Boolean).join("\n");
-          const texto = await generateFieldForPost(client, base, day, cal, "guion", { reglaGuion: regla });
-          const usada = elegida?.id || fu.formulaUsada(texto, formulas);
-          const { guion, ganchos } = ugc.leerGuionConGanchos(texto);
-          setForm((p) => ({
-            ...p, guion, ...(ganchos.length ? { ganchosUgc: ganchos } : {}), duracionUgc: ugc.duracionUgc(p.duracionUgc),
-            ...(usada ? { formulaUgc: usada } : {}),
-          }));
-          if (usada && !elegida) setFieldAviso(`La IA siguió la fórmula «${formulas.find((f) => f.id === usada)?.nombre}». Revisa el guion antes de grabar.`);
+        if (!String(base.guion ?? "").trim() || base === form || form.formulaUgc) {
+          const t = await deUnCampo(base, "guion");
+          if (t.formulaUgc && !form.formulaUgc) {
+            const { listarFormulas } = await import("../../lib/formulasUgcApi");
+            const nombre = (await listarFormulas().catch(() => [])).find((f) => f.id === t.formulaUgc)?.nombre;
+            setFieldAviso(`La IA siguió la fórmula${nombre ? ` «${nombre}»` : " de la agencia"}. Revisa el guion antes de grabar.`);
+          }
         }
       } else {
-        const result = await generateFieldForPost(client, form, day, cal, field);
-        sf(field, result);
+        await deUnCampo(form, field);
       }
     } catch (e) {
       setFieldError(`No se pudo generar «${field}»: ${e.message}`);
@@ -390,7 +390,7 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
         <div className="field">
           <div style={fieldHeaderStyle}>
             <label className="label" style={{ margin: 0 }} htmlFor={`${ids}-idea`}>Idea / Brief</label>
-            {/* Con algo escrito, la IA la completa o la mejora (instruccionIdea en api.js); vacía, la genera. */}
+            {/* Con algo escrito, la IA la completa o la mejora (el motor en su modo «campos»); vacía, la genera. */}
             <AiButton field="idea" label="la idea" accion={String(form.idea ?? "").trim() ? "Completar" : "Generar"} />
           </div>
           <textarea id={`${ids}-idea`} className="textarea" value={form.idea || ""} onChange={(e) => sf("idea", e.target.value)} placeholder="Explicación o prompt para la generación con IA…" />
@@ -401,13 +401,13 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
           <GuionUgc form={form} sf={sf} setForm={setForm} client={client} onAviso={setFieldAviso} />
         )}
 
-        {!isPost && (
+        {verGuion && (
           <div className="field">
             <div style={fieldHeaderStyle}>
               <label className="label" style={{ margin: 0, color: "#FF7BA8" }} htmlFor={`${ids}-guion`}>{form.format === "reel" && form.rostro ? "Guion (texto, para editar)" : "Guion"}</label>
               <div style={{ display: "flex", gap: "var(--sp-2)" }}>
                 <CopyButton text={form.guion} describes="el guion" />
-                <AiButton field="guion" label="el guion" />
+                {llevaGuion(form.format) && <AiButton field="guion" label="el guion" />}
               </div>
             </div>
             <textarea
@@ -434,20 +434,22 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
         </div>
 
         {/* Lo que va ESCRITO encima del diseño (no el caption). En un carrusel va lámina por lámina en el guion. */}
-        {form.format !== "carrusel" && (
+        {verPieza && (
           <div className="field">
             <div style={fieldHeaderStyle}>
               <label className="label" style={{ margin: 0 }} htmlFor={`${ids}-pieza`}>Texto en la pieza</label>
               <div style={{ display: "flex", gap: "var(--sp-2)" }}>
                 <CopyButton text={form.textoPieza} describes="el texto de la pieza" />
-                <AiButton field="textoPieza" label="el texto de la pieza" />
+                {llevaTextoPieza(form.format) && <AiButton field="textoPieza" label="el texto de la pieza" />}
               </div>
             </div>
             <textarea id={`${ids}-pieza`} className="textarea" style={{ minHeight: 72 }} maxLength={400} value={form.textoPieza || ""}
               onChange={(e) => sf("textoPieza", e.target.value)} aria-describedby={`${ids}-pieza-ayuda`}
               placeholder={"Titular corto\nFrase de apoyo\nPrecio (si va)"} />
             <p id={`${ids}-pieza-ayuda`} className="hint" style={{ margin: 0 }}>
-              Lo que va escrito sobre la imagen{form.format === "reel" ? " (la portada)" : ""}. «Crear con IA» y «Producir el mes» lo ponen tal cual.
+              {llevaTextoPieza(form.format)
+                ? "Lo que va escrito sobre la imagen. «Crear con IA» y «Producir el mes» lo ponen tal cual."
+                : "Este formato no lleva texto en la pieza (el video va limpio): se conserva lo que ya estaba escrito."}
             </p>
           </div>
         )}
@@ -465,12 +467,13 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
         {/* El video o la imagen de otra cuenta que se trajo con la idea: aparte de lo que se publica. */}
         <ReferenciasPost form={form} setForm={setForm} client={client} cal={cal} onAviso={setFieldAviso} />
 
+        {verCaption && (
         <div className="field">
           <div style={fieldHeaderStyle}>
             <label className="label" style={{ margin: 0 }} htmlFor={`${ids}-desc`}>Descripción</label>
             <div style={{ display: "flex", gap: "var(--sp-2)" }}>
               <CopyButton text={form.descripcion || form.script} describes="la descripción" />
-              <AiButton field="descripcion" label="la descripción" />
+              {llevaCaption(form.format) && <AiButton field="descripcion" label="la descripción" />}
             </div>
           </div>
           <textarea
@@ -481,7 +484,9 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
             onChange={(e) => sf("descripcion", e.target.value)}
             placeholder="Caption / descripción del contenido…"
           />
+          {/* Los hashtags van APARTE (los escribe la IA en su campo, pestaña Subir): dentro del caption saldrían dos veces. */}
         </div>
+        )}
 
         {suggestion && (suggestion.guion || suggestion.descripcion) && (
           <div style={{

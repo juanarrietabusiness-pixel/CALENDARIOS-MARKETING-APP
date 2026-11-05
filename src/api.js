@@ -1,8 +1,8 @@
 import { parseJSONLoose, parseGitHubUrl } from "./lib/parse";
-import { lineasDeContenido } from "./lib/pilares";
 import { normalizarColor, coloresDelTexto, tresColores } from "./lib/colores";
 import { hora12 } from "./lib/horas";
-import { getWeekNumber, dayName } from "./utils";
+import { dayName } from "./utils";
+import { semanaDelMes } from "./lib/semanas";
 import { INSTRUCCION_PIEZAS, INSTRUCCION_ADJUNTOS } from "./lib/mensajeChat";
 import { base64DeImagen, fotogramasDeVideo } from "./lib/medios";
 import { mediosDe } from "./lib/publicacion";
@@ -125,153 +125,12 @@ export async function callAI(content, { maxTokens, tier, tolerarCorte = false, f
   return data?.text ?? "";
 }
 
-/**
- * Las frases que van ENCIMA del diseño (`post.textoPieza`): las escribe la IA con el estudio delante, junto con la
- * descripción, y una persona las puede cambiar. Las usan el Estudio y «Producir el mes» al pedir la imagen.
- */
-const REGLA_TEXTO_PIEZA = `TEXTO_PIEZA (lo que va escrito ENCIMA del diseño, no el caption): un titular de hasta 6 palabras y, en otra línea, una frase de apoyo de hasta 10; si el tipo lleva precio u oferta, el precio EXACTO del catálogo en una tercera línea. Frases de marketing, sacadas del gancho y del deseo de la publicación. En carrusel, vacío (el texto va lámina por lámina en el guion); en reel, el texto de la portada.`;
-
-/** Un video con rostro (UGC, `post.rostro`): lo graba una persona; el guion es para grabarlo, no para la IA. */
-const REGLA_ROSTRO = "UGC (guion para grabar): lo GRABA una persona de la marca hablando a cámara. GUION por tramos, uno por línea: [0–3 s] VOZ: «lo que dice, palabra por palabra» | SE VE: la toma | TEXTO: texto corto en pantalla (gancho → desarrollo → llamado a la acción; unas 2,5 palabras por segundo) + DESCRIPCION (caption con hashtags al final)";
-
-export function buildScriptPrompt(client, calendar, posts, adnExtra = "", memories = [], cerebro = null) {
-  const ctx = buildClientContext(client, calendar, adnExtra, cerebro);
-  const memBlock = memories.length
-    ? `\nMEMORIAS DEL ASISTENTE:\n${memories.map((m) => `· ${typeof m === "string" ? m : m.content}`).join("\n")}\n`
-    : "";
-  const postsList = posts.map((p) => {
-    const formatRules = {
-      post: "Solo DESCRIPCION (caption con emojis, CTA y hashtags al final). No escribas GUION.",
-      reel: "GUION (escena por escena: Hook → Desarrollo → CTA) + DESCRIPCION (caption con hashtags al final)",
-      carrusel: "GUION (texto por cada card/slide, separados por ---) + DESCRIPCION (caption con hashtags al final)",
-      historia: "GUION (nota breve, max 2 oraciones) + DESCRIPCION (texto overlay con hashtags al final)",
-      live: "GUION (puntos clave a cubrir en el live, formato bullet) + DESCRIPCION (caption de anuncio con hashtags al final)",
-    };
-    return `<<<PUBLICACION_ID:${p.id}>>>
-FORMATO: ${p.format}
-CATEGORIA: ${p.category || "N/A"}
-${lineasDeContenido(p)}
-DIA: ${p._date} (${p._dayName || ""})
-SEMANA: ${p._weekNumber || ""}
-CONCEPTO_SEMANAL: ${p._concept || "N/A"}
-IDEA: ${p.idea || "genera según contexto del cliente"}
-${p.estructuraRef ? `ESTRUCTURA A SEGUIR (de una referencia de la competencia: la MISMA forma, tramos y ritmo; el contenido es de la marca y no se copia nada): ${String(p.estructuraRef).slice(0, 900)}\n` : ""}REGLAS_FORMATO: ${p.format === "reel" && p.rostro ? REGLA_ROSTRO : formatRules[p.format] || formatRules.post}`;
-  }).join("\n\n");
-
-  return `${ctx}
-${memBlock}
-ESTILO DE GUIONES: ${client.estiloGuion || "Cercano, persuasivo, con emojis y CTA"}
-ESTILO DE LOCUCIÓN: ${client.estiloLocucion || "Natural y profesional"}
-WHATSAPP: ${client.whatsapp || "N/A"}
-HASHTAGS BASE: ${client.hashtags || "#Panama"}
-CAMPAÑA: ${calendar?.campaign || "N/A"}
-${calendar?.offers ? `OFERTAS Y DESCUENTOS DEL MES: ${calendar.offers}` : ""}
-${calendar?.promoCode ? `CÓDIGO PROMOCIONAL: ${calendar.promoCode}` : ""}
-${bloqueFechasEspeciales(client, calendar)}
-
----
-
-INSTRUCCIONES:
-Genera el contenido para CADA publicación listada abajo.
-Respeta el formato de salida EXACTAMENTE.
-Cada publicación va delimitada por <<<PUBLICACION_ID:xxx>>> con su ID correspondiente.
-
-REGLAS POR FORMATO:
-- post: Solo DESCRIPCION (caption con emojis + CTA + hashtags al final del texto). NO incluir GUION.
-- reel: GUION (Hook → Desarrollo → CTA, escena por escena) + DESCRIPCION (incluye hashtags al final)
-- carrusel: GUION (texto por card, separados por ---) + DESCRIPCION (incluye hashtags al final)
-- historia: GUION (nota breve) + DESCRIPCION (incluye hashtags al final)
-- live: GUION (bullet points del live) + DESCRIPCION (incluye hashtags al final)
-
-IMPORTANTE: Los hashtags deben ir DENTRO de la DESCRIPCION, al final del caption. NO uses un campo HASHTAGS_FINALES separado.
-
-${REGLA_TEXTO_PIEZA}
-
-FORMATO DE RESPUESTA OBLIGATORIO:
-<<<PUBLICACION_ID:id_del_post>>>
-GUION:
-(contenido del guión aquí, o vacío si es post)
-DESCRIPCION:
-(caption/descripción aquí, con hashtags al final)
-TEXTO_PIEZA:
-(el texto que va encima del diseño, o vacío)
-
----
-
-PUBLICACIONES A GENERAR:
-${postsList}`;
-}
-
-/**
- * Prompt para escribir SÓLO las descripciones de un lote de publicaciones.
- *
- * El asistente de creación tiene dos pasos separados a propósito: primero
- * se acuerdan las ideas y se revisan, y sólo después se escriben los
- * captions. Pedir guion y descripción a la vez —que es lo que hace
- * `buildScriptPrompt`— gasta el doble de presupuesto para tirar la mitad,
- * y en un mes entero eso es la diferencia entre una tanda y tres.
- *
- * El contrato de salida es el mismo `<<<PUBLICACION_ID:…>>>` de siempre,
- * para poder leerlo con `parseAIResponse` sin un segundo parser.
- */
-export function buildDescripcionesPrompt(client, calendar, posts, adnExtra = "", memories = [], cerebro = null) {
-  const ctx = buildClientContext(client, calendar, adnExtra, cerebro);
-  const memBlock = memories.length
-    ? `\nMEMORIAS DEL ASISTENTE:\n${memories.map((m) => `· ${typeof m === "string" ? m : m.content}`).join("\n")}\n`
-    : "";
-
-  const reglas = {
-    post: "Caption de post estático: gancho en la primera línea, cuerpo breve, CTA y hashtags al final.",
-    reel: "Caption de reel: gancho corto que invite a ver el vídeo, CTA y hashtags al final.",
-    carrusel: "Caption de carrusel: promete lo que se aprende deslizando, CTA y hashtags al final.",
-    historia: "Texto para la historia: dos líneas como mucho, directo, con hashtags al final.",
-    live: "Caption de anuncio del live: día, hora y motivo para conectarse, con hashtags al final.",
-  };
-
-  const lista = posts.map((p) => `<<<PUBLICACION_ID:${p.id}>>>
-FORMATO: ${p.format}
-CATEGORIA: ${p.category || "N/A"}
-${lineasDeContenido(p)}
-DIA: ${p._date} (${p._dayName || ""})
-SEMANA: ${p._weekNumber || ""} — ${p._concept || "libre"}
-IDEA: ${p.idea}
-REGLA: ${reglas[p.format] || reglas.post}`).join("\n\n");
-
-  return `${ctx}
-${memBlock}
-ESTILO DE GUIONES: ${client.estiloGuion || "Cercano, persuasivo, con emojis y CTA"}
-WHATSAPP: ${client.whatsapp || "N/A"}
-HASHTAGS BASE: ${client.hashtags || "#Panama"}
-CAMPAÑA: ${calendar?.campaign || "N/A"}
-${calendar?.offers ? `OFERTAS Y DESCUENTOS DEL MES: ${calendar.offers}` : ""}
-${calendar?.promoCode ? `CÓDIGO PROMOCIONAL: ${calendar.promoCode}` : ""}
-${bloqueFechasEspeciales(client, calendar)}
-
----
-
-INSTRUCCIONES:
-Escribe la DESCRIPCION (el caption que se publica) de CADA publicación de
-la lista, partiendo de su idea, y su TEXTO_PIEZA. No escribas guion, ni
-títulos, ni notas de producción.
-
-${REGLA_TEXTO_PIEZA}
-
-Cada caption lleva emojis con medida, una llamada a la acción hacia
-WhatsApp (${client.whatsapp || "N/A"}) y los hashtags al final del propio
-texto. No uses un campo de hashtags aparte.
-
-FORMATO DE RESPUESTA OBLIGATORIO, sin nada más:
-<<<PUBLICACION_ID:id_de_la_publicacion>>>
-DESCRIPCION:
-(caption completo, con los hashtags al final)
-TEXTO_PIEZA:
-(el texto que va encima del diseño, o vacío)
-
----
-
-PUBLICACIONES:
-${lista}`;
-}
+// Los pedidos de texto de antes (buildScriptPrompt, buildDescripcionesPrompt, generateSinglePost,
+// generateFieldForPost, instruccionIdea) ya no existen: TODO texto de una publicación —la idea, el guion, el caption,
+// el texto de la pieza, los hashtags— va por el motor de ideas del servidor (modos «publicacion», «plan» y «campos» de
+// POST /api/estudio/<c>/lote/ideas; src/lib/escribirTextos.js y src/lib/camposTexto.js), con la ficha del cliente, la
+// estrategia del mes y una sola regla por formato (src/lib/reglasFormato.js). Se cargan en diferido: esta carga es la
+// inicial.
 
 /**
  * Lee el ADN de marca del repositorio del cliente.
@@ -302,157 +161,6 @@ export async function fetchGitHubADN(repoUrl, folder = "") {
     return { content: "", files: [], subfolders: [] };
   }
   return await invokeFunction("github-adn", { repoUrl, folder });
-}
-
-export async function generateSinglePost(client, post, day, calendar) {
-  const isPost = post.format === "post";
-  const adn = await loadADN(client);
-  const adnExtra = adn.content;
-  const pasajes = await pasajesDeLaPublicacion(client, adn, calendar, post, day);
-  const ctx = buildClientContext(client, calendar, adnExtra, adn.cerebro ? { pasajes } : null);
-
-  const formatRules = {
-    post: `DESCRIPCION: caption completo con emojis, CTA a WhatsApp (${client.whatsapp || "N/A"}) y hashtags al final (${client.hashtags || "#Panama"})`,
-    reel: `GUION:\nHook (0-3s): ...\nDesarrollo (3-20s): ...\nCTA final: ...\n\nDESCRIPCION: caption para Instagram con emojis, CTA y hashtags al final`,
-    carrusel: `GUION:\nPortada: ...\nSlide 1: ...\nSlide 2: ...\nCTA: ...\n\nDESCRIPCION: caption para Instagram con emojis, CTA y hashtags al final`,
-    historia: `GUION: nota breve de que cubrir\n\nDESCRIPCION: texto overlay con hashtags al final`,
-    live: `GUION: bullet points del live\n\nDESCRIPCION: caption de anuncio del live con hashtags al final`,
-  };
-
-  let promptText = `${ctx}
-
-CAMPANA: ${calendar?.campaign || "N/A"}
-SEMANA: ${day.concept || "N/A"}
-CATEGORIA: ${day.category || "N/A"}
-${lineasDeContenido(post)}
-FORMATO: ${post.format}
-FECHA: ${day.date} (${day.dayName || ""})
-
-${post.idea ? `IDEA: ${post.idea}` : "Genera basandote en el contexto del cliente, la categoria y el concepto semanal."}
-
-Genera el contenido en este formato exacto:
-${formatRules[post.format] || formatRules.post}
-
-${isPost ? "No incluyas GUION para posts estaticos, solo DESCRIPCION." : ""}
-Escribe directamente el contenido, sin preambulos.`;
-
-  const content = [];
-  const imagen = await base64DeImagen(post.image).catch(() => null);
-  if (imagen) {
-    content.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: imagen } });
-    promptText = `Basandote en la imagen adjunta y el siguiente contexto:\n\n${promptText}`;
-  }
-  content.push({ type: "text", text: promptText });
-
-  const txt = await callAI(content, { funcion: "publicación", clienteId: client?.id });
-
-  const guionMatch = txt.match(/GUION:\s*([\s\S]*?)(?=DESCRIPCION:|HASHTAGS_FINALES:|$)/i);
-  const descMatch = txt.match(/DESCRIPCION:\s*([\s\S]*?)(?=GUION:|HASHTAGS_FINALES:|$)/i);
-  const hashMatch = txt.match(/HASHTAGS_FINALES:\s*([\s\S]*?)(?=GUION:|DESCRIPCION:|$)/i);
-
-  return {
-    guion: guionMatch ? guionMatch[1].trim() : "",
-    descripcion: descMatch ? descMatch[1].trim() : (isPost ? txt.trim() : ""),
-    hashtagsFinales: hashMatch ? hashMatch[1].trim() : "",
-  };
-}
-
-/**
- * Qué se le pide al botón de la idea. Vacía, una idea nueva como siempre.
- * Con algo escrito, la COMPLETA o la mejora sin cambiarla por otra: antes
- * la reemplazaba y se perdía lo que el equipo había pensado. Pura.
- */
-/** Qué ES cada formato, dicho a la IA: «una publicación de post» era ambiguo y a veces salía un carrusel o un reel. */
-const QUE_ES_EL_FORMATO = {
-  post: "un POST de UNA sola imagen fija (no un carrusel, no un video)",
-  carrusel: "un CARRUSEL de varias láminas que se deslizan (no una sola imagen, no un video)",
-  reel: "un REEL: un video vertical corto con varios planos (no una imagen fija, no un carrusel)",
-  historia: "una HISTORIA de Instagram: una imagen o video vertical que se ve unos segundos (no un carrusel)",
-  live: "un DIRECTO (live) en vivo: los temas de la transmisión (no una imagen ni un carrusel)",
-};
-const formatoDicho = (f) => QUE_ES_EL_FORMATO[f] ?? `una publicación de formato ${f}`;
-
-export function instruccionIdea(post = {}) {
-  const escrita = String(post.idea ?? "").trim();
-  if (!escrita) {
-    return `Genera UNA idea creativa y concreta para ${formatoDicho(post.format)} de este cliente. La idea tiene que ser de ESE formato: no propongas otro.
-La idea debe ser especifica, accionable y alineada con la marca, la categoria y el concepto semanal.
-Responde SOLO con la idea, sin preambulos ni explicaciones. Maximo 2 oraciones.`;
-  }
-  return `IDEA QUE YA ESCRIBIÓ EL EQUIPO:
-«${escrita.slice(0, 2000)}»
-
-Mejora y completa ESTA idea para ${formatoDicho(post.format)}. Respeta lo que dice: el tema, el producto, la oferta y el enfoque son los suyos; no la cambies por otra idea ni por otro formato. Si está a medias, termínala; si ya está completa, hazla más clara y concreta, alineada con la marca.
-Responde SOLO con la idea mejorada, sin preámbulos ni explicaciones. Máximo 3 oraciones.`;
-}
-
-/** `opciones.reglaGuion`: la regla del guion cuando no es la de su formato (un UGC: lib/ugc.js, que no va al arranque). */
-export async function generateFieldForPost(client, post, day, calendar, field, opciones = {}) {
-  const adn = await loadADN(client);
-  const adnExtra = adn.content;
-  const pasajes = await pasajesDeLaPublicacion(client, adn, calendar, post, day);
-  const ctx = buildClientContext(client, calendar, adnExtra, adn.cerebro ? { pasajes } : null);
-  let promptText = "";
-
-  if (field === "idea") {
-    promptText = `${ctx}
-CAMPANA: ${calendar?.campaign || "N/A"}
-SEMANA: ${day.concept || "N/A"}
-CATEGORIA: ${day.category || post.category || "N/A"}
-${lineasDeContenido(post)}
-FORMATO: ${post.format}
-FECHA: ${day.date} (${day.dayName || ""})
-
-
-${instruccionIdea(post)}`;
-  } else if (field === "guion") {
-    promptText = `${ctx}
-CAMPANA: ${calendar?.campaign || "N/A"}
-SEMANA: ${day.concept || "N/A"}
-CATEGORIA: ${day.category || post.category || "N/A"}
-${lineasDeContenido(post)}
-FORMATO: ${post.format}
-FECHA: ${day.date} (${day.dayName || ""})
-
-IDEA: ${post.idea || "N/A"}
-
-Basandote en la idea y el contexto del cliente, genera el GUION para esta publicacion. Lo que la idea pone entre comillas se usa TAL CUAL.
-${opciones.reglaGuion ? opciones.reglaGuion : post.format === "reel" ? "Formato: Hook (0-3s) → Desarrollo (3-20s) → CTA final" : ""}
-${post.format === "carrusel" ? "Formato: texto por cada slide, separados por ---" : ""}
-${post.format === "historia" ? "Formato: nota breve, max 2 oraciones" : ""}
-${post.format === "live" ? "Formato: bullet points de los temas a cubrir" : ""}
-Responde SOLO con el guion, sin preambulos.`;
-  } else if (field === "descripcion") {
-    promptText = `${ctx}
-CAMPANA: ${calendar?.campaign || "N/A"}
-SEMANA: ${day.concept || "N/A"}
-CATEGORIA: ${day.category || post.category || "N/A"}
-${lineasDeContenido(post)}
-FORMATO: ${post.format}
-FECHA: ${day.date} (${day.dayName || ""})
-
-IDEA: ${post.idea || "N/A"}
-${post.guion ? `GUION: ${post.guion}` : ""}
-
-Basandote en la idea${post.guion ? ", el guion" : ""} y el contexto del cliente, genera la DESCRIPCION (caption) para esta publicacion.
-Incluye emojis, CTA a WhatsApp (${client.whatsapp || "N/A"}) y hashtags relevantes al final del texto (${client.hashtags || "#Panama"}).
-Responde SOLO con la descripcion/caption completa incluyendo los hashtags, sin preambulos.`;
-  } else if (field === "textoPieza") {
-    promptText = `${ctx}
-CAMPANA: ${calendar?.campaign || "N/A"}
-${lineasDeContenido(post)}
-FORMATO: ${post.format}
-FECHA: ${day.date} (${day.dayName || ""})
-
-IDEA: ${post.idea || "N/A"}
-${post.descripcion ? `DESCRIPCION: ${String(post.descripcion).slice(0, 800)}` : ""}
-
-${REGLA_TEXTO_PIEZA.replace(/^TEXTO_PIEZA /, "Escribe el TEXTO DE LA PIEZA ")}
-Responde SOLO con ese texto (una frase por línea), sin comillas ni preambulos.`;
-  }
-
-  const content = [{ type: "text", text: promptText }];
-  return await callAI(content, { funcion: "publicación", clienteId: client?.id });
 }
 
 /**
@@ -919,15 +627,14 @@ export function buildChatSystemPrompt(client, calendar, adnExtra = "", memories 
     // La SEMANA y el DÍA van en cada línea porque es como se pide el
     // trabajo —«los guiones de la semana 2», «pon las 9am los lunes»— y
     // sin ellos el modelo tiene que deducirlos de la fecha, que es
-    // justo donde se equivoca. La semana sale de `getWeekNumber`, la
-    // misma que numera los conceptos semanales: dos numeraciones
-    // distintas para lo mismo sería peor que ninguna.
-    const primerDia = (calendar.days || [])[0]?.date;
+    // justo donde se equivoca. La semana es la FILA de la rejilla
+    // (`semanaDelMes`, lunes a domingo): la misma de la campaña de cada
+    // semana y la que filtra `editar_publicaciones_lote` (lib/lote.js).
     const postLines = [];
     for (const day of calendar.days || []) {
       for (const post of day.posts || []) {
         const parts = [`ID:${post.id}`, day.date];
-        if (primerDia) parts.push(`semana ${getWeekNumber(day.date, primerDia)}`);
+        if (day.date) parts.push(`semana ${semanaDelMes(day.date)}`);
         parts.push(dayName(day.date));
         if (post.format) parts.push(post.format);
         if (post.category) parts.push(post.category);

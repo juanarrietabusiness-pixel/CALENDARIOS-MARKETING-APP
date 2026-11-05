@@ -9,12 +9,15 @@
 // único estado `capa`, no con una bandera por diálogo.
 // ============================================================
 
-import { useId, useState, useRef } from "react";
+import { lazy, Suspense, useId, useState, useRef } from "react";
 import { uid, compressImage } from "../../utils";
 import { rangoSemana } from "../../lib/semanas";
 import { useDialogA11y } from "../../hooks/useDialogA11y";
 import Icon from "../Icon";
 import SelectorFecha from "../SelectorFecha";
+
+// La estrategia del mes se edita con el componente de «Planificar mes», en su chunk (no va en la carga inicial).
+const EditorEstrategia = lazy(() => import("../EstrategiaMes").then((m) => ({ default: m.EditorEstrategia })));
 
 /**
  * «Agregar publicación»: una pregunta y dos respuestas.
@@ -169,7 +172,7 @@ export function VisualRefSection({ formatKey, label, icon, color, refs, onAdd, o
  * ya lo tenían, y un mes sin planificar no tenía dónde escribirlos—.
  * `aviso`: lo que dijo la IA al proponer los nombres.
  */
-export function EditMetaDialog({ metaForm, setMetaForm, onSave, onClose, tabInicial = "general", semanas = [], aviso = "" }) {
+export function EditMetaDialog({ metaForm, setMetaForm, onSave, onClose, tabInicial = "general", semanas = [], aviso = "", client = null }) {
   const ref = useDialogA11y(onClose);
   const ids = useId();
   const [activeTab, setActiveTab] = useState(tabInicial);
@@ -221,6 +224,9 @@ export function EditMetaDialog({ metaForm, setMetaForm, onSave, onClose, tabInic
           </button>
           <button type="button" className={`segmented-btn ${activeTab === "offers" ? "active" : ""}`} aria-pressed={activeTab === "offers"} onClick={() => setActiveTab("offers")}>
             Ofertas
+          </button>
+          <button type="button" className={`segmented-btn ${activeTab === "estrategia" ? "active" : ""}`} aria-pressed={activeTab === "estrategia"} onClick={() => setActiveTab("estrategia")}>
+            Estrategia
           </button>
           <button type="button" className={`segmented-btn ${activeTab === "visuals" ? "active" : ""}`} aria-pressed={activeTab === "visuals"} onClick={() => setActiveTab("visuals")}>
             Ref. Visuales
@@ -294,6 +300,19 @@ export function EditMetaDialog({ metaForm, setMetaForm, onSave, onClose, tabInic
                 />
               </div>
             </>
+          )}
+
+          {/* La estrategia del mes (objetivo, foco, etapas), en su chunk: es de «Planificar mes». */}
+          {activeTab === "estrategia" && (
+            <Suspense fallback={<p className="hint">Cargando…</p>}>
+              <EditorEstrategia
+                client={client}
+                valor={metaForm.estrategia}
+                semanas={semanas}
+                conceptos={metaForm.weekConcepts || []}
+                onCambiar={(estrategia) => setMetaForm((p) => ({ ...p, estrategia }))}
+              />
+            </Suspense>
           )}
 
           {activeTab === "visuals" && (

@@ -6,10 +6,12 @@
 // —cuántas publicaciones, cuántas aprobadas, cuántas faltan— y sólo la
 // que toca abierta.
 //
-// La semana es la del CALENDARIO (`weekNumber`, la que lleva el concepto
-// de la planificación). Un día sin ese dato —añadido a mano o por el
-// asistente— cae en la semana natural que le toca, de lunes a domingo,
-// contada desde el primer día del mes.
+// La semana es UNA en toda la aplicación: la FILA de la rejilla del mes
+// (lunes a domingo, contada desde el primer día del mes: `semanaDelMes`).
+// Es la de la tarjeta de la campaña, la de «Planificar mes», la del motor de
+// ideas y la del asistente. El `weekNumber` guardado en los días de antes
+// (bloques de siete días desde el 1) ya no manda: en noviembre su «semana 1»
+// tenía siete días y la de la rejilla, uno.
 // ============================================================
 
 /** Semana natural (lunes a domingo) de una fecha dentro de su mes: 1, 2, 3… */
@@ -30,7 +32,7 @@ export function agruparPorSemana(days = []) {
   const grupos = new Map();
   for (const dia of days) {
     if (!dia?.date) continue;
-    const numero = Number(dia.weekNumber) || semanaDelMes(dia.date);
+    const numero = semanaDelMes(dia.date);
     if (!grupos.has(numero)) grupos.set(numero, { numero, dias: [], concepto: "" });
     const g = grupos.get(numero);
     g.dias.push(dia);

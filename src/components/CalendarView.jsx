@@ -2,10 +2,10 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useState, useRef } fro
 import { FORMATS, FORMAT_ICONS, STATUSES, MONTHS, DAYS } from "../constants";
 import { uid } from "../utils";
 import { marcarActualizada, momentoPublicacion } from "../lib/publicacion";
-import { callAI, loadADN, parseAIResponse, buildScriptPrompt, buildDescripcionesPrompt, buildClientContext, generateSinglePost, pasajesDeLaTanda } from "../api";
-import { base64DeImagen, prepararParaRedes } from "../lib/medios";
+import { callAI, buildClientContext, escribirDesdeContenido } from "../api";
+import { prepararParaRedes } from "../lib/medios";
 import {
-  shareCalendar, setShareEnabled, fetchApprovals, subscribeApprovals, loadClientMemories,
+  shareCalendar, setShareEnabled, fetchApprovals, subscribeApprovals,
   listarPublicaciones, publicar, cancelarPublicacion, reintentarPublicacion, estadoRedes as leerEstadoRedes,
   subirImagenPublicacion, saveCalendar,
 } from "../lib/db";
@@ -13,7 +13,7 @@ import { resumenCola, aprobadasSinProgramar } from "../lib/cola";
 import { navegar, analizarRuta, construirRuta } from "../lib/rutas";
 import { ideasDeRevision, porRevisar } from "../lib/revisionIdeas";
 import { agruparPorSemana, semanaInicial, rangoSemana } from "../lib/semanas";
-import { moverEnCalendario, ponerEnDia, copiaDePublicacion } from "../lib/subir";
+import { moverEnCalendario, ponerEnDia, copiaDePublicacion, tieneContenido, rellenarDesdeContenido } from "../lib/subir";
 import { conAprobacion, resumenEnvio, estadoDelEnvio, mensajeDeEnvio } from "../lib/aprobacion";
 import { marcarEnviadas } from "../lib/trabajo";
 import { sinLoNecesario } from "../lib/completitud";
@@ -26,6 +26,7 @@ import { fechaEnZona } from "../lib/agenda";
 import { fechasDelMes, fechasPorDia } from "../lib/fechasEspeciales";
 import { semanasDelMes, conceptosDelMes, pedidoDeNombres, leerNombres } from "../lib/campanas";
 import { semanaDelMes } from "../lib/semanas";
+import { limpiarEstrategia } from "../lib/embudo";
 import { esVirtual } from "../lib/meses";
 import Icon from "./Icon";
 import { useConfigIA } from "../hooks/useConfigIA";
@@ -337,6 +338,8 @@ export default function CalendarView({
     offers: cal.offers || "",
     promoCode: cal.promoCode || "",
     visualReferences: (cal.visualReferences || []).map((r) => r.format ? r : { ...r, format: "post" }),
+    // La estrategia del mes (objetivo, foco, etapas): se ve y se cambia aquí, no sólo en «Planificar mes».
+    estrategia: limpiarEstrategia(cal.opciones?.estrategia),
     ...extra,
   });
   const abrirMeta = (tab = "general", extra = {}, aviso = "") => {
@@ -465,7 +468,8 @@ export default function CalendarView({
   const envio = capa === "aprobacion" ? estadoDelEnvio(cal.days) : null;
   const totalPosts = (cal.days || []).reduce((a, d) => a + (d.posts || []).length, 0);
 
-  const weeks = [...new Set((cal.days || []).map((d) => d.weekNumber || 1))].sort((a, b) => a - b);
+  // La semana es la FILA de la rejilla (lunes a domingo, `semanaDelMes`): la misma de la campaña, la lista y la IA.
+  const weeks = [...new Set((cal.days || []).map((d) => semanaDelMes(d.date)))].sort((a, b) => a - b);
   const activeFilterCount = [filterStatus, filterFormat, filterWeek, filterDOW, filterPersona].filter((f) => f !== "all").length;
   const personaFiltrada = filterPersona === "mias" ? yoActual()?.id : filterPersona;
 
@@ -478,7 +482,7 @@ export default function CalendarView({
       return true;
     }),
   })).filter((day) => {
-    if (filterWeek !== "all" && String(day.weekNumber) !== filterWeek) return false;
+    if (filterWeek !== "all" && String(semanaDelMes(day.date)) !== filterWeek) return false;
     if (filterDOW !== "all") {
       const dow = new Date(day.date + "T12:00:00").getDay();
       if (String(dow) !== filterDOW) return false;
@@ -591,24 +595,25 @@ export default function CalendarView({
       return a.publishTime.localeCompare(b.publishTime);
     });
 
+  // «Generar con IA» de la vista Lista: lo que le falta a ESA publicación, por el motor de ideas (modo «campos», en
+  // diferido). Con un archivo subido, primero la IA lo MIRA («Escribir a partir del contenido»: el motor no ve
+  // imágenes) y después el motor completa lo que siga vacío (el guion). Sólo rellena.
   const generateSinglePostContent = async (post, day) => {
     setGenSingleLoading((p) => ({ ...p, [post.id]: true }));
     try {
-      const result = await generateSinglePost(client, post, day, cal);
+      let base = post;
+      if (tieneContenido(post)) {
+        const propuesta = await escribirDesdeContenido(client, post, { calendar: cal, fecha: day.date });
+        base = rellenarDesdeContenido(post, propuesta).post;
+      }
+      const textos = await import("../lib/escribirTextos");
+      const faltan = textos.camposQueFaltan(base);
+      if (faltan.length) {
+        const porId = await textos.escribirLoQueFalta(client.dbId || client.id, cal, [{ post: base, day }]);
+        if (porId.has(post.id)) base = { ...base, ...textos.aplicarCampos(base, porId.get(post.id)).cambios };
+      }
       const newDays = (cal.days || []).map((d) =>
-        d.date !== day.date ? d : {
-          ...d,
-          posts: d.posts.map((p) =>
-            p.id !== post.id ? p : {
-              ...p,
-              guion: result.guion || p.guion,
-              descripcion: result.descripcion || p.descripcion,
-              hashtagsFinales: result.hashtagsFinales || p.hashtagsFinales,
-              textoPieza: p.textoPieza || result.textoPieza || "",
-              script: result.descripcion || result.guion || p.script,
-            }
-          ),
-        }
+        d.date !== day.date ? d : { ...d, posts: d.posts.map((p) => (p.id !== post.id ? p : { ...p, ...base, id: p.id })) }
       );
       onUpdateCal(calId, { ...cal, days: newDays });
     } catch (e) {
@@ -618,78 +623,10 @@ export default function CalendarView({
     setGenSingleLoading((p) => ({ ...p, [post.id]: false }));
   };
 
-  const getIncompletePosts = () => {
-    return (cal.days || []).flatMap((d) =>
-      (d.posts || [])
-        .filter((p) => {
-          const hasContent = p.guion || p.descripcion || p.script;
-          return !hasContent;
-        })
-        .map((p) => ({ ...p, _date: d.date, _dayName: d.dayName }))
-    );
-  };
-
-  const retryIncomplete = async () => {
-    const incomplete = getIncompletePosts();
-    if (!incomplete.length) return;
-    setGenLoading(true);
-    setGenProgress(0);
-    setGenStatus(`Reintentando ${incomplete.length} posts...`);
+  // «Reintentar» lo que quedó a medias es «Completar los textos que faltan» otra vez: sólo escribe lo vacío.
+  const retryIncomplete = () => {
     setIncompleteInfo(null);
-
-    try {
-      const [adn2, mems2] = await Promise.all([
-        loadADN(client),
-        loadClientMemories(client.dbId || client.id).catch(() => []),
-      ]);
-      const adnExtra = adn2.content;
-
-      const BATCH = 6;
-      let allResults = {};
-      const postsToGen = incomplete.map((p) => {
-        const day = (cal.days || []).find((d) => d.date === p._date);
-        return { ...p, _weekNumber: day?.weekNumber, _concept: day?.concept };
-      });
-
-      for (let i = 0; i < postsToGen.length; i += BATCH) {
-        const batch = postsToGen.slice(i, i + BATCH);
-        setGenStatus(`Reintentando ${i + 1}-${Math.min(i + BATCH, postsToGen.length)}/${postsToGen.length}...`);
-        setGenProgress(Math.round((i / postsToGen.length) * 90));
-
-        const pasajes = await pasajesDeLaTanda(client, adn2, cal, batch);
-        const promptText = buildScriptPrompt(client, cal, batch, adnExtra, mems2, adn2.cerebro ? { pasajes } : null);
-        const content = [{ type: "text", text: promptText }];
-        for (const p of batch) {
-          const data = await base64DeImagen(p.image).catch(() => null);
-          if (data) content.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data } });
-        }
-
-        const txt = await callAI(content, { funcion: "calendario", clienteId: client?.id });
-        const parsed = parseAIResponse(txt);
-        allResults = { ...allResults, ...parsed };
-      }
-
-      const newDays = (cal.days || []).map((d) => ({
-        ...d,
-        posts: (d.posts || []).map((p) => {
-          const result = allResults[p.id];
-          if (!result) return p;
-          return { ...p, guion: result.guion || p.guion, descripcion: result.descripcion || p.descripcion, hashtagsFinales: result.hashtagsFinales || p.hashtagsFinales, textoPieza: p.textoPieza || result.textoPieza || "", script: result.descripcion || result.guion || p.script };
-        }),
-      }));
-      onUpdateCal(calId, { ...cal, days: newDays });
-
-      const stillIncomplete = newDays.flatMap((d) => d.posts.filter((p) => !p.guion && !p.descripcion && !p.script));
-      setGenProgress(100);
-      setGenStatus(`Listo! ${Object.keys(allResults).length} posts generados`);
-      if (stillIncomplete.length > 0) {
-        setIncompleteInfo({ count: stillIncomplete.length });
-      }
-      setTimeout(() => { setGenLoading(false); setGenStatus(""); setGenProgress(0); }, 2000);
-    } catch (e) {
-      setGenStatus("Error: " + e.message);
-      setTimeout(() => { setGenLoading(false); setGenStatus(""); setGenProgress(0); }, 4000);
-    }
+    void generateScripts();
   };
 
   // El calendario ya no se copia a ningún sitio al compartirlo: el
@@ -791,7 +728,7 @@ export default function CalendarView({
 
     if (!days.find((d) => d.date === targetDate)) {
       const tdd = new Date(targetDate + "T12:00:00");
-      days = [...days, { date: targetDate, dayName: DAYS[tdd.getDay()], weekNumber: 1, category: "", posts: [post] }];
+      days = [...days, { date: targetDate, dayName: DAYS[tdd.getDay()], weekNumber: semanaDelMes(targetDate), category: "", posts: [post] }];
       days.sort((a, b) => a.date.localeCompare(b.date));
     }
 
@@ -826,6 +763,12 @@ export default function CalendarView({
       ...d,
       concept: updatedConcepts[semanaDelMes(d.date) - 1] || "",
     }));
+    // La estrategia sólo se toca si el formulario la trae (`undefined`: abierto antes de existir la pestaña).
+    const opciones = metaForm.estrategia === undefined ? cal.opciones : (() => {
+      const { estrategia: _antes, ...resto } = cal.opciones || {};
+      const nueva = limpiarEstrategia(metaForm.estrategia);
+      return nueva ? { ...resto, estrategia: nueva } : resto;
+    })();
     onUpdateCal(calId, {
       ...cal,
       campaign: metaForm.campaign,
@@ -833,6 +776,7 @@ export default function CalendarView({
       offers: metaForm.offers || "",
       promoCode: metaForm.promoCode || "",
       visualReferences: metaForm.visualReferences || [],
+      ...(opciones ? { opciones } : {}),
       days: newDays,
     });
     cerrarCapa();
@@ -853,18 +797,10 @@ export default function CalendarView({
     addDebug("Inicio de generación por fases");
 
     try {
-      if (!client.githubContext && client.githubRepo) setGenStatus("Cargando ADN desde GitHub...");
-      const [adn, mems] = await Promise.all([
-        loadADN(client),
-        loadClientMemories(client.dbId || client.id).catch(() => []),
-      ]);
-      const adnExtra = adn.content;
-      const memories = mems;
-      addDebug(`ADN ${adn.cacheado ? "cacheado" : "de GitHub"}: ${adnExtra.length} caracteres`);
-
+      // Todo por el motor de ideas del servidor: lee él la marca (el cerebro, el catálogo, el estudio de mercado y la
+      // ficha del cliente), así que aquí ya no se carga el ADN.
       let currentDays = cal.days || [];
       const BATCH = 6;
-      const formatosConGuion = new Set(["reel", "carrusel", "historia", "live"]);
 
       // ── FASE 1: Ideas para publicaciones sin idea ──
       // Por el MISMO motor que «Planificar mes» y «Producir en lote» (lib/ideaPublicacion.js): cada una con su formato,
@@ -898,98 +834,39 @@ export default function CalendarView({
         addDebug("Fase 1: todas las publicaciones ya tienen idea");
       }
 
-      // ── FASE 2: Guiones para reels/carruseles/historias/lives sin guion ──
-      const sinGuion = currentDays.flatMap((d) =>
-        (d.posts || []).filter((p) => formatosConGuion.has(p.format) && (p.idea || "").trim() && !(p.guion || "").trim())
-          .map((p) => ({ ...p, _date: d.date, _dayName: d.dayName, _weekNumber: d.weekNumber, _concept: d.concept }))
-      );
-
-      if (sinGuion.length) {
-        addDebug(`Fase 2: ${sinGuion.length} posts necesitan guion`);
-
-        for (let i = 0; i < sinGuion.length; i += BATCH) {
-          const batch = sinGuion.slice(i, i + BATCH);
-          setGenStatus(`Fase 2 — Guiones ${i + 1}-${Math.min(i + BATCH, sinGuion.length)} de ${sinGuion.length}…`);
-          setGenProgress(25 + Math.round((i / sinGuion.length) * 30));
-
-          const pasajes = await pasajesDeLaTanda(client, adn, cal, batch);
-          const promptText = buildScriptPrompt(client, cal, batch, adnExtra, memories, adn.cerebro ? { pasajes } : null);
-          const content = [{ type: "text", text: promptText }];
-          const res2 = await callAI(content, { maxTokens: 8000, tolerarCorte: true, funcion: "guiones", clienteId: client?.id });
-          const txt2 = typeof res2 === "string" ? res2 : res2.texto;
-          const parsed = parseAIResponse(txt2);
-          addDebug(`Fase 2 batch: ${Object.keys(parsed).length} guiones`);
-
-          currentDays = currentDays.map((d) => ({
-            ...d,
-            posts: (d.posts || []).map((p) => {
-              const r = parsed[p.id];
-              if (!r) return p;
-              return {
-                ...p,
-                guion: p.guion || r.guion || "",
-                descripcion: p.descripcion || r.descripcion || "",
-                hashtagsFinales: p.hashtagsFinales || r.hashtagsFinales || "",
-                textoPieza: p.textoPieza || r.textoPieza || "",
-                script: p.script || r.descripcion || r.guion || "",
-              };
-            }),
-          }));
-          onUpdateCal(calId, { ...cal, days: currentDays });
+      // ── FASE 2: lo que le falta a cada publicación con idea (guion, caption, texto de la pieza, hashtags) ──
+      // Por el MISMO motor (modo «campos», lib/escribirTextos.js): con lo ya escrito delante, la regla de cada formato
+      // (una historia no lleva guion ni caption; un reel, texto en la pieza; los hashtags, aparte) y la estrategia del
+      // mes. Sólo rellena.
+      const textos = await import("../lib/escribirTextos");
+      const pedidos = currentDays.flatMap((d) => (d.posts || [])
+        .filter((p) => (p.idea || "").trim() && p.status !== "published" && textos.camposQueFaltan(p).length)
+        .map((p) => ({ post: p, day: d })));
+      if (pedidos.length) {
+        addDebug(`Fase 2: ${pedidos.length} publicaciones con textos por escribir`);
+        let porId = new Map();
+        try {
+          porId = await textos.escribirLoQueFalta(client.dbId || client.id, { ...cal, days: currentDays }, pedidos, {
+            alProgresar: (i, total) => {
+              setGenStatus(`Fase 2 — Textos ${i + 1}-${Math.min(i + 6, total)} de ${total}…`);
+              setGenProgress(25 + Math.round((i / total) * 70));
+            },
+          });
+        } catch (e) {
+          // Lo que ya llegó se pone igual: no se paga dos veces.
+          porId = e.parcial ?? porId;
+          addDebug(`Fase 2 cortada: ${e.message}`);
+          if (!porId.size) throw e;
         }
-        addDebug("Fase 2 completa");
+        currentDays = textos.conTextos(currentDays, porId);
+        onUpdateCal(calId, { ...cal, days: currentDays });
+        addDebug(`Fase 2 completa: ${porId.size} publicaciones escritas`);
       } else {
-        addDebug("Fase 2: nada necesita guion");
-      }
-
-      // ── FASE 3: Descripciones para lo que falta ──
-      const sinDesc = currentDays.flatMap((d) =>
-        (d.posts || []).filter((p) => (p.idea || "").trim() && !(p.descripcion || p.script || "").trim())
-          .map((p) => ({ ...p, _date: d.date, _dayName: d.dayName, _weekNumber: d.weekNumber, _concept: d.concept }))
-      );
-
-      if (sinDesc.length) {
-        addDebug(`Fase 3: ${sinDesc.length} posts necesitan descripción`);
-
-        for (let i = 0; i < sinDesc.length; i += BATCH) {
-          const batch = sinDesc.slice(i, i + BATCH);
-          setGenStatus(`Fase 3 — Descripciones ${i + 1}-${Math.min(i + BATCH, sinDesc.length)} de ${sinDesc.length}…`);
-          setGenProgress(55 + Math.round((i / sinDesc.length) * 40));
-
-          const pasajes = await pasajesDeLaTanda(client, adn, cal, batch);
-          const promptText = buildDescripcionesPrompt(client, cal, batch, adnExtra, memories, adn.cerebro ? { pasajes } : null);
-          const { texto } = await callAI([{ type: "text", text: promptText }], { maxTokens: 8000, tolerarCorte: true, funcion: "guiones", clienteId: client?.id });
-          const parsed = parseAIResponse(texto);
-          addDebug(`Fase 3 batch: ${Object.keys(parsed).length} descripciones`);
-
-          currentDays = currentDays.map((d) => ({
-            ...d,
-            posts: (d.posts || []).map((p) => {
-              const r = parsed[p.id];
-              if (!r?.descripcion) return p;
-              return {
-                ...p,
-                descripcion: p.descripcion || r.descripcion,
-                hashtagsFinales: p.hashtagsFinales || r.hashtagsFinales || "",
-                textoPieza: p.textoPieza || r.textoPieza || "",
-                script: p.script || r.descripcion,
-              };
-            }),
-          }));
-          onUpdateCal(calId, { ...cal, days: currentDays });
-        }
-        addDebug("Fase 3 completa");
-      } else {
-        addDebug("Fase 3: nada necesita descripción");
+        addDebug("Fase 2: no falta ningún texto");
       }
 
       // ── Resultado final ──
-      const leFalta = (p) => {
-        const tieneCaption = Boolean(p.descripcion || p.script);
-        if (p.format === "post") return !tieneCaption;
-        return !p.guion || !tieneCaption;
-      };
-      const stillIncomplete = currentDays.flatMap((d) => (d.posts || []).filter(leFalta));
+      const stillIncomplete = currentDays.flatMap((d) => (d.posts || []).filter((p) => p.status !== "published" && textos.camposQueFaltan(p).some((c) => c !== "textoPieza" && c !== "hashtags")));
       if (stillIncomplete.length > 0) {
         setIncompleteInfo({ count: stillIncomplete.length });
         addDebug(`${stillIncomplete.length} posts quedaron incompletos`);
@@ -1009,7 +886,7 @@ export default function CalendarView({
   return (
     <div className={viewMode === "grid" ? "cal-vista-mes" : undefined} style={{ paddingBottom: sidePanel ? 0 : 80 }}>
       {/* Edit calendar meta modal */}
-      {capa === "meta" && <EditMetaDialog metaForm={metaForm} setMetaForm={setMetaForm} onSave={saveMetaEdit} onClose={cerrarCapa} tabInicial={metaTab} semanas={semanasMes} aviso={metaAviso} />}
+      {capa === "meta" && <EditMetaDialog metaForm={metaForm} setMetaForm={setMetaForm} onSave={saveMetaEdit} onClose={cerrarCapa} tabInicial={metaTab} semanas={semanasMes} aviso={metaAviso} client={client} />}
 
       {capa === "plan" && (
         <Suspense fallback={null}>

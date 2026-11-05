@@ -26,10 +26,17 @@ describe("camposDe", () => {
     expect(camposDe({ format: "post" }).map((c) => c.clave)).not.toContain("guion");
   });
 
-  it("se lo pide a reel, carrusel, historia y live", () => {
-    for (const format of ["reel", "carrusel", "historia", "live"]) {
+  it("se lo pide a reel, carrusel y live", () => {
+    for (const format of ["reel", "carrusel", "live"]) {
       expect(camposDe({ format }).map((c) => c.clave)).toContain("guion");
     }
+  });
+
+  // La regla de lib/reglasFormato.js: una historia no lleva guion, ni caption, ni hashtags. Exigírselos la dejaba
+  // incompleta para siempre (y la IA le escribía un caption que no se publica).
+  it("a una historia no le pide guion, ni descripción, ni hashtags", () => {
+    expect(camposDe({ format: "historia" }).map((c) => c.clave)).toEqual(["title", "category", "idea", "publishTime"]);
+    expect(completitud({ format: "historia", title: "T", category: "C", idea: "I", publishTime: "09:00" }).porcentaje).toBe(100);
   });
 
   it("son seis campos para un post y siete para un reel", () => {

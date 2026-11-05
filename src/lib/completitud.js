@@ -17,9 +17,7 @@
 
 import { hashtagsDe } from "./exportarContenido";
 import { mediosDe } from "./publicacion";
-
-/** Los formatos que se graban o se maquetan por partes llevan guion. */
-const FORMATOS_CON_GUION = ["reel", "carrusel", "historia", "live"];
+import { llevaGuion, llevaCaption, llevaHashtags } from "./reglasFormato";
 
 /**
  * Los campos que se miran, en el orden en que se nombran al humano.
@@ -31,9 +29,9 @@ const CAMPOS = [
   { clave: "title", etiqueta: "título" },
   { clave: "category", etiqueta: "categoría" },
   { clave: "idea", etiqueta: "idea" },
-  { clave: "guion", etiqueta: "guion", soloConGuion: true },
-  { clave: "descripcion", etiqueta: "descripción" },
-  { clave: "hashtags", etiqueta: "hashtags" },
+  { clave: "guion", etiqueta: "guion", lleva: llevaGuion },
+  { clave: "descripcion", etiqueta: "descripción", lleva: llevaCaption },
+  { clave: "hashtags", etiqueta: "hashtags", lleva: llevaHashtags },
   { clave: "publishTime", etiqueta: "hora" },
 ];
 
@@ -53,11 +51,11 @@ function valorDe(post, day, clave) {
 }
 
 /**
- * Qué campos se le piden a esta publicación, según su formato.
+ * Qué campos se le piden a esta publicación, según su formato (la regla de lib/reglasFormato.js: una historia no
+ * lleva guion, ni caption, ni hashtags).
  */
 export function camposDe(post) {
-  const llevaGuion = FORMATOS_CON_GUION.includes(post?.format);
-  return CAMPOS.filter((c) => !c.soloConGuion || llevaGuion);
+  return CAMPOS.filter((c) => !c.lleva || c.lleva(post?.format));
 }
 
 /**
@@ -98,15 +96,16 @@ function listar(items) {
 }
 
 /**
- * Lo que le falta a una publicación SIN contenido para ir al cliente (revisión del mes y «Enviar al cliente»): el texto (lo que lee), el guion si es un
- * reel, carrusel, historia o directo, y una referencia que pueda abrir. Vacío si tiene contenido o no le falta
+ * Lo que le falta a una publicación SIN contenido para ir al cliente (revisión del mes y «Enviar al cliente»): el texto (lo que lee), el guion si su
+ * formato lo lleva (reel, carrusel o directo; una historia no), y una referencia que pueda abrir. Vacío si tiene contenido o no le falta
  * nada. Pura.
  */
 export function faltaParaEnviar(post) {
   if (!post || post.status === "published" || mediosDe(post).length) return [];
   const falta = [];
   if (!String(post.descripcion || post.script || "").trim() && !String(post.title || "").trim()) falta.push("la idea en el texto");
-  if (FORMATOS_CON_GUION.includes(post.format) && !String(post.guion || "").trim()) falta.push(post.format === "carrusel" ? "el texto de cada lámina" : "el guion");
+  // Una historia no lleva guion (lib/reglasFormato.js): no se le exige.
+  if (llevaGuion(post.format) && !String(post.guion || "").trim()) falta.push(post.format === "carrusel" ? "el texto de cada lámina" : "el guion");
   if (!String(post.referenceLink || "").trim()) falta.push("una referencia");
   return falta;
 }
