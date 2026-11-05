@@ -595,6 +595,10 @@ export default function CalendarView({
       return a.publishTime.localeCompare(b.publishTime);
     });
 
+  // Lo que le falta a una publicación por su formato (lib/reglasFormato.js); el texto en la pieza, sólo si aún no tiene
+  // su archivo (con la pieza hecha ya no sirve: el texto está dentro).
+  const textosQueFaltan = (textos, p) => textos.camposQueFaltan(p).filter((c) => c !== "textoPieza" || !tieneContenido(p));
+
   // «Generar con IA» de la vista Lista: lo que le falta a ESA publicación, por el motor de ideas (modo «campos», en
   // diferido). Con un archivo subido, primero la IA lo MIRA («Escribir a partir del contenido»: el motor no ve
   // imágenes) y después el motor completa lo que siga vacío (el guion). Sólo rellena.
@@ -607,9 +611,9 @@ export default function CalendarView({
         base = rellenarDesdeContenido(post, propuesta).post;
       }
       const textos = await import("../lib/escribirTextos");
-      const faltan = textos.camposQueFaltan(base);
+      const faltan = textosQueFaltan(textos, base);
       if (faltan.length) {
-        const porId = await textos.escribirLoQueFalta(client.dbId || client.id, cal, [{ post: base, day }]);
+        const porId = await textos.escribirLoQueFalta(client.dbId || client.id, cal, [{ post: base, day, campos: faltan }]);
         if (porId.has(post.id)) base = { ...base, ...textos.aplicarCampos(base, porId.get(post.id)).cambios };
       }
       const newDays = (cal.days || []).map((d) =>
@@ -840,8 +844,8 @@ export default function CalendarView({
       // mes. Sólo rellena.
       const textos = await import("../lib/escribirTextos");
       const pedidos = currentDays.flatMap((d) => (d.posts || [])
-        .filter((p) => (p.idea || "").trim() && p.status !== "published" && textos.camposQueFaltan(p).length)
-        .map((p) => ({ post: p, day: d })));
+        .filter((p) => (p.idea || "").trim() && p.status !== "published" && textosQueFaltan(textos, p).length)
+        .map((p) => ({ post: p, day: d, campos: textosQueFaltan(textos, p) })));
       if (pedidos.length) {
         addDebug(`Fase 2: ${pedidos.length} publicaciones con textos por escribir`);
         let porId = new Map();
