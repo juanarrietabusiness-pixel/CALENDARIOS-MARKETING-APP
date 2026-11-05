@@ -53,7 +53,7 @@ export async function guardarTendencias(env, acceso, cliente, lista) {
   if (quitar.length) {
     // Los videos de esas palabras se van con ellas (la cascada lo haría también; así no depende de ella).
     const fuera = new Set(quitar);
-    const videos = (await acceso.leerColumnas("tendencias_videos", ["id", "palabra_id"], { client_id: cliente.id })).filter((v) => fuera.has(v.palabra_id));
+    const videos = (await acceso.leerColumnas("tendencias_videos", ["id", "palabra_id"], { client_id: cliente.id }, "id asc")).filter((v) => fuera.has(v.palabra_id));
     if (videos.length) await acceso.borrarVarios("tendencias_videos", videos.map((v) => v.id));
     await acceso.borrarVarios("tendencias_palabras", quitar);
   }
@@ -89,7 +89,7 @@ export async function leerTendencia(env, acceso, palabraId, { fuente = "auto" } 
     const filas = mejores.map((v) => filaDeTendencia(v, palabra, momento));
     if (filas.length) await acceso.guardarVarios("tendencias_videos", filas);
     const corte = new Date(Date.now() - DIAS_GUARDADOS * 86_400_000).toJSON();
-    const viejos = (await acceso.leerColumnas("tendencias_videos", ["id", "visto_at"], { palabra_id: palabra.id }))
+    const viejos = (await acceso.leerColumnas("tendencias_videos", ["id", "visto_at"], { palabra_id: palabra.id }, "id asc"))
       .filter((v) => String(v.visto_at ?? "") < corte).map((v) => v.id);
     if (viejos.length) await acceso.borrarVarios("tendencias_videos", viejos);
     await acceso.actualizar("tendencias_palabras", { id: palabra.id }, { leida_at: momento, error: "", videos: filas.length });

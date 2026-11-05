@@ -26,7 +26,7 @@ const conVista = (h) => ({ ...h, _meta: { ui: { resourceUri: URI_VISTA, visibili
 export const DEFINICIONES_LO_MEJOR = Object.freeze([
   conVista({
     name: "ver_lo_mejor",
-    description: "«Lo mejor del momento»: lo que MEJOR está funcionando ahora —lo que publica la competencia y las cuentas que inspiran a cada cliente (con «rinde X×» contra la mediana de su cuenta), las referencias que guardó el equipo, lo mejor propio de cada cliente y los anuncios de la competencia que llevan más días activos— ordenado por el percentil de cada fuente, con su tipo (UGC, anuncio que vende, carrusel, motion, viral…), por qué funciona y sus miniaturas. Úsala para proponer qué recrear. No gasta.",
+    description: "«Lo mejor del momento»: lo que MEJOR está funcionando ahora —lo que publica la competencia y las cuentas que inspiran a cada cliente (con «rinde X×» contra la mediana de su cuenta), las referencias que guardó el equipo, lo mejor propio de cada cliente, los anuncios de la competencia que llevan más días activos y las tendencias de TikTok de las palabras de cada cliente (los videos con más vistas de la semana)— ordenado por el percentil de cada fuente, con su tipo (UGC, anuncio que vende, carrusel, motion, viral…), por qué funciona y sus miniaturas. Úsala para proponer qué recrear. No gasta.",
     inputSchema: {
       type: "object",
       properties: {

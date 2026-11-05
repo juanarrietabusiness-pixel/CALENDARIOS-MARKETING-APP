@@ -279,12 +279,11 @@ export async function actualizarInspiracion(env, acceso, cliente, { solo = null,
   return { cuentas: filasCuentas.length, publicaciones: filasPubs.length, avisos: paraAvisar.length, errores, creditos, esperan };
 }
 
-/** Lo que se le dice de una cuenta de TikTok que espera su lectura (nada si no espera). Pura. */
+/** Lo que se le dice de una cuenta de TikTok que espera su lectura ("" si no espera: se leyó esta semana). Pura. */
 function notaTikTok(f, sc, ahora = Date.now()) {
   if (!sc) return "";
   if (!f?.leida_sc_at) return "Se lee por Scrape Creators en cuanto quepa en el tope de créditos de la semana.";
-  const proxima = new Date(Date.parse(f.leida_sc_at) + DIAS_SC * 86_400_000);
-  return proxima.getTime() > ahora ? "Se lee una vez por semana por Scrape Creators." : "Le toca leerse otra vez: va en cuanto quepa en el tope de créditos de la semana.";
+  return tiktokLeToca(f, ahora) ? "Le toca leerse otra vez: va en cuanto quepa en el tope de créditos de la semana." : "";
 }
 
 /**
@@ -319,6 +318,7 @@ export async function feedDe(acceso, cliente, { sc = false } = {}) {
       vistas: p.vistas, compartidos: p.compartidos ?? 0, interacciones: p.interacciones, rinde: p.rinde, sinArchivo: Boolean(p.sin_archivo),
     })),
     tendencias: await tendenciasDe(acceso, cliente.id),
+    sc,
   };
 }
 

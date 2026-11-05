@@ -6,8 +6,8 @@ import "./CuentasReferencia.css";
 // ============================================================
 // Las cuentas fijas de un cliente: competencia e inspiración
 //
-// Hasta MAX_CUENTAS (10) por cliente, de Instagram, YouTube o TikTok, cada
-// una con su tipo y una nota. Viven en `clients.competidores` (lo que eran
+// Hasta MAX_CUENTAS (10) por cliente, de Instagram, YouTube o TikTok (ésta,
+// por Scrape Creators una vez por semana), cada una con su tipo y una nota. Viven en `clients.competidores` (lo que eran
 // los @ sueltos de Resultados; lib/inspiracion.js lee las dos formas) y se
 // guardan con la ficha del cliente (`onGuardar` recibe la lista entera).
 // Las de Instagram de COMPETENCIA se miden además cada día en Resultados.
@@ -55,7 +55,7 @@ export default function CuentasReferencia({ client, onGuardar, lectura = false }
         </form>
       )}
       {error && <p role="alert" className="cuentas-ref-error">{error}</p>}
-      <p className="hint" style={{ margin: 0 }}>{lista.length} de {MAX_CUENTAS} cuentas.{lista.some((c) => c.red === "tiktok") && " De TikTok se guarda la cuenta, pero TikTok no deja ver su contenido desde aquí: se abre su perfil."}</p>
+      <p className="hint" style={{ margin: 0 }}>{lista.length} de {MAX_CUENTAS} cuentas.{lista.some((c) => c.red === "tiktok") && " Las de TikTok se leen por Scrape Creators una vez por semana (un crédito por cuenta, dentro del tope de Ajustes); sin su llave, se abre su perfil."}</p>
       {lista.length > 0 && (
         <ul className="cuentas-ref-lista" aria-label="Cuentas que sigue este cliente">
           {lista.map((c) => (

@@ -115,7 +115,7 @@ async function deInspiracion(acceso, { cliente, desde, sc }) {
   const filas = await acceso.leerColumnas("inspiracion_publicaciones",
     ["id", "client_id", "cuenta_id", "red", "usuario", "externo_id", "codigo", "formato", "enlace", "texto", "miniatura", "video", "publicada_at", "me_gusta", "comentarios", "vistas", "compartidos", "interacciones", "rinde", "sin_archivo"],
     cliente ? { client_id: cliente } : {}, "publicada_at desc", 3000).catch(() => []);
-  const cuentas = new Map((await acceso.leerColumnas("inspiracion_cuentas", ["id", "nombre"], cliente ? { client_id: cliente } : {}).catch(() => [])).map((c) => [c.id, c]));
+  const cuentas = new Map((await acceso.leerColumnas("inspiracion_cuentas", ["id", "nombre"], cliente ? { client_id: cliente } : {}, "id asc").catch(() => [])).map((c) => [c.id, c]));
   const medidas = medianasPor(filas, (f) => f.cuenta_id, (f) => Number(f.interacciones) || 0);
   const vistas = medianasPor(filas.filter((f) => f.red === "youtube"), (f) => f.cuenta_id, (f) => Number(f.vistas) || 0);
   return filas.filter((f) => String(f.publicada_at ?? "") >= desde).map((f) => {
@@ -430,9 +430,9 @@ export async function esperaDelEspacio(acceso, ahoraMs = Date.now()) {
   const corte = new Date(ahoraMs - DIAS_SC * DIA).toJSON();
   const viejo = (f) => !f || String(f) < corte;
   const [cuentas, palabras, filtros, ajustes] = await Promise.all([
-    acceso.leerColumnas("inspiracion_cuentas", ["id", "leida_sc_at"], { red: "tiktok" }).catch(() => []),
-    acceso.leerColumnas("tendencias_palabras", ["id", "leida_at"], {}).catch(() => []),
-    acceso.leerColumnas("biblioteca_filtros", ["id", "consulta"], {}).catch(() => []),
+    acceso.leerColumnas("inspiracion_cuentas", ["id", "leida_sc_at"], { red: "tiktok" }, "id asc").catch(() => []),
+    acceso.leerColumnas("tendencias_palabras", ["id", "leida_at"], {}, "id asc").catch(() => []),
+    acceso.leerColumnas("biblioteca_filtros", ["id", "consulta"], {}, "id asc").catch(() => []),
     acceso.leerUno("lo_mejor_ajustes", { id: acceso.ownerId }).catch(() => null),
   ]);
   const busquedas = filtros.filter((f) => leerJSON(f.consulta, {})?.fuente === "sc").length;
@@ -461,20 +461,22 @@ export function filaDeAnuncio(a, filtro, momento = ahora()) {
  * Relee los anuncios de las búsquedas guardadas de Scrape Creators, hasta el tope de la semana. Lo que sale de la
  * caché no gasta. → { filtros, anuncios, creditos, tope, total, sinCreditos, errores }.
  */
-export async function releerAnuncios(env, acceso, { fuente = "auto" } = {}) {
+export async function releerAnuncios(env, acceso, { fuente = "auto", hoy = fechaEnZona() } = {}) {
   if (!scConfigurado(env)) throw new ErrorLoMejor("Falta la llave de Scrape Creators (SCRAPECREATORS_API_KEY en los secretos del Worker).", 503);
   const filtros = (await acceso.leer("biblioteca_filtros", {}, "created_at asc"))
     .map((f) => ({ ...f, consulta: leerJSON(f.consulta, {}) }))
     .filter((f) => f.consulta?.fuente === "sc");
-  const cuenta = await creditosDeLaSemana(acceso);
+  const cuenta = await creditosDeLaSemana(acceso, hoy);
   let total = cuenta.total;
   let gastados = 0;
+  let intentados = 0;
   let sinCreditos = false;
   const errores = [];
   const momento = ahora();
   const filas = [];
   for (const f of filtros) {
     if (total >= cuenta.tope) { sinCreditos = true; break; }
+    intentados++;
     const { consulta, errores: mal } = consultaSC(f.consulta);
     if (mal.length) { errores.push(`${f.nombre}: ${mal.join(" ")}`); continue; }
     try {
@@ -491,8 +493,12 @@ export async function releerAnuncios(env, acceso, { fuente = "auto" } = {}) {
   const viejos = (await acceso.leerColumnas("lo_mejor_anuncios", ["id", "visto_at"], {}, "visto_at asc", 500).catch(() => []))
     .filter((a) => String(a.visto_at ?? "") < new Date(Date.now() - 90 * DIA).toJSON()).map((a) => a.id);
   if (viejos.length) await acceso.borrarVarios("lo_mejor_anuncios", viejos);
-  // Si se paró en el tope, lo automático de este espacio (las cuentas y las tendencias de TikTok) espera al lunes.
-  await cambiarAjustesSC(acceso, { sc_releido_at: momento, ...(sinCreditos ? { sc_lleno: cuenta.semana } : {}) });
+  // Si se paró en el tope, lo automático de este espacio (las cuentas y las tendencias de TikTok) espera al lunes. Sin
+  // haber intentado ninguna búsqueda, los anuncios NO cuentan como releídos: van primero en cuanto haya créditos.
+  await cambiarAjustesSC(acceso, {
+    ...(intentados || !filtros.length ? { sc_releido_at: momento } : {}),
+    ...(sinCreditos ? { sc_lleno: cuenta.semana } : {}),
+  });
   difundir(env, acceso.ownerId, { tipo: "lo-mejor", que: "anuncios", n: filas.length, por: { userId: "sistema", nombre: "Lo mejor", color: "", tab: null } });
   return { filtros: filtros.length, anuncios: filas.length, creditos: gastados, tope: cuenta.tope, total, sinCreditos, errores };
 }
@@ -517,7 +523,7 @@ export async function loMejorPendiente(env, ahoraFecha = new Date()) {
         return 1;
       }
       const fallo = (x) => console.error(`cron lo mejor (${tarea.tipo}):`, tarea.owner_id, x?.message);
-      if (tarea.tipo === "anuncios") await releerAnuncios(env, acceso, { fuente: "auto" }).catch(fallo);
+      if (tarea.tipo === "anuncios") await releerAnuncios(env, acceso, { fuente: "auto", hoy }).catch(fallo);
       else if (tarea.tipo === "tiktok") await leerCuentaTikTokDelCron(env, acceso, tarea.id).catch(fallo);
       else if (tarea.tipo === "tendencia") await leerTendencia(env, acceso, tarea.id, { fuente: "auto" }).catch(fallo);
       return 1;
