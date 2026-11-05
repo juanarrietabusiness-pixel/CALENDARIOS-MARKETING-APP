@@ -140,6 +140,9 @@ describe("disenar_piezas confirmado: el encargo del servidor", () => {
     const [e] = encargos();
     expect(e).toMatchObject({ tipo: "lote", client_id: "c1", estado: "en_marcha", creado_por: ANA });
     expect(e.datos).toMatchObject({ mejorar: true, controlar: true, paralelo: 2 });
+    // La que lleva post_id se pone SOLA en su publicación al terminar el encargo.
+    expect(e.datos.poner).toBe(true);
+    expect(textoDe(r)).toMatch(/se ponen SOLAS en su publicación/);
     const [a, b] = e.pasos;
     expect(a.escena).toContain("Lentes que se ven bien");
     expect(a.encargo).toBeNull();
@@ -158,6 +161,8 @@ describe("disenar_piezas confirmado: el encargo del servidor", () => {
   it("todo con ficha: no hace falta el director", async () => {
     await mcp().llamar("disenar_piezas", { cliente: "Feria del Lente", confirmado: true, piezas: [{ titulo: "Estuche", ficha: FICHA }] });
     expect(encargos()[0].datos.mejorar).toBe(false);
+    // Sin publicación, nada que poner.
+    expect(encargos()[0].datos.poner).toBe(false);
   });
 });
 
@@ -174,10 +179,12 @@ describe("disenar_piezas de un carrusel", () => {
     expect(e.pasos.map((p) => p.lamina.rol)).toEqual(["portada", "contenido", "cierre"]);
     expect(e.pasos[0].lamina.texto).toContain("Portada");
     expect(e.datos.comun).toMatchObject({ modo: "ia", calendarId: "cal1", postId: "p1" });
+    expect(e.datos.poner).toBe(true);
     expect(e.datos.comun.fotos).toContain("clientes/c1/catalogo/estuche.png");
     const carpeta = db.sqlite.prepare("select * from estudio_carpetas where id = ?").get(e.datos.carpetaId);
     expect(carpeta.tipo).toBe("carrusel");
     expect(textoDe(r)).toContain(`carrusel_id ${carpeta.id}`);
+    expect(textoDe(r)).toMatch(/se pone SOLO en la publicación p1/);
   });
 
   it("sin fichas y con tema: lo diseña el director (propuesta)", async () => {

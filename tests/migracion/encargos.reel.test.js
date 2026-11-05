@@ -223,3 +223,27 @@ describe("el reel por planos sigue en el servidor", () => {
     expect(r.encargo.estado).not.toBe("en_marcha");
   });
 });
+
+describe("lo que pide Claude con su post_id se pone solo en la publicación", () => {
+  const paso = (id) => ({
+    id, titulo: `Pieza ${id}`, escena: `Una taza ${id}`, sinMejorar: "una taza",
+    pedido: { modelo: "prueba", prompt: "Escena: {{ESCENA}}", n: 1, ajustes: { aspectRatio: "4:5" }, medios: {}, calendarId: "cal1", postId: "p1" },
+  });
+  it("al terminar el lote, sus piezas van a su post y se apunta su uso", async () => {
+    const { encargo: e } = await (await pedir("/estudio/c1/encargos", { method: "POST", body: { tipo: "lote", mejorar: false, poner: true, pasos: [paso("a"), paso("b")] } })).json();
+    await bombearHastaElFinal();
+    const fin = (await encargo(e.id)).encargo;
+    expect(fin.estado).toBe("hecho");
+    expect(fin.puestos).toEqual([{ postId: "p1", archivos: fin.pasos.map((p) => p.finales[0]) }]);
+    const post = dias()[0].posts[0];
+    expect(post.medios).toHaveLength(2);
+    const usos = JSON.parse(db.sqlite.prepare("select usado_en from estudio_archivos where id = ?").get(fin.pasos[0].finales[0]).usado_en);
+    expect(usos[0]).toMatchObject({ postId: "p1" });
+  });
+  it("sin `poner` (el lote de la pantalla, que escoge entre versiones) no toca la publicación", async () => {
+    const { encargo: e } = await (await pedir("/estudio/c1/encargos", { method: "POST", body: { tipo: "lote", mejorar: false, pasos: [paso("a")] } })).json();
+    await bombearHastaElFinal();
+    expect((await encargo(e.id)).encargo.estado).toBe("hecho");
+    expect(dias()[0].posts[0].medios ?? []).toHaveLength(0);
+  });
+});
