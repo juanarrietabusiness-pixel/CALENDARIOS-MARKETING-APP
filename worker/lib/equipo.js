@@ -183,3 +183,107 @@ export async function avisarNota(env, acceso, { nota, post, clientId, usuario })
   }
   return mencionados;
 }
+
+// ------------------------------------------------------------
+// Lo que el Estudio termina sin nadie delante: lotes, encargos, renders y montajes
+// ------------------------------------------------------------
+//
+// Lo que se lanza desde el teléfono sigue en el servidor aunque se cierre la aplicación (la bomba del espacio), y al
+// terminar no se enteraba nadie. Ahora deja un aviso en la campana de QUIEN LO PIDIÓ (`creado_por` del encargo, `porId`
+// del render), guardado como los demás: le llega aunque no esté conectado. Lo que la pantalla sigue de cerca (una pieza
+// del panel o del visor, `datos.seguido`) sólo avisa si falla o si tardó tanto que lo más probable es que ya no se
+// estuviera mirando (`AVISO_SEGUIDO_MS`). Cancelar no avisa: lo hizo la persona.
+
+/** Desde cuánto una pieza que la pantalla seguía avisa igual al terminar bien (lo normal es 1–2 min). */
+export const AVISO_SEGUIDO_MS = 3 * 60_000;
+
+/** Quien firma estos avisos: el sistema (si fuera la persona, `avisar` no se lo mandaría a ella). */
+export const POR_ESTUDIO = Object.freeze({ userId: "sistema", nombre: "Estudio" });
+
+const entre = (t) => `«${String(t ?? "").trim().slice(0, 80) || "sin título"}»`;
+const leerSiTexto = (v, d) => { if (typeof v !== "string") return v ?? d; try { return JSON.parse(v); } catch { return d; } };
+const enlaceDelEstudio = (clientId) => `/cliente/${encodeURIComponent(clientId ?? "")}/estudio`;
+
+/** La publicación a la que va un encargo (la de su carrusel, su reel o su primera pieza), o null. Pura. */
+export function publicacionDeEncargo(tipo, datos = {}, pasos = []) {
+  if (tipo === "carrusel" && datos.comun?.postId) return { postId: datos.comun.postId, calendarId: datos.comun.calendarId ?? null };
+  if (tipo === "reel" && datos.postId) return { postId: datos.postId, calendarId: datos.puesto?.calendarId ?? datos.calendarId ?? null };
+  const p = pasos.find((x) => x?.pedido?.postId);
+  return p ? { postId: p.pedido.postId, calendarId: p.pedido.calendarId ?? null } : null;
+}
+
+/** El texto del aviso de un reel que se cerró. Pura. */
+function textoDeReel(titulo, fallo, motivo, datos) {
+  const m = datos.montaje;
+  if (fallo) return `No salió el reel ${titulo}${motivo ? `: ${motivo}` : "."}`;
+  if (datos.video?.fase === "espera") return `Listo el storyboard del reel ${titulo}: revísalo y sigue con el video.`;
+  if (m?.fase === "confirmar") return `El montaje del reel ${titulo} espera tu sí para la voz${m.costoTexto ? ` (${m.costoTexto})` : ""}.`;
+  if (m?.fase === "fallido") return `El reel ${titulo} salió, pero el montaje no: ${String(m.error ?? "").slice(0, 140)}`;
+  if (m?.fase === "espera") return `El reel ${titulo} está montado; falta el render.`;
+  return `Listo el reel ${titulo}${datos.puesto?.postId ? ": ya está en su publicación." : ". Está en la galería del Estudio."}`;
+}
+
+/**
+ * El aviso de un encargo que acaba de cerrarse (la fila con su estado nuevo, y sus `datos` y `pasos` ya leídos), o null
+ * si no toca avisar. → { para, tipo, texto, enlace }. Pura (`ahoraMs` para los tests).
+ */
+export function avisoDeEncargo(fila, { datos = {}, pasos = [] } = {}, ahoraMs = Date.now()) {
+  if (!fila?.creado_por || !["hecho", "fallido"].includes(fila.estado)) return null;
+  const fallo = fila.estado === "fallido";
+  const tardo = ahoraMs - Date.parse(fila.created_at ?? "") >= AVISO_SEGUIDO_MS;
+  if (datos.seguido && !fallo && !tardo) return null;
+  const titulo = entre(fila.titulo);
+  const destino = publicacionDeEncargo(fila.tipo, datos, pasos);
+  const enlace = destino?.postId && destino.calendarId ? enlacePublicacion(fila.client_id, destino.calendarId, destino.postId) : enlaceDelEstudio(fila.client_id);
+  const motivo = String(fila.error ?? "").trim().slice(0, 160);
+  const hechas = pasos.filter((p) => p?.fase === "hecho").length;
+  const puestas = Array.isArray(datos.puestos) && datos.puestos.some((x) => x?.postId && !x.aviso);
+  const donde = puestas ? ": ya está en su publicación." : ". Está en la galería del Estudio.";
+  let texto;
+  if (fila.tipo === "reel") texto = textoDeReel(titulo, fallo, motivo, datos);
+  else if (fila.tipo === "carrusel") {
+    texto = fallo ? `No salió el carrusel ${titulo}${motivo ? `: ${motivo}` : "."}` : `Listo el carrusel ${titulo} (${hechas} ${hechas === 1 ? "lámina" : "láminas"})${donde}`;
+  } else {
+    const una = pasos.length <= 1;
+    if (fallo) texto = `${una ? "No salió" : "No salió ninguna pieza de"} ${titulo}${motivo ? `: ${motivo}` : "."}`;
+    else texto = `${una ? `Lista ${titulo}` : `Listas ${hechas} de ${pasos.length} piezas de ${titulo}`}${donde}`;
+  }
+  return { para: [fila.creado_por], tipo: fallo ? "encargo-fallo" : "encargo", texto, enlace };
+}
+
+/** Avisa (si toca) de un encargo que se acaba de cerrar. Nunca lanza: un aviso perdido no tumba el encargo. */
+export async function avisarEncargo(env, acceso, fila, { datos, pasos } = {}) {
+  try {
+    const a = avisoDeEncargo(fila, { datos: datos ?? leerSiTexto(fila?.datos, {}), pasos: pasos ?? leerSiTexto(fila?.pasos, []) });
+    if (a) await avisar(env, acceso, { ...a, por: POR_ESTUDIO });
+  } catch (e) {
+    console.error("aviso del encargo:", e);
+  }
+}
+
+/**
+ * El aviso de un render que terminó (`render`: lo que quedó escrito en el proyecto) o null. Un render que sale de un
+ * MONTAJE no avisa por su cuenta: lo dice el reel al cerrarse. Pura.
+ */
+export function avisoDeRender(fila, render = {}) {
+  const para = render.porId;
+  if (!para || !["listo", "fallido"].includes(render.estado)) return null;
+  if (leerSiTexto(fila?.origen, {})?.tipo === "reel") return null;
+  const titulo = entre(fila?.titulo);
+  const adj = render.adjunto;
+  const enlace = adj?.postId && adj.calendarId ? enlacePublicacion(fila.client_id, adj.calendarId, adj.postId) : enlaceDelEstudio(fila?.client_id);
+  const texto = render.estado === "fallido"
+    ? `Falló el render del video ${titulo}: ${String(render.error ?? "").slice(0, 160)}`
+    : `Listo el video ${titulo}${adj?.postId ? ": ya está en su publicación." : ". Está en la galería del Estudio."}`;
+  return { para: [para], tipo: render.estado === "fallido" ? "render-fallo" : "render", texto, enlace };
+}
+
+/** Avisa (si toca) de un render que terminó. Nunca lanza. */
+export async function avisarRender(env, acceso, fila, render) {
+  try {
+    const a = avisoDeRender(fila, render);
+    if (a) await avisar(env, acceso, { ...a, por: { userId: "sistema", nombre: "Render" } });
+  } catch (e) {
+    console.error("aviso del render:", e);
+  }
+}
