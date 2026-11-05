@@ -4458,6 +4458,10 @@ son del servidor.
   Container lo que hoy necesita la pantalla y que el render acepte video. Investigación hecha (sólo lectura, sin gastar
   créditos). Hecho: el video animado (render, música, subtítulos, ver un cuadro por MCP). Lo que falta, por fases A–H
   y comparado con `main` del 2026-11-05, en su §10.
+- `docs/propuesta-lo-mejor-y-creacion.md` — «Lo mejor del momento» (una galería de lo que mejor funciona, de la
+  competencia, la inspiración, los anuncios y lo propio, para recrearlo con un clic) y la auditoría de toda la creación
+  de contenido: caminos que no aplican las mismas reglas, puertas y nombres de más, motor de textos, video y navegación,
+  con el plan por fases. Propuesta; nada implementado.
 - `docs/propuesta-cerebro-por-cliente.md` — un cerebro por cliente (notas en D1, índice
   en R2, ficha técnica y cifras, búsqueda por pasajes) en lugar de volcar el ADN entero
   en cada llamada. Fases 0 y 1 implementadas; memoria de decisiones, visualización,
