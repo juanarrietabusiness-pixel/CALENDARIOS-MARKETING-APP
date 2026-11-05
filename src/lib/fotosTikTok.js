@@ -11,16 +11,10 @@
 
 import { fotosTikTok, claveAdaptado, mediosDe } from "./publicacion.js";
 import { medirImagen } from "./medios.js";
+import { TIKTOK_FOTO, necesitaCopiaTikTok } from "./prepararRedes.js";
 
-/** Lo más grande que se le manda a TikTok en una foto (1080p). */
-export const TIKTOK_FOTO = Object.freeze({ ancho: 1080, alto: 1920 });
-
-/** ¿Esta foto necesita su copia para TikTok? Si pasa de 1080p o no es JPEG ni WebP (sin medidas, por si acaso). Pura. */
-export function necesitaCopiaTikTok(m) {
-  if (!/\.(jpe?g|webp)$/i.test(String(m?.src ?? ""))) return true;
-  if (!m.ancho || !m.alto) return true;
-  return m.ancho > TIKTOK_FOTO.ancho || m.alto > TIKTOK_FOTO.alto;
-}
+// La regla (la medida y cuándo hace falta la copia) vive en prepararRedes.js: la usa también el servidor.
+export { TIKTOK_FOTO, necesitaCopiaTikTok };
 
 /**
  * Lo que necesitan las fotos de una publicación para TikTok: sus medidas (todas tienen que tener la misma proporción y,

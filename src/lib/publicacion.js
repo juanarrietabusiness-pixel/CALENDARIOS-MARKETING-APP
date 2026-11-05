@@ -38,6 +38,9 @@ const esVideo = (src = "", tipo = "") => tipo === "video" || /\.(mp4|mov|m4v|web
 /** Instagram sólo publica imágenes JPEG. */
 export const esJPEG = (src = "") => /\.jpe?g(\?|$)/i.test(src);
 
+/** El lado más largo de una imagen que se publica (Instagram reduce a 1440 de ancho y rechaza más de 8 MB). */
+export const LADO_PUBLICAR = 2160;
+
 /** El feed de Instagram acepta de 4:5 (0,8) a 1.91:1. Con un pelo de tolerancia. */
 export const PROPORCION_FEED = Object.freeze({ min: 0.795, max: 1.915 });
 

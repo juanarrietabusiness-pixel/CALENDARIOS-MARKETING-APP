@@ -70,6 +70,21 @@ const malo = await fetch(`${base}/miniatura`, { method: "POST", body: JSON.strin
 if (malo.status !== 400) falla(`/miniatura con algo que no es imagen debería ser 400, fue ${malo.status}`);
 console.log("✓ /miniatura");
 
+// Lo que necesita una imagen para cada red («Programar al aprobar» sin pantalla): el cuadro de 540 × 960 (9:16) no cabe
+// en el feed: encajado en 4:5 sale a 1080 × 1350; medido, sus medidas; reducido para TikTok, sin agrandarlo.
+const red = async (salida) => {
+  const r = await fetch(`${base}/imagen-redes`, { method: "POST", body: JSON.stringify({ imagen: Buffer.from(c.bytes).toString("base64"), salida }) });
+  return { estado: r.status, j: await r.json() };
+};
+const enc = await red({ tipo: "encajar", ancho: 1080, alto: 1350, modo: "difuminado", color: "#FFFFFF" });
+if (enc.estado !== 200 || enc.j.ancho !== 1080 || enc.j.alto !== 1350 || medidasJpeg(Buffer.from(enc.j.datos, "base64"))?.alto !== 1350) falla(`/imagen-redes encajar devolvió ${enc.estado}: ${JSON.stringify({ ...enc.j, datos: undefined })}`);
+const med = await red({ tipo: "medir" });
+if (med.j.ancho !== 540 || med.j.alto !== 960 || med.j.datos) falla(`/imagen-redes medir devolvió ${JSON.stringify(med.j)}`);
+const red1080 = await red({ tipo: "reducir", maxAncho: 1080, maxAlto: 1920 });
+if (red1080.j.ancho !== 540 || red1080.j.alto !== 960) falla(`/imagen-redes reducir no debería agrandar: ${JSON.stringify({ ...red1080.j, datos: undefined })}`);
+if ((await red({ tipo: "otra" })).estado !== 400) falla("/imagen-redes con una salida que no existe debería ser 400");
+console.log("✓ /imagen-redes");
+
 // El ACABADO de una pieza sin pantalla: el texto de la plantilla encima y el logo estampado (el cuadro hace de logo).
 const acab = await fetch(`${base}/acabado`, { method: "POST", body: JSON.stringify({
   imagen: Buffer.from(c.bytes).toString("base64"),

@@ -266,6 +266,27 @@ describe("poner_en_publicacion", () => {
     expect(post.medios.map((m) => m.src.split("/").pop())).toEqual(["l2.png", "l1.png"]);
   });
 
+  it("un post que RECIBE su primera imagen lleva su historia 9:16 encajada en el Container, como en el panel", async () => {
+    pieza("a1", "c1");
+    const pedidos = [];
+    env.VIDEO = {
+      idFromName: (n) => n,
+      get: () => ({ fetch: async (req) => { const j = await req.json(); pedidos.push(j.salida); return Response.json({ datos: btoa("jpeg"), mime: "image/jpeg", ancho: 1080, alto: 1920 }); } }),
+    };
+    const r = await mcp().llamar("poner_en_publicacion", { post_id: "p1", archivo_ids: ["a1"] });
+    expect(textoDe(r)).toMatch(/historia 9:16/);
+    expect(pedidos).toEqual([{ tipo: "encajar", ancho: 1080, alto: 1920, modo: "difuminado", color: expect.any(String) }]);
+    const post = JSON.parse(db.sqlite.prepare("select days from calendars where id = 'cal1'").get().days)[0].posts[0];
+    expect(post.historiaTambien).toBe(true);
+    expect(post.historias).toHaveLength(1);
+    expect(post.historias[0]).toMatchObject({ tipo: "imagen", ancho: 1080, alto: 1920 });
+    expect(post.encajadaDe).toEqual({ de: "/api/media/clientes/c1/estudio/a1.png", src: post.historias[0].src });
+    // Otra vez la misma imagen: no se rehace nada.
+    await mcp().llamar("poner_en_publicacion", { post_id: "p1", archivo_ids: ["a1"] });
+    expect(pedidos).toHaveLength(1);
+    delete env.VIDEO;
+  });
+
   it("lo publicado no se toca, y lo de otro cliente no se pone", async () => {
     pieza("a1", "c1");
     pieza("b1", "c2");

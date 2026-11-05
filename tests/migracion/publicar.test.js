@@ -501,6 +501,68 @@ describe("programar al aprobar", () => {
     expect(aviso.enlace).toMatch(/cal1\?publicacion=p1/);
   });
 
+  /** Un Container de los cuadros de mentira: contesta /imagen-redes como el de verdad (un JPEG de la medida pedida). */
+  const contenedor = (pedidos) => ({
+    idFromName: (n) => n,
+    get: () => ({
+      fetch: async (req) => {
+        const cuerpo = await req.json();
+        pedidos.push({ ruta: new URL(req.url).pathname, salida: cuerpo.salida });
+        const s = cuerpo.salida;
+        const medida = s.tipo === "encajar" ? { ancho: s.ancho, alto: s.alto } : s.tipo === "reducir" ? { ancho: 1080, alto: 1080 } : { ancho: 1600, alto: 900 };
+        return Response.json(s.tipo === "medir" ? medida : { ...medida, mime: "image/jpeg", datos: btoa("\xff\xd8\xff jpeg") });
+      },
+    }),
+  });
+  const r2 = (objetos) => ({
+    objetos,
+    async get(k) { const b = objetos.get(k); return b ? { size: b.length, arrayBuffer: async () => b.buffer.slice(0) } : null; },
+    async put(k, v) { objetos.set(k, v instanceof Uint8Array ? v : new Uint8Array(v)); },
+  });
+
+  it("con el Container, una PNG que no cabe en el feed se PREPARA sola (JPEG y su copia 4:5) y entra en la cola", async () => {
+    // 1600 × 900 (más ancha que 1,91:1 no; pero sin medidas hasta que la mide el Container) y en PNG.
+    await sembrar({ posts: [post({ image: "/api/media/clientes/c1/posts/foto.png", medios: [{ src: "/api/media/clientes/c1/posts/foto.png", tipo: "imagen", nombre: "foto.png" }] })] });
+    db.sqlite.prepare("update clients set programar_al_aprobar = 1, primary_color = '#123456' where id = 'c1'").run();
+    db.sqlite.prepare("update calendars set share_token = ?, share_enabled = 1 where id = 'cal1'").run("t".repeat(48));
+    const pedidos = [];
+    env.VIDEO = contenedor(pedidos);
+    env.MEDIA = r2(new Map([["clientes/c1/posts/foto.png", new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2, 3])]]));
+    expect((await aprobar()).status).toBe(200);
+    expect(pedidos.map((p) => p.salida.tipo)).toEqual(["jpeg"]);
+    const p1 = JSON.parse(db.sqlite.prepare("select days from calendars where id = 'cal1'").get().days)[0].posts[0];
+    expect(p1.medios[0]).toMatchObject({ tipo: "imagen", nombre: "foto.jpg", ancho: 1600, alto: 900 });
+    expect(p1.medios[0].src).toMatch(/^\/api\/media\/clientes\/c1\/posts\/[\w-]+\.jpg$/);
+    expect(p1.image).toBe(p1.medios[0].src);
+    expect(env.MEDIA.objetos.has(p1.medios[0].src.replace("/api/media/", ""))).toBe(true);
+    expect(filas()).toMatchObject([{ post_id: "p1", red: "instagram", estado: "programada" }]);
+  });
+
+  it("lo que no cabe en el feed sale con su copia ENCAJADA con el ajuste y el color de la marca; sin Container, el aviso dice por qué", async () => {
+    const alta = { src: "/api/media/clientes/c1/posts/alta.jpg", tipo: "imagen", nombre: "alta.jpg", ancho: 1080, alto: 1920 };
+    await sembrar({ posts: [post({ image: alta.src, medios: [alta], ajusteIG: "color" })] });
+    db.sqlite.prepare("update clients set programar_al_aprobar = 1, primary_color = '#123456' where id = 'c1'").run();
+    db.sqlite.prepare("update calendars set share_token = ?, share_enabled = 1 where id = 'cal1'").run("t".repeat(48));
+    const pedidos = [];
+    env.VIDEO = contenedor(pedidos);
+    env.MEDIA = r2(new Map([["clientes/c1/posts/alta.jpg", new Uint8Array([0xff, 0xd8, 0xff, 1])]]));
+    await aprobar();
+    expect(pedidos.map((p) => p.salida)).toEqual([{ tipo: "encajar", ancho: 1080, alto: 1350, modo: "color", color: "#123456" }]);
+    const p1 = JSON.parse(db.sqlite.prepare("select days from calendars where id = 'cal1'").get().days)[0].posts[0];
+    expect(p1.adaptados[`feed|${alta.src}`]).toMatchObject({ ancho: 1080, alto: 1350, modo: "color" });
+    expect(p1.medios[0].src).toBe(alta.src); // el original no se toca
+  });
+
+  it("sin Container (en local), una PNG sigue sin programarse y el aviso dice por qué no se preparó", async () => {
+    await sembrar({ posts: [post({ image: "/api/media/clientes/c1/posts/foto.png", medios: [{ src: "/api/media/clientes/c1/posts/foto.png", tipo: "imagen", ancho: 1080, alto: 1350 }] })] });
+    db.sqlite.prepare("update clients set programar_al_aprobar = 1 where id = 'c1'").run();
+    db.sqlite.prepare("update calendars set share_token = ?, share_enabled = 1 where id = 'cal1'").run("t".repeat(48));
+    await aprobar();
+    expect(filas()).toHaveLength(0);
+    const aviso = db.sqlite.prepare("select texto from avisos").all().find((x) => /no se pudo programar sola/.test(x.texto));
+    expect(aviso.texto).toMatch(/Al prepararla: no hay Container/);
+  });
+
   it("aun encendida, una IDEA aprobada no se programa: aprobar un concepto no es aprobar la pieza", async () => {
     await sembrar({ opciones: { programarAlAprobar: true }, posts: [post({ aprobacion: "idea" })] });
     db.sqlite.prepare("update calendars set share_token = ?, share_enabled = 1 where id = 'cal1'").run("t".repeat(48));
