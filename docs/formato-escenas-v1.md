@@ -114,17 +114,20 @@ Los 16 componentes de la librería v1 y lo propio de cada uno:
 | `imagen` | `archivo`* (id de la galería: la foto REAL del producto), `rol` (producto/foto/persona), `recorte` (contener/cubrir), `marco` |
 | `personaje` | `variante` (adulto/nino/bebe), `pose` (de-pie/saluda/senala/piensa/celebra/preocupado), `expresion` (auto/neutral/feliz/triste/preocupado/dormido; «auto» la toma de la pose), `color` — figura de la casa dibujada con código; su ASPECTO (piel, pelo, ropa, accesorio) es el del kit del cliente (`personaje_video`) o el de `estilo.personaje` |
 | `icono` | `nombre` (check, cruz, corazon, estrella, rayo, reloj, bolsa, carrito, chat, telefono, ubicacion, regalo, escudo, hoja, gota, bebe, casa, flecha, alerta, sonrisa, dinero, camion), `color`, `fondo` (un círculo de ese color detrás; el icono toma el color que más contraste) |
-| `cifra` | La **cifra gigante**: `valor`*, `prefijo` («$»), `sufijo` («%», «años»; más pequeño, al lado), `etiqueta` (≤ 30, debajo), `contar` (sube desde 0 en 1,2 s), `decimales`, `color`. Coma decimal y punto de miles desde 5 cifras; el ancho es el del valor final (no baila mientras cuenta) |
+| `cifra` | La **cifra gigante**: `valor`*, `prefijo` («$»), `sufijo` («%», «años»; más pequeño, al lado), `etiqueta` (≤ 30, debajo), `contar` (sube desde 0 en 1,2 s), `decimales`, `abreviada` («412K», «3,2M»: se lee de un vistazo), `color`. Coma decimal y punto de miles desde 5 cifras; el ancho es el del valor final (no baila mientras cuenta) |
 | `anillo` | Un porcentaje que se llena: `valor`* (0–100), `texto` (≤ 10, en medio; vacío, el porcentaje que cuenta), `etiqueta` (≤ 30), `contar`, `color`, `pista` (el aro de fondo) |
 | `dibujo` | El **lienzo libre**: `proporcion` (alto ÷ ancho, 0,2–3) y `formas` (1–24). Ver «El dibujo» abajo |
-| `lista` | `items`* (1–6, ≤ 40 cada uno), `numerada`, `color` |
-| `reloj` | `modo` (reloj/contador/cuenta_atras), `desde`, `hasta`, `color` |
+| `lista` | `items`* (1–6, ≤ 40 cada uno), `numerada`, `cada` (segundos entre un ítem y el siguiente, 0–2; 0,4 por defecto: entran ESCALONADOS sin anclar cada uno), `color` |
+| `reloj` | `modo` (reloj: la esfera con las agujas girando; contador: sube de `desde` a `hasta` segundos; cuenta_atras: baja), `desde`, `hasta`, `color` |
 | `forma` | `figura` (circulo/rect/ola/estrella/flecha/linea/mancha), `color`, `relleno` |
 | `logo` | `placa` (opcional). El del kit de marca: el motor le quita el fondo liso (el blanco de un JPG o un PNG sin transparencia) y, si aun así no contrasta con el fondo de la escena, le pone una placa clara u oscura. Con `placa` se fuerza ese color |
 | `llamado` | `texto`* (≤ 30), `color`, `fondo` |
 | `antes_despues` | `modo` (lado: pantalla partida; deslizador: una línea que barre de un lado al otro; secuencia: primero uno y luego el otro), `textoAntes`, `textoDespues` (≤ 40), `archivoAntes`, `archivoDespues` (ids de la galería), `etiquetaAntes`, `etiquetaDespues` (≤ 16; «Antes» y «Después» si van vacías), `color`. Cada lado necesita su texto o su imagen |
 
 `*` = obligatorio.
+
+Todos se dibujan (ninguno sale ya como marcador). Una capa anclada a una palabra (`entra: { palabra: n }`) entra
+**0,12 s antes** de que se diga (`ANTICIPO`): justo en la palabra llega tarde a la vista. La salida no se adelanta.
 
 ### El dibujo
 

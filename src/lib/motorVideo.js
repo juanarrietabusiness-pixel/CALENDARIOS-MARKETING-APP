@@ -32,9 +32,13 @@ import { gruposDeSubtitulos, grupoEn, estadoDePalabras } from "./subtitulos.js";
 import {
   dibujarIcono, dibujarFormas, dibujarEstrellas, dibujarLineas, formatearCifra, avanceDeCuenta, logoNecesitaPlaca,
 } from "./motorPiezas.js";
+import { dibujarLista, dibujarBurbuja, dibujarReloj, dibujarAntesDespues, dibujarTelefono } from "./motorComponentes.js";
 
-/** Los componentes que este motor ya dibuja. El resto sale como marcador hasta que se escriban. */
-export const COMPONENTES_LISTOS = Object.freeze(["texto", "sello", "imagen", "forma", "logo", "llamado", "cifra", "icono", "anillo", "dibujo", "personaje"]);
+/** Los componentes que este motor ya dibuja (todos los del formato v1). Uno desconocido sale como marcador. */
+export const COMPONENTES_LISTOS = Object.freeze([
+  "texto", "sello", "imagen", "forma", "logo", "llamado", "cifra", "icono", "anillo", "dibujo", "personaje",
+  "lista", "burbuja", "reloj", "antes_despues", "telefono",
+]);
 
 export const FUENTE_RESPALDO = "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif";
 
@@ -859,7 +863,7 @@ function dibujarCapa(ctx, capa, estado, c, ancho = capa.tam * c.lado) {
     case "cifra": {
       // El número con el ancho de su valor FINAL: mientras cuenta no cambia de tamaño. El sufijo, más pequeño, al lado;
       // la etiqueta, debajo.
-      const numero = (v) => `${capa.prefijo ?? ""}${formatearCifra(v, capa.decimales)}`;
+      const numero = (v) => `${capa.prefijo ?? ""}${formatearCifra(v, capa.decimales, { abreviar: capa.abreviada === true })}`;
       const final = numero(capa.valor);
       const sufijo = capa.sufijo ? ` ${capa.sufijo}` : "";
       let tam = Math.min(lado * 0.36, maxAlto * 0.8);
@@ -967,6 +971,19 @@ function dibujarCapa(ctx, capa, estado, c, ancho = capa.tam * c.lado) {
       ctx.textAlign = "center"; ctx.textBaseline = "middle";
       lineas.forEach((l, i) => ctx.fillText(l, 0, -((lineas.length - 1) * tam * 1.2) / 2 + i * tam * 1.2));
       return { w, h };
+    }
+    case "lista": case "burbuja": case "reloj": case "antes_despues": case "telefono": {
+      // Los de motorComponentes.js, con los ayudantes de aquí (importarlos allí sería circular).
+      const h = {
+        w, lado, maxAlto, vida: estado.vida, titular, cuerpo, rect: rectRedondo, partir: partirEnLineas,
+        color: (t) => colorDe(t, paleta), legible: (pedido, fondo) => colorLegible(pedido, fondo, paleta),
+        imagen: (id) => recursos?.imagen?.(id) ?? null,
+      };
+      if (capa.tipo === "lista") return dibujarLista(ctx, capa, h);
+      if (capa.tipo === "burbuja") return dibujarBurbuja(ctx, capa, h);
+      if (capa.tipo === "reloj") return dibujarReloj(ctx, capa, h, avanceDeCuenta(estado.vida, true));
+      if (capa.tipo === "antes_despues") return dibujarAntesDespues(ctx, capa, h);
+      return dibujarTelefono(ctx, capa, h);
     }
     default: {
       // El marcador tiene la forma de lo que vendrá: un teléfono y una persona son más altos que anchos.

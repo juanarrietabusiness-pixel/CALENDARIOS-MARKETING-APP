@@ -61,8 +61,9 @@ describe("el formato contado a la IA", () => {
     for (const tipo of Object.keys(TIPOS_ESCENA)) expect(t).toContain(`  ${tipo}: `);
     expect(t).toContain(JSON.stringify(EJEMPLO_GUION));
     // Los componentes que el motor todavía no dibuja se dicen.
-    expect(t).toMatch(/telefono — .*MARCADOR/);
-    expect(t).not.toMatch(/personaje — .*MARCADOR/);
+    // Ya no queda ningún componente que se dibuje como marcador: ninguno lleva la advertencia.
+    expect(t).not.toMatch(/MARCADOR/);
+    expect(t).toMatch(/telefono — /);
     // Neutro: ningún cliente de la agencia en el ejemplo.
     expect(JSON.stringify(EJEMPLO_GUION)).not.toMatch(/Baby|Caleb|D'CASA|Rofer|toallita/i);
   });

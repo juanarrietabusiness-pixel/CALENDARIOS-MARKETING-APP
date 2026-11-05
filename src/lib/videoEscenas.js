@@ -192,7 +192,8 @@ export const COMPONENTES = Object.freeze({
   icono: { nombre: "Icono", props: { nombre: E(ICONOS_VIDEO, "check"), color: C("acento"), fondo: { t: "color", def: "" } } },
   cifra: {
     nombre: "Cifra gigante",
-    props: { valor: N(-1e9, 1e9, 0, true), prefijo: T(6), sufijo: T(12), etiqueta: T(30), contar: B(true), decimales: N(0, 2, 0), color: C("acento") },
+    // `abreviada`: «412K», «3,2M» en vez de «412.000» (se lee de un vistazo).
+    props: { valor: N(-1e9, 1e9, 0, true), prefijo: T(6), sufijo: T(12), etiqueta: T(30), contar: B(true), decimales: N(0, 2, 0), abreviada: B(false), color: C("acento") },
   },
   anillo: {
     nombre: "Anillo de progreso",
@@ -206,7 +207,8 @@ export const COMPONENTES = Object.freeze({
     },
     comprobar: (p) => (p.formas?.length ? [] : [{ campo: "formas", mensaje: "Un dibujo necesita al menos una forma." }]),
   },
-  lista: { nombre: "Lista o pasos", props: { items: { t: "textos", max: 6, maxTexto: 40, req: true }, numerada: B(false), color: C("texto") } },
+  // `cada`: los segundos entre un ítem y el siguiente (el ESCALONADO: entran uno tras otro sin un ancla por ítem).
+  lista: { nombre: "Lista o pasos", props: { items: { t: "textos", max: 6, maxTexto: 40, req: true }, numerada: B(false), cada: N(0, 2, 0.4), color: C("texto") } },
   reloj: { nombre: "Reloj o contador", props: { modo: E(["reloj", "contador", "cuenta_atras"], "reloj"), desde: N(0, 86400, 0), hasta: N(0, 86400, 0), color: C("texto") } },
   forma: { nombre: "Forma", props: { figura: E(["circulo", "rect", "ola", "estrella", "flecha", "linea", "mancha"], "circulo"), color: C("apoyo"), relleno: B(true) } },
   logo: { nombre: "Logo del kit", props: { placa: { t: "color", def: "" } } },
@@ -573,13 +575,22 @@ export function archivosDelGuion(guion) {
 }
 
 /** Cuándo se ve una capa, en segundos del video, dentro de su escena ya colocada (`lineaDeTiempo().escenas[k]`). Pura. */
+/**
+ * Lo que una capa anclada a una palabra ENTRA antes de que se diga: es cuando el ojo la espera (justo en la palabra
+ * llega tarde). Nunca antes de que empiece su escena. La salida no se adelanta.
+ */
+export const ANTICIPO = 0.12;
+
 export function tiempoDeCapa(capa, escena) {
-  const momento = (m, def) => {
-    if (m && Number.isInteger(m.palabra)) return escena.palabras[m.palabra]?.desde ?? def;
+  const momento = (m, def, anticipo = 0) => {
+    if (m && Number.isInteger(m.palabra)) {
+      const d = escena.palabras[m.palabra]?.desde;
+      return d == null ? def : Math.max(escena.desde, d - anticipo);
+    }
     if (m && Number.isFinite(m.s)) return Math.min(escena.desde + m.s, escena.hasta);
     return def;
   };
-  const desde = momento(capa.entra, escena.desde);
+  const desde = momento(capa.entra, escena.desde, ANTICIPO);
   const hasta = Math.max(desde, momento(capa.sale, escena.hasta));
   return { desde: redondo(desde), hasta: redondo(hasta) };
 }
