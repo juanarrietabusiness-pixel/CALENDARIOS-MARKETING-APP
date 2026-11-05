@@ -208,7 +208,7 @@ export const DEFINICIONES_DISENO_MCP = Object.freeze([
         concepto: { type: "string", description: "La idea que une la tanda y su sistema visual, en 1 o 2 frases." },
         carrusel: { type: "boolean", description: "true si las piezas son las láminas de UN carrusel, en su orden (portada primero): todas 4:5, en orden y agrupadas en la galería." },
         tema: { type: "string", description: "Sólo con carrusel=true y SIN piezas: el tema, y el director de la agencia diseña el carrusel entero." },
-        post_id: { type: "string", description: "Con carrusel=true: la publicación donde irá el carrusel (al terminar, ponlo con poner_en_publicacion)." },
+        post_id: { type: "string", description: "Con carrusel=true: la publicación donde irá el carrusel (al terminar se pone SOLO en ella, en su orden)." },
         productos: { type: "array", items: { type: "string" }, maxItems: 6, description: "Ids del CATÁLOGO (de guia_de_diseno) de lo que enseña la tanda: sus fotos reales van de referencia." },
         piezas: {
           type: "array", minItems: 1, maxItems: 12,
@@ -220,7 +220,7 @@ export const DEFINICIONES_DISENO_MCP = Object.freeze([
               idea: { type: "string", description: "Sin ficha: qué comunica la pieza (la diseña el director de la agencia)." },
               texto: { type: "string", description: "Sin ficha: el texto EXACTO que va en la pieza (titular y apoyo, una línea cada uno)." },
               formato: { type: "string", enum: ["vertical", "story", "square", "horizontal"], description: "vertical 4:5 (feed, por defecto), story 9:16, square 1:1, horizontal 16:9." },
-              post_id: { type: "string", description: "La publicación del calendario a la que va (de ver_calendario)." },
+              post_id: { type: "string", description: "La publicación del calendario a la que va (de ver_calendario): al terminar se pone SOLA en ella." },
               estilo: { type: "string", enum: ["anuncio", "beneficios", "servicios", "educativo", "diferenciador", "maletas", "humano"], description: "El tipo de contenido (opcional)." },
               plantilla_id: { type: "string", description: "El id de una plantilla del kit a seguir (opcional)." },
               productos: { type: "array", items: { type: "string" }, maxItems: 6, description: "Ids del catálogo de lo que sale en ESTA pieza; manda sobre los de la tanda." },
@@ -363,6 +363,8 @@ export function crearHerramientasDiseno({ env, acceso, resolverCliente, usuario,
           const vistas = buenas.length ? [] : await vistasDelCliente(env, acceso, c, ctx.kit).catch(() => []);
           const fila = await crearEncargo(env, acceso, c, {
             tipo: "carrusel", titulo, carpetaId: carpeta.id, controlar: true, logoEstampado: estampa, vistas,
+            // Con su publicación, al terminar el carrusel se pone SOLO en ella (en su orden).
+            poner: Boolean(postId && calendarioDePost[postId]),
             comun: {
               modelo: modeloCarrusel.id, modo: "ia", plantilla: "banda", idea: texto(concepto || tema || titulo, 400), hilo: texto(concepto, 600),
               preset: estiloDeMarca(ctx.kit, buenas[0]?.estilo ?? "", { marca: c.name, rubro: c.industry ?? "" }), fotos, personajes: [],
@@ -378,7 +380,7 @@ export function crearHerramientasDiseno({ env, acceso, resolverCliente, usuario,
               `Carrusel en marcha para ${c.name}: encargo ${fila.id} (carpeta ${carpeta.id}, que es su carrusel_id).`,
               "Se hace en el servidor, lámina a lámina y en orden (cada una con la anterior y la portada de referencia), con el control de calidad.",
               `Mira cómo va con estado_encargo (encargo_id ${fila.id}); al terminar te devuelve cada lámina para que la revises. La vista previa del chat enseña las láminas según salen.`,
-              postId ? `Cuando esté bien, ponlo en la publicación con poner_en_publicacion (post_id ${postId}, carrusel_id ${carpeta.id}).` : "",
+              postId ? `Al terminar se pone SOLO en la publicación ${postId}, en su orden (para cambiarlo después: poner_en_publicacion con carrusel_id ${carpeta.id}).` : "",
             ].filter(Boolean).join("\n"),
             imagenes: [],
             vista: (await vistaDeEncargo(env, acceso, fila)).vista,
@@ -387,6 +389,8 @@ export function crearHerramientasDiseno({ env, acceso, resolverCliente, usuario,
         const vistas = buenas.some((p) => !p.ficha) ? await vistasDelCliente(env, acceso, c, ctx.kit).catch(() => []) : [];
         const fila = await crearEncargo(env, acceso, c, {
           tipo: "lote", titulo, mejorar: buenas.some((p) => !p.ficha), controlar: true, paralelo: PARALELO, vistas,
+          // Las que llevan post_id se ponen SOLAS en su publicación al terminar el encargo.
+          poner: buenas.some((p) => p.postId && calendarioDePost[p.postId]),
           pasos: buenas.map((p) => pasoDelPlan(p, { calendarioDePost, productos: ctx.productos, estampa })),
         }, { usuario });
         const total = buenas.reduce((t, p) => t + (p.costo || 0), 0);
@@ -396,6 +400,7 @@ export function crearHerramientasDiseno({ env, acceso, resolverCliente, usuario,
             plan.some((p) => p.error) ? `No van: ${plan.filter((p) => p.error).map((p) => `${p.n} (${p.error})`).join("; ")}.` : "",
             "Se hacen en el servidor, de dos en dos, con el control de calidad (corrige sola una letra mal escrita y se queda con la mejor).",
             `Mira cómo va con estado_encargo (encargo_id ${fila.id}); al terminar te devuelve cada imagen para que la revises. La vista previa del chat enseña las piezas según salen.`,
+            buenas.some((p) => p.postId && calendarioDePost[p.postId]) ? "Las que llevan post_id se ponen SOLAS en su publicación al terminar (en lugar de lo que tuviera; lo de antes sigue en la galería)." : "",
             estampa ? "El logo de este cliente lo ESTAMPA la aplicación: queda puesto cuando alguien abra el Estudio." : "",
           ].filter(Boolean).join("\n"),
           imagenes: [],
@@ -427,6 +432,7 @@ export function crearHerramientasDiseno({ env, acceso, resolverCliente, usuario,
         e.error ? `Motivo: ${e.error}` : "",
         ...lineas,
         imagenes.length ? `Van ${imagenes.length === 1 ? "la imagen lista" : `las ${imagenes.length} imágenes listas`}, en el orden de arriba: MÍRALAS antes de darlas por buenas.` : "",
+        ...(e.puestos ?? []).map((x) => (x.aviso ? `No se pudo poner en la publicación ${x.postId}: ${x.aviso}` : `Puesto solo en la publicación ${x.postId} (${x.archivos.length} archivo${x.archivos.length === 1 ? "" : "s"}).`)),
         listas.length > MAX_PIEZAS_VISTAS ? `Hay ${listas.length - MAX_PIEZAS_VISTAS} más: míralas con ver_pieza.` : "",
         vivo ? "Sigue en el servidor: vuelve a mirar en un minuto (la vista previa del chat se pone al día sola)." : "",
       ].filter(Boolean).join("\n");

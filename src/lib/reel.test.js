@@ -164,3 +164,23 @@ describe("un clip limpio por fotograma (para CapCut)", () => {
     expect(modeloParaClips({ kie: true }).id).toBe("kling-3-kie");
   });
 });
+
+describe("el guion para montarlo aquí (y el de la publicación)", () => {
+  it("con montaje pide lo que se dice y se lee por plano, el gancho y el llamado; y sigue el guion de la publicación", () => {
+    const p = pedidoDeReel({ idea: "Wipes", montaje: true, guionPost: "Hook: ¿piel sensible?\nCTA: escríbenos" });
+    expect(p).toMatch(/Después se MONTA en la aplicación/);
+    expect(p).toMatch(/"dice":"lo que dice la voz en este plano/);
+    expect(p).toMatch(/"gancho":"el texto del gancho","llamado"/);
+    expect(p).toMatch(/EL GUION QUE YA TIENE LA PUBLICACIÓN \(síguelo[\s\S]*Hook: ¿piel sensible\?/);
+    // Sin montaje, como antes.
+    expect(pedidoDeReel({ idea: "Wipes" })).not.toMatch(/"dice"/);
+  });
+  it("lee lo de cada plano; un guion de antes con «texto» lo trae como lo que se lee", () => {
+    const r = leerReel(JSON.stringify({
+      gancho: "¿Piel sensible?", llamado: "Pídelos hoy",
+      planos: [{ desde: 0, escena: "a", dice: "Hola." }, { desde: 3, escena: "b", texto: "Sin alcohol" }, { desde: 6, escena: "c" }],
+    }), 10);
+    expect(r).toMatchObject({ gancho: "¿Piel sensible?", llamado: "Pídelos hoy" });
+    expect(r.planos.map((x) => [x.dice, x.pantalla])).toEqual([["Hola.", ""], ["", "Sin alcohol"], ["", ""]]);
+  });
+});

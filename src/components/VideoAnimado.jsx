@@ -56,7 +56,7 @@ const ARRANQUE = {
 const fmtSeg = (s) => { const m = Math.floor(s / 60); const r = s - m * 60; return `${m}:${r.toFixed(1).padStart(4, "0")}`; };
 const fecha = (iso) => { try { return new Date(iso).toLocaleDateString("es-PA", { day: "numeric", month: "short" }); } catch { return ""; } };
 
-export default function VideoAnimado({ client, estudio, publicacion = null }) {
+export default function VideoAnimado({ client, estudio, publicacion = null, abrirId = null }) {
   const ids = useId();
   const kit = useMemo(() => limpiarKit(estudio?.kit), [estudio?.kit]);
   const archivos = useMemo(() => estudio?.archivos ?? [], [estudio?.archivos]);
@@ -97,6 +97,10 @@ export default function VideoAnimado({ client, estudio, publicacion = null }) {
       setAbierto(v); setTexto(JSON.stringify(v.guion, null, 2));
     } catch (e) { setMsg({ error: true, texto: e.message }); }
   };
+  // Abre uno concreto (el montaje de un reel: «Abrir el video animado»).
+  const abrirRef = useRef(abrir);
+  abrirRef.current = abrir;
+  useEffect(() => { if (abrirId) { setCreando(false); abrirRef.current(abrirId); } }, [abrirId]);
   const nuevo = (guion = ARRANQUE, { publicacion: destino = null, aviso = "" } = {}) => {
     setMsg(aviso ? { texto: aviso } : guion === ARRANQUE ? null : { texto: "Guion escrito: revísalo y guárdalo como borrador." });
     setErrServidor([]); setCreando(false); setEditarTextos(guion !== ARRANQUE);

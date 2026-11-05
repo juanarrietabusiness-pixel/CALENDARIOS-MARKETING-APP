@@ -17,7 +17,9 @@ import * as api from "./estudio";
 import { limpiarKit, estiloDeMarca, referenciaDePlantilla, lineaDePlantillaEnPedido } from "./kitMarca";
 import { coloresPlantilla, PLANTILLAS_TEXTO } from "./carrusel";
 import { componerLamina } from "./textoSobreImagen";
-import { crearFotogramas, pedidoDeVideo, crearVideo } from "./reelEstudio";
+import { segundosParaModelo } from "./videoCorto";
+import { lanzarReel, seguirEncargo, leerEncargo } from "./encargosApi";
+import { resultadoDeReel } from "./encargoReelPuro";
 import { textoDeIdea, plantillaDeIdea, composicionDe, FORMATOS_LOTE } from "./loteAnuncios";
 import { ideaSinMejorar, apoyosDePieza, pedidoDePieza, lineaSinTexto } from "./pieza";
 
@@ -122,30 +124,43 @@ export async function conFichas({ ideas, clienteId, modo = "ia", formato = "post
 export const temaDeIdea = (idea) => [idea?.titulo || idea?.titular, idea?.brief, textoDeIdea(idea) ? `Texto: ${textoDeIdea(idea).replace(/\n/g, " / ")}` : ""].filter(Boolean).join(". ").slice(0, 400);
 
 /**
- * Un REEL de una idea del lote, como a mano (components/FlujoReel.jsx): el guion por planos, un fotograma por plano
- * (el storyboard) y el video con ellos. Sin revisión entre medias: en el lote se revisa al final y se corrige por
- * tramos desde el Estudio. → { archivos: [video], fotogramas }.
+ * Un REEL de una idea del lote, como a mano (components/FlujoReel.jsx): el guion por planos y el ENCARGO del servidor
+ * (worker/lib/estudio/encargoReel.js): el storyboard en orden y el video con él. Sin revisión entre medias: en el lote
+ * se revisa al final y se corrige por tramos desde el Estudio. Va en el SERVIDOR: si se cierra la aplicación, sigue y
+ * queda en la galería, en la carpeta del reel. La duración, la que hace el modelo del video (8 o 10 s).
+ * → { archivos: [video], fotogramas, descripcion, encargoId }.
  */
 export async function crearReelDeIdea({ clienteId, idea, kit, preset = "", estilo = "", modeloImagen, modeloVideo, fotos = [], personajes = [], personajesIds = [], marca = "", rubro = "", carpetaId = null, seguir = () => true, alPaso = () => {} }) {
   alPaso("Guion por planos…");
   carpetaId = (await api.carpetaDeGrupo(clienteId, "reel", idea.titulo || idea.titular || temaDeIdea(idea))) ?? carpetaId;
+  const segundos = segundosParaModelo(modeloVideo) || 10;
   const guion = await api.guionDeReel(clienteId, {
     idea: [temaDeIdea(idea), idea.guion ? `Guion propuesto:\n${idea.guion}` : "", idea.escena ? `Qué se ve: ${idea.escena}` : ""].filter(Boolean).join("\n"),
-    segundos: 10, preset, estilo, productoId: idea.productoId || undefined, personajes: personajesIds,
+    segundos, preset, estilo, productoId: idea.productoId || undefined, personajes: personajesIds,
   });
   const estiloTexto = estiloDeMarca(limpiarKit(kit), preset, { marca, rubro, estilo });
-  let hechos = 0;
-  alPaso(`Fotograma 1 de ${guion.planos.length}…`);
-  const salida = await crearFotogramas({
-    clienteId, modelo: modeloImagen, planos: guion.planos, hilo: guion.hilo, estilo: estiloTexto, personajes, fotos, carpetaId, seguir,
-    alAvanzar: () => { hechos += 1; alPaso(`Fotograma ${Math.min(hechos + 1, guion.planos.length)} de ${guion.planos.length}…`); },
-  });
-  const fotogramas = salida.map((r) => r?.archivo).filter(Boolean);
-  if (!fotogramas.length) throw new Error(salida.map((r) => r?.error).find(Boolean) || "No salió ningún fotograma.");
-  alPaso("Video (tarda unos minutos)…");
   const lineaPersonajes = [...new Set(personajes.map((p) => `Personaje: ${p.nota}.`))].join(" ");
-  const pedido = pedidoDeVideo({ modelo: modeloVideo, planos: guion.planos, hilo: guion.hilo, musica: guion.musica, locucion: guion.locucion, efectos: guion.efectos, segundos: guion.segundos ?? 10, estilo: estiloTexto, personajes: lineaPersonajes, fotogramas });
-  const video = await crearVideo({ clienteId, pedido, carpetaId, seguir });
-  if (carpetaId) await api.ordenarCarpeta(clienteId, carpetaId, [video?.id, ...fotogramas.map((f) => f.id)].filter(Boolean)).catch(() => {});
-  return { archivos: [video], fotogramas, descripcion: guion.descripcion };
+  const r = await lanzarReel(clienteId, {
+    titulo: String(idea.titulo || idea.titular || temaDeIdea(idea) || "Reel").slice(0, 120),
+    reel: { ...guion, segundos }, carpetaId, salida: "uno", revisar: false, video: { modelo: modeloVideo.id },
+    comun: {
+      modelo: modeloImagen.id, estilo: estiloTexto, lineaPersonajes, fotos,
+      personajes: personajes.map((p) => ({ clave: p.clave, nota: p.nota ?? "" })),
+    },
+  });
+  const total = guion.planos.length;
+  alPaso(`Fotograma 1 de ${total}…`);
+  const fin = await seguirEncargo({
+    clienteId, id: r.encargo.id, seguir,
+    alCambio: (e) => {
+      const hechos = e.pasos.filter((p) => p.fase === "hecho").length;
+      alPaso(hechos < total ? `Fotograma ${Math.min(hechos + 1, total)} de ${total}…` : "Video (tarda unos minutos)…");
+    },
+  });
+  if (!fin) throw new Error("Se dejó de mirar: el reel sigue en el servidor y queda en la galería.");
+  const leido = await leerEncargo(clienteId, fin.id);
+  const res = resultadoDeReel(leido.encargo, new Map((leido.archivos ?? []).map((a) => [a.id, a])));
+  const fotogramas = res.fotos.map((f) => f?.archivo).filter(Boolean);
+  if (!res.video) throw new Error(leido.encargo.error || res.videoError || (fotogramas.length ? "El video no salió." : "No salió ningún fotograma."));
+  return { archivos: [res.video], fotogramas, descripcion: guion.descripcion, encargoId: fin.id };
 }

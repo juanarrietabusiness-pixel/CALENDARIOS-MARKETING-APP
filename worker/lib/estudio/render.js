@@ -20,7 +20,8 @@ import { crearAcceso } from "../acceso.js";
 import { difundir } from "../vivo.js";
 import { ErrorVideo, deFila, publicacionDelCliente, ID_VIDEO } from "../videosProyectos.js";
 import { marcarUso } from "./galeria.js";
-import { resincronizarCalendario } from "../publicador.js";
+import { cambiarPublicacion } from "./ponerEnPost.js";
+import { conVideoEnPost, rellenarVacios } from "../../../src/lib/resultadoEnPost.js";
 import { pedidoDelVideo, aBase64, subirClips } from "./cuadros.js";
 import { claveDeArchivo, claveDelCliente, slugCorto } from "./archivos.js";
 import { puedeRenderizar, esMp4, PLAZO_RENDER_MS } from "../../../src/lib/renderVideo.js";
@@ -83,32 +84,29 @@ async function terminar(acceso, clienteId, id, intento, estado, render) {
 }
 
 /**
- * Pone el mp4 en la publicación ligada (en el sitio del render anterior de ESTE video, o el primero). → { calendarId,
- * postId } si quedó puesto, o { aviso } si no se pudo (la publicación ya no está, o ya se publicó).
+ * Pone el mp4 en la publicación ligada (en el sitio del render anterior de ESTE video; si el video salió del MONTAJE de
+ * un reel, en el sitio del video crudo de ese reel; si no, el primero). → { calendarId, postId } si quedó puesto, o
+ * { aviso } si no se pudo (la publicación ya no está, o ya se publicó). Con `rellenar` ({ descripcion, guion, portada }),
+ * además pone esos textos donde la publicación los tiene VACÍOS.
  */
-export async function ponerEnPublicacion(env, acceso, fila, medio) {
+export async function ponerEnPublicacion(env, acceso, fila, medio, { rellenar = null } = {}) {
   if (!fila.calendar_id || !fila.post_id) return null;
-  for (let vuelta = 0; vuelta < 2; vuelta++) {
-    const cal = await acceso.leerUno("calendars", { id: fila.calendar_id, client_id: fila.client_id });
-    const dias = leerJSON(cal?.days, []);
-    const dia = Array.isArray(dias) ? dias.find((d) => (d?.posts ?? []).some((p) => p?.id === fila.post_id)) : null;
-    if (!cal || !dia) return { aviso: "La publicación ligada ya no está en su calendario: el video quedó en la galería." };
-    const i = dia.posts.findIndex((p) => p?.id === fila.post_id);
-    const post = dia.posts[i];
-    if (post.status === "published") return { aviso: "La publicación ya salió: el video quedó en la galería, sin tocarla." };
-    const medios = Array.isArray(post.medios) ? [...post.medios] : [];
-    const k = medios.findIndex((m) => m?.videoAnimado === fila.id);
-    if (k >= 0) medios[k] = medio; else medios.unshift(medio);
-    dia.posts[i] = { ...post, medios, mediosCambiadosAt: ahora() };
-    // Con la fecha que se leyó como condición: si otra persona guardó el calendario entremedias, se vuelve a leer.
-    const n = await acceso.actualizar("calendars", { id: cal.id, client_id: fila.client_id, updated_at: cal.updated_at }, { days: JSON.stringify(dias), updated_at: ahora() });
-    if (!n) continue;
-    const crudo = await acceso.leerUno("calendars", { id: cal.id });
-    try { await resincronizarCalendario(env, acceso, crudo, SISTEMA); } catch (e) { console.error("render resincronizar:", e); }
-    difundir(env, acceso.ownerId, { tipo: "calendario:recargar", id: cal.id, clientId: fila.client_id, por: SISTEMA });
-    return { calendarId: cal.id, postId: fila.post_id };
+  const origen = leerJSON(fila.origen, {});
+  const esSuyo = (m) => m?.videoAnimado === fila.id || (origen.encargoId && m?.deReel === origen.encargoId);
+  const r = await cambiarPublicacion(env, acceso, {
+    clienteId: fila.client_id, calendarId: fila.calendar_id, postId: fila.post_id, por: SISTEMA,
+    cambiar: (post) => {
+      const con = conVideoEnPost(post, medio, esSuyo);
+      return rellenar ? rellenarVacios(con, rellenar).post : con;
+    },
+  });
+  if (r?.aviso) {
+    // Las frases de siempre: el video quedó en la galería.
+    if (/ya salió/.test(r.aviso)) return { aviso: "La publicación ya salió: el video quedó en la galería, sin tocarla." };
+    if (/a la vez/.test(r.aviso)) return { aviso: "El calendario se estaba guardando a la vez: el video quedó en la galería; ponlo desde ahí." };
+    return { aviso: "La publicación ligada ya no está en su calendario: el video quedó en la galería." };
   }
-  return { aviso: "El calendario se estaba guardando a la vez: el video quedó en la galería; ponlo desde ahí." };
+  return { calendarId: r.calendarId, postId: fila.post_id };
 }
 
 /** El medio de la publicación con el mp4 de un video (`videoAnimado` dice de qué video es: el siguiente render lo cambia). */

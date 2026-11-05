@@ -14,6 +14,8 @@
 //   POST   /<cliente>/encargos/<id>/avanzar        UN paso (lo da también la bomba del espacio, sin pantalla)
 //   POST   /<cliente>/encargos/<id>/cancelar
 //   POST   /<cliente>/encargos/<id>/final          { pasoId, finales }: lo que puso el navegador (texto de plantilla, logo)
+//   POST   /<cliente>/encargos/<id>/continuar      Un REEL tras revisar su storyboard: { salida: "uno"|"clips", video, montaje?, finales? }
+//   POST   /<cliente>/encargos/<id>/montar         Un REEL: «Montarlo aquí» { automatico?, confirmadoVoz? } (y confirmar la voz)
 //   POST   /<cliente>/mejorar                      { idea, tipo, pieza? }: la IA devuelve la idea más clara (texto)
 //   POST   /<cliente>/fichas                     { piezas, concepto? }: el director de arte, una ficha de diseño por pieza (texto)
 //   POST   /<cliente>/versiones                    { idea, n, tipo, original?, texto? }: 1–3 escenas distintas con la misma
@@ -95,7 +97,7 @@ import {
   leerGaleria, subirArchivo, cambiarArchivo, marcarUso, enviarAPapelera, recuperar, borrarParaSiempre, quitarPerdido,
   vaciarPapelera, crearCarpeta, renombrarCarpeta, ordenarCarpeta, borrarCarpeta, archivoPublico, clavesPerdidas,
 } from "../lib/estudio/galeria.js";
-import { crearEncargo, avanzarEncargo, cancelarEncargo, finalesDePaso, encargoPublico, encargoConArchivos } from "../lib/estudio/encargos.js";
+import { crearEncargo, avanzarEncargo, cancelarEncargo, finalesDePaso, encargoPublico, encargoConArchivos, accionDeReel } from "../lib/estudio/encargos.js";
 
 const ID = /^[\w-]{1,80}$/;
 
@@ -275,6 +277,18 @@ export async function rutasEstudio(req, env, { acceso, usuario, partes, metodo }
         return json({ ...(await conArchivos(r?.encargo ?? fila)), ocupado: Boolean(r?.ocupado) });
       }
       if (d === "cancelar" && metodo === "POST") return json(await conArchivos(await cancelarEncargo(env, acceso, c)));
+      // El reel: seguir tras revisar el storyboard, o montarlo (y confirmar la voz del montaje).
+      if ((d === "continuar" || d === "montar") && metodo === "POST") {
+        const datos = (await cuerpo(req)) ?? {};
+        try {
+          const r = await accionDeReel(env, acceso, cliente, fila, d, datos);
+          if (r.ocupado) return json({ ...(await conArchivos(fila)), ocupado: true }, 409);
+          return json(await conArchivos(r.encargo));
+        } catch (e) {
+          if (e instanceof ErrorEstudio) return fallo(e);
+          throw e;
+        }
+      }
       if (d === "final" && metodo === "POST") {
         const datos = (await cuerpo(req)) ?? {};
         const r = await finalesDePaso(env, acceso, cliente, c, String(datos.pasoId ?? ""), datos.finales);

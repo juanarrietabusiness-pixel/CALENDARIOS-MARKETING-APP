@@ -11,11 +11,9 @@
 // ============================================================
 
 import { llamarIA } from "../cerebro/ia.js";
-import { contexto as contextoCerebro, textoParaEscribir } from "../cerebro/cerebro.js";
 import { kitDe } from "./kit.js";
-import { leerMercado } from "../mercado.js";
+import { contextoDeGuion } from "./guionVideo.js";
 import { textoPaleta } from "../../../src/lib/kitMarca.js";
-import { productosActivos, lineaDeProducto } from "../../../src/lib/estudioMercado.js";
 import { CAMPOS_MATRIZ } from "../../../src/lib/pilares.js";
 import { pedidoDeGuionCorto, leerGuionCorto, promptDeVideoCorto } from "../../../src/lib/videoCorto.js";
 import { pedidoDeVideoProducto, leerVideoProducto, promptDeVideoProducto, DURACIONES_PRODUCTO } from "../../../src/lib/videoProducto.js";
@@ -40,21 +38,17 @@ export async function guionCorto(env, acceso, cliente, datos = {}) {
   const post = Object.fromEntries(CAMPOS_MATRIZ.map((k) => [k, String(datos.post?.[k] ?? "").slice(0, 120)]));
   const textoKit = textoDelKit(cliente);
 
-  let productoLinea = "";
-  try {
-    const { catalogo, inventario } = await leerMercado(acceso, cliente.id);
-    const p = productosActivos(catalogo).find((x) => x.id === post.productoId || x.nombre === post.producto);
-    if (p) productoLinea = lineaDeProducto(p, { inventario }).slice(2);
-  } catch { /* sin catálogo, el guion sale igual */ }
-
-  let contexto = "";
-  try {
-    const c = await contextoCerebro(env, acceso, cliente.id, `${idea} ${post.producto} video reel`, { para: "texto", presupuesto: 4000 });
-    contexto = textoParaEscribir(c);
-  } catch { /* sin cerebro, sólo la idea y el kit */ }
+  // El contexto común de todo guion de video: el producto con su precio, el cerebro, el criterio y la publicación.
+  const ctx = await contextoDeGuion(env, acceso, cliente, {
+    productoId: post.productoId, producto: post.producto, consulta: `${idea} ${post.producto} video reel`, presupuesto: 4000,
+    postId: String(datos.postId ?? ""), guionPost: String(datos.guionPost ?? ""),
+  });
 
   const r = await llamarIA(env, acceso, cliente, {
-    prompt: pedidoDeGuionCorto({ marca: cliente.name, idea, segundos, post: post.pilar ? post : null, kit: textoKit, contexto, productoLinea }),
+    prompt: pedidoDeGuionCorto({
+      marca: cliente.name, idea, segundos, post: post.pilar ? post : null, kit: textoKit, contexto: ctx.contexto, productoLinea: ctx.producto,
+      criterio: ctx.criterio, guionPost: ctx.guionPost,
+    }),
     salida: 1500,
     funcion: "guion de video",
   });
@@ -74,25 +68,18 @@ export async function guionDeVideoProducto(env, acceso, cliente, datos = {}) {
   const segundos = DURACIONES_PRODUCTO.includes(pedidos) ? pedidos : pedidos >= 6 && pedidos < 10 ? Math.round(pedidos) : 10;
   const post = Object.fromEntries(CAMPOS_MATRIZ.map((k) => [k, String(datos.post?.[k] ?? "").slice(0, 120)]));
 
-  let producto = null;
-  let inventario = false;
-  try {
-    const m = await leerMercado(acceso, cliente.id);
-    inventario = m.inventario;
-    producto = productosActivos(m.catalogo).find((x) => x.id === String(datos.productoId ?? ""));
-  } catch { /* sin catálogo no hay producto */ }
+  // El contexto común de todo guion de video (el producto es OBLIGATORIO aquí: el video termina en su foto real).
+  const ctx = await contextoDeGuion(env, acceso, cliente, {
+    productoId: String(datos.productoId ?? ""), consulta: `${idea} beneficios video anuncio`, presupuesto: 3500,
+    postId: String(datos.postId ?? ""), guionPost: String(datos.guionPost ?? ""),
+  });
+  const producto = ctx.productoFila;
   if (!producto) throw Object.assign(new Error("Escoge un producto del catálogo: el video termina en su foto real."), { estado: 400 });
-
-  let contexto = "";
-  try {
-    const c = await contextoCerebro(env, acceso, cliente.id, `${idea} ${producto.nombre} beneficios video anuncio`, { para: "texto", presupuesto: 3500 });
-    contexto = textoParaEscribir(c);
-  } catch { /* sin cerebro, el producto y el kit */ }
 
   const r = await llamarIA(env, acceso, cliente, {
     prompt: pedidoDeVideoProducto({
-      marca: cliente.name, segundos, idea, kit: textoDelKit(cliente), contexto,
-      producto: lineaDeProducto(producto, { inventario }).slice(2), post: post.pilar ? post : null,
+      marca: cliente.name, segundos, idea, kit: textoDelKit(cliente), contexto: ctx.contexto,
+      producto: ctx.producto, post: post.pilar ? post : null, criterio: ctx.criterio, guionPost: ctx.guionPost,
     }),
     salida: 1500,
     funcion: "guion de video",

@@ -53,6 +53,8 @@ export function deFila(f) {
     segundos: v.guion?.escenas?.length ? lineaDeTiempo(v.guion, locucion.palabras ?? null).total : 0,
     locucion, render: leerJSON(f.render, {}), sonido: limpiarSonido(leerJSON(f.sonido, {})),
     aprobadoPor: f.aprobado_por ?? null, aprobadoAt: f.aprobado_at ?? null,
+    // De dónde salió (el montaje de un reel: { tipo: "reel", encargoId }); {} si se escribió aquí.
+    origen: leerJSON(f.origen, {}),
     creado: f.created_at, actualizado: f.updated_at,
   };
 }
@@ -94,7 +96,7 @@ export async function publicacionDelCliente(acceso, clienteId, postId) {
 }
 
 /** Crea un proyecto (borrador). → { video, avisos }. */
-export async function crearProyecto(acceso, cliente, { guion: entrada, titulo, calendarId = null, postId = null, usuario }) {
+export async function crearProyecto(acceso, cliente, { guion: entrada, titulo, calendarId = null, postId = null, usuario, origen = null }) {
   const { guion, avisos } = guionValido(entrada);
   let cal = null;
   if (calendarId) {
@@ -111,6 +113,8 @@ export async function crearProyecto(acceso, cliente, { guion: entrada, titulo, c
     titulo: limpiarTitulo(titulo ?? guion.titulo) || "Video sin título",
     // Los valores por defecto van escritos: `insertar` devuelve lo que se le dio, no la fila releída.
     estado: "borrador", version: 1, locucion: "{}", render: "{}", nota: "",
+    // De dónde sale (el montaje de un reel). Sólo lo pone el servidor: lo que llega de fuera no se cree.
+    origen: JSON.stringify(origen && typeof origen === "object" && !Array.isArray(origen) ? { tipo: String(origen.tipo ?? "").slice(0, 20), encargoId: String(origen.encargoId ?? "").slice(0, 80) } : {}),
     guion: JSON.stringify(guion), creado_por: usuario?.id ?? null, created_at: momento, updated_at: momento,
   });
   return { video: deFila(fila), avisos };
