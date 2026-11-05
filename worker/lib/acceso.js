@@ -110,6 +110,9 @@ export const TABLAS_CON_DUENO = Object.freeze([
   "biblioteca_cache",
   // Las plantillas de plan que la agencia cambió o creó (worker/rutas/plantillas.js).
   "plantillas_plan",
+  // Las recetas que la agencia cambió o creó y los pedidos de «Crear con Claude» (worker/rutas/recetas.js).
+  "recetas",
+  "handoffs",
   // Anuncios de Meta: cuentas publicitarias, campañas creadas desde la app
   // y quién activó o pausó qué (worker/lib/anuncios.js).
   "cuentas_anuncios",
@@ -162,6 +165,7 @@ export const TABLAS_CON_CLIENTE = Object.freeze([
   "cuentas_anuncios", "campanas_anuncios", "historial_anuncios",
   "planes_campana", "informes_anuncios", "anuncios_clientes",
   "historias_auto", "historias_auto_piezas",
+  "handoffs",
 ]);
 
 /** Las que cuelgan de un calendario sin llevar el cliente: se acotan por el calendario. */

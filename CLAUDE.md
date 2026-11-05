@@ -208,6 +208,9 @@ src/
     plantillasPlan.js     Las plantillas de plan: 3 objetivos × 3 negocios de arranque, juntar con lo guardado, la del
                           cliente, la línea que lee la IA (puro; también lo importa el Worker)
     plantillasApi.js      Cliente de /api/plantillas-plan
+    recetas.js            Las RECETAS: el cómo de una pieza como dato (las de la casa, juntar con las de la agencia), el pedido
+                          de «Crear con Claude» (handoff), el mensaje «/receta …» y lo que lee Claude (puro; también el Worker)
+    recetasApi.js         Cliente de /api/recetas y «Crear con Claude» (guarda el pedido, copia el mensaje, abre claude.ai)
     kitMarca.js           El kit de marca del Estudio: paleta, el bloque de marca (va en toda pieza), un preset
                           por tipo de contenido + los propios, el acabado, componer el pedido, el logo de
                           referencia, pedidos a la IA (puro; también lo importa el Worker)
@@ -452,6 +455,7 @@ src/
                           animado (lazy: el chunk de VideoAnimado está en su tope)
     ReferenciasGaleria.jsx  Ejemplos de la galería al corregir (y referencias del reel), cada uno con qué se toma
     GuardarRegla.jsx      «Guardar como regla» junto a cada corrección
+    Recetas.jsx           Las recetas de la agencia: «Crear aquí» (el director, pestaña Diseño), «Crear con Claude» y el editor (lazy)
     calendario/RevisionMes.jsx  «Revisar el mes» antes de enviarlo: reglas, IA opcional e imágenes contra el kit (lazy)
     calendario/CarruselIA.jsx   «Crear carrusel con IA»: el guion en láminas, el texto por IA o por plantilla, rehacer una (lazy)
     calendario/ProducirMes.jsx  «Diseñar las que ya hay»: las piezas que faltan en lote, con costo y confirmación (lazy)
@@ -646,13 +650,14 @@ worker/
                           (/api/webhooks/meta, sin sesión)
     anuncios.js           /api/anuncios: cuentas, campañas, estadísticas, crear, activar (admin + confirmado)
     plantillas.js         /api/plantillas-plan: listar, guardar (cambiar una de arranque o crear) y borrar/restaurar
+    recetas.js            /api/recetas: listar, guardar (cambiar una de la casa o crear), borrar/restaurar y el handoff
     formulasUgc.js        /api/formulas-ugc: las fórmulas UGC de la agencia (listar, guardar, corregir, quitar, proponer)
     inspiracion.js        /api/inspiracion/<cliente>: el feed, actualizar, traer un archivo, el resumen
     historiasAuto.js      /api/historias-auto/<cliente>: ajustes, pendientes de preparar, piezas
     videos.js             /api/videos/<cliente>: los videos animados (listar, crear, guardar el guion, aprobar, borrar)
 container/                El Container del video animado (Node + @napi-rs/canvas + ffmpeg, Dockerfile): /cuadro, /hoja, /revisar y
                           /render (render.mjs) con el MISMO motor de src/lib; probar.mjs es su prueba de humo (job «contenedor»)
-migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales, 0033 kit de marca, 0034 estudio de mercado, 0035 ritmo de contenido, 0036 inventario, 0037 plantillas de plan, 0038 campañas con varios conjuntos y anuncios, 0039 estratega, 0040 historial de anuncios, 0041 informe de anuncios, 0042 galería agrupada y repetidos, 0043 conversaciones del asistente, 0044 banco de ideas único, 0045 fórmulas UGC, 0046 inspiración, 0047 conversaciones de diseño, 0048 historias automáticas, 0049 encargos del Estudio: lote y carrusel, 0050 historias apartadas, 0051 notas fijas de los días, 0052 programar al aprobar por cliente, 0053 qué se le cambió a una nota, 0054 qué redes entran en el informe, 0055 hasta 5 historias automáticas al día, 0056 los días fijos de cada empresa, 0057 la lista aplicada de una auditoría, 0058 la caché de Scrape Creators, 0059 proyectos de video animado, 0060 sonido e historial de los videos)
+migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales, 0033 kit de marca, 0034 estudio de mercado, 0035 ritmo de contenido, 0036 inventario, 0037 plantillas de plan, 0038 campañas con varios conjuntos y anuncios, 0039 estratega, 0040 historial de anuncios, 0041 informe de anuncios, 0042 galería agrupada y repetidos, 0043 conversaciones del asistente, 0044 banco de ideas único, 0045 fórmulas UGC, 0046 inspiración, 0047 conversaciones de diseño, 0048 historias automáticas, 0049 encargos del Estudio: lote y carrusel, 0050 historias apartadas, 0051 notas fijas de los días, 0052 programar al aprobar por cliente, 0053 qué se le cambió a una nota, 0054 qué redes entran en el informe, 0055 hasta 5 historias automáticas al día, 0056 los días fijos de cada empresa, 0057 la lista aplicada de una auditoría, 0058 la caché de Scrape Creators, 0059 proyectos de video animado, 0060 sonido e historial de los videos, 0061 recetas y «Crear con Claude»)
 scripts/migracion/        Volcado desde Supabase, conversión e importación
 tests/
   utils/                  Lector de wrangler.jsonc y _headers, fallos e informe
@@ -3473,6 +3478,25 @@ son del servidor.
   · **El control mira el ACABADO** (`aspecto`: luz plana, plástico, HDR, franja plana, foto de banco, restos sueltos),
   hasta 2 con su arreglo. Solo no cambia el veredicto; si el director deja la pieza floja, va en su corrección DETRÁS
   de los arreglos de diseño, tres como mucho.
+- **Las RECETAS: el cómo de una pieza como dato, y «Crear con Claude»** (`src/lib/recetas.js`, `worker/lib/recetas.js`,
+  `worker/rutas/recetas.js`, `worker/lib/estudio/herramientasRecetas.js`, `Recetas.jsx`, 0061). Lo que hace Higgsfield con sus
+  presets, aquí con los métodos de la AGENCIA (escritos con sus palabras: los de Higgsfield no tienen licencia) y lo del
+  cliente dentro. Cosas que no se ven:
+  · **Una receta es texto, no código**: el método lo lee quien diseña (el director de la aplicación o Claude por el
+  conector) y usa las herramientas que ya existen. Hay 15 de la casa (imagen, carrusel, video con IA, video animado y
+  guion); una nueva de la casa es añadir un objeto a `RECETAS_CASA`, sin migración ni pantalla. Las de la casa en el código; una fila de `recetas` con su id la
+  sustituye (con `oculta`, la saca) y borrarla la restaura; las propias van detrás. Las cambian admin y editores (403 a un
+  colaborador), como las plantillas de plan.
+  · **«Crear con Claude» guarda el pedido UN día** (`handoffs`: el cliente, la publicación, las referencias de ESA galería
+  y «¿Qué quieres?») y abre `claude.ai/new?q=` con un mensaje corto («/receta foto-heroe · cliente … · HANDOFF: <id>»).
+  `?q=` no está documentado: el mensaje además se COPIA y se enseña. La ventana se abre ANTES de esperar al servidor (si no,
+  el navegador la bloquea). Lo paga la suscripción de Claude y necesita el conector instalado en claude.ai.
+  · **«/receta» se enruta por las instrucciones** (`REGLA_RECETAS`, en las del servidor MCP y en el sistema del asistente):
+  se resuelve PRIMERO con `receta` (`ver_recetas` las lista), que devuelve el método y, con el handoff, la publicación con
+  su texto exacto, lo pedido y las referencias COMO IMÁGENES. Un handoff caducado o de otro espacio no se canjea.
+  · **«Crear aquí»** deja escrito «/receta <id>» en el director de la pestaña Diseño (`borrador` de ChatPanel; desde una
+  publicación llega por la dirección, `?receta=&post=&pide=`, que se limpia al leerla); el director la lee con la misma
+  herramienta. Desde una publicación: «Con una receta…» en «¿Qué quieres?».
 - **El PROMPT MAESTRO de Meta AI no lo lee NINGUNA IA** (decisión de la agencia: instrucciones viejas de otro proyecto).
   `fueraDeUso` (worker/lib/cerebro/cerebro.js) deja fuera de todos los usos —también del asistente— las notas de tipo
   `maquetacion` y las que se titulan «Prompt maestro», «Meta AI» o «Nano Banana vN» (`esDelPromptMaestro`), y

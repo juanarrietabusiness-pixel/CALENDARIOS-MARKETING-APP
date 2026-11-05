@@ -58,6 +58,7 @@ import { rutasMercado } from "./rutas/mercado.js";
 import { rutasEstudio } from "./rutas/estudio.js";
 import { rutasBiblioteca } from "./rutas/biblioteca.js";
 import { rutasPlantillas } from "./rutas/plantillas.js";
+import { rutasRecetas } from "./rutas/recetas.js";
 import { rutasAnuncios } from "./rutas/anuncios.js";
 import { rutasHistoriasAuto } from "./rutas/historiasAuto.js";
 import { rutasTrozos } from "./rutas/trozos.js";
@@ -442,6 +443,8 @@ export default {
       if (partes[0] === "biblioteca") return await rutasBiblioteca(req, env, { acceso, usuario, partes, metodo });
       // Las plantillas de plan de la agencia (qué se publica cada día según el plan del cliente).
       if (partes[0] === "plantillas-plan") return await rutasPlantillas(req, env, { acceso, usuario, partes, metodo });
+      // Las recetas de la agencia (el CÓMO de una pieza) y los pedidos de «Crear con Claude».
+      if (partes[0] === "recetas") return await rutasRecetas(req, env, { acceso, usuario, partes, metodo });
       // Meta Ads: cuentas publicitarias, campañas y estadísticas. Activar es de admin y con confirmación.
       if (partes[0] === "anuncios") return await rutasAnuncios(req, env, { acceso, usuario, partes, metodo });
       // Las historias automáticas: lo ya publicado vuelve como historia, una al día.

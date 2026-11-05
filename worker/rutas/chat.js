@@ -66,6 +66,7 @@ import { leerMercado } from "../lib/mercado.js";
 import { bloqueDeMarca, kitVacio } from "../../src/lib/kitMarca.js";
 import { catalogoParaDisenar } from "../lib/estudio/catalogoDiseno.js";
 import { instruccionDeDiseno, resumenDelKit, lineaDeCorrecciones } from "../../src/lib/director.js";
+import { REGLA_RECETAS } from "../../src/lib/recetas.js";
 
 const MAX_BODY_BYTES = 8 * 1024 * 1024;
 const MAX_TOKENS = 32_000;
@@ -155,7 +156,7 @@ export async function rutaChat(req, env, { acceso, ctx, usuario = null } = {}) {
   });
 
   const cachear = body.seguido === true;
-  const system = [{ type: "text", text: INSTRUCCION_SERVIDOR }];
+  const system = [{ type: "text", text: `${INSTRUCCION_SERVIDOR}\n\n${REGLA_RECETAS}` }];
   // Con un cliente abierto, el asistente es además su DIRECTOR CREATIVO: el manual de la agencia (Ajustes), la ficha de
   // diseño, sus herramientas y lo que exige su kit (o que no lo tiene). Va antes del sistema del navegador: no cambia
   // de un mensaje a otro, así que entra en la caché.
