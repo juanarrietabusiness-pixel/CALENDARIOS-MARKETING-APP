@@ -21,6 +21,7 @@ import { productosParaPlan, limpiarEstudio } from "../../lib/estudioMercado";
 import { conNotasDelDia } from "../../lib/notasSemana";
 import { casillasSinIdea, ideasDelPlan, rellenarConIdea } from "../../lib/ideaPublicacion";
 import { avisoDeLoQueFalta } from "../../lib/materialTipo";
+import { ideasDeRevision } from "../../lib/revisionIdeas";
 import { semanaDelMes } from "../../lib/semanas";
 import { mediosDe } from "../../lib/publicacion";
 import { costoDeReels, lanzarReelDelMes, reelsLanzados, apuntarReels } from "../../lib/asistenteMesApi";
@@ -318,7 +319,7 @@ function PasoPlan({ client, cal, onGuardarPlan, onPoner, onPlanificarAMano, onPr
         <section className="asistente-mes-bloque" aria-labelledby={`${ids}-fe`}>
           <h3 id={`${ids}-fe`}>Fechas especiales de {MONTHS[month].toLowerCase()}</h3>
           <ul className="asistente-mes-chips">
-            {fechas.map((f) => <li key={f.id ?? f.fecha + f.nombre} className="lote-insignia" data-delicada={f.delicada || undefined}>{fechaCorta(f.fecha)} · {f.nombre}{f.delicada ? " (sin promociones)" : ""}</li>)}
+            {fechas.map((f) => <li key={f.id ?? f.fecha + f.nombre} data-delicada={f.delicada || undefined}>{fechaCorta(f.fecha)} · {f.nombre}{f.delicada ? " (sin promociones)" : ""}</li>)}
           </ul>
         </section>
       )}
@@ -327,7 +328,7 @@ function PasoPlan({ client, cal, onGuardarPlan, onPoner, onPlanificarAMano, onPr
         <fieldset className="asistente-mes-bloque">
           <legend className="label">Ajustes de temporada (opcionales)</legend>
           {sugerencias.map((s) => (
-            <label key={s.id} className="cerebro-casilla">
+            <label key={s.id} className="asistente-mes-casilla">
               <input type="checkbox" checked={aceptada(s)} onChange={(e) => setAceptadas((l) => (e.target.checked ? [...l, s] : l.filter((x) => x.fecha !== s.fecha)))} />
               {fechaCorta(s.fecha)}: {nombreDePilar(s.de)} → {nombreDePilar(s.a)} <span className="hint">({s.motivo})</span>
             </label>
@@ -339,7 +340,7 @@ function PasoPlan({ client, cal, onGuardarPlan, onPoner, onPlanificarAMano, onPr
         <h3 id={`${ids}-pl`}>Lo que entra en el calendario</h3>
         {pasado && <p className="notice notice-warn" style={{ display: "block" }}>Este mes ya pasó: el plan no pone nada en él.</p>}
         {ocupados.size > 0 && (
-          <label className="cerebro-casilla">
+          <label className="asistente-mes-casilla">
             <input type="checkbox" checked={llenar} onChange={(e) => setLlenar(e.target.checked)} />
             Añadir también en los {ocupados.size} días que ya tienen publicaciones (si no, el plan sólo llena los días libres)
           </label>
@@ -408,6 +409,8 @@ function PasoIdeas({ client, cal, escribir, onCompletarTextos, completando, esta
   const [estado, setEstado] = useState({ cargando: false, texto: "", error: "" });
   const generando = useRef(false);
   const sinIdea = casillasSinIdea(cal);
+  // La lista de la aprobación sólo con ideas escritas (las casillas sin idea se escriben arriba).
+  const hayIdeas = ideasDeRevision(cal).length > 0;
   const e = limpiarEstrategia(cal.opciones?.estrategia);
   const semanas = semanasDelPlan(cal.year, cal.month);
   const calVivo = useRef(cal);
@@ -470,9 +473,10 @@ function PasoIdeas({ client, cal, escribir, onCompletarTextos, completando, esta
 
       <BalanceDelMes days={cal.days ?? []} semanas={semanas} objetivo={e?.objetivo ?? ""} foco={e?.foco ?? ""} />
 
-      <Suspense fallback={cargando("Abriendo las ideas…")}>
+      {hayIdeas && <Suspense fallback={cargando("Abriendo las ideas…")}>
         <RevisarIdeas incrustado client={client} cal={cal} onAplicar={(cambiar) => escribir((c) => ({ ...c, days: cambiar(c.days ?? []) }))} onClose={nada} />
-      </Suspense>
+      </Suspense>}
+      {!hayIdeas && !sinIdea.length && <p className="revision-vacio"><Icon name="checkCircle" size={18} /> Este mes no tiene ideas por revisar: todo lo que tiene ya lleva su pieza (o está vacío; empieza por el plan).</p>}
 
       <details className="asistente-mes-mas">
         <summary className="hint">Más: completar los textos que faltan</summary>
@@ -499,6 +503,9 @@ function PasoDisenar({ client, cal, escribir }) {
         Sólo las ideas APROBADAS (paso anterior). Lo lleva el servidor con el director y el control de calidad: puedes cerrar, y cada
         pieza se pone SOLA en su publicación al terminar (también queda en la galería).
       </p>
+      {!e.porDisenar && e.porAprobar > 0 && (
+        <p className="notice notice-warn" style={{ display: "block" }}>Todavía no hay ideas aprobadas: {e.porAprobar} esperan en el paso de las ideas.</p>
+      )}
       <Suspense fallback={cargando("Abriendo el diseño…")}>
         <ProducirMes incrustado ponerSolas sinReels client={client} cal={cal}
           onPoner={(cambiar) => escribir((c) => ({ ...c, days: (c.days ?? []).map((d) => ({ ...d, posts: (d.posts ?? []).map(cambiar) })) }))} onClose={nada} />
@@ -616,7 +623,7 @@ function ReelsDelMes({ client, cal }) {
               const r = costo?.reels?.find((x) => x.postId === post.id);
               return (
                 <li key={post.id} className="revision-item">
-                  <label className="revision-cabeza cerebro-casilla">
+                  <label className="revision-cabeza asistente-mes-casilla">
                     <input type="checkbox" checked={elegidos.some((c) => c.post.id === post.id)} disabled={estado.cargando}
                       onChange={(e) => { setCosto(null); setMarcados((s) => { const n = new Set(s ?? candidatos.map((c) => c.post.id)); if (e.target.checked) n.add(post.id); else n.delete(post.id); return n; }); }} />
                     <strong>{fechaCorta(date)}</strong>
@@ -627,7 +634,7 @@ function ReelsDelMes({ client, cal }) {
               );
             })}
           </ul>
-          <label className="cerebro-casilla">
+          <label className="asistente-mes-casilla">
             <input type="checkbox" checked={montar} onChange={(e) => setMontar(e.target.checked)} /> Montarlos con la voz de la marca, el texto y el logo (la voz se confirma aparte, con su costo)
           </label>
           <div className="asistente-mes-acciones">
@@ -702,7 +709,7 @@ function PasoEnviar({ client, cal, escribir, onEnviar, onAbrirPost, onArreglar }
               {e.sinHora} {e.sinHora === 1 ? "publicación no tiene" : "publicaciones no tienen"} hora: aprobadas no se podrían programar sin tocarlas. Se les pone
               la del plan semanal para su día y su formato y, si el plan no la dice, ésta:
             </p>
-            <div className="asistente-mes-fila">
+            <div className="field" style={{ margin: 0 }}>
               <label className="label" htmlFor={`${ids}-hd`}>Hora por defecto</label>
               <TimePicker id={`${ids}-hd`} atajos value={porDefecto} onChange={setPorDefecto} />
             </div>

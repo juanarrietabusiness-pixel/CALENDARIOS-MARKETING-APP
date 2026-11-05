@@ -31,17 +31,25 @@
 
 .asistente-mes-semanas { border: none; padding: 0; margin: 0; display: grid; gap: var(--sp-2); }
 .asistente-mes-semana-fila { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 200px); gap: var(--sp-2); }
+.asistente-mes-semana-fila .estrategia-etapa { width: 100%; }
 
 .asistente-mes-semana-plan { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--sp-1); }
 .asistente-mes-semana-plan li { display: grid; grid-template-columns: 3.5em minmax(0, 1fr); gap: 0 var(--sp-2); font-size: var(--fs-xs); }
 .asistente-mes-semana-plan li .hint { grid-column: 2; }
 .asistente-mes-chips { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--sp-1); }
+.asistente-mes-chips li {
+  font-size: var(--fs-2xs); padding: var(--sp-1) var(--sp-2); border-radius: var(--radius-pill); background: var(--surface-2); border: 1px solid var(--border);
+}
+.asistente-mes-chips li[data-delicada] { border-style: dashed; }
+.asistente-mes-bloque > .btn { align-self: flex-start; }
+.asistente-mes-casilla { display: flex; align-items: flex-start; gap: var(--sp-2); font-size: var(--fs-xs); cursor: pointer; min-height: var(--tap-sm); }
+.asistente-mes-casilla input { margin-top: 3px; flex-shrink: 0; width: 18px; height: 18px; accent-color: var(--accent); }
 
 .asistente-mes-plan-semana ul { list-style: none; margin: var(--sp-1) 0 0; padding: 0; display: grid; gap: 2px; }
 .asistente-mes-plan-semana li { display: flex; flex-wrap: wrap; gap: var(--sp-2); font-size: var(--fs-xs); padding: 2px 0; border-bottom: 1px solid var(--border); }
 
 /* Las pantallas incrustadas (envolturaMes.jsx): sin el marco de diálogo. */
-.mes-incrustado { display: flex; flex-direction: column; gap: var(--sp-2); }
+.revision-mes.mes-incrustado { display: flex; flex-direction: column; gap: var(--sp-2); max-width: none; }
 .mes-incrustado .sheet-header, .mes-incrustado .sheet-body, .mes-incrustado .sheet-footer { padding-left: 0; padding-right: 0; }
 .mes-incrustado .sheet-body { overflow: visible; max-height: none; }
 .mes-incrustado .sheet-footer { position: static; border-top: 1px solid var(--border); }
