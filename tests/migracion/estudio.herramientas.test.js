@@ -7,6 +7,7 @@ import { crearEjecutor, DEFINICIONES, NOMBRES } from "../../worker/lib/herramien
 import { crearHerramientasMCP, HERRAMIENTAS_MCP } from "../../worker/lib/mcp.js";
 import { MODELOS, estimar, pideConfirmar } from "../../src/lib/estudioCatalogo.js";
 import { USOS, fueraDeUso } from "../../worker/lib/cerebro/cerebro.js";
+import { avanzarEncargo } from "../../worker/lib/estudio/encargos.js";
 
 // ============================================================
 // El Estudio desde el asistente y desde Claude (MCP), contra una D1 de verdad
@@ -77,6 +78,17 @@ function nota(id, cliente, { titulo, texto, tipo = "marca", interna = 0 }) {
 }
 
 const trabajos = () => db.sqlite.prepare("select * from estudio_trabajos order by created_at").all().map((t) => ({ ...t }));
+/** Una IMAGEN de crear_en_estudio es un ENCARGO del servidor (con el director, el control y el logo): sus filas y pasos. */
+const encargos = () => db.sqlite.prepare("select * from estudio_encargos order by created_at").all().map((e) => ({ ...e, pasos: JSON.parse(e.pasos), datos: JSON.parse(e.datos) }));
+/**
+ * El trabajo que el encargo pide (como lo haría la bomba): sin llave de IA de texto el director no responde y la pieza va
+ * con la idea tal cual; con una ficha, va a la primera.
+ */
+async function trabajoDelEncargo(i = 0) {
+  const id = encargos()[i].id;
+  for (let k = 0; k < 4 && trabajos().length <= i; k++) await avanzarEncargo(env, acceso, id);
+  return trabajos()[i];
+}
 
 /** Las tres herramientas, como las ve el asistente de un cliente. */
 const asistente = (extra = {}, clienteActual = null) => crearEjecutor({
@@ -168,7 +180,7 @@ describe("ver_estudio", () => {
     const r = await usar(asistente(), "crear_en_estudio", { cliente: "Baby Caleb", prompt: "la caja", modelo: "prueba", referencias: ["foto-pants"] });
     expect(r.error).toBe(false);
     // La foto del catálogo va como el producto REAL (como en la pantalla), con cómo usarla: no de estilo.
-    const t = trabajos().find((x) => x.client_id === "c2");
+    const t = await trabajoDelEncargo();
     expect(t.prompt).toMatch(/Imagen de referencia 1: es la foto REAL del producto «Pañales Nateen tipo pants»/);
     expect(t.prompt).toMatch(/endereza el producto/);
   });
@@ -189,15 +201,45 @@ describe("ver_estudio", () => {
 });
 
 describe("crear_en_estudio", () => {
-  it("crea el pedido en la cola, firmado, y dice el id y dónde verlo", async () => {
+  it("una IMAGEN va por un ENCARGO del servidor (director, control y logo, como el lote), firmado, y dice el id y dónde verlo", async () => {
     const { texto, error } = await usar(asistente(), "crear_en_estudio", { cliente: "Dcasa", prompt: "un sofá gris", modelo: "prueba", cantidad: 2, formato: "4:5" });
     expect(error).toBe(false);
-    const [t] = trabajos();
-    expect(t).toMatchObject({ client_id: "c1", modelo: "prueba", n: 2, estado: "en_cola", origen: "asistente", creado_por: ANA, prompt: "un sofá gris" });
-    expect(JSON.parse(t.ajustes)).toMatchObject({ aspectRatio: "4:5" });
-    expect(texto).toContain(t.id);
+    const [e] = encargos();
+    expect(e).toMatchObject({ client_id: "c1", tipo: "lote", estado: "en_marcha", creado_por: ANA });
+    expect(e.datos).toMatchObject({ mejorar: true, controlar: true, origen: "asistente" });
+    expect(e.pasos).toHaveLength(2);
+    // Sin ficha, la diseña el director de la agencia: el pedido lleva el hueco de la escena y el control.
+    expect(e.pasos[0]).toMatchObject({ controlar: true, sinMejorar: "un sofá gris", fase: "nuevo" });
+    expect(e.pasos[0].encargo.idea).toBe("un sofá gris");
+    expect(e.pasos[0].pedido.prompt).toContain("{{ESCENA}}");
+    expect(texto).toContain(e.id);
     expect(texto).toMatch(/estado_trabajo/);
+    expect(texto).toMatch(/director de arte/);
+    expect(texto).toMatch(/control de calidad/);
     expect(texto).toMatch(/no hace falta esperar/);
+    // El trabajo de cada pieza, firmado como antes.
+    const t = await trabajoDelEncargo();
+    expect(t).toMatchObject({ client_id: "c1", modelo: "prueba", n: 1, origen: "asistente", creado_por: ANA, prompt: "un sofá gris" });
+    expect(JSON.parse(t.ajustes)).toMatchObject({ aspectRatio: "4:5" });
+  });
+
+  it("sin modelo pedido, la imagen sale con el modelo FIJADO del cliente (no con el predeterminado)", async () => {
+    db.sqlite.prepare("update clients set kit_marca = ? where id = 'c1'").run(JSON.stringify({ modelos: { imagen: "prueba" } }));
+    env.GOOGLE_AI_KEY = undefined;
+    const { error } = await usar(asistente(), "crear_en_estudio", { cliente: "Dcasa", prompt: "Pieza: post 4:5.\nComposición: el sofá al centro.\nTexto (exacto): titular «Hola»." });
+    expect(error).toBe(false);
+    expect(encargos()[0].pasos[0].pedido.modelo).toBe("prueba");
+    // Con una ficha, la escena va lista (no espera al director) y el control compara su texto exacto.
+    expect(encargos()[0].datos.mejorar).toBe(false);
+    expect(encargos()[0].pasos[0].texto).toBe("Hola");
+  });
+
+  it("con el logo ESTAMPADO en el kit, el servidor lo estampa (antes, por aquí, salía sin logo)", async () => {
+    objetos.set("clientes/c1/estudio/logo.png", { bytes: new Uint8Array([1]), tipo: "image/png" });
+    db.sqlite.prepare("update clients set kit_marca = ? where id = 'c1'").run(JSON.stringify({ estilo: "cálido", logo: "clientes/c1/estudio/logo.png", logoModo: "estampado" }));
+    await usar(asistente(), "crear_en_estudio", { cliente: "Dcasa", prompt: "una sala", modelo: "prueba" });
+    expect(encargos()[0].pasos[0].navegador).toEqual({ plantilla: null, logo: true });
+    expect(encargos()[0].pasos[0].pedido.medios.reference ?? []).not.toContain("clientes/c1/estudio/logo.png");
   });
 
   it("sin_logo: el primer fotograma de un video sale SIN el logo del kit y el pedido dice que no se invente uno", async () => {
@@ -205,7 +247,7 @@ describe("crear_en_estudio", () => {
     db.sqlite.prepare("update clients set kit_marca = ? where id = 'c1'").run(JSON.stringify({ estilo: "cálido", logo: "clientes/c1/estudio/logo.png" }));
     const { error } = await usar(asistente(), "crear_en_estudio", { cliente: "Dcasa", prompt: "una sala", modelo: "prueba", formato: "9:16", sin_logo: true });
     expect(error).toBe(false);
-    const [t] = trabajos();
+    const t = await trabajoDelEncargo();
     expect(JSON.parse(t.medios ?? "{}").reference ?? []).not.toContain("clientes/c1/estudio/logo.png");
     expect(t.prompt).not.toContain("La ÚLTIMA imagen de referencia es el logo REAL de la marca");
     expect(t.prompt).toMatch(/No dibujes ni inventes ningún logo/);
@@ -218,7 +260,7 @@ describe("crear_en_estudio", () => {
     }));
     const { error } = await usar(asistente(), "crear_en_estudio", { cliente: "Dcasa", prompt: "un sofá junto a la ventana", modelo: "prueba", estilo: "servicios" });
     expect(error).toBe(false);
-    const [t] = trabajos();
+    const t = await trabajoDelEncargo();
     expect(t.prompt).toMatch(/^Escena: un sofá junto a la ventana\n\nTipo de pieza .*: Pieza de producto o servicio de Dcasa/);
     expect(t.prompt).toContain("Paleta estrictamente limitada a: azul #1E2A5A (dominante)");
     expect(t.prompt).toContain("La ÚLTIMA imagen de referencia es el logo REAL de la marca");
@@ -228,7 +270,7 @@ describe("crear_en_estudio", () => {
   it("SIN estilo, la marca va igual (antes la imagen no sabía nada de ella); un estilo que no existe se dice", async () => {
     db.sqlite.prepare("update clients set kit_marca = ? where id = 'c1'").run(JSON.stringify({ paleta: [{ hex: "#1E2A5A", nombre: "azul" }], estilo: "cálido" }));
     expect((await usar(asistente(), "crear_en_estudio", { cliente: "Dcasa", prompt: "una cuna", modelo: "prueba" })).error).toBe(false);
-    expect(trabajos()[0].prompt).toMatch(/^Escena: una cuna\n\nAcabado profesional[^\n]*\n\nIdentidad de la marca/);
+    expect((await trabajoDelEncargo()).prompt).toMatch(/^Escena: una cuna\n\nAcabado profesional[^\n]*\n\nIdentidad de la marca/);
     const r = await usar(asistente(), "crear_en_estudio", { cliente: "Dcasa", prompt: "x", modelo: "prueba", estilo: "producto" });
     expect(r.error).toBe(true);
   });
@@ -250,8 +292,8 @@ describe("crear_en_estudio", () => {
     ].join("\n");
     const { texto, error } = await usar(asistente(), "crear_en_estudio", { cliente: "Dcasa", prompt: ficha, modelo: "prueba" });
     expect(error).toBe(false);
-    expect(texto).toMatch(/se acortó quitando primero «Marca»/);
-    const [t] = trabajos();
+    expect(texto).toMatch(/quitando primero «Marca»/);
+    const t = await trabajoDelEncargo();
     expect(t.prompt.length).toBeLessThanOrEqual(4000);
     expect(t.prompt).toContain("«Duerme mejor desde hoy»");
     expect(t.prompt).not.toMatch(/^Evitar:/m);
@@ -261,7 +303,7 @@ describe("crear_en_estudio", () => {
     const c1 = await acceso.leerUno("clients", { id: "c1" });
     const { error } = await usar(asistente({}, c1), "crear_en_estudio", { prompt: "una cuna", modelo: "prueba" });
     expect(error).toBe(false);
-    expect(trabajos()[0].client_id).toBe("c1");
+    expect(encargos()[0].client_id).toBe("c1");
   });
 
   it("un pedido caro NO se crea hasta que llega confirmado=true", async () => {
@@ -299,6 +341,7 @@ describe("crear_en_estudio", () => {
     expect((await usar(asistente(), "crear_en_estudio", { cliente: "Dcasa", prompt: "x", modelo: "prueba", cantidad: 1.5 })).error).toBe(true);
     expect((await usar(asistente(), "crear_en_estudio", { cliente: "Dcasa", prompt: "x", tipo: "video", modelo: "prueba-video", cantidad: LIMITES.videos + 1 })).error).toBe(true);
     expect(trabajos()).toHaveLength(0);
+    expect(encargos()).toHaveLength(0);
     // Y el tope se cumple justo en el límite.
     expect((await usar(asistente(), "crear_en_estudio", { cliente: "Dcasa", prompt: "x", modelo: "prueba", cantidad: LIMITES.imagenes })).error).toBe(false);
   });
@@ -317,7 +360,7 @@ describe("crear_en_estudio", () => {
   it("el prompt no puede ir vacío", async () => {
     const r = await usar(asistente(), "crear_en_estudio", { cliente: "Dcasa", prompt: "   ", modelo: "prueba" });
     expect(r.error).toBe(true);
-    expect(trabajos()).toHaveLength(0);
+    expect(encargos()).toHaveLength(0);
   });
 
   describe("imágenes de apoyo, por id de la galería", () => {
@@ -352,7 +395,7 @@ describe("crear_en_estudio", () => {
       archivo("r2", "c1");
       const ok = await usar(asistente(), "crear_en_estudio", { cliente: "Dcasa", modelo: "prueba", prompt: "como esta", referencias: ["r1", "r2"] });
       expect(ok.error, ok.texto).toBe(false);
-      expect(JSON.parse(trabajos()[0].medios).reference).toHaveLength(2);
+      expect(encargos()[0].pasos[0].pedido.medios.reference).toHaveLength(2);
       const demasiadas = await usar(asistente(), "crear_en_estudio", { cliente: "Dcasa", modelo: "prueba", prompt: "x", referencias: Array.from({ length: 9 }, (_, i) => `r${i}`) });
       expect(demasiadas.error).toBe(true);
     });
@@ -369,12 +412,24 @@ describe("crear_en_estudio", () => {
     expect(r.error).toBe(true);
     expect(r.texto).toMatch(/No encontré el cliente/);
     expect(trabajos()).toHaveLength(0);
+    expect(encargos()).toHaveLength(0);
   });
 });
 
 describe("estado_trabajo", () => {
-  it("cuenta cómo va y qué archivos dio", async () => {
+  it("el ID de una IMAGEN (un encargo) también vale: cada pieza y cómo va", async () => {
     const creado = await usar(asistente(), "crear_en_estudio", { cliente: "Dcasa", prompt: "un sofá", modelo: "prueba" });
+    const id = encargos()[0].id;
+    expect(creado.texto).toContain(id);
+    const { texto, error } = await usar(asistente(), "estado_trabajo", { trabajo_id: id });
+    expect(error).toBe(false);
+    expect(texto).toContain(`Pedido ${id}: en marcha`);
+    expect(texto).toMatch(/1\. Imagen — esperando/);
+    expect(texto).toMatch(/se hace solo/);
+  });
+
+  it("cuenta cómo va y qué archivos dio", async () => {
+    const creado = await usar(asistente(), "crear_en_estudio", { cliente: "Dcasa", tipo: "video", prompt: "el sofá gira", modelo: "prueba-video" });
     const id = trabajos()[0].id;
     expect(creado.texto).toContain(id);
     const { texto } = await usar(asistente(), "estado_trabajo", { trabajo_id: id });
@@ -439,7 +494,7 @@ describe("por MCP (Claude)", () => {
 
     const ok = await h.llamar("crear_en_estudio", { cliente: "Dcasa", prompt: "un sofá", modelo: "prueba" });
     expect(ok.isError).toBeUndefined();
-    expect(trabajos()[0]).toMatchObject({ origen: "claude", creado_por: ANA });
+    expect(await trabajoDelEncargo()).toMatchObject({ origen: "claude", creado_por: ANA });
   });
 
   it("un error de lo pedido vuelve como resultado con isError, sin tumbar la llamada", async () => {
