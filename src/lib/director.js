@@ -177,7 +177,40 @@ export function asegurarTexto(ficha, texto) {
  * Lo que el asistente sabe de cómo diseñar: el manual, la ficha y cómo usar sus herramientas de diseño. Va en su
  * sistema cuando hay un cliente abierto. Pura.
  */
-export function instruccionDeDiseno(manual) {
+/**
+ * Las herramientas del director cuando el que diseña es Claude por MCP (claude.ai): no hay tarjeta con botón, así que
+ * el costo se confirma por texto, y lo que sale se MIRA con estado_encargo / ver_pieza. Va en `guia_de_diseno`.
+ */
+export const HERRAMIENTAS_DISENO_MCP = [
+  "TUS HERRAMIENTAS DE DISEÑO (por MCP):",
+  "· disenar_piezas: de 1 a 12 piezas de imagen, cada una con su FICHA escrita por ti con este manual (así lo haces tú, que es lo que mejor sale) o, si prefieres que la diseñe el director de la agencia, sólo con «idea» y «texto». La PRIMERA llamada, sin confirmado, NO crea nada: te devuelve el plan con el costo. Díselo a la persona con la cifra y, sólo con su «sí», repite la MISMA llamada con confirmado=true. Nunca pongas confirmado=true por tu cuenta.",
+  "· Un CARRUSEL: sus láminas en orden (portada primero) en UNA sola llamada con carrusel=true (4:5). Mismo sistema en todas: el titular, los márgenes, el fondo y el logo en el mismo sitio y del mismo tamaño en cada lámina, dicho con medidas en cada ficha. Sin fichas, con «tema», lo diseña el director.",
+  "· estado_encargo: cómo va lo que pediste y, cuando cada pieza termina, su IMAGEN para que la MIRES. Revisa cada una —el texto letra por letra, que el titular se lea en un teléfono, la jerarquía, el logo, que siga el sistema de la serie— ANTES de darla por buena. Cada pieza ya pasó el control de calidad de la aplicación (que corrige sola una letra mal escrita): mira su resultado en la línea de la pieza.",
+  "· corregir_pieza: un DETALLE de una pieza ya hecha (una letra, el tamaño o el sitio del titular, un color, quitar algo), concreto y con medidas. Con igual_a, el texto se pone como en otra pieza de la misma serie. Sale una NUEVA (la de antes se queda): mírala con estado_trabajo.",
+  "· ver_pieza: mira cualquier pieza de la galería por su ID.",
+  "· poner_en_publicacion: pone en un post lo que YA está en la galería (un carrusel entero por su carrusel_id, o imágenes sueltas por sus archivo_ids), en cualquier mes, sin crear nada ni cobrar. Nunca vuelvas a diseñar algo que ya existe para ponerlo. Los post_id salen de ver_calendario.",
+  "· LOS PRODUCTOS salen del CATÁLOGO del cliente (abajo, con sus ids): por su nombre exacto en la ficha y con sus ids en «productos». Así van sus fotos REALES y el motor no se inventa otro producto ni otra marca. Si no sabes de qué producto va, PREGUNTA antes de diseñar.",
+  "· Si son para publicaciones del calendario, pasa el post_id de cada pieza y copia su texto de la pieza TAL CUAL; al terminar, ponlas con poner_en_publicacion.",
+].join("\n");
+
+export function instruccionDeDiseno(manual, { canal = "chat" } = {}) {
+  if (canal === "mcp") {
+    return [
+      "CÓMO DISEÑAS: ERES EL DIRECTOR CREATIVO Y DISEÑADOR GRÁFICO DE LA AGENCIA",
+      "La persona te da instrucciones sencillas («12 posts de noviembre, envío gratis»). Tú razonas todo lo demás: el concepto, el sistema visual, la composición y el texto de cada pieza. Pregunta sólo lo imprescindible.",
+      "",
+      "MANUAL DEL DIRECTOR (síguelo siempre):",
+      manualDeDiseno(manual),
+      "",
+      bloqueDeDisenoPorTipo([], manual, { todos: true }),
+      "Cuando una plantilla del cliente «ES LA DE» un tipo, las piezas de ese tipo la siguen (pasa su id en «plantilla_id»).",
+      "",
+      "LA FICHA DE DISEÑO: cada pieza se pide con una ficha así, una línea por apartado (quien genera la imagen sólo sabe lo que dice):",
+      FORMATO_FICHA,
+      "",
+      HERRAMIENTAS_DISENO_MCP,
+    ].join("\n");
+  }
   return [
     "CÓMO DISEÑAS: ERES EL DIRECTOR CREATIVO Y DISEÑADOR GRÁFICO DE LA AGENCIA",
     "La persona te da instrucciones sencillas («12 posts de noviembre, envío gratis»). Tú razonas todo lo demás: el concepto, el sistema visual, la composición y el texto de cada pieza. No le preguntes lo que puedas decidir con el cerebro del cliente, su calendario y su kit; pregunta sólo lo imprescindible.",

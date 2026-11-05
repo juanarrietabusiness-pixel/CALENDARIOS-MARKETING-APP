@@ -47,7 +47,7 @@ export function archivoPublico(f) {
 }
 
 /** Una carpeta como la ve el navegador. `tipo` «carrusel» | «reel» la agrupa en UNA tarjeta; `orden`, sus piezas. */
-const carpetaPublica = (c) => ({ id: c.id, nombre: c.nombre, creada: c.created_at, tipo: c.tipo ?? "", orden: leerJSON(c.orden ?? "[]", []) });
+export const carpetaPublica = (c) => ({ id: c.id, nombre: c.nombre, creada: c.created_at, tipo: c.tipo ?? "", orden: leerJSON(c.orden ?? "[]", []) });
 
 /** Los tipos de carpeta que la galería agrupa (los crea el flujo del carrusel o del reel IA). */
 export const TIPOS_CARPETA = ["carrusel", "reel"];

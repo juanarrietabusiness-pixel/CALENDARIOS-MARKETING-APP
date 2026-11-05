@@ -26,6 +26,7 @@ import { aprobadasSinProgramar, fechaHora } from "../../src/lib/cola.js";
 import { fechaEnZona, sumarDias } from "../../src/lib/agenda.js";
 import { obtenerOCrearMes, moverDeMes, ErrorMes } from "./meses.js";
 import { DEFINICIONES_ESTUDIO, crearHerramientasEstudio, ErrorHerramientaEstudio } from "./estudio/herramientas.js";
+import { DEFINICIONES_DISENO_MCP, crearHerramientasDiseno, ErrorDiseno } from "./estudio/herramientasDiseno.js";
 import { ESCRIBEN_VIDEO } from "./estudio/herramientasVideo.js";
 
 const FORMATOS = ["post", "reel", "carrusel", "historia", "live"];
@@ -102,6 +103,8 @@ export const HERRAMIENTAS_MCP = Object.freeze([
     inputSchema: { ...inputSchema, required: [...new Set([...(inputSchema.required ?? []), ...(["estado_trabajo", "formato_video"].includes(name) ? [] : ["cliente"])])] },
     annotations: ["crear_en_estudio", "previsualizar_voz", "generar_locucion", "generar_musica", ...ESCRIBEN_VIDEO].includes(name) ? escribe() : soloLectura,
   })),
+  // El DIRECTOR CREATIVO por MCP (worker/lib/estudio/herramientasDiseno.js): diseñar en lote, ver, corregir y poner en un post.
+  ...DEFINICIONES_DISENO_MCP,
 ]);
 
 /** Un error de lo pedido: vuelve a Claude como resultado con `isError`, no como fallo del servidor. */
@@ -368,7 +371,7 @@ export function crearHerramientasMCP({ env, acceso, usuario }) {
       }
       return { content: [{ type: "text", text: `Herramienta desconocida: ${nombre}` }], isError: true };
     } catch (e) {
-      const delPedido = e instanceof ErrorHerramienta || e instanceof ErrorHerramientaEstudio;
+      const delPedido = e instanceof ErrorHerramienta || e instanceof ErrorHerramientaEstudio || e instanceof ErrorDiseno;
       if (!delPedido) console.error("mcp:", nombre, e);
       return { content: [{ type: "text", text: delPedido ? e.message : `No se pudo: ${e?.message ?? e}` }], isError: true };
     }
@@ -376,6 +379,7 @@ export function crearHerramientasMCP({ env, acceso, usuario }) {
 
   const estudio = crearHerramientasEstudio({ env, acceso, resolverCliente, usuario, por, origen: "claude" });
   Object.assign(acciones, estudio);
+  Object.assign(acciones, crearHerramientasDiseno({ env, acceso, resolverCliente, usuario, por, buscarPublicacion: buscar, guardarDias }));
 
   return { llamar };
 }

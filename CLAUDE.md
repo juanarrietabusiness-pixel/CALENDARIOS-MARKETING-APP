@@ -259,6 +259,8 @@ src/
     piezaChat.js          La imagen o el video que pide el asistente, por el Estudio con el kit del cliente (lazy)
     referencias.js        Qué se toma de cada imagen de referencia (estilo, composición, producto…), la foto
                           REAL del producto (y si es de otra marca), el producto que nombra la idea (puro)
+    galeriaPura.js        Lo PURO de la galería que necesitan la pantalla y el Worker: fotos de un producto, piezas de un
+                          carrusel en orden, poner piezas en un post, igualar el texto (lib/estudio.js lo re-exporta)
     estudio.js            Cliente de /api/estudio y lo puro de la pantalla: filtros (también «Usadas / Sin usar»),
                           trabajos en curso, carruseles y reels agrupados en una tarjeta (`agruparGaleria`),
                           de una publicación al Estudio y del Estudio a una publicación
@@ -573,6 +575,8 @@ worker/
                           resultado a R2 por flujo, con topes), herramientas.js (ver_estudio,
                           crear_en_estudio y estado_trabajo: las mismas para el asistente y el MCP),
                           miniaturas.js (la copia reducida que VE Claude, por el Container),
+                          herramientasDiseno.js (el DIRECTOR por MCP: guía, diseñar, estado del encargo, corregir, poner en
+                          un post), catalogoDiseno.js (el catálogo para quien diseña: chat y MCP),
                           higgsfield-schemas.json (SU documentación: campos, valores, obligatorios), elevenlabs.js (la voz
                           directo con la llave oficial), ideas.js
                           («Dame ideas»), lote.js (la producción en lote: niveles, matriz, tipos y mes), encargos.js
@@ -3438,6 +3442,19 @@ son del servidor.
   `maquetacion` y las que se titulan «Prompt maestro», «Meta AI» o «Nano Banana vN» (`esDelPromptMaestro`), y
   `buildClientContext` ya no tiene `{ maquetacion }`: el ADN de antes llega siempre sin esa capa. Las notas siguen en la
   pestaña Cerebro para borrarlas. Si vuelve a aparecer «prompt maestro» en un pedido, es una regresión.
+- **El DIRECTOR también por MCP: Claude en claude.ai diseña en lote, ve, corrige y pone en el post**
+  (`worker/lib/estudio/herramientasDiseno.js`; sólo en el MCP: el asistente de la aplicación tiene las suyas con el mismo
+  nombre, en el navegador). `guia_de_diseno` da lo que el chat recibe en su sistema (el manual, la ficha, el kit, el
+  catálogo, lo que la agencia corrige; `instruccionDeDiseno(manual, { canal: "mcp" })`, con la confirmación por TEXTO) y,
+  como imágenes, sus plantillas y sus «Me gusta». `disenar_piezas`: cada pieza con la ficha de Claude o sólo con su idea
+  (la diseña el director de la agencia, `fichasDeDiseno`); la primera llamada devuelve el plan con su costo y NO crea nada,
+  y sólo `confirmado: true` crea un ENCARGO del servidor (encargos.js: trabajo, proporción, control y una corrección). Un
+  carrusel, en orden y en su carpeta de tipo carrusel (con tema y sin fichas, `propuesta`). Cada pieza se arma con el
+  MISMO `apoyosDePieza` + `pedidoDePieza` que la pantalla, con la escena en «{{ESCENA}}»: por eso `pieza.js` importa de
+  `galeriaPura.js` y no de `estudio.js` (el cliente HTTP no puede entrar al Worker). `estado_encargo` enseña lo listo como
+  imagen; `corregir_pieza` edita la misma imagen (o la iguala a otra con `igual_a`); `poner_en_publicacion` pone lo de la
+  galería en un post de cualquier mes y apunta su uso. Un logo «estampado» queda puesto cuando alguien abre el Estudio
+  (necesita lienzo).
 - **El asistente es el DIRECTOR CREATIVO del cliente** (`src/lib/director.js`, `src/lib/disenoChat.js`,
   `src/lib/herramientasDiseno.js`, `PlanDePiezas.jsx`). Con un cliente, el Worker le pone en el sistema el manual, la
   ficha, sus herramientas y lo que exige su kit (o que NO tiene kit: lo dice y ofrece prepararlo) —`instruccionDeDiseno`,

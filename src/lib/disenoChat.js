@@ -30,7 +30,7 @@ import { controlEncendido, controlarYCorregir, modeloParaCorregir } from "./cont
 import { conLogoSiToca, estampaSola } from "./logoEstudio";
 import { imagenParaModelo } from "./medios";
 import { limpiarFicha, textoDeLaFicha, MAX_FICHAS } from "./director";
-import { conMedios, mediosDe } from "./publicacion";
+import { postConPiezas } from "./galeriaPura.js";
 
 /** Del tamaño que dice el asistente a la proporción del motor. */
 export const PROPORCION = Object.freeze({ square: "1:1", vertical: "4:5", story: "9:16", horizontal: "16:9" });
@@ -323,21 +323,8 @@ export function piezasParaPoner(g, { archivoIds = [], carruselId = "" } = {}) {
   return { piezas: ids.map(buscar) };
 }
 
-/**
- * La publicación con `piezas` puestas: «reemplazar» (lo de antes se quita de ella; sigue en la galería) o «anadir» (al
- * final). Dos imágenes o más hacen carrusel un post (Instagram admite 10). → { post, antes }. Pura.
- */
-export function postConPiezas(post, piezas, modo = "reemplazar") {
-  const antes = mediosDe(post);
-  const vistos = new Set(modo === "anadir" ? antes.map((x) => x.src) : []);
-  const nuevos = piezas.map(api.medioDeArchivo).filter((m) => !vistos.has(m.src) && vistos.add(m.src));
-  const medios = (modo === "anadir" ? [...antes, ...nuevos] : nuevos).slice(0, 10);
-  // `mediosCambiadosAt`: si el cliente ya la aprobó, se sabe que los archivos cambiaron después (como el panel).
-  let con = { ...conMedios(post, medios), mediosCambiadosAt: new Date().toISOString() };
-  const imagenes = medios.filter((m) => m.tipo === "imagen").length;
-  if (imagenes >= 2 && ["post", "carrusel", "", undefined].includes(post.format)) con = { ...con, format: "carrusel" };
-  return { post: con, antes };
-}
+
+export { postConPiezas };
 
 /** Las herramientas de diseño del asistente (sólo con un cliente abierto). */
 export const NOMBRES_DISENO = Object.freeze(["disenar_piezas", "corregir_pieza", "version_final", "ver_lo_que_funciona", "poner_en_publicacion"]);
