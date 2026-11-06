@@ -85,6 +85,7 @@
 
 /* Sonido e historial (VideoSonido.jsx) */
 .va-generar { display: grid; gap: var(--sp-2); }
+.va-propuesta { display: grid; gap: var(--sp-1); padding: var(--sp-2) var(--sp-3); border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); font-size: var(--fs-sm); }
 .va-generar summary { cursor: pointer; min-height: var(--tap); display: flex; align-items: center; font-weight: 600; }
 .va-sonido, .va-historial { border-top: 1px solid var(--border); padding-top: var(--sp-2); display: grid; gap: var(--sp-2); }
 .va-sonido summary, .va-historial summary { cursor: pointer; min-height: var(--tap); display: flex; align-items: center; font-weight: 600; }

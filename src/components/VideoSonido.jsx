@@ -3,7 +3,8 @@
 //
 //   · Sonido: los efectos (whoosh en las transiciones, pop en los sellos) y la MÚSICA de fondo de la galería del
 //     cliente, con su volumen. Va aparte del guion: cambiarlo no sube la versión ni pide otra voz; se oye al volver a
-//     renderizar (gratis).
+//     renderizar (gratis). La música se puede GENERAR con Suno: el director musical escucha el video y propone el
+//     pedido (worker/lib/estudio/directorMusical.js), y «Me gusta» guarda una que funcionó como música de la marca.
 //   · Historial: las versiones de antes del guion; «Volver a esta» crea una versión nueva con ese guion, en borrador.
 // ============================================================
 
@@ -70,6 +71,15 @@ function Sonido({ client, video, onCambio }) {
   };
 
   const escogida = musicas?.find((m) => m.id === musicaId) ?? null;
+  // «Me gusta esta»: lo que se le pidió a Suno pasa a ser referencia de la música de la marca (en el kit).
+  const meGusta = async () => {
+    setOcupado("gusta"); setMsg(null);
+    try {
+      await pedir(`${base(client.id)}/musicas/marca`, { method: "POST", body: JSON.stringify({ archivoId: escogida.id }) });
+      setMsg({ texto: "Guardada como música de la marca: el director musical seguirá esta línea en los próximos videos (se ve en Marca → Kit y voz)." });
+    } catch (e) { setMsg({ error: true, texto: e.message }); } finally { setOcupado(""); }
+  };
+
   return (
     <details className="va-sonido">
       <summary>Sonido: efectos y música</summary>
@@ -85,6 +95,13 @@ function Sonido({ client, video, onCambio }) {
         {musicaId && musicas && !escogida && <option value={musicaId}>{actual.musica?.nombre || "La de antes"} (ya no está)</option>}
       </select>
       {escogida && <audio controls preload="none" src={escogida.src} className="va-audio" aria-label={`Escuchar ${escogida.nombre}`} />}
+      {escogida?.estilo && (
+        <div className="va-acciones">
+          <button type="button" className="btn btn-ghost btn-sm" disabled={Boolean(ocupado)} onClick={meGusta}>
+            <Icon name="heart" /> {ocupado === "gusta" ? "Guardando…" : "Me gusta: que sea la música de la marca"}
+          </button>
+        </div>
+      )}
       {musicaId && (
         <>
           <label htmlFor={`${ids}-vol`}>Volumen de la música: {volumen > 0 ? `+${volumen}` : volumen} dB</label>
@@ -109,35 +126,69 @@ function Sonido({ client, video, onCambio }) {
 }
 
 /**
- * «Generar con IA (Suno)»: describe la música, cotiza (el servidor contesta 409 con el costo, no crea nada) y sólo con
- * «Generar por …» la paga. Sigue el trabajo cada 6 s; al terminar, las versiones salen en la lista y la primera queda
- * puesta en el video.
+ * «Generar con IA (Suno)». Primero «Proponer la música para este video»: el DIRECTOR MUSICAL del servidor lee el video
+ * guardado (escenas, cortes, silencios, el llamado, la voz) y la música de la marca, y escribe el pedido para Suno con
+ * su porqué (es texto: no pide confirmación). El pedido se puede corregir; luego «Ver el costo» (el servidor contesta
+ * 409 con el costo, no crea nada) y sólo con «Generar por …» se paga. Sin proponer y sin estilo, el servidor también se
+ * lo pregunta al director: el 409 trae lo que pediría y aquí se enseña antes de pagar. Sigue el trabajo cada 6 s; al
+ * terminar, las versiones salen en la lista y la primera queda puesta en el video.
  */
 function GenerarMusica({ client, video, onLista, onCambio }) {
   const ids = useId();
   const delGuion = video.guion?.musica ?? {};
-  const [estilo, setEstilo] = useState(delGuion.estilo ?? "");
+  const [estilo, setEstilo] = useState("");
+  const [evitar, setEvitar] = useState("");
+  const [titulo, setTitulo] = useState("");
   const [instrumental, setInstrumental] = useState(delGuion.instrumental !== false);
   const [letra, setLetra] = useState("");
   const [duracion, setDuracion] = useState("");
+  const [propuesta, setPropuesta] = useState(null);
+  const [resumen, setResumen] = useState(null);
   const [precio, setPrecio] = useState(null);
   const [trabajo, setTrabajo] = useState(null);
-  const [ocupado, setOcupado] = useState(false);
+  const [ocupado, setOcupado] = useState("");
   const [msg, setMsg] = useState(null);
 
-  const datos = () => ({ estilo, instrumental, ...(instrumental ? {} : { letra }), ...(duracion ? { duracion: Number(duracion) } : {}), videoId: video.id });
+  const conVoz = video.locucion?.estado === "lista";
+  const datos = () => ({
+    ...(estilo.trim() ? { estilo } : {}), ...(evitar.trim() ? { evitar } : {}), ...(titulo.trim() ? { titulo } : {}), instrumental,
+    ...(instrumental ? {} : { letra }), ...(duracion ? { duracion: Number(duracion) } : {}), videoId: video.id,
+  });
   const cambiar = (f) => (e) => { f(e.target.type === "checkbox" ? e.target.checked : e.target.value); setPrecio(null); };
+  // Lo que propuso el director (o lo que pediría el servidor) en los campos: es lo que se paga si no se cambia.
+  const poner = (pedido, por) => {
+    setEstilo(pedido.estilo ?? "");
+    setEvitar(pedido.evitar ?? "");
+    setTitulo(pedido.titulo ?? "");
+    setInstrumental(pedido.instrumental !== false);
+    if (pedido.duracion) setDuracion(String(pedido.duracion));
+    if (por) setPropuesta(por);
+  };
+
+  const proponer = async () => {
+    setOcupado("proponer"); setMsg(null); setPrecio(null);
+    try {
+      const r = await pedir(`${base(client.id, video.id)}/musica`, { method: "POST" });
+      poner(r.propuesta, r.propuesta);
+      setResumen(r.video ?? null);
+      if (r.aviso) setMsg({ texto: r.aviso });
+    } catch (e) { setMsg({ error: true, texto: e.message }); } finally { setOcupado(""); }
+  };
 
   const pedirla = async (confirmado) => {
-    setOcupado(true); setMsg(null);
+    setOcupado(confirmado ? "generar" : "cotizar"); setMsg(null);
     try {
       const r = await pedir(`${base(client.id)}/musicas/generar`, { method: "POST", body: JSON.stringify({ ...datos(), confirmado }) });
       setPrecio(null);
       setTrabajo({ id: r.trabajoId, estado: "en_cola", nota: "" });
     } catch (e) {
-      if (e.estado === 409 && e.datos?.codigo === "confirmar") setPrecio(e.datos);
-      else setMsg({ error: true, texto: e.message });
-    } finally { setOcupado(false); }
+      if (e.estado === 409 && e.datos?.codigo === "confirmar") {
+        // Sin estilo, el servidor se lo preguntó al director: se enseña lo que pediría antes de pagar.
+        if (!estilo.trim() && e.datos.pedido) poner(e.datos.pedido, e.datos.propuesta ?? null);
+        if (e.datos.aviso) setMsg({ texto: e.datos.aviso });
+        setPrecio(e.datos);
+      } else setMsg({ error: true, texto: e.message });
+    } finally { setOcupado(""); }
   };
 
   // Seguir el trabajo mientras está vivo.
@@ -153,7 +204,7 @@ function GenerarMusica({ client, video, onLista, onCambio }) {
           await onLista(tr.archivos?.[0] ?? null);
           const v = await pedir(base(client.id, video.id)).catch(() => null);
           if (v?.video) onCambio(v.video);
-          setMsg({ texto: tr.nota || "Música lista." });
+          setMsg({ texto: `${tr.nota || "Música lista."} Si te gusta cómo quedó, márcala con «Me gusta» arriba: el próximo video saldrá en esa línea.` });
         } else if (tr.estado === "fallido" || tr.estado === "cancelado") setMsg({ error: true, texto: tr.error || "La música no se pudo generar." });
         setTrabajo({ id: tr.id, estado: tr.estado, nota: tr.nota });
       } catch { if (vivo) setTrabajo((x) => (x ? { ...x } : x)); }
@@ -162,13 +213,44 @@ function GenerarMusica({ client, video, onLista, onCambio }) {
   }, [trabajo, client.id, video.id, onLista, onCambio]);
 
   const enCurso = trabajo && ["en_cola", "en_marcha"].includes(trabajo.estado);
+  const cifra = (n) => n.toLocaleString("es-PA", { minimumFractionDigits: 0, maximumFractionDigits: 1 });
   return (
     <details className="va-generar">
       <summary>Generar la música con IA (Suno)</summary>
-      <p className="hint">Suno entrega dos versiones: las dos quedan en la galería y la primera, puesta en este video. Siempre ves el costo antes.</p>
-      <label htmlFor={`${ids}-estilo`}>Qué música (género, instrumentos, ánimo, tempo)</label>
-      <textarea id={`${ids}-estilo`} className="input" rows={2} maxLength={TOPES_MUSICA.estilo} value={estilo} onChange={cambiar(setEstilo)}
-        placeholder="Acústica alegre con ukelele y palmas, cálida, 100 bpm" />
+      <p className="hint">
+        El director musical escucha este video (escenas, cortes, silencios, el llamado y la voz) y la música de la marca, y
+        escribe el pedido para Suno. {conVoz ? "Ya tiene la voz: sabe lo que dura de verdad." : "Aún no tiene la voz: usa la duración estimada (mejor después de la locución)."} Proponer
+        es texto (céntimos, sin confirmar); Suno entrega dos versiones y siempre ves su costo antes.
+      </p>
+      <div className="va-acciones">
+        <button type="button" className="btn btn-secondary btn-sm" disabled={Boolean(ocupado) || enCurso} onClick={proponer}>
+          <Icon name="sparkles" /> {ocupado === "proponer" ? "Escuchando el video…" : propuesta ? "Proponer otra" : "Proponer la música para este video"}
+        </button>
+      </div>
+      <div aria-live="polite">
+        {propuesta && (
+          <div className="va-propuesta">
+            <strong>{propuesta.deRespaldo ? "Propuesta sin el director (no respondió)" : "Lo que propone el director musical"}</strong>
+            {(propuesta.genero || propuesta.bpm) && (
+              <span>{[propuesta.genero, propuesta.bpm ? `${propuesta.bpm} BPM` : "", propuesta.instrumentos].filter(Boolean).join(" · ")}</span>
+            )}
+            {propuesta.energia && <span className="hint">{propuesta.energia}</span>}
+            {propuesta.porque && <span className="hint">Por qué: {propuesta.porque}</span>}
+            {resumen && (
+              <span className="hint">
+                El video: {cifra(resumen.segundos)} s {resumen.conVoz ? "(con la voz)" : "(estimado)"}, {resumen.escenas} escenas, una cada {cifra(resumen.segundosPorEscena)} s.
+              </span>
+            )}
+          </div>
+        )}
+      </div>
+      <label htmlFor={`${ids}-estilo`}>Estilo para Suno (vacío: lo escribe el director musical)</label>
+      <textarea id={`${ids}-estilo`} className="input" rows={3} maxLength={TOPES_MUSICA.estilo} value={estilo} onChange={cambiar(setEstilo)}
+        placeholder="warm acoustic folk, ukulele, soft claps, 100 BPM, builds at 0:08" />
+      <label htmlFor={`${ids}-evitar`}>Que no lleve</label>
+      <input id={`${ids}-evitar`} className="input" maxLength={TOPES_MUSICA.evitar} value={evitar} onChange={cambiar(setEvitar)} placeholder="heavy distortion, aggressive drops" />
+      <label htmlFor={`${ids}-titulo`}>Nombre en la galería</label>
+      <input id={`${ids}-titulo`} className="input" maxLength={TOPES_MUSICA.titulo} value={titulo} onChange={cambiar(setTitulo)} />
       <label className="va-check">
         <input type="checkbox" checked={instrumental} onChange={cambiar(setInstrumental)} /> Instrumental (sin voz cantada: no compite con la locución)
       </label>
@@ -183,14 +265,14 @@ function GenerarMusica({ client, video, onLista, onCambio }) {
       <div className="va-acciones">
         {precio ? (
           <>
-            <button type="button" className="btn btn-primary btn-sm" disabled={ocupado} onClick={() => pedirla(true)}>
-              {ocupado ? "Pidiendo…" : `Generar por ${precio.costo < 0.01 ? "menos de 1 ¢" : `${precio.costo.toLocaleString("es-PA", { minimumFractionDigits: 2, maximumFractionDigits: 3 })} $`} (aprox.)`}
+            <button type="button" className="btn btn-primary btn-sm" disabled={Boolean(ocupado)} onClick={() => pedirla(true)}>
+              {ocupado === "generar" ? "Pidiendo…" : `Generar por ${precio.costo < 0.01 ? "menos de 1 ¢" : `${precio.costo.toLocaleString("es-PA", { minimumFractionDigits: 2, maximumFractionDigits: 3 })} $`} (aprox.)`}
             </button>
             <button type="button" className="btn btn-ghost btn-sm" onClick={() => setPrecio(null)}>Cancelar</button>
           </>
         ) : (
-          <button type="button" className="btn btn-ghost btn-sm" disabled={ocupado || enCurso || !estilo.trim()} onClick={() => pedirla(false)}>
-            {ocupado ? "Cotizando…" : "Ver el costo"}
+          <button type="button" className="btn btn-ghost btn-sm" disabled={Boolean(ocupado) || enCurso} onClick={() => pedirla(false)}>
+            {ocupado === "cotizar" ? (estilo.trim() ? "Cotizando…" : "El director escucha el video…") : "Ver el costo"}
           </button>
         )}
       </div>
