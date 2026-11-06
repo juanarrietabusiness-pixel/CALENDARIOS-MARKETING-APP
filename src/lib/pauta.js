@@ -24,6 +24,7 @@
 import { ETAPAS_CICLO, idEtapaCiclo, etapaCiclo, nombreEtapaCiclo, tipoNegocioDe, destinoNegocioDe } from "./cicloVentas.js";
 import { CLAVES_NIVEL, nombreDeNivel } from "./consciencia.js";
 import { LIMITES_ANUNCIO } from "./estudioMercado.js";
+import { cicloDe } from "./cicloNegocio.js";
 import { llevaCaption, separarHashtags, juntarHashtags } from "./reglasFormato.js";
 
 /** Cuántos textos principales lleva un anuncio que se sube (el Ads Manager admite 5 y prueba combinaciones). */
@@ -210,15 +211,25 @@ export const CAMPO_ANUNCIO = `"anuncio" (en las que van a pauta): sus textos par
  * negocio, `anuncios_clientes.negocio`), cómo se escribe cada etapa que aparece y, si `conCampo`, cómo es el campo
  * «anuncio». `enJson`: en el modo del plan, que añada «anuncio» a su objeto. Pura.
  */
+/** Lo que la tabla del ciclo dice de una etapa para este negocio («Para este negocio: … Lleva a …»), o "". */
+function paraEsteNegocio(ciclo, etapa) {
+  const e = ciclo?.etapas?.find((x) => x.id === etapa);
+  if (!e?.contenido) return "";
+  return ` Para este negocio: ${e.contenido.replace(/\.$/, "")}${e.lleva ? ` (lleva ${e.lleva})` : ""}.`;
+}
+
 export function bloqueDeAnuncio({ tipo = "", destino = "", etapas = [], conCampo = true, enJson = false } = {}) {
   const t = tipoNegocioDe(tipo);
   const d = destinoNegocioDe(destino) ?? destinoNegocioDe("whatsapp");
   const usadas = ETAPAS_CICLO.filter((e) => etapas.includes(e.id));
+  // Qué pieza va en cada etapa según el negocio y el destino (la tabla del curso, lib/cicloNegocio.js): sólo si se sabe
+  // el tipo de negocio; sin él, la regla general basta.
+  const ciclo = t ? cicloDe(t.id, d.id) : null;
   return [
     REGLA_ANUNCIO,
     `El destino del anuncio: ${d.nombre}${d.id === "whatsapp" ? " (el llamado es a escribir por WhatsApp; el botón abre la conversación)" : " (el llamado es a entrar a la web y comprar)"}.`,
     t ? `El tipo de negocio: ${t.nombre} (${t.ayuda.replace(/\.$/, "")}). ${PISTA_NEGOCIO[t.id] ?? ""}`.trim() : "",
-    usadas.length ? `Cómo se escribe cada etapa:\n${usadas.map((e) => `- ${e.nombre}: ${COMO_ESCRIBE_ETAPA[e.id]}`).join("\n")}` : "",
+    usadas.length ? `Cómo se escribe cada etapa:\n${usadas.map((e) => `- ${e.nombre}: ${COMO_ESCRIBE_ETAPA[e.id]}${paraEsteNegocio(ciclo, e.id)}`).join("\n")}` : "",
     conCampo ? `- ${CAMPO_ANUNCIO}${enJson ? ' En cada una que VA A PAUTA, añade esa clave "anuncio" a su objeto del JSON.' : ""}` : "",
   ].filter(Boolean).join("\n");
 }

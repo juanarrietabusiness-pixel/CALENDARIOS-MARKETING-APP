@@ -287,3 +287,15 @@ describe("la revisión de anuncio", () => {
     expect(resumenPauta([])).toBe("");
   });
 });
+
+describe("la regla del anuncio sigue la tabla del ciclo del negocio", () => {
+  it("con el tipo de negocio, cada etapa dice qué pieza va y a dónde lleva", () => {
+    const b = bloqueDeAnuncio({ tipo: "productos", destino: "whatsapp", etapas: ["presentacion", "conversion"] });
+    expect(b).toMatch(/- Presentación: .*Para este negocio: .*\(lleva a WhatsApp\)\./);
+    expect(b).toMatch(/- Conversión: .*Para este negocio: /);
+  });
+  it("sin tipo de negocio, la regla general sola", () => {
+    expect(bloqueDeAnuncio({ destino: "whatsapp", etapas: ["presentacion"] })).not.toContain("Para este negocio");
+  });
+});
+
