@@ -255,7 +255,7 @@ describe("Claude: ver_estructuras y estructura_id", () => {
     fila("ugc1", DE_UGC);
     fila("voz1", DE_VOZ);
     const t = texto(await mcp().llamar("ver_estructuras", { para: "voz", segundos: 15 }));
-    expect(t).toContain("voz1 — «Pregunta → tres razones → llamado» · sirve para: Voz en off");
+    expect(t).toContain("«Pregunta → tres razones → llamado» (ID voz1) · sirve para: Voz en off");
     expect(t).toMatch(/En 15 s: \[0–2 s\] una pregunta/);
     expect(t).not.toContain("Me pasó a mí");
     expect(texto(await mcp().llamar("ver_estructuras", {}))).toContain("Me pasó a mí");

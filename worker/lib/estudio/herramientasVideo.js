@@ -67,8 +67,8 @@ import { conMusicaSegun } from "./conMusica.js";
 import { DURACIONES_FOTO, MOVIMIENTOS_FOTO, textoDeCancion } from "../../../src/lib/conMusica.js";
 import { vistaDe, piezaDe } from "../mcpVista/modelo.js";
 import { vistaDeVideo, lineasDeMedios } from "./vistaMedios.js";
-import { leerEstructuras, estructuraExistente } from "../estructurasGuion.js";
-import { paraDe, tramosEnDuracion, USOS_ESTRUCTURA } from "../../../src/lib/formulasUgc.js";
+import { leerEstructuras, estructuraExistente, guardarEstructura, quitarEstructura, ErrorEstructura } from "../estructurasGuion.js";
+import { paraDe, tramosEnDuracion, USOS_ESTRUCTURA, estructuraDeTramosConPeso } from "../../../src/lib/formulasUgc.js";
 import { estilosDelCliente, estiloDelCliente, guardarEstilo, aplicarEstiloAVideo, ErrorEstilo } from "./estilosVideo.js";
 import { aplicarEstilo, lineaDeEstilo, USOS_ESTILO_VIDEO } from "../../../src/lib/estilosVideo.js";
 import { conFondosPorCrear } from "../../../src/lib/fondosVideo.js";
@@ -119,6 +119,42 @@ export const DEFINICIONES_VIDEO = Object.freeze([
         segundos: { type: "integer", description: "La duración del video: los tramos de cada una, repartidos en ella." },
       },
     },
+  },
+  {
+    name: "guardar_estructura",
+    description: "Crea o corrige una ESTRUCTURA DE GUION de la agencia (para todos los clientes; la misma lista de Ajustes → Cómo trabajamos → Estructuras de guion, donde aparece en cuanto se guarda): la FORMA de un guion que funciona, sin su contenido. Con «id» (de ver_estructuras) corrige ésa; sin él, crea una nueva. Los tramos van EN ORDEN, cada uno con su nombre, su papel (qué hace ese momento) y su peso en la duración (un porcentaje o una proporción: se reparten sobre la duración original). Devuelve su ID, para pasarlo como estructura_id en crear_video o crear_reel. Úsala cuando la persona pida guardar una forma de guion que salió bien o una nueva. Sólo quien administra o un editor puede cambiarlas. No gasta nada.",
+    input_schema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "Para CORREGIR una que ya existe (de ver_estructuras). Sin él, se crea una nueva." },
+        nombre: { type: "string", description: "Cómo se llama (≤ 60): «Pregunta incómoda → demostración → precio»." },
+        para: { type: "string", enum: ["voz", "ugc", "ambos"], description: "voz: voz en off (video animado y reel); ugc: guion para grabar; ambos: las dos." },
+        duracion: { type: "integer", enum: [10, 15, 20, 30, 45, 60], description: "La duración original (s) sobre la que van los pesos. Por defecto 30. Al usarla, se reparte en la del video." },
+        tramos: {
+          type: "array", description: "De 2 a 10 tramos, en orden.",
+          items: {
+            type: "object",
+            properties: {
+              nombre: { type: "string", description: "El nombre del momento: «Gancho», «Problema», «Demostración», «Llamado»." },
+              papel: { type: "string", description: "Qué hace ese tramo (sin el contenido de una marca): «una pregunta que la persona se hace en voz alta»." },
+              peso: { type: "number", description: "Cuánto de la duración ocupa (un porcentaje o una proporción). Si se omite, a partes iguales." },
+              ejemplo: { type: "string", description: "Opcional: un ejemplo corto de cómo suena." },
+            },
+            required: ["papel"],
+          },
+        },
+        tipo_gancho: { type: "string", description: "El tipo de gancho (≤ 200): «pregunta incómoda», «dato que sorprende»…" },
+        por_que_funciona: { type: "string", description: "Por qué funciona (≤ 300)." },
+        cuando_conviene: { type: "string", description: "Cuándo conviene (≤ 200): «productos con un antes y un después claro»." },
+        variantes: { type: "string", description: "Opcional (≤ 300): otras formas de la misma estructura que también valen." },
+      },
+      required: ["nombre", "para", "tramos"],
+    },
+  },
+  {
+    name: "eliminar_estructura",
+    description: "QUITA una estructura de guion de la agencia (por su ID, de ver_estructuras): deja de ofrecerse para todos los clientes y sale de Ajustes → Cómo trabajamos. Úsala SÓLO si la persona lo pidió explícitamente. Los videos y publicaciones que la siguieron no cambian. Sólo quien administra o un editor puede. No gasta nada.",
+    input_schema: { type: "object", properties: { id: { type: "string", description: "El ID de la estructura (de ver_estructuras)." } }, required: ["id"] },
   },
   {
     name: "guardar_video",
@@ -371,7 +407,7 @@ export const DEFINICIONES_VIDEO = Object.freeze([
 ]);
 
 /** Las que escriben (en el MCP van como escritura; las demás, de sólo lectura). */
-export const ESCRIBEN_VIDEO = Object.freeze(["voz_de_marca", "lexico_de_marca", "guardar_estilo_video", "aplicar_estilo_video", "fondos_video", "video_con_cancion", "publicar_con_musica", "crear_video", "guardar_video", "editar_escena", "aprobar_video", "renderizar_video", "ligar_video", "sonido_video", "volver_a_version", "personaje_video"]);
+export const ESCRIBEN_VIDEO = Object.freeze(["guardar_estructura", "eliminar_estructura", "voz_de_marca", "lexico_de_marca", "guardar_estilo_video", "aplicar_estilo_video", "fondos_video", "video_con_cancion", "publicar_con_musica", "crear_video", "guardar_video", "editar_escena", "aprobar_video", "renderizar_video", "ligar_video", "sonido_video", "volver_a_version", "personaje_video"]);
 
 /** Lo que falta para el siguiente paso, en una frase para el modelo. Pura. */
 /** ¿La locución es de la versión aprobada? (un video «aprobado» con voz de esa versión ya no la necesita otra vez). */
@@ -587,12 +623,42 @@ export function crearHerramientasVideo({ env, acceso, resolverCliente, usuario, 
       return [
         `Estructuras de guion de la agencia${nombreUso} (para todos los clientes; el tono de cada marca va aparte):`,
         ...lista.map((f) => [
-          `· ${f.id} — «${f.nombre}» · sirve para: ${paraDe(f).map((u) => USOS_ESTRUCTURA[u]).join(" y ")}${f.cuando ? ` · conviene: ${f.cuando}` : ""}`,
+          `· «${f.nombre}» (ID ${f.id}) · sirve para: ${paraDe(f).map((u) => USOS_ESTRUCTURA[u]).join(" y ")}${f.cuando ? ` · conviene: ${f.cuando}` : ""}`,
           `  ${s ? `En ${s} s: ` : `Original (${f.duracion} s): `}${(s ? tramosEnDuracion(f, s) : f.tramos).map((t) => `${t.desde != null && t.hasta != null ? `[${t.desde}–${t.hasta} s] ` : ""}${t.funcion}`).join(" · ")}`,
-          f.gancho || f.porQue ? `  ${[f.gancho && `Gancho: ${f.gancho}`, f.porQue && `Por qué funciona: ${f.porQue}`].filter(Boolean).join(" · ")}` : "",
+          f.gancho || f.porQue || f.variantes ? `  ${[f.gancho && `Gancho: ${f.gancho}`, f.porQue && `Por qué funciona: ${f.porQue}`, f.variantes && `Variantes: ${f.variantes}`].filter(Boolean).join(" · ")}` : "",
         ].filter(Boolean).join("\n")),
-        "Para usar una: su ID en crear_video o crear_reel (estructura_id). Sin escoger, crear_reel deja que la IA escoja la que encaje.",
+        "Para usar una: su ID en crear_video o crear_reel (estructura_id). Sin escoger, crear_reel deja que la IA escoja la que encaje. Para corregir una: guardar_estructura con su ID.",
       ].join("\n");
+    },
+
+    async guardar_estructura({ id = "", nombre = "", para = "", duracion, tramos = [], tipo_gancho: tipoGancho = "", por_que_funciona: porQue = "", cuando_conviene: cuando = "", variantes = "" } = {}) {
+      const usos = para === "ambos" ? ["voz", "ugc"] : ["voz", "ugc"].includes(para) ? [para] : [];
+      if (!usos.length) throw new Fallo("Di para qué sirve: «voz» (voz en off), «ugc» (guion para grabar) o «ambos».");
+      const formula = estructuraDeTramosConPeso({ nombre, para: usos, duracion, tramos, tipoGancho, porQue, cuando, variantes });
+      try {
+        const e = await guardarEstructura(acceso, usuario, formula, { id });
+        difundir(env, acceso.ownerId, { tipo: "formulas-ugc", por });
+        return [
+          `${id ? "Corregida" : "Guardada"} la estructura «${e.nombre}» (ID ${e.id}) · sirve para: ${paraDe(e).map((u) => USOS_ESTRUCTURA[u]).join(" y ")}. Ya sale en Ajustes → Cómo trabajamos → Estructuras de guion.`,
+          `Original (${e.duracion} s): ${e.tramos.map((t) => `[${t.desde}–${t.hasta} s] ${t.funcion}`).join(" · ")}`,
+          [e.gancho && `Gancho: ${e.gancho}`, e.porQue && `Por qué funciona: ${e.porQue}`, e.cuando && `Conviene: ${e.cuando}`, e.variantes && `Variantes: ${e.variantes}`].filter(Boolean).join(" · "),
+          `Para usarla: estructura_id = ${e.id} en crear_video o crear_reel.`,
+        ].filter(Boolean).join("\n");
+      } catch (e) {
+        if (e instanceof ErrorEstructura) throw new Fallo(e.message);
+        throw e;
+      }
+    },
+
+    async eliminar_estructura({ id = "" } = {}) {
+      try {
+        const e = await quitarEstructura(acceso, usuario, id);
+        difundir(env, acceso.ownerId, { tipo: "formulas-ugc", por });
+        return `Quitada la estructura «${e.nombre || e.id}» (ID ${e.id}): ya no se ofrece a ningún cliente. Lo que la siguió no cambia.`;
+      } catch (e) {
+        if (e instanceof ErrorEstructura) throw new Fallo(e.message);
+        throw e;
+      }
     },
 
     async listar_videos({ cliente }) {

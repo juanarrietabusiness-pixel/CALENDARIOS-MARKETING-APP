@@ -18,20 +18,15 @@
 // ============================================================
 
 import { json, error, cuerpo, noEncontrado } from "../lib/respuesta.js";
-import { uuid, ahora } from "../lib/ids.js";
 import { difundir, firma } from "../lib/vivo.js";
 import { llamarIA, ErrorIA } from "../lib/cerebro/ia.js";
-import { limpiarFormula, pedidoDeFormula, leerFormula, limpiarGuionVoz, pedidoDeEstructuraVoz, MAX_FORMULAS } from "../../src/lib/formulasUgc.js";
+import { pedidoDeFormula, leerFormula, limpiarGuionVoz, pedidoDeEstructuraVoz } from "../../src/lib/formulasUgc.js";
 import { leerTranscripcion } from "../../src/lib/ugc.js";
-import { leerEstructuras, estructuraDeFila } from "../lib/estructurasGuion.js";
+import { leerEstructuras, guardarEstructura, quitarEstructura, puedeCambiarEstructuras, ErrorEstructura } from "../lib/estructurasGuion.js";
 
 const ID = /^[\w-]{1,80}$/;
 
 const lista = (acceso, para = "") => leerEstructuras(acceso, { para });
-
-const puedeCambiar = (usuario) => usuario?.rol === "admin" || (usuario?.rol === "editor" && !Array.isArray(usuario?.clientes));
-
-const FALTA = "A la estructura le falta el nombre o al menos dos tramos.";
 
 /** La IA propone; un fallo de la IA se devuelve con su motivo. */
 async function proponer(env, acceso, cliente, { prompt, funcion, leer }) {
@@ -75,38 +70,42 @@ export async function rutasFormulasUgc(req, env, { acceso, usuario, partes, meto
     });
   }
 
-  if (!puedeCambiar(usuario)) return error("Las estructuras de guion son de toda la agencia: las cambia quien administra o un editor.", 403);
+  if (!puedeCambiarEstructuras(usuario)) return error("Las estructuras de guion son de toda la agencia: las cambia quien administra o un editor.", 403);
+  // Guardar y quitar van por las MISMAS funciones que usa Claude por MCP (worker/lib/estructurasGuion.js).
+  const conErrores = async (f) => {
+    try { return await f(); } catch (e) {
+      if (e instanceof ErrorEstructura) return e.estado === 404 ? noEncontrado("Estructura") : error(e.message, e.estado);
+      throw e;
+    }
+  };
+  const avisar = () => difundir(env, acceso.ownerId, { tipo: "formulas-ugc", por: firma(usuario, req) });
 
   if (!id && metodo === "POST") {
-    const b = (await cuerpo(req)) ?? {};
-    const f = limpiarFormula(b.formula);
-    if (!f) return error(FALTA);
-    if ((await acceso.leerColumnas("formulas_ugc", ["id"], {})).length >= MAX_FORMULAS) return error(`Como mucho ${MAX_FORMULAS} estructuras: borra las que ya no sirvan.`, 409);
-    const { id: _ignorado, ...datos } = f;
-    const momento = ahora();
-    const fila = await acceso.insertar("formulas_ugc", { id: uuid(), datos: JSON.stringify(datos), creada_por: usuario.id, created_at: momento, updated_at: momento });
-    difundir(env, acceso.ownerId, { tipo: "formulas-ugc", por: firma(usuario, req) });
-    return json({ formula: estructuraDeFila(fila), formulas: await lista(acceso) }, 201);
+    return conErrores(async () => {
+      const b = (await cuerpo(req)) ?? {};
+      const formula = await guardarEstructura(acceso, usuario, b.formula);
+      avisar();
+      return json({ formula, formulas: await lista(acceso) }, 201);
+    });
   }
 
   if (!ID.test(String(id ?? ""))) return noEncontrado("Estructura");
 
   if (metodo === "PUT") {
-    const b = (await cuerpo(req)) ?? {};
-    const f = limpiarFormula(b.formula);
-    if (!f) return error(FALTA);
-    const { id: _ignorado, ...datos } = f;
-    const n = await acceso.actualizar("formulas_ugc", { id }, { datos: JSON.stringify(datos), updated_at: ahora() });
-    if (!n) return noEncontrado("Estructura");
-    difundir(env, acceso.ownerId, { tipo: "formulas-ugc", por: firma(usuario, req) });
-    return json({ formulas: await lista(acceso) });
+    return conErrores(async () => {
+      const b = (await cuerpo(req)) ?? {};
+      await guardarEstructura(acceso, usuario, b.formula, { id });
+      avisar();
+      return json({ formulas: await lista(acceso) });
+    });
   }
 
   if (metodo === "DELETE") {
-    const n = await acceso.borrar("formulas_ugc", { id });
-    if (!n) return noEncontrado("Estructura");
-    difundir(env, acceso.ownerId, { tipo: "formulas-ugc", por: firma(usuario, req) });
-    return json({ formulas: await lista(acceso) });
+    return conErrores(async () => {
+      await quitarEstructura(acceso, usuario, id);
+      avisar();
+      return json({ formulas: await lista(acceso) });
+    });
   }
   return noEncontrado("Ruta");
 }

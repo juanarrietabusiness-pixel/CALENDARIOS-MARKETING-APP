@@ -5864,6 +5864,17 @@ son del servidor.
     un poco antes (`cuadroDe`).
   · **Lo que se dejó fuera**: el «banco de tomas» (reutilizar clips y fotogramas aprobados entre reels) y llenar el cerebro
     desde el repositorio de la agencia sin pasos manuales.
+- **Las ESTRUCTURAS DE GUION también las crea y corrige Claude por MCP** (`guardar_estructura`, `eliminar_estructura` en
+  worker/lib/estudio/herramientasVideo.js). No hay otro modelo de datos: van por las MISMAS funciones que la ruta de
+  Ajustes → Cómo trabajamos (`guardarEstructura`, `quitarEstructura`, `puedeCambiarEstructuras` en
+  worker/lib/estructurasGuion.js; la ruta /api/formulas-ugc las usa también), a la misma tabla `formulas_ugc`, con la misma
+  validación (`limpiarFormula`) y el mismo permiso (admin o editor sin clientes; el sólo lectura ni las ve como escritura) y
+  el mismo aviso `formulas-ugc` (la pantalla relee). Lo que manda Claude —tramos con nombre, papel, PESO y ejemplo— se pasa
+  a la forma de siempre con `estructuraDeTramosConPeso` (src/lib/formulasUgc.js): «Nombre — papel. Ej.: «…»» en `funcion`
+  y su tramo en segundos sobre la duración original por su peso. `variantes` es un campo nuevo y OPCIONAL de la estructura
+  (sólo se escribe si lo hay: una de antes no cambia), con su casilla en el editor de Ajustes y su línea para la IA.
+  `ver_estructuras` da el ID de cada una («(ID …)») para corregirla o pasarla como `estructura_id`. `eliminar_estructura`
+  es destructiva y su descripción dice que sólo si la persona lo pidió.
 - **`wrangler d1 migrations apply` pinta la tabla ENTERA de migraciones tras cada una**: su salida crece con el cuadrado de
   cuántas hay, y con la 0076 (72 migraciones) pasó del 1 MB que `execFile` admite por defecto. `npm run test:vivo` moría con
   «stdout maxBuffer length exceeded» antes de arrancar el Worker, con el SQL perfecto. `tests/vivo/espacio.js` le da 64 MB.

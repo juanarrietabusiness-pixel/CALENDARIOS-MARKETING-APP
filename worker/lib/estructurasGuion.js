@@ -12,6 +12,7 @@
 // ============================================================
 
 import { limpiarFormula, estructurasPara, lineaDeFormula, bloqueDeFormulas, idDeEstructura, MAX_FORMULAS } from "../../src/lib/formulasUgc.js";
+import { uuid, ahora } from "./ids.js";
 
 const ID = /^[\w-]{1,80}$/;
 
@@ -26,6 +27,48 @@ const leerDatos = (texto) => {
 export function estructuraDeFila(f) {
   const e = limpiarFormula({ ...leerDatos(f?.datos), id: f?.id });
   return e ? { ...e, ...(f?.created_at ? { creada: f.created_at } : {}) } : null;
+}
+
+// ------------------------------------------------------------
+// Guardar y quitar: lo MISMO para la pantalla (Ajustes → Cómo trabajamos) y para Claude por MCP
+// ------------------------------------------------------------
+
+/** Quién cambia las estructuras: son de toda la agencia, así que quien administra o un editor sin clientes asignados. */
+export const puedeCambiarEstructuras = (usuario) => usuario?.rol === "admin" || (usuario?.rol === "editor" && !Array.isArray(usuario?.clientes));
+
+const FALTA = "A la estructura le falta el nombre o al menos dos tramos.";
+const SIN_PERMISO = "Las estructuras de guion son de toda la agencia: las cambia quien administra o un editor.";
+
+/**
+ * Guarda una estructura: con `id`, la corrige (tiene que existir); sin él, crea una nueva (hasta `MAX_FORMULAS`). La
+ * valida `limpiarFormula`, como siempre. → la estructura guardada (con su id). Lanza ErrorEstructura (400, 403, 404, 409).
+ * Avisar al espacio es de quien llama (la ruta y el MCP firman distinto).
+ */
+export async function guardarEstructura(acceso, usuario, formula, { id = "" } = {}) {
+  if (!puedeCambiarEstructuras(usuario)) throw new ErrorEstructura(SIN_PERMISO, 403);
+  const f = limpiarFormula(formula);
+  if (!f) throw new ErrorEstructura(FALTA);
+  const { id: _ignorado, ...datos } = f;
+  const momento = ahora();
+  if (id) {
+    const limpio = idEstructuraValido(id);
+    if (!limpio) throw new ErrorEstructura("Esa estructura de guion no existe.", 404);
+    const n = await acceso.actualizar("formulas_ugc", { id: limpio }, { datos: JSON.stringify(datos), updated_at: momento });
+    if (!n) throw new ErrorEstructura("Esa estructura de guion no existe (los IDs salen de ver_estructuras).", 404);
+    return estructuraDeFila(await acceso.leerUno("formulas_ugc", { id: limpio }));
+  }
+  if ((await acceso.leerColumnas("formulas_ugc", ["id"], {})).length >= MAX_FORMULAS) throw new ErrorEstructura(`Como mucho ${MAX_FORMULAS} estructuras: borra las que ya no sirvan.`, 409);
+  const fila = await acceso.insertar("formulas_ugc", { id: uuid(), datos: JSON.stringify(datos), creada_por: usuario.id, created_at: momento, updated_at: momento });
+  return estructuraDeFila(fila);
+}
+
+/** Quita una estructura. → la que se quitó (su nombre, para decirlo). Lanza ErrorEstructura (403, 404). */
+export async function quitarEstructura(acceso, usuario, id) {
+  if (!puedeCambiarEstructuras(usuario)) throw new ErrorEstructura(SIN_PERMISO, 403);
+  const limpio = idEstructuraValido(id);
+  const antes = limpio ? await acceso.leerUno("formulas_ugc", { id: limpio }) : null;
+  if (!antes || !(await acceso.borrar("formulas_ugc", { id: limpio }))) throw new ErrorEstructura("Esa estructura de guion no existe (los IDs salen de ver_estructuras).", 404);
+  return estructuraDeFila(antes) ?? { id: limpio, nombre: "" };
 }
 
 /** Las del espacio, las más nuevas primero. `para`: sólo las que sirven para «ugc» o «voz». */
