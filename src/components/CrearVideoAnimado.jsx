@@ -68,7 +68,7 @@ export default function CrearVideoAnimado({ client, publicacion = null, onListo,
           <button key={f} type="button" className="filter-chip" aria-pressed={formato === f} onClick={() => setFormato(f)}>{nombre}</button>
         ))}
       </fieldset>
-      <SelectorEstructura uso="voz" value={estructuraId} onChange={setEstructuraId} disabled={ocupado} />
+      <SelectorEstructura uso="voz" value={estructuraId} onChange={setEstructuraId} disabled={ocupado} sencilla />
       <div className="va-acciones">
         <button type="button" className="btn btn-primary" disabled={ocupado || (!idea.trim() && !postId)} onClick={escribir}>
           <Icon name="sparkles" /> {ocupado ? "Escribiendo el guion… (hasta un minuto)" : "Escribir el guion con IA"}

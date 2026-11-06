@@ -29,19 +29,28 @@ const SELECT = { flex: "1 1 14rem", minHeight: "var(--tap-sm)" };
  * @param uso       «voz» | «ugc».
  * @param value     el id de la escogida ("" = la IA escoge).
  * @param onChange  recibe el id ("" = la IA escoge).
+ * @param sencilla  la etiqueta como las de alrededor sin la clase `label` (en «Video nuevo» van así).
  */
-export default function SelectorEstructura({ uso = "voz", value = "", onChange, disabled = false }) {
+export default function SelectorEstructura({ uso = "voz", value = "", onChange, disabled = false, sencilla = false }) {
   const ids = useId();
   const [lista, setLista] = useState(null);
   const [ver, setVer] = useState(false);
+  const [leida, setLeida] = useState(false); // la lista llegó del servidor (no es la vacía de un fallo)
 
   useEffect(() => {
     let vivo = true;
-    const leer = () => listarFormulas().then((l) => vivo && setLista(l)).catch(() => vivo && setLista([]));
+    const leer = () => listarFormulas()
+      .then((l) => { if (vivo) { setLista(l); setLeida(true); } })
+      .catch(() => { if (vivo) setLista((x) => x ?? []); });
     void leer();
     window.addEventListener("formulas-ugc", leer);
     return () => { vivo = false; window.removeEventListener("formulas-ugc", leer); };
   }, []);
+  // Una escogida que alguien quitó de la agencia vuelve a «La IA escoge»: si no, el servidor contestaría que ya no está.
+  // (Sólo con la lista leída bien: si no se pudo leer, la escogida se queda.)
+  useEffect(() => {
+    if (leida && lista && value && !lista.some((f) => f.id === value)) onChange("");
+  }, [leida, lista, value, onChange]);
 
   // El servidor dice `para` en todas; sin él (una respuesta de antes), vale para las dos.
   const deUso = (lista ?? []).filter((f) => !Array.isArray(f.para) || f.para.includes(uso));
@@ -50,7 +59,7 @@ export default function SelectorEstructura({ uso = "voz", value = "", onChange, 
 
   return (
     <div className="field" style={COLUMNA}>
-      <label className="label" htmlFor={`${ids}-e`}>
+      <label className={sencilla ? undefined : "label"} htmlFor={`${ids}-e`}>
         Estructura del guion <span className="hint">(de la agencia, para todos los clientes)</span>
       </label>
       <div style={FILA}>
