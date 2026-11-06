@@ -35,6 +35,8 @@ export const CON_VISTA = Object.freeze([
   "crear_reel", "estado_reel", "continuar_reel", "montar_reel",
   // Lo que SUENA o se reproduce: la muestra de una voz, la locución, la música (las dos versiones de Suno) y el mp4.
   "previsualizar_voz", "generar_locucion", "generar_musica", "renderizar_video", "ver_video",
+  // «Video con tu canción»: la canción del video recién creado se oye ahí mismo.
+  "video_con_cancion",
 ]);
 /** Las que sólo llama la página (`visibility: ["app"]`): claude.ai no se las da al modelo. */
 export const SOLO_DE_LA_VISTA = Object.freeze(["vista_encargo", "vista_trabajo", "me_gusta_pieza", "vista_video", "vista_medios"]);
