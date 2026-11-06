@@ -2,7 +2,8 @@
 // La prueba del AUDIO del render, DENTRO de la imagen (con su ffmpeg de Debian): `docker exec video node
 // container/probarAudio.mjs`. Las tomas son como las de verdad: MP3 mono a 44,1 kHz y 128 kb/s (lo que devuelve
 // ElevenLabs), con y sin pausas, y con una pausa DESPUÉS del final de la toma (la última palabra de la alineación puede
-// acabar unos milisegundos más tarde que el archivo). Además, una toma cuyo muestreo cambia a la mitad.
+// acabar unos milisegundos más tarde que el archivo). Además, una toma cuyo muestreo cambia a la mitad, y los EFECTOS de
+// la biblioteca de sonido (un MP3 y un WAV subidos) en vez de los sintetizados.
 // ============================================================
 
 import { spawnSync } from "node:child_process";
@@ -31,6 +32,16 @@ function mp3(nombre, segundos, muestreo = 44100, volumen = "0.3+0.2*sin(2*PI*3*t
   return salida;
 }
 
+/** Un WAV de `segundos` de un tono corto que cae (como un «pop» subido), mono, a 48 kHz. */
+function wav(nombre, segundos) {
+  const salida = join(carpeta, nombre);
+  const r = spawnSync(FFMPEG, ["-hide_banner", "-y", "-f", "lavfi", "-i",
+    `sine=frequency=880:sample_rate=48000:duration=${segundos},volume='exp(-t*18)':eval=frame`,
+    "-ac", "1", "-c:a", "pcm_s16le", salida], { encoding: "utf8" });
+  if (r.status !== 0) throw new Error(`no se pudo hacer ${nombre}: ${r.stderr.slice(-400)}`);
+  return salida;
+}
+
 /** La duración de un archivo de audio según ffprobe… o ffmpeg (la imagen no tiene por qué traer ffprobe). */
 function duracion(archivo) {
   const r = spawnSync(FFMPEG, ["-hide_banner", "-i", archivo, "-f", "null", "-"], { encoding: "utf8" });
@@ -47,10 +58,10 @@ function nivel(archivo, desde, hasta) {
   return b.length ? Math.sqrt(suma / (b.length / 2)) : 0;
 }
 
-async function caso(titulo, audio, silencios, total, { callado = null, suena = null, guion = null, linea = null, efectos = false, musica = null } = {}) {
+async function caso(titulo, audio, silencios, total, { callado = null, suena = null, guion = null, linea = null, efectos = false, musica = null, efectosPropios = null } = {}) {
   const salida = join(carpeta, `${titulo.replace(/\W+/g, "-")}.m4a`);
   try {
-    const m = await audioDelVideo(carpeta, { audio, linea: linea ?? { silencios }, total, salida, guion, efectos, musica });
+    const m = await audioDelVideo(carpeta, { audio, linea: linea ?? { silencios }, total, salida, guion, efectos, musica, efectosPropios });
     const dur = duracion(salida);
     if (!(Math.abs(dur - total) < 0.06)) throw new Error(`el audio dura ${dur} s, no ${total}`);
     if (audio && !(Math.abs((m?.lufs ?? NaN) - RENDER.lufs) <= 1)) throw new Error(`quedó en ${m?.lufs} LUFS`);
@@ -90,6 +101,20 @@ try {
   if (!momentosDeEfectos(g, l).length) { mal++; console.error("✗ el ejemplo debería tener efectos (transiciones o sellos)"); }
   await caso("Con efectos y música de fondo (ducking y fundido)", vozEjemplo, l.silencios, l.total, {
     guion: g, linea: l, efectos: true, musica: { audio: tema, volumen: 0 },
+  });
+  // Los EFECTOS de la biblioteca de sonido (subidos por la agencia: un MP3 con silencio delante y un WAV corto), en vez
+  // del whoosh y del pop sintetizados: el audio sigue en -14 LUFS y en su duración, y en el instante de un sello suena.
+  const whooshSubido = await readFile(mp3("whoosh-subido.mp3", 1.2, 44100, "if(lt(t,0.3),0,0.6)"));
+  const popSubido = await readFile(wav("pop-subido.wav", 0.25));
+  const momentos = momentosDeEfectos(g, l);
+  const pop = momentos.find((x) => x.tipo === "pop");
+  await caso("Con efectos SUBIDOS (biblioteca de sonido) y música", vozEjemplo, l.silencios, l.total, {
+    guion: g, linea: l, efectos: true, musica: { audio: tema, volumen: 0 }, efectosPropios: { whoosh: whooshSubido, pop: popSubido },
+    ...(pop ? { suena: [pop.en, pop.en + 0.2] } : {}),
+  });
+  // Uno que no se puede leer no tumba el audio: suena el sintetizado.
+  await caso("Con un efecto subido que no se puede leer (va el sintetizado)", vozEjemplo, l.silencios, l.total, {
+    guion: g, linea: l, efectos: true, efectosPropios: { pop: Buffer.from("no es un audio") },
   });
 } finally {
   await rm(carpeta, { recursive: true, force: true });

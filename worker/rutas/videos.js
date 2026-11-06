@@ -31,8 +31,9 @@
 //                                           del render lo hace (worker/lib/estudio/render.js). No gasta IA
 //   POST   /api/videos/<c>/<id>/publicacion { postId, calendarId? }: ligarlo a una publicación del cliente (postId vacío:
 //                                           desligarlo). Si el mp4 ya está hecho, se pone en ella ya
-//   PUT    /api/videos/<c>/<id>/sonido      { efectos, musica: { archivoId, volumen } | null }: lo que suena debajo de la
-//                                           voz. Va aparte del guion: no sube la versión ni pide otra voz (gratis)
+//   PUT    /api/videos/<c>/<id>/sonido      { efectos, musica: { archivoId, volumen } | null, efectosPropios?: { transicion,
+//                                           sello } (ids de efectos de la biblioteca) }: lo que suena debajo de la voz. Va
+//                                           aparte del guion: no sube la versión ni pide otra voz (gratis)
 //   GET    /api/videos/<c>/<id>/versiones   El historial: las versiones de antes del guion
 //   POST   /api/videos/<c>/<id>/versiones   { version, aVersion }: volver a una (crea una versión nueva con su guion)
 //   POST   /api/videos/<c>/escribir         { idea, segundos?, formato?, postId?, estructuraId? }: la IA de texto ESCRIBE el
@@ -40,8 +41,9 @@
 //                                           siguiendo la ESTRUCTURA de guion escogida (o la que escoja la IA entre las de
 //                                           voz en off: vuelve en `estructura`). No guarda nada: la pantalla lo abre como
 //                                           borrador sin guardar. Texto, sin confirmación
-//   GET    /api/videos/<c>/musicas          Las músicas de fondo del cliente (audio de su galería)
-//   POST   /api/videos/<c>/musicas          Subir una (multipart: archivo; MP3 o WAV, ≤ 15 MB)
+//   GET    /api/videos/<c>/musicas          { musicas, efectos }: la BIBLIOTECA DE SONIDO del cliente y la de la agencia
+//                                           (`de: "agencia"`), la música de la marca primero (worker/lib/estudio/sonidos.js)
+//   POST   /api/videos/<c>/musicas          Subir una (multipart: archivo, duracion?; MP3, WAV o M4A, ≤ 15 MB)
 //   POST   /api/videos/<c>/musicas/generar  { estilo, instrumental?, letra?, duracion?, titulo?, evitar?, modelo?, videoId?,
 //                                           confirmado }: GENERARLA con Suno por Kie (un trabajo del Estudio; dos
 //                                           versiones a la galería). Siempre pide confirmar: sin `confirmado`, 409 con el
@@ -71,7 +73,7 @@ import {
   deFila, listarProyectos, crearProyecto, guardarProyecto, aprobarProyecto, ErrorVideo, ID_VIDEO as ID,
   guardarSonido, versionesDe, volverAVersion, publicacionDelCliente,
 } from "../lib/videosProyectos.js";
-import { musicasDe, subirArchivo } from "../lib/estudio/galeria.js";
+import { musicasDe, efectosDe, subirSonido, ErrorSonido } from "../lib/estudio/sonidos.js";
 import { ErrorEstudio } from "../lib/estudio/trabajos.js";
 import { listarVoces, pedirMuestra, pedirLocucion, locucionAlDia, claveDeMuestra, HUELLA, ErrorVoz, viaDeVoz, fijarVozDeMarca } from "../lib/estudio/locucion.js";
 import { buscarEnBiblioteca, anadirDeLaBiblioteca, previaGratis, ACENTOS_BIBLIOTECA } from "../lib/estudio/elevenlabs.js";
@@ -205,16 +207,20 @@ async function rutasDelCliente(req, env, { acceso, usuario, partes, metodo }) {
 
   if (id === "voces") return rutasVoces(req, env, { acceso, usuario, cliente, sub: accion, metodo });
 
-  // Las músicas de fondo del cliente: listar y subir (gratis).
+  // Las músicas de fondo del cliente y de la AGENCIA (la biblioteca de sonido), con sus efectos: listar y subir (gratis).
   if (id === "musicas" && !accion) {
-    if (metodo === "GET") return json({ musicas: await musicasDe(acceso, clienteId) });
+    if (metodo === "GET") {
+      const [musicas, efectos] = await Promise.all([musicasDe(acceso, clienteId), efectosDe(acceso, clienteId)]);
+      return json({ musicas, efectos });
+    }
     if (metodo === "POST") {
       try {
         const form = await req.formData().catch(() => null);
-        const a = await subirArchivo(env, acceso, cliente, form?.get("archivo"), { musica: true });
-        return json({ musica: { id: a.id, nombre: String(a.prompt || "Música").replace(/\.[a-z0-9]+$/i, ""), src: a.src ?? `/api/media/${a.clave}` }, repetido: a.repetido === true }, 201);
+        const r = await subirSonido(env, acceso, { cliente, archivo: form?.get("archivo"), categoria: "musica", duracion: form?.get("duracion") ?? null, usuario });
+        difundir(env, acceso.ownerId, { tipo: "sonidos", clienteId, por: firma(usuario, req) });
+        return json({ musica: { id: r.pista.id, nombre: r.pista.nombre, src: r.pista.src }, pista: r.pista, repetido: r.repetido }, 201);
       } catch (e) {
-        if (e instanceof ErrorEstudio) return error(e.message, e.estado ?? 400);
+        if (e instanceof ErrorSonido) return error(e.message, e.estado ?? 400);
         throw e;
       }
     }

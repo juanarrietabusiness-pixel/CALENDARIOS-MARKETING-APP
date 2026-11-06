@@ -24,25 +24,49 @@ export const DUCKING = Object.freeze({ ventana: 0.01, baja: 0.08, sube: 0.45 });
 
 const ID = /^[\w-]{1,80}$/;
 
+/** Los dos sitios donde suena un efecto de la biblioteca en vez del sintetizado: las transiciones y los sellos y llamados. */
+export const SITIOS_EFECTO = Object.freeze(["transicion", "sello"]);
+
+/**
+ * Una clave de audio que puede ir en el sonido: de la galería de un cliente (`clientes/…`) o de la biblioteca de la
+ * agencia (`biblioteca/<espacio>/…`), sin `..`. La pone el servidor desde la ficha, nunca el navegador. Pura.
+ */
+const claveValida = (c) => typeof c === "string" && /^(clientes|biblioteca)\/[\w-]+\/./.test(c) && !c.includes("..");
+
+/** Lo que se guarda de una pista de la biblioteca (un efecto, o la música sin su volumen). Pura. */
+function pistaLimpia(m) {
+  const o = typeof m === "string" ? { archivoId: m } : m && typeof m === "object" ? m : null;
+  if (!o || !ID.test(String(o.archivoId ?? ""))) return null;
+  return {
+    archivoId: String(o.archivoId),
+    ...(claveValida(o.clave) ? { clave: o.clave } : {}),
+    nombre: String(o.nombre ?? "").replace(/\s+/g, " ").trim().slice(0, 80),
+    ...(o.de === "agencia" ? { de: "agencia" } : {}),
+  };
+}
+
 /**
  * El sonido de un video, limpio: { efectos (bool, encendidos por defecto), musica: null | { archivoId, clave?, nombre,
- * volumen (dB, -12…12) } }. Lo que no vale se quita. La `clave` sólo se conserva si es de la galería (`clientes/…`): la
- * pone el servidor desde la ficha, nunca el navegador. Pura.
+ * volumen (dB, -12…12), de? }, efectosPropios?: { transicion?, sello? } }. Lo que no vale se quita. `efectosPropios` son
+ * efectos de la BIBLIOTECA (un id, o { archivoId, clave, nombre }) que suenan en vez del whoosh o del pop sintetizados;
+ * sólo va si hay alguno. `de: "agencia"`: la pista es de la biblioteca de la agencia. Pura.
  */
 export function limpiarSonido(s) {
   const o = s && typeof s === "object" && !Array.isArray(s) ? s : {};
-  const m = o.musica && typeof o.musica === "object" ? o.musica : null;
+  const m = o.musica && typeof o.musica === "object" ? pistaLimpia(o.musica) : null;
   let musica = null;
-  if (m && ID.test(String(m.archivoId ?? ""))) {
-    const v = Number(m.volumen);
-    musica = {
-      archivoId: String(m.archivoId),
-      ...(typeof m.clave === "string" && /^clientes\/[\w-]+\/./.test(m.clave) && !m.clave.includes("..") ? { clave: m.clave } : {}),
-      nombre: String(m.nombre ?? "").replace(/\s+/g, " ").trim().slice(0, 80),
-      volumen: Number.isFinite(v) ? Math.max(VOLUMEN_MUSICA.min, Math.min(VOLUMEN_MUSICA.max, Math.round(v))) : 0,
-    };
+  if (m) {
+    const v = Number(o.musica.volumen);
+    const { de, ...resto } = m;
+    musica = { ...resto, volumen: Number.isFinite(v) ? Math.max(VOLUMEN_MUSICA.min, Math.min(VOLUMEN_MUSICA.max, Math.round(v))) : 0, ...(de ? { de } : {}) };
   }
-  return { efectos: o.efectos !== false, musica };
+  const p = o.efectosPropios && typeof o.efectosPropios === "object" && !Array.isArray(o.efectosPropios) ? o.efectosPropios : {};
+  const propios = {};
+  for (const sitio of SITIOS_EFECTO) {
+    const e = pistaLimpia(p[sitio]);
+    if (e) propios[sitio] = e;
+  }
+  return { efectos: o.efectos !== false, musica, ...(Object.keys(propios).length ? { efectosPropios: propios } : {}) };
 }
 
 /** El RMS (0–1) de un PCM s16le estéreo, sin contar lo que es exactamente cero (el silencio insertado). Pura. */
