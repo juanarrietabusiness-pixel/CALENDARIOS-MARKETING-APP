@@ -8,7 +8,9 @@
 // clientes a la vez, suelta o marcando varias.
 //
 // Debajo, plegadas, las IDEAS aprobadas: están por producir y no se
-// programan desde aquí.
+// programan desde aquí. Las que ya tienen su pieza (el cliente aprobó la
+// publicación cuando era una idea) se pueden contar como pieza aprobada si
+// el cliente la vio así: pasan arriba, por programar.
 // ============================================================
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -59,6 +61,21 @@ export default function PorProgramar({ clients = [], pulso = 0, onAbrir, onCalen
     if (n.has(id)) n.delete(id); else n.add(id);
     return n;
   });
+
+  // «El cliente vio la pieza: contarla como aprobada» (lo mismo que el aviso del panel). No programa nada: pasa arriba.
+  const contar = async (item) => {
+    if (trabajando) return;
+    setMensaje(null);
+    setTrabajando("Contándola como aprobada…");
+    try {
+      await db.contarComoPieza(item.calendarId, item.postId);
+      setMensaje({ tipo: "ok", texto: `«${item.titulo}» cuenta como aprobada: ya está en «Aprobadas, por programar».` });
+    } catch (e) {
+      setMensaje({ tipo: "error", texto: e.message });
+    }
+    setTrabajando("");
+    await cargar();
+  };
 
   const programar = async (seleccion) => {
     setMensaje(null);
@@ -183,11 +200,22 @@ export default function PorProgramar({ clients = [], pulso = 0, onAbrir, onCalen
                   <span className="prog-pieza"><span className="prog-cliente">{item.cliente}</span>{item.tieneArchivo && <span className="badge">con archivo</span>}</span>
                   <p className="prog-texto">{item.titulo}</p>
                   <p className="prog-cuando">{item.cuando ? fechaHora(item.cuando) : item.fecha}</p>
+                  {item.tieneArchivo && (
+                    <p className="prog-motivo por-programar-cambio">
+                      <Icon name="image" size={13} /> Ya tiene su pieza: si el cliente la vio así, cuéntala como aprobada; si no, mándasela.
+                    </p>
+                  )}
                 </span>
                 <span className="prog-acciones">
                   <button type="button" className="btn btn-secondary btn-sm" onClick={() => abrir(item)}>
                     <Icon name="pencil" size={14} /> Abrir
                   </button>
+                  {item.tieneArchivo && (
+                    <button type="button" className="btn btn-primary btn-sm" aria-disabled={!!trabajando || undefined} onClick={() => contar(item)}
+                      aria-label={`El cliente vio la pieza de ${item.titulo} de ${item.cliente}: contarla como aprobada`}>
+                      <Icon name="check" size={14} /> Contarla como aprobada
+                    </button>
+                  )}
                 </span>
               </li>
             ))}

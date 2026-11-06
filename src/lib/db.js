@@ -165,6 +165,15 @@ export async function fetchApprovals(calendarDbId) {
 }
 
 /**
+ * «El cliente vio la pieza: contarla como aprobada»: la respuesta del cliente a una publicación que aprobó cuando era
+ * una idea, y que ya tiene su archivo, pasa a contar como PIEZA aprobada (por programar). Devuelve { tipo, huella,
+ * updated_at }. No programa nada.
+ */
+export async function contarComoPieza(calendarDbId, postId) {
+  return pedir(`/calendarios/${encodeURIComponent(calendarDbId)}/aprobaciones/${encodeURIComponent(postId)}`, conCuerpo("PATCH", { tipo: "pieza" }));
+}
+
+/**
  * Avisa cuando el cliente final responde.
  *
  * Antes era una suscripción a Realtime de Supabase; Cloudflare no tiene

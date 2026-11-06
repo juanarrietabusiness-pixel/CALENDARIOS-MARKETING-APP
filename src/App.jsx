@@ -516,8 +516,10 @@ function Workspace({ session, ruta }) {
       // Filtro 1: mi propio eco. Salvo la cola: al mover de día una publicación programada, la fecha nueva
       // la escribe el SERVIDOR (resincronizarCalendario) y quien la movió no la tiene en pantalla. Sin releer,
       // la tarjeta y el chip seguían diciendo la fecha vieja y parecía que no se había movido.
+      // Y la aprobación contada como pieza («El cliente vio la pieza»): la escribió el servidor; releerla deja el mes al
+      // día y que el sondeo no la anuncie después como «tu cliente acaba de responder».
       if (ev.por?.tab && ev.por.tab === db.PESTANA) {
-        if (ev.tipo === "publicacion") setPulso((n) => n + 1);
+        if (ev.tipo === "publicacion" || ev.tipo === "aprobacion") setPulso((n) => n + 1);
         return;
       }
 
@@ -666,7 +668,9 @@ function Workspace({ session, ruta }) {
 
         case "aprobacion":
           setPulso((n) => n + 1);
-          setToast(`${ev.por?.nombre ?? "El cliente"} acaba de responder en el calendario.`);
+          setToast(ev.motivo === "pieza"
+            ? `${ev.por?.nombre ?? "Alguien del equipo"} contó como aprobada la pieza de una publicación: ya está por programar.`
+            : `${ev.por?.nombre ?? "El cliente"} acaba de responder en el calendario.`);
           break;
 
         case "comentario":

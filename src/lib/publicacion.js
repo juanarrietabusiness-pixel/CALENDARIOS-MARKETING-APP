@@ -664,13 +664,29 @@ const CAMPOS_PUBLICOS = [
   "textoPieza",
 ];
 
+/**
+ * Qué se le pide al cliente: la IDEA o la PIEZA FINAL. Es LA regla (lib/aprobacion.js la usa como `tipoAprobacion`; vive
+ * aquí para que el enlace del cliente la aplique sin importar en círculo):
+ *
+ *   · «pieza» puesta: pieza.
+ *   · «idea» que escogió una PERSONA en «¿Qué aprueba el cliente?» (`aprobacionElegida`): idea, aunque ya tenga archivo.
+ *   · cualquier otra cosa: pieza si ya hay archivo, idea si no. También la «idea» que puso el SISTEMA (el lote de «Sólo
+ *     las ideas al calendario», una copia repetida, lo de antes): vale mientras no haya pieza, y deja de valer en
+ *     cuanto llega, venga por donde venga (el panel, el chat, el MCP, el servidor). Si no, el cliente veía la imagen
+ *     con «Idea para aprobar» y su «sí» quedaba «por producir» para siempre. Pura.
+ */
+export function aprobacionQueSePide(post) {
+  if (post?.aprobacion === "pieza") return "pieza";
+  const conArchivo = mediosDe(post).length > 0;
+  if (post?.aprobacion === "idea" && (post.aprobacionElegida === true || !conArchivo)) return "idea";
+  return conArchivo ? "pieza" : "idea";
+}
+
 export function publicacionParaCliente(post) {
   const salida = {};
   for (const k of CAMPOS_PUBLICOS) if (post?.[k] !== undefined) salida[k] = post[k];
-  // Qué se le pide: la idea o la pieza final (lib/aprobacion.js). Se
-  // calcula aquí para no importar en círculo: sin elegir, pieza si hay archivo.
-  salida.aprobacion = post?.aprobacion === "idea" || post?.aprobacion === "pieza"
-    ? post.aprobacion : (mediosDe(post).length ? "pieza" : "idea");
+  // Qué se le pide: la idea o la pieza final (la regla de arriba, la misma que la pantalla y la aprobación).
+  salida.aprobacion = aprobacionQueSePide(post);
   return salida;
 }
 

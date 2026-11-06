@@ -20,7 +20,7 @@
 // «Programar al aprobar» aplican la MISMA regla que la pantalla.
 // ============================================================
 
-import { mediosDe, momentoPublicacion } from "./publicacion.js";
+import { mediosDe, momentoPublicacion, aprobacionQueSePide } from "./publicacion.js";
 import { fechaEnZona } from "./agenda.js";
 
 export const TIPOS_APROBACION = {
@@ -36,11 +36,23 @@ export const TIPOS_APROBACION = {
   },
 };
 
-/** Lo que se le pide al cliente. Sin elegir: pieza si ya hay archivo, idea si no. */
+/**
+ * Lo que se le pide al cliente. Sin elegir: pieza si ya hay archivo, idea si no. La «idea» sólo se respeta con archivo
+ * si la escogió una PERSONA (`aprobacionElegida`): la que pone el sistema (el lote, una copia repetida) se va sola en
+ * cuanto llega la pieza. La regla vive en lib/publicacion.js (`aprobacionQueSePide`), que la usa también el enlace.
+ */
 export function tipoAprobacion(post) {
-  if (post?.aprobacion === "idea" || post?.aprobacion === "pieza") return post.aprobacion;
-  return mediosDe(post).length ? "pieza" : "idea";
+  return aprobacionQueSePide(post);
 }
+
+/** Lo que escoge una PERSONA en «¿Qué aprueba el cliente?»: se respeta aunque la publicación tenga archivo. Pura. */
+export function elegirAprobacion(post, tipo) {
+  if (tipo !== "idea" && tipo !== "pieza") return post;
+  return { ...post, aprobacion: tipo, aprobacionElegida: true };
+}
+
+/** ¿Lo que se le pide salió solo (nadie lo escogió)? Para el «Elegido solo: cámbialo si hace falta». Pura. */
+export const aprobacionAutomatica = (post) => post?.aprobacionElegida !== true && post?.aprobacion !== "pieza";
 
 /** djb2: corto, estable y sin dependencias; basta para «¿cambió?». */
 function hash(texto) {
@@ -134,7 +146,35 @@ export function avisoCambios(post) {
  */
 export function pedirAprobacion(post, ahoraISO, tipo = "pieza") {
   const { aprobadaComo: _a, huellaAprobada: _h, aprobadaAt: _t, cambiosPedidos: _c, cambiosAt: _ca, ...resto } = post;
-  return { ...resto, aprobacion: tipo, status: "pending", pideAprobacionDesde: ahoraISO };
+  // Lo pide una persona (los botones del panel): lo que escoge se respeta.
+  return { ...resto, aprobacion: tipo, aprobacionElegida: true, status: "pending", pideAprobacionDesde: ahoraISO };
+}
+
+/**
+ * ¿El cliente aprobó la IDEA y la publicación ya tiene su pieza? Es lo que dejaba la marca «idea» del sistema antes de
+ * que se fuera sola con el archivo: el cliente vio la imagen con «Idea para aprobar» y su «sí» quedó «por producir».
+ * La agencia lo arregla a mano con «El cliente vio la pieza: contarla como aprobada». Pura.
+ */
+export const ideaAprobadaConPieza = (post) => porProducir(post) && mediosDe(post).length > 0;
+
+/**
+ * Si la respuesta del cliente se puede contar como PIEZA aprobada (lo comprueba el servidor antes de reescribirla):
+ * null si sí, o el motivo si no. Tiene que ser un «sí» que cuente todavía, a una publicación que ya tiene su archivo y
+ * que no se publicó. Pura.
+ */
+export function motivoParaNoContar(post, review) {
+  if (!post) return "La publicación ya no está en este calendario.";
+  if (post.status === "published") return "La publicación ya salió.";
+  if (!mediosDe(post).length) return "Todavía no tiene su pieza: ponle la imagen o el video primero.";
+  const vigente = aprobacionVigente(post, review);
+  if (!vigente) return review ? "Se le volvió a pedir la aprobación después de su respuesta: espera la nueva." : "El cliente todavía no la ha aprobado.";
+  if (vigente.estado !== "aprobado") return "El cliente pidió cambios: no está aprobada.";
+  return null;
+}
+
+/** La publicación (en el estado) con su aprobación contada como PIEZA: lo que deja el panel tras el botón. Pura. */
+export function contadaComoPieza(post, { huella = null, timestamp = null } = {}) {
+  return { ...post, status: "approved", aprobadaComo: "pieza", huellaAprobada: huella ?? huellaPieza(post), aprobadaAt: timestamp ?? post?.aprobadaAt ?? null };
 }
 
 /** Cuántas ideas y piezas se mandan en un envío (para el diálogo de enviar). */
