@@ -223,6 +223,8 @@ export function crearEjecutor({ env, acceso, clienteActual = null, estudio = nul
         t.due_date ? `vence ${t.due_date}` : "",
         t.today_date ? `marcada para ${t.today_date}` : "",
         t.assigned_to ? `→ ${t.assigned_to}` : "",
+        // El id va siempre: `completar_tarea` lo pide, y sin él ni Claude ni la agenda personal podían cerrar nada.
+        `(id ${t.id})`,
       ].filter(Boolean).join(" ");
       if (cliente || clienteActual) {
         const c = await resolverCliente(cliente);
