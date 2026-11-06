@@ -24,6 +24,7 @@ import { clienteYCuenta } from "./anuncios.js";
 import { leerMercado } from "./mercado.js";
 import { leerNegocio } from "./negocio.js";
 import { leerManual } from "./estratega.js";
+import { preferenciasDelCliente } from "./enPauta.js";
 import { fechaEnZona } from "../../src/lib/agenda.js";
 import {
   planDelCiclo, conPiezas, candidatasDelCalendario, temporadaDelMes, guiaDeMontaje, limpiarProgreso, avanceDeGuia, planATextoCiclo,
@@ -90,7 +91,7 @@ export function limpiarAjustes(a) {
 export async function cicloDelCliente(env, acceso, cliente, mes, { cuenta = null } = {}) {
   const hoy = fechaEnZona();
   const meses = new Set(mesesHasta(mes, MESES_DE_PIEZAS));
-  const [negocio, manual, mercado, guardado, cals, cola, metricas] = await Promise.all([
+  const [negocio, manual, mercado, guardado, cals, cola, metricas, aprendido] = await Promise.all([
     leerNegocio(acceso, cliente.id),
     leerManual(acceso),
     leerMercado(acceso, cliente.id),
@@ -98,6 +99,8 @@ export async function cicloDelCliente(env, acceso, cliente, mes, { cuenta = null
     acceso.leerColumnas("calendars", ["id", "year", "month", "days", "offers", "promo_code", "campaign", "opciones"], { client_id: cliente.id }, "year desc, month desc", 8).catch(() => []),
     acceso.leerColumnas("publicaciones_programadas", ["calendar_id", "post_id", "red", "estado", "variante", "externo_id", "enlace"], { client_id: cliente.id, estado: "publicada" }, "created_at desc", 600).catch(() => []),
     acceso.leerColumnas("metricas_publicacion", ["id", "cuenta_id", "red", "externo_id", "interacciones", "guardados", "compartidos"], { client_id: cliente.id }, "publicada_at desc", 3000).catch(() => []),
+    // Lo que se aprendió de sus anuncios (lo que ya corrió en el Ads Manager): null sin muestra o si falla.
+    preferenciasDelCliente(acceso, cliente.id),
   ]);
   const deMes = (c) => `${c.year}-${String(Number(c.month) + 1).padStart(2, "0")}`;
   const calendarios = cals.filter((c) => meses.has(deMes(c))).map((c) => ({
@@ -114,7 +117,7 @@ export async function cicloDelCliente(env, acceso, cliente, mes, { cuenta = null
     cliente: { nombre: cliente.name, rubro: cliente.industry ?? "" }, moneda: cuenta?.moneda || "USD",
   });
   const candidatas = candidatasDelCalendario({ calendarios, cola, metricas, destino: base.destino, artesMarca: kit?.tiposArte });
-  const plan = conPiezas(base, candidatas, { ofertas: delMes?.offers ?? "", codigo: delMes?.promoCode ?? "", hoy });
+  const plan = conPiezas(base, candidatas, { ofertas: delMes?.offers ?? "", codigo: delMes?.promoCode ?? "", hoy, aprendido });
   const guia = guiaDeMontaje(plan);
   const progreso = limpiarProgreso(guardado.progreso, guia);
   return { plan, guardado: { ...guardado, progreso }, avance: avanceDeGuia(guia, progreso) };

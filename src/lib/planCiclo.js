@@ -28,7 +28,7 @@
 
 import { ETAPAS_CICLO, etapaCiclo, idEtapaCiclo, nombreEtapaCiclo, tipoNegocioDe, destinoNegocioDe } from "./cicloVentas.js";
 import { cicloDe } from "./cicloNegocio.js";
-import { TIPOS_ARTE, tipoArteDe, limpiarTiposArte } from "./tiposArte.js";
+import { tipoArteDe, limpiarTiposArte, tipoArteDePost } from "./tiposArte.js";
 import { maletasQueFaltan, avisoDeMaletas } from "./maletas.js";
 import { objetivo as objetivoDelNegocio, limpiarNegocio, numero } from "./numerosNegocio.js";
 import { limpiarManual, nombreConPlantilla } from "./estratega.js";
@@ -391,21 +391,8 @@ export function planDelCiclo({
 // Qué pieza va en cada anuncio (C.2)
 // ------------------------------------------------------------
 
-/**
- * El tipo de arte de una publicación: el que traiga (`tipoArte`); si no, el que dibuja su composición (los de la marca
- * primero); si no, el de su tipo de contenido. "" si no se sabe. Pura.
- */
-export function tipoArteDePost(post, artesMarca = []) {
-  if (tipoArteDe(post?.tipoArte)) return post.tipoArte;
-  const marca = limpiarTiposArte(artesMarca);
-  const orden = [...TIPOS_ARTE.filter((t) => marca.includes(t.id)), ...TIPOS_ARTE.filter((t) => !marca.includes(t.id))];
-  if (post?.composicion) {
-    const t = orden.find((x) => x.composiciones.includes(post.composicion));
-    if (t) return t.id;
-  }
-  if (post?.pilar) return orden.find((x) => x.pilares.includes(post.pilar))?.id ?? "";
-  return "";
-}
+// El tipo de arte de una publicación: la regla única de lib/tiposArte.js (la misma de lo que se aprende de los anuncios).
+export { tipoArteDePost };
 
 // Lo que impide usar la publicación TAL CUAL (su caption es el texto del anuncio y no se cambia).
 const IMPIDEN = new Set(["sin-caption", "caduca", "personal", "llamado"]);
@@ -474,10 +461,16 @@ const claveDiversidad = (p) => (p.tipoArte && p.composicion ? `${p.tipoArte}|${p
  * oferta. Una pieza va en UNA campaña. Dos con el mismo tipo de arte y la misma composición son una para Meta: la
  * segunda no se pone y se avisa. `ofertas`/`codigo`: los del calendario del mes. Pura.
  */
-export function conPiezas(plan, candidatas = [], { ofertas = "", codigo = "", hoy = "" } = {}) {
+export function conPiezas(plan, candidatas = [], { ofertas = "", codigo = "", hoy = "", aprendido = null } = {}) {
   if (!plan) return plan;
   const usadas = new Set();
-  const avisos = [...plan.avisos.filter((a) => a.codigo !== "diversidad" && a.codigo !== "faltan-piezas")];
+  const avisos = [...plan.avisos.filter((a) => a.codigo !== "diversidad" && a.codigo !== "faltan-piezas" && a.codigo !== "aprendido")];
+  // Lo que se aprendió de sus anuncios (lib/aprenderAnuncios.js): el tipo de arte más barato va primero en lo que falta
+  // y el más caro, al final. Sólo ordena: los tipos de cada etapa no cambian.
+  const deArte = (lista) => (Array.isArray(aprendido?.[lista]) ? aprendido[lista] : []).filter((x) => x?.rasgo === "tipoArte").map((x) => x.id);
+  const masBarato = deArte("mejores");
+  const masCaro = deArte("peores");
+  const peso = (a) => (masBarato.includes(a) ? 0 : masCaro.includes(a) ? 2 : 1);
   const mes = plan.mes;
   const ids = new Set(plan.campanas.map((c) => c.id));
   const llenas = new Map(plan.campanas.map((c) => [c.id, []]));
@@ -525,7 +518,8 @@ export function conPiezas(plan, candidatas = [], { ofertas = "", codigo = "", ho
     const anuncios = puestas.map((x, i) => ({ n: i + 1, ...anuncioDe(x.pieza, x.origen, c, plan, i, hoy) }));
     const n = c.anunciosPorConjunto - anuncios.length;
     const cubiertos = new Set(puestas.map((x) => x.pieza.tipoArte).filter(Boolean));
-    const artes = [...c.artes.filter((a) => !cubiertos.has(a)), ...c.artes.filter((a) => cubiertos.has(a))];
+    const porPeso = (lista) => [...lista].sort((a, b) => peso(a) - peso(b));
+    const artes = [...porPeso(c.artes.filter((a) => !cubiertos.has(a))), ...porPeso(c.artes.filter((a) => cubiertos.has(a)))];
     const nivel = c.etapa === "temporada" ? "producto" : NIVEL_POR_ETAPA[c.etapa] ?? "";
     return { ...c, anuncios, faltan: n > 0 ? { n, etapa: c.etapa === "temporada" ? "conversion" : c.etapa, nivel, artes, productoId: plan.foco?.id ?? "" } : null };
   });
@@ -535,7 +529,17 @@ export function conPiezas(plan, candidatas = [], { ofertas = "", codigo = "", ho
   }
   const faltan = campanas.reduce((s, c) => s + (c.faltan?.n ?? 0), 0);
   if (faltan) avisos.push({ codigo: "faltan-piezas", grave: false, texto: `Faltan ${faltan} ${faltan === 1 ? "pieza" : "piezas"} para completar los anuncios: «Producir los anuncios que faltan» las pide al lote ya marcadas «Va a pauta».` });
-  return { ...plan, campanas, avisos };
+  const conclusiones = [...(aprendido?.mejores ?? []).map((x) => ({ ...x, lado: "barato" })), ...(aprendido?.peores ?? []).map((x) => ({ ...x, lado: "caro" }))];
+  if (conclusiones.length) {
+    const articulo = (x) => (x.rasgo === "composicion" || x.rasgo === "etapa" ? "la" : "el");
+    const dicho = (x) => `${articulo(x)} ${x.nombreRasgo} «${x.nombre}» (${x.costo == null ? "sin resultados" : dinero(x.costo, plan.moneda)})`;
+    const baratos = conclusiones.filter((x) => x.lado === "barato").map(dicho);
+    const caros = conclusiones.filter((x) => x.lado === "caro").map(dicho);
+    avisos.push({ codigo: "aprendido", grave: false, texto: `Lo que ya se probó en sus anuncios (${aprendido.muestra} piezas con gasto, 30 días): ${[
+      baratos.length ? `sale más barato ${baratos.join(", ")}` : "", caros.length ? `sale más caro ${caros.join(", ")}` : "",
+    ].filter(Boolean).join("; ")}. Lo que falta pide primero lo más barato; deja una pieza de cada cuatro para probar algo distinto.` });
+  }
+  return { ...plan, campanas, avisos, aprendido: conclusiones.length ? { mejores: aprendido.mejores ?? [], peores: aprendido.peores ?? [], muestra: aprendido.muestra ?? 0 } : null };
 }
 
 /** Un anuncio con su pieza: cómo se monta (la publicación existente o subiendo la pieza), su nombre y sus textos. */

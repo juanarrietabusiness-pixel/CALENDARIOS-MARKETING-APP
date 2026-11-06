@@ -26,7 +26,7 @@
 // funciona sin dejar de probar: con todo igual, Meta deja de distinguir los anuncios (diversificación creativa).
 // ============================================================
 
-import { TIPOS_ARTE, tipoArteDe } from "./tiposArte.js";
+import { tipoArteDe, tipoArteDePost } from "./tiposArte.js";
 import { nombreDeNivel } from "./consciencia.js";
 import { nombreEtapaCiclo } from "./cicloVentas.js";
 import { formatoMoneda } from "./anuncios.js";
@@ -44,24 +44,8 @@ const num = (v) => (v == null || v === "" ? 0 : Number(v) || 0);
 const r2 = (n) => Math.round(n * 100) / 100;
 const esObjeto = (x) => Boolean(x) && typeof x === "object" && !Array.isArray(x);
 
-/**
- * El tipo de arte de una publicación: el que lleve escrito o, si no, el que dibuja su composición con su tipo de
- * contenido; si no casan los dos, el de la composición; si no, el de su tipo de contenido. "" si no hay con qué. Pura.
- */
-export function tipoArteDePost(post = {}) {
-  if (tipoArteDe(post?.tipoArte)) return post.tipoArte;
-  const comp = String(post?.composicion ?? "");
-  const pilar = String(post?.pilar ?? "");
-  if (comp && pilar) {
-    const ambos = TIPOS_ARTE.find((t) => t.composiciones.includes(comp) && t.pilares.includes(pilar));
-    if (ambos) return ambos.id;
-  }
-  if (comp) {
-    const deComp = TIPOS_ARTE.find((t) => t.composiciones.includes(comp));
-    if (deComp) return deComp.id;
-  }
-  return pilar ? TIPOS_ARTE.find((t) => t.pilares.includes(pilar))?.id ?? "" : "";
-}
+// El tipo de arte de una publicación: la regla única de lib/tiposArte.js (la misma del plan de campañas).
+export { tipoArteDePost };
 
 /** Los rasgos que se comparan y cómo se nombra cada valor. */
 export const RASGOS = Object.freeze([

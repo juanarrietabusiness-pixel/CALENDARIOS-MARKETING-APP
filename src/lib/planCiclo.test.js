@@ -275,6 +275,29 @@ describe("qué pieza va en cada anuncio", () => {
     expect(p.campanas.find((c) => c.id === "conversion").anuncios).toHaveLength(0);
   });
 
+  it("lo que se aprendió de sus anuncios ordena los tipos de arte de lo que falta y el plan lo dice", () => {
+    const sin = conPiezas(plan(), cands(), { hoy: "2026-11-06" });
+    // Sin aprender: los de la etapa que no cubre ninguna pieza puesta y, detrás, el que ya va (producto, la de p1).
+    expect(sin.campanas[0].faltan.artes).toEqual(["beneficios", "demostracion", "producto"]);
+    const aprendido = {
+      muestra: 7,
+      mejores: [{ rasgo: "tipoArte", nombreRasgo: "tipo de arte", id: "demostracion", nombre: "El barato", costo: 0.8, total: 1.2, piezas: 3 }],
+      peores: [{ rasgo: "tipoArte", nombreRasgo: "tipo de arte", id: "beneficios", nombre: "El caro", costo: 2, total: 1.2, piezas: 3 }],
+    };
+    const con = conPiezas(plan(), cands(), { hoy: "2026-11-06", aprendido });
+    // El más barato pasa delante y el más caro, detrás de los que faltan; lo ya cubierto sigue al final; nada se añade.
+    expect(con.campanas[0].faltan.artes).toEqual(["demostracion", "beneficios", "producto"]);
+    const aviso = con.avisos.find((a) => a.codigo === "aprendido");
+    expect(aviso.texto).toMatch(/7 piezas/);
+    expect(aviso.texto).toMatch(/sale más barato el tipo de arte «El barato» \(\$0\.80\)/);
+    expect(aviso.texto).toMatch(/sale más caro el tipo de arte «El caro» \(\$2\)/);
+    expect(con.aprendido).toMatchObject({ muestra: 7 });
+    // Sin muestra no cambia nada ni dice nada; y rehacer el plan no repite el aviso.
+    expect(sin.avisos.some((a) => a.codigo === "aprendido")).toBe(false);
+    expect(sin.aprendido).toBeNull();
+    expect(conPiezas(con, cands(), { hoy: "2026-11-06", aprendido }).avisos.filter((a) => a.codigo === "aprendido")).toHaveLength(1);
+  });
+
   it("el tipo de arte de una publicación: el suyo, el de su composición (los de la marca primero) o el de su tipo", () => {
     expect(tipoArteDePost({ tipoArte: "prensa" })).toBe("prensa");
     expect(tipoArteDePost({ composicion: "heroe" }, ["beneficios"])).toBe("beneficios");

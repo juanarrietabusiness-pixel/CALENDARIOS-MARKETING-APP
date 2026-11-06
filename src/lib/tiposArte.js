@@ -62,6 +62,30 @@ export function limpiarTiposArte(ids) {
 }
 
 /**
+ * El tipo de arte de una publicación: el que traiga escrito (`tipoArte`); si no, el que dibuja su composición CON su
+ * tipo de contenido; si no casan los dos, el de su composición; si no, el de su tipo de contenido. En cada paso van
+ * primero los de la marca (`artesMarca`, kit.tiposArte). "" si no se sabe. UNA regla para el plan de campañas y para
+ * lo que se aprende de los anuncios: con dos, la misma pieza contaría como un tipo en el plan y como otro al aprender.
+ * Pura.
+ */
+export function tipoArteDePost(post, artesMarca = []) {
+  if (tipoArteDe(post?.tipoArte)) return post.tipoArte;
+  const marca = limpiarTiposArte(artesMarca);
+  const orden = [...TIPOS_ARTE.filter((t) => marca.includes(t.id)), ...TIPOS_ARTE.filter((t) => !marca.includes(t.id))];
+  const comp = String(post?.composicion ?? "");
+  const pilar = String(post?.pilar ?? "");
+  if (comp && pilar) {
+    const ambos = orden.find((t) => t.composiciones.includes(comp) && t.pilares.includes(pilar));
+    if (ambos) return ambos.id;
+  }
+  if (comp) {
+    const deComp = orden.find((t) => t.composiciones.includes(comp));
+    if (deComp) return deComp.id;
+  }
+  return pilar ? orden.find((t) => t.pilares.includes(pilar))?.id ?? "" : "";
+}
+
+/**
  * La línea que leen el director y el motor de ideas con los tipos de arte de la marca (`kit.tiposArte`), o "". Va
  * aparte del bloque de la marca a propósito: ése va en TODA pieza al motor de imagen, y esto es para quien diseña. Pura.
  */
