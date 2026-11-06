@@ -115,6 +115,17 @@ describe("la paleta", () => {
     expect(razonDeContraste(p.texto, p.fondo)).toBeGreaterThan(4.5);
   });
 
+  it("con el kit real de 57DMC: el dorado que dice «acento principal: logo, títulos…» es el acento, no el texto", () => {
+    // Antes el dorado empataba con el blanco en «texto» (por «títulos») y ganaba por el orden: las palabras clave
+    // (*énfasis*, que van en acento) salían en blanco y los textos en dorado.
+    const KIT_REAL = [
+      { hex: "#000000", nombre: "Negro", rol: "dominante: fondo y estructura principal de toda pieza; manda" },
+      { hex: "#D19E03", nombre: "Dorado canónico", rol: "acento principal: logo, títulos y líneas curvas/detalles; nu" },
+      { hex: "#FFFFFF", nombre: "Blanco", rol: "texto y contraste: cuerpo y equilibrio sobre negro; subordin" },
+    ];
+    expect(paletaDelKit(KIT_REAL)).toMatchObject({ fondo: "#000000", texto: "#FFFFFF", acento: "#D19E03" });
+  });
+
   it("el texto tiene que leerse sobre el fondo, diga lo que diga su papel", () => {
     const p = paletaDelKit([{ hex: "#FAFAFA", rol: "fondo" }, { hex: "#EEEEEE", rol: "texto suave" }, { hex: "#222222", rol: "detalles" }]);
     expect(p.texto).toBe("#222222");

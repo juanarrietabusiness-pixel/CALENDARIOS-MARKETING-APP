@@ -154,13 +154,19 @@ const PISTAS = Object.freeze({
   acento: [[/cta|bot[oó]n|llamado|highlight/, 3], [/acento c[aá]lido|detalle/, 2], [/acento/, 1]],
   apoyo: [[/marca|logo|apoyo|secundari|natural|acento suave/, 2]],
 });
+/** Los papeles en los que la primera palabra desempata (el de apoyo no: «Apoyo del verde» no le gana al color del logo). */
+const PRIMERA_DECIDE = new Set(["texto", "acento"]);
 function puntaje(rol, token) {
   const [cabeza, ...resto] = rol.split(/\s[—–-]\s|\//);
   const cola = resto.join(" ");
+  // La PRIMERA palabra del papel es lo que el color ES («acento principal: logo, títulos…», «texto y contraste…»): sin
+  // ella, el dorado de 57DMC empataba con el blanco en «texto» (por «títulos») y salía de texto, y el blanco de acento.
+  const primera = rol.trim().split(/[\s:;,.—–/-]+/)[0] ?? "";
   let n = 0;
   for (const [re, peso] of PISTAS[token]) {
     if (re.test(cabeza)) n += peso * 3;
     else if (re.test(cola)) n += peso;
+    if (primera && PRIMERA_DECIDE.has(token) && re.test(primera)) n += peso * 2;
   }
   return n;
 }

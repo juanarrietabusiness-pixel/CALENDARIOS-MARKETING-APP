@@ -4694,7 +4694,9 @@ son del servidor.
   base limpia para texto») y el acento SAGE («acento natural suave» le ganaba a «…CTA»). Ahora lo que el papel dice
   antes de la primera raya o barra pesa el triple, un CTA gana a un «acento» a secas y el texto TIENE que leerse sobre
   el fondo (4,5 a 1). Un test lleva los 7 papeles reales tal cual. Lo que fija el guion manda encima (`paletaDelGuion`),
-  y un texto sobre su placa que no llegue a 3 a 1 usa el claro u oscuro que más contraste (`colorLegible`).
+  y un texto sobre su placa que no llegue a 3 a 1 usa el claro u oscuro que más contraste (`colorLegible`). En texto y
+  acento, la PRIMERA palabra del papel desempata (`PRIMERA_DECIDE`): con el kit de 57DMC el dorado («acento principal:
+  logo, títulos…») empataba con el blanco («texto y contraste…») y salía de texto, y las palabras clave, en blanco.
   · **El MOTOR reparte por zonas; el guion no pone coordenadas** (`repartirEscena`, `areaSegura`, `bandaDeSubtitulos`).
   Con puntos fijos por nombre, la placa del texto tapaba la foto del producto y el tercio de abajo quedaba vacío. La
   zona de una capa dice su ORDEN; el motor la mide con el MISMO código que la dibuja (`medirCapa` pasa `dibujarCapa`
