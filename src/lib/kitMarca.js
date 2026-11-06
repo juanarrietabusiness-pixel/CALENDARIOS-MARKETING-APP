@@ -282,8 +282,32 @@ export function limpiarKit(guardado) {
     // Los TIPOS DE ARTE de esta marca (curso de campañas, tiposArte.js): de 2 a 4 que le funcionan; los leen el director
     // y el motor de ideas (`lineaDeTiposArte`). Sólo ids que existen.
     tiposArte: limpiarTiposArte(g.tiposArte),
+    // El ESTILO DEL VIDEO animado (`estiloVideo`: «cómo se ven y se mueven los videos de esta marca», escrito por la
+    // agencia) y sus imágenes de referencia de ESTE cliente (`referenciasVideo`): los lee la IA que escribe el guion de
+    // un video animado (src/lib/estiloVideo.js) como estilo OBLIGATORIO. Sólo si los hay: un kit de antes no cambia.
+    ...(limpiarEstiloVideo(g.estiloVideo) ? { estiloVideo: limpiarEstiloVideo(g.estiloVideo) } : {}),
+    ...(limpiarRefsVideo(g.referenciasVideo).length ? { referenciasVideo: limpiarRefsVideo(g.referenciasVideo) } : {}),
     ...(g.preparadoAt ? { preparadoAt: String(g.preparadoAt) } : {}),
   };
+}
+
+/** Lo más que se escribe del estilo del video y las imágenes de referencia del estilo del video, como mucho. */
+export const MAX_ESTILO_VIDEO = 1500;
+export const MAX_REFS_VIDEO = 6;
+
+/** El estilo del video: texto con sus saltos de línea (es una lista de reglas), sin espacios de más. Pura. */
+export function limpiarEstiloVideo(t) {
+  return String(t ?? "").replace(/\r/g, "").replace(/[ \t]+/g, " ").replace(/\n[ \t]*/g, "\n").replace(/\n{3,}/g, "\n\n").trim().slice(0, MAX_ESTILO_VIDEO);
+}
+
+/** Las referencias del estilo del video: claves de la galería (`clientes/<c>/…`), sin repetir y sin «..». Pura. */
+function limpiarRefsVideo(entrada) {
+  const fuera = [];
+  for (const c of Array.isArray(entrada) ? entrada : []) {
+    const clave = typeof c === "string" ? c.trim() : "";
+    if (CLAVE.test(clave) && !clave.includes("..") && !fuera.includes(clave)) fuera.push(clave);
+  }
+  return fuera.slice(0, MAX_REFS_VIDEO);
 }
 
 /** Plantillas del kit, como mucho: con más, escoger deja de ser rápido. */
@@ -721,7 +745,9 @@ export function fundirKit(guardado, propuesto, ahora = new Date().toISOString())
   return limpiarKit({
     ...propuesto, logo: antes.logo, propios: antes.propios, estilos: antes.estilos, estiloPorTipo: antes.estiloPorTipo, personajes: antes.personajes,
     aprendido: antes.aprendido, referencias: antes.referencias, modelos: antes.modelos, reglas: antes.reglas,
-    logoModo: antes.logoModo, logoPosicion: antes.logoPosicion, fuente: antes.fuente, voz: antes.voz, locucion: antes.locucion, musica: antes.musica, ...(antes.personajeVideo ? { personajeVideo: antes.personajeVideo } : {}), plantillas: antes.plantillas, tiposArte: antes.tiposArte, preparadoAt: ahora,
+    logoModo: antes.logoModo, logoPosicion: antes.logoPosicion, fuente: antes.fuente, voz: antes.voz, locucion: antes.locucion, musica: antes.musica, ...(antes.personajeVideo ? { personajeVideo: antes.personajeVideo } : {}), plantillas: antes.plantillas, tiposArte: antes.tiposArte,
+    // El estilo del video y sus referencias los escribe la agencia: la IA del kit no los toca.
+    estiloVideo: antes.estiloVideo, referenciasVideo: antes.referenciasVideo, preparadoAt: ahora,
   });
 }
 
@@ -782,6 +808,7 @@ export function clavesDeLaMarca(kitGuardado, productos = []) {
   for (const p of kit.personajes) for (const c of p.imagenes) poner(c, `una imagen del personaje «${p.nombre}»`);
   for (const p of kit.plantillas) poner(p.clave, `la plantilla «${p.nombre}»`);
   for (const lista of Object.values(kit.referencias)) for (const c of lista) poner(c, "una referencia visual de un tipo de pieza");
+  for (const c of kit.referenciasVideo ?? []) poner(c, "una referencia del estilo de los videos");
   for (const p of Array.isArray(productos) ? productos : []) {
     for (const c of Array.isArray(p?.fotos) ? p.fotos : []) poner(String(c), `una foto del producto «${p?.nombre || "sin nombre"}»`, ARREGLO_CATALOGO);
   }
@@ -805,6 +832,7 @@ export function sinClavesPerdidas(kitGuardado, productos = [], perdidas = new Se
       personajes: kit.personajes.map((p) => ({ ...p, imagenes: p.imagenes.filter(vale) })).filter((p) => p.imagenes.length),
       plantillas: kit.plantillas.filter((p) => vale(p.clave)),
       referencias,
+      ...(kit.referenciasVideo ? { referenciasVideo: kit.referenciasVideo.filter(vale) } : {}),
     },
     productos: productos.map((p) => ({ ...p, fotos: (p.fotos ?? []).filter(vale) })).filter((p) => p.fotos.length),
   };
