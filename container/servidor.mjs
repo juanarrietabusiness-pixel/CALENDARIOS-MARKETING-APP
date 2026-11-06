@@ -40,7 +40,7 @@ import { createCanvas, loadImage } from "@napi-rs/canvas";
 import { validarGuion, lineaDeTiempo, FORMATOS_VIDEO } from "../src/lib/videoEscenas.js";
 import { dibujarFrame, paletaDelGuion, escenaEn } from "../src/lib/motorVideo.js";
 import { revisarEscenas, textoDeRevision, instanteLleno } from "../src/lib/revisionEscenas.js";
-import { prepararRecursos, registrarRespaldo, registrarFuente, cuadrosParaUnInstante } from "./recursos.mjs";
+import { prepararRecursos, registrarRespaldo, registrarLetraDeLaCasa, registrarFuente, cuadrosParaUnInstante } from "./recursos.mjs";
 import { guardarClip, tieneClip, ErrorClip } from "./clips.mjs";
 import { dibujarTextoPlantilla, dibujarLogo, letraDe } from "../src/lib/acabadoLienzo.js";
 import { encajarEn, reducirEn } from "../src/lib/encajarLienzo.js";
@@ -293,4 +293,6 @@ const servidor = createServer(async (req, res) => {
 });
 
 const letras = registrarRespaldo();
-servidor.listen(PUERTO, () => console.log(`contenedor del video animado en :${PUERTO} (${letras} archivos de Roboto)`));
+// La letra de la casa (Anton) para el rol gigante y el énfasis: si no se pudiera registrar, el texto sale con Roboto.
+const casa = registrarLetraDeLaCasa();
+servidor.listen(PUERTO, () => console.log(`contenedor del video animado en :${PUERTO} (${letras} archivos de Roboto${casa ? ", y Anton" : "; SIN Anton"})`));
