@@ -1,0 +1,30 @@
+/* La biblioteca de sonido (Marca → Música y efectos; Ajustes → Cómo trabajamos). Va con su chunk. */
+.bson { display: grid; gap: var(--sp-3); }
+.bson-titulo { display: flex; gap: var(--sp-2); align-items: center; margin: 0; font-size: var(--fs-lg); }
+.bson-intro { margin: 0; }
+.bson-lista { display: grid; gap: var(--sp-2); border-top: 1px solid var(--border); padding-top: var(--sp-3); }
+.bson-cabeza { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; justify-content: space-between; }
+.bson-cabeza h4 { margin: 0; font-size: var(--fs-md); }
+.bson-acciones { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; }
+.bson-nota { margin: 0; }
+.bson-pistas { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--sp-2); grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr)); }
+.bson-pista { display: grid; gap: var(--sp-2); padding: var(--sp-3); background: var(--surface-2); border-radius: var(--radius-sm); min-width: 0; }
+.bson-fila { display: flex; gap: var(--sp-2); align-items: center; }
+.bson-nombre { flex: 1; min-width: 0; }
+.bson-estrella { min-width: var(--tap); min-height: var(--tap); color: var(--text-muted); }
+.bson-estrella.activa { color: var(--accent); }
+.bson-estrella.activa svg { fill: currentColor; }
+.bson-datos { margin: 0; }
+.bson-audio, .bson-agencia audio { width: 100%; }
+.bson-etiquetas { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; }
+.bson-etiquetas ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--sp-1); }
+.bson-chip { display: inline-flex; align-items: center; gap: var(--sp-1); padding: 2px var(--sp-2); border-radius: var(--radius-pill); background: var(--accent-soft); border: 1px solid var(--accent-line); font-size: var(--fs-xs); }
+.bson-chip-quitar { display: inline-flex; align-items: center; justify-content: center; min-width: var(--tap-sm); min-height: var(--tap-sm); margin: calc(var(--sp-2) * -1) calc(var(--sp-2) * -1) calc(var(--sp-2) * -1) 0; border: 0; background: transparent; color: inherit; cursor: pointer; border-radius: var(--radius-pill); }
+.bson-etiqueta { flex: 1 1 140px; min-width: 0; }
+.bson-bpm { width: 96px; }
+.bson-quitar { color: var(--danger); }
+.bson-agencia { padding: var(--sp-2) var(--sp-3); border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); }
+.bson-agencia ul { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--sp-3); }
+.bson-agencia li { display: grid; gap: var(--sp-1); }
+.bson-msg { margin: 0; font-size: var(--fs-sm); color: var(--text-muted); display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; }
+.bson-error { color: var(--danger); }

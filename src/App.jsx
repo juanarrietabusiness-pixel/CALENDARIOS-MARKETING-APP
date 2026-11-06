@@ -632,6 +632,11 @@ function Workspace({ session, ruta }) {
           window.dispatchEvent(new CustomEvent("videos", { detail: ev }));
           break;
 
+        // La biblioteca de sonido (de un cliente o de la agencia): quien la tenga abierta, o «Sonido» de un video, relee.
+        case "sonidos":
+          window.dispatchEvent(new CustomEvent("sonidos", { detail: ev }));
+          break;
+
         // Inspiración: el feed de un cliente se puso al día (el cron, otra persona): quien lo tenga abierto lo relee.
         case "inspiracion":
           window.dispatchEvent(new CustomEvent("inspiracion", { detail: ev }));
