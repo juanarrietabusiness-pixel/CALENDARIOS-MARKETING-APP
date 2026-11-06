@@ -68,6 +68,19 @@ const VideoListo = lazy(() => import("../VideoListo"));
 const Recetas = lazy(() => import("../Recetas"));
 // El aviso del kit (fase 7): sin logo, o un producto que nombra sin fotos. Lee la galería del cliente: aparte.
 const AvisoKitPieza = lazy(() => import("./AvisoKitPieza"));
+// «Publicar con música»: la foto → un reel con música; el carrusel → a mano con la música de Instagram (aparte).
+const ConMusica = lazy(() => import("./ConMusica"));
+
+/**
+ * ¿Toca ofrecer «con música»? Un post de UNA imagen, un carrusel con sus imágenes, o lo que ya es (o se está haciendo)
+ * un reel con música. Lo fino lo decide lib/conMusica.js dentro de su chunk: aquí sólo se evita descargarlo de más.
+ */
+const ofreceMusica = (post) => {
+  if (post?.status === "published") return false;
+  if (post?.conMusica || post?.conMusicaPendiente) return true;
+  const m = mediosDe(post);
+  return post?.format === "carrusel" ? m.length > 0 : (!post?.format || post.format === "post") && m.length === 1 && m[0].tipo === "imagen";
+};
 
 /**
  * @param seccion      «pieza» (el archivo y todas las formas de hacerlo) o «publicar» (dónde, el texto, cómo se va a
@@ -647,6 +660,12 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
           {masFormas}
         </section>
 
+        {clientId && ofreceMusica(post) && (
+          <Suspense fallback={null}>
+            <ConMusica post={post} setForm={setForm} client={client} clientId={clientId} cal={cal} onError={onError} enlaceAMano={enlaceAMano} onIrA={onIrA} />
+          </Suspense>
+        )}
+
         {videoSubido && clientId && (
           <Suspense fallback={null}>
             <VideoListo key={videoSubido} clienteId={clientId} clave={videoSubido} src={videoSubido} productoId={post.productoId ?? ""}
@@ -681,6 +700,13 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
           onFormato={elegirFormato}
         />
       </section>
+
+      {/* El reel con música que se está haciendo: lo sigue también desde aquí (si no, al cerrar se pisaría). */}
+      {clientId && post.conMusicaPendiente && (
+        <Suspense fallback={null}>
+          <ConMusica post={post} setForm={setForm} client={client} clientId={clientId} compacto />
+        </Suspense>
+      )}
 
       {/* La pieza se hace en su pestaña; aquí, un vistazo y el camino. */}
       <div className="field">

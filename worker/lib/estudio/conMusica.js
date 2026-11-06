@@ -23,7 +23,7 @@ import { kitDe } from "./kit.js";
 import { claveDelCliente } from "./archivos.js";
 import { cambiarPublicacion } from "./ponerEnPost.js";
 import {
-  guionDeFoto, puedeConMusica, fotoDe, duracionDeFoto, movimientoDeFoto, esCarruselParaMusica, ORIGEN_FOTO, FRASE_COSTO,
+  guionDeFoto, puedeConMusica, fotoDe, duracionDeFoto, movimientoDeFoto, esCarruselParaMusica, ORIGEN_FOTO, FRASE_COSTO, musicaPorDefecto,
   cancionSugerida, ultimaCancionUsada, cancionParaGuardar, textoDeCancion,
 } from "../../../src/lib/conMusica.js";
 
@@ -72,8 +72,7 @@ export async function musicaParaFoto(acceso, cliente, musicaId = "") {
     if (!m) throw new ErrorVideo("Esa música no está en la galería de este cliente.", 404);
     return m;
   }
-  const deLaMarca = new Set((kitDe(cliente).musica?.referencias ?? []).map((r) => r.archivoId).filter(Boolean));
-  const m = lista.find((x) => x.favorita === true || x.favorito === true) ?? lista.find((x) => deLaMarca.has(x.id)) ?? lista[0];
+  const m = musicaPorDefecto(lista, kitDe(cliente));
   if (!m) {
     throw new ErrorVideo(`${cliente.name ?? "Este cliente"} no tiene música en su galería: súbela (MP3 o WAV con derechos) o genérala en «Sonido» de un video animado, y vuelve.`, 409, { codigo: "sin_musica" });
   }

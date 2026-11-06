@@ -15,3 +15,8 @@
 .a-mano-botones, .a-mano-final { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
 .a-mano-botones .btn, .a-mano-final .btn { flex: 1 1 200px; min-height: var(--tap); justify-content: center; }
 .a-mano-final .notice { flex: 1 1 200px; margin: 0; display: flex; align-items: center; gap: var(--sp-2); }
+/* Las imágenes de un carrusel, numeradas en su orden (es el orden en que se comparten y salen en Instagram). */
+.a-mano-medios { padding: 0; margin: 0; }
+.a-mano-medios li { position: relative; }
+.a-mano-numero { position: absolute; top: var(--sp-1); left: var(--sp-1); min-width: 28px; height: 28px; padding: 0 var(--sp-1); border-radius: var(--radius-pill); background: var(--surface); color: var(--text); font-size: var(--fs-2xs); font-weight: 700; display: flex; align-items: center; justify-content: center; box-shadow: var(--elev-1); }
+.a-mano-bloque h2 { display: flex; align-items: center; gap: var(--sp-2); }

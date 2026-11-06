@@ -131,6 +131,17 @@ export function guionDeFoto({ archivoId, segundos = DURACION_FOTO, movimiento = 
   };
 }
 
+/**
+ * La música que se escoge sola para el reel de una foto, de la lista de la galería del cliente (la de `musicasDe`, tal
+ * cual: de la más nueva a la más vieja): la FAVORITA, si no una de la MARCA (las que gustaron, `kit.musica.referencias`),
+ * si no la más nueva. Null sin lista. Pura.
+ */
+export function musicaPorDefecto(lista, kit) {
+  const musicas = Array.isArray(lista) ? lista.filter((m) => m?.id) : [];
+  const deLaMarca = new Set((kit?.musica?.referencias ?? []).map((r) => r?.archivoId).filter(Boolean));
+  return musicas.find((m) => m.favorita === true || m.favorito === true) ?? musicas.find((m) => deLaMarca.has(m.id)) ?? musicas[0] ?? null;
+}
+
 /** ¿Es el video de una foto con música? (por su `origen`, ya leído). Pura. */
 export const esVideoDeFoto = (origen) => origen?.tipo === ORIGEN_FOTO;
 
@@ -145,7 +156,10 @@ export function postConMusica(post, medio, { videoId = "", foto = "", ahora = ""
   const previo = post.conMusica?.foto?.src ? post.conMusica : null;
   const actual = previo ? previo.foto : fotoDe(post);
   if (!actual?.src || (foto && actual.src !== foto)) return null;
-  const base = conMedios(post, [medio]);
+  // Lo que se estaba haciendo (`conMusicaPendiente`, lo apunta la pantalla al pedirlo) ya está hecho.
+  const { conMusicaPendiente, ...sinPendiente } = post;
+  void conMusicaPendiente;
+  const base = conMedios(sinPendiente, [medio]);
   return {
     ...base,
     format: "reel",
@@ -166,8 +180,8 @@ export function postConMusica(post, medio, { videoId = "", foto = "", ahora = ""
 export function volverALaFoto(post, ahora = "") {
   const cm = post?.conMusica;
   if (!cm?.foto?.src) return post;
-  const { conMusica, ...resto } = post;
-  void conMusica;
+  const { conMusica, conMusicaPendiente, ...resto } = post;
+  void conMusica; void conMusicaPendiente;
   return {
     ...conMedios(resto, [cm.foto]),
     format: cm.formato || "post",
