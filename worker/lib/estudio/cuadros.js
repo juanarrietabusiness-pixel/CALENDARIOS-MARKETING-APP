@@ -8,7 +8,9 @@
 //   · las imágenes que nombra el guion —ids de la GALERÍA de ESE cliente, nunca una clave que llegue de fuera—, el
 //     logo del kit y la letra (la del kit, o la que pida el guion si es de ese cliente), leídas de R2 y en base64;
 //   · los CLIPS de video (capas `video`) NO van en el pedido: pesan decenas de MB y el Worker tiene 128. Se suben antes,
-//     por flujo desde R2, con `PUT /clip/<id>` (`subirClips`), y el pedido sólo los nombra (`videos`).
+//     por flujo desde R2, con `PUT /clip/<id>` (`subirClips`), y el pedido sólo los nombra (`videos`);
+//   · las IMÁGENES que no caben en el tope del pedido (un fondo de IA por sección suma decenas de MB) tampoco: se suben
+//     igual, con `PUT /imagen/<id>` (`subirImagenes`), y el pedido las nombra en `imagenesSubidas`.
 // No gasta dinero de IA: es cómputo del Container (céntimos de céntimo; ver CLAUDE.md).
 // ============================================================
 
@@ -19,8 +21,13 @@ import { claveDelCliente } from "./archivos.js";
 import { validarGuion, archivosDelGuion, videosDelGuion, FORMATOS_VIDEO } from "../../../src/lib/videoEscenas.js";
 import { palabrasParaLinea } from "../../../src/lib/videoCancion.js";
 
-/** Lo más que pesa lo que se manda (imágenes y fuentes): el Container lo tiene en memoria. */
-const TOPE_TOTAL = 24 * 1024 * 1024;
+/**
+ * Lo más que pesa lo que va DENTRO del pedido (imágenes y fuentes, en base64): el Worker y el Durable Object del render
+ * lo tienen en memoria varias veces (los bytes, el base64 y el JSON). Lo que no cabe se sube por flujo (`subirImagenes`).
+ */
+const TOPE_TOTAL = 16 * 1024 * 1024;
+/** Una imagen que se sube aparte puede pesar hasta esto (container/imagenes.mjs admite 25 MB). */
+const TOPE_SUBIDA = 24 * 1024 * 1024;
 /** Una imagen o una fuente de más de esto no se manda (el motor pinta su marcador). */
 const TOPE_ARCHIVO = 8 * 1024 * 1024;
 /** El nombre del único Container de cuadros del espacio (worker/contenedor.js). */
@@ -45,6 +52,16 @@ async function deR2(env, clave, cuenta) {
   return aBase64(bytes);
 }
 
+/** Lo que se sabe de un objeto de R2 sin bajarlo (`head`; con un R2 que no lo tenga, `get` sin leer el cuerpo) o null. */
+async function enR2(env, clave) {
+  try {
+    if (typeof env.MEDIA.head === "function") return await env.MEDIA.head(clave);
+    const obj = await env.MEDIA.get(clave);
+    await obj?.body?.cancel?.();
+    return obj;
+  } catch { return null; }
+}
+
 /**
  * Todo lo que el Container necesita para dibujar este video → { pedido, guion, palabras }.
  * Sólo lee: la galería, el kit y R2 de ESE cliente.
@@ -60,16 +77,33 @@ export async function pedidoDelVideo(env, acceso, cliente, fila, { formato } = {
   const palabras = palabrasParaLinea(guion, locucion);
   const cuenta = { bytes: 0 };
 
-  // Las imágenes: los ids del guion que ESTÁN en la galería de este cliente (lo demás sale como marcador).
+  // El logo y la letra PRIMERO: pesan poco y sin ellos el video sale sin marca. Las imágenes, con lo que quede.
+  const logo = await deR2(env, claveDelCliente(kit.logo ?? "", cliente.id), cuenta);
+  // La letra: la que pida el guion (si es de este cliente) o la del kit.
+  const claveDe = (f) => (f && typeof f === "object" && f.clave ? claveDelCliente(f.clave, cliente.id) : claveDelCliente(kit.fuente?.clave ?? "", cliente.id));
+  const titularClave = claveDe(guion.estilo?.fuentes?.titular);
+  const cuerpoClave = claveDe(guion.estilo?.fuentes?.cuerpo);
+  const titular = titularClave ? await deR2(env, titularClave, cuenta) : null;
+  const cuerpo = cuerpoClave && cuerpoClave !== titularClave ? await deR2(env, cuerpoClave, cuenta) : titular;
+
+  // Las imágenes: los ids del guion que ESTÁN en la galería de este cliente (lo demás sale como marcador). Las que no
+  // caben en el pedido van a `porSubir`: se suben por flujo antes de pedir (subirImagenes) y el pedido las nombra.
   const ids = archivosDelGuion(guion);
   const imagenes = {};
+  const porSubir = [];
   for (const id of ids) {
     const f = await acceso.leerUno("estudio_archivos", { id: String(id), client_id: cliente.id }).catch(() => null);
     if (!f || f.borrado_at || !String(f.mime ?? "").startsWith("image/")) continue;
-    const b = await deR2(env, claveDelCliente(f.clave, cliente.id), cuenta);
-    if (b) imagenes[id] = b;
+    const clave = claveDelCliente(f.clave, cliente.id);
+    if (!clave) continue;
+    const obj = await enR2(env, clave);
+    if (!obj) continue;
+    if (obj.size <= TOPE_ARCHIVO && cuenta.bytes + obj.size <= TOPE_TOTAL) {
+      const b = await deR2(env, clave, cuenta);
+      if (b) { imagenes[id] = b; continue; }
+    }
+    if (obj.size <= TOPE_SUBIDA) porSubir.push({ id: String(id), clave });
   }
-  const logo = await deR2(env, claveDelCliente(kit.logo ?? "", cliente.id), cuenta);
 
   // Los clips: los ids que ESTÁN en la galería de este cliente como video (lo demás sale con su «Video» de espera).
   const idsVideo = videosDelGuion(guion);
@@ -80,13 +114,6 @@ export async function pedidoDelVideo(env, acceso, cliente, fila, { formato } = {
     if (clave) clips.push({ id: String(id), clave });
   }
 
-  // La letra: la que pida el guion (si es de este cliente) o la del kit.
-  const claveDe = (f) => (f && typeof f === "object" && f.clave ? claveDelCliente(f.clave, cliente.id) : claveDelCliente(kit.fuente?.clave ?? "", cliente.id));
-  const titularClave = claveDe(guion.estilo?.fuentes?.titular);
-  const cuerpoClave = claveDe(guion.estilo?.fuentes?.cuerpo);
-  const titular = titularClave ? await deR2(env, titularClave, cuenta) : null;
-  const cuerpo = cuerpoClave && cuerpoClave !== titularClave ? await deR2(env, cuerpoClave, cuenta) : titular;
-
   return {
     guion, palabras,
     pedido: {
@@ -95,10 +122,31 @@ export async function pedidoDelVideo(env, acceso, cliente, fila, { formato } = {
       ...(Array.isArray(locucion.golpes) && locucion.golpes.length ? { golpes: locucion.golpes } : {}),
       imagenes, logo, fuentes: { titular: titular ? { datos: titular } : null, cuerpo: cuerpo ? { datos: cuerpo } : null },
       videos: clips.map((c) => c.id),
+      ...(porSubir.length ? { imagenesSubidas: porSubir.map((x) => x.id) } : {}),
     },
     clips,
-    faltan: [...ids.filter((id) => !imagenes[id]), ...idsVideo.filter((id) => !clips.some((c) => c.id === String(id)))],
+    porSubir,
+    faltan: [
+      ...ids.filter((id) => !imagenes[id] && !porSubir.some((x) => x.id === String(id))),
+      ...idsVideo.filter((id) => !clips.some((c) => c.id === String(id))),
+    ],
   };
+}
+
+/**
+ * Sube al Container las imágenes que no cupieron en el pedido (`HEAD /imagen/<id>` primero, como los clips), por flujo
+ * desde R2. → los ids que NO se pudieron subir (salen como marcador; el resto del video sale igual).
+ */
+export async function subirImagenes(env, lista, pedir) {
+  return subirPorFlujo(env, lista, pedir, "imagen");
+}
+
+/** Quita del pedido lo que no subió (`fallaron`: clips o imágenes) y lo suma a `faltan`. */
+export function sinLoQueNoSubio(r, { clips = [], imagenes = [] } = {}) {
+  if (!clips.length && !imagenes.length) return r;
+  const pedido = { ...r.pedido, videos: r.pedido.videos.filter((id) => !clips.includes(id)) };
+  if (pedido.imagenesSubidas) pedido.imagenesSubidas = pedido.imagenesSubidas.filter((id) => !imagenes.includes(id));
+  return { ...r, pedido, faltan: [...new Set([...r.faltan, ...clips, ...imagenes])] };
 }
 
 /**
@@ -108,18 +156,23 @@ export async function pedidoDelVideo(env, acceso, cliente, fila, { formato } = {
  * espera; el resto del video sale igual).
  */
 export async function subirClips(env, clips, pedir) {
+  return subirPorFlujo(env, clips, pedir, "clip");
+}
+
+/** Sube por flujo desde R2 cada `{ id, clave }` a `/<ruta>/<id>` si el Container no lo tiene ya. → los que fallaron. */
+async function subirPorFlujo(env, lista, pedir, ruta) {
   const fallaron = [];
-  for (const c of clips ?? []) {
+  for (const c of lista ?? []) {
     try {
-      const h = await pedir(`/clip/${c.id}`, { method: "HEAD" });
+      const h = await pedir(`/${ruta}/${c.id}`, { method: "HEAD" });
       if (h.ok) continue;
       const obj = await env.MEDIA.get(c.clave);
       if (!obj) { fallaron.push(c.id); continue; }
-      const r = await pedir(`/clip/${c.id}`, { method: "PUT", body: obj.body, duplex: "half", headers: { "Content-Length": String(obj.size) } });
+      const r = await pedir(`/${ruta}/${c.id}`, { method: "PUT", body: obj.body, duplex: "half", headers: { "Content-Length": String(obj.size) } });
       if (!r.ok) fallaron.push(c.id);
       await r.body?.cancel?.().catch(() => {});
     } catch (e) {
-      console.error("subir clip:", e?.message ?? e);
+      console.error(`subir ${ruta}:`, e?.message ?? e);
       fallaron.push(c.id);
     }
   }
@@ -134,15 +187,16 @@ export function pedirAlContenedor(env) {
 }
 
 /**
- * Lo de `pedidoDelVideo` con los clips YA en el Container de los cuadros: para /cuadro, /hoja y /revisar. Un clip que no
- * se pudo subir se quita de `videos` (sale su «Video» de espera) y va en `faltan`.
+ * Lo de `pedidoDelVideo` con los clips y las imágenes que no cabían YA en el Container de los cuadros: para /cuadro,
+ * /hoja y /revisar. Lo que no se pudo subir se quita del pedido (sale su «Video» de espera o su marcador) y va en `faltan`.
  */
 export async function pedidoConClips(env, acceso, cliente, fila, opciones = {}) {
   const r = await pedidoDelVideo(env, acceso, cliente, fila, opciones);
-  if (!r.clips.length) return r;
-  const fallaron = await subirClips(env, r.clips, pedirAlContenedor(env));
-  if (!fallaron.length) return r;
-  return { ...r, pedido: { ...r.pedido, videos: r.pedido.videos.filter((id) => !fallaron.includes(id)) }, faltan: [...new Set([...r.faltan, ...fallaron])] };
+  if (!r.clips.length && !r.porSubir.length) return r;
+  const pedir = pedirAlContenedor(env);
+  const clips = r.clips.length ? await subirClips(env, r.clips, pedir) : [];
+  const imagenes = r.porSubir.length ? await subirImagenes(env, r.porSubir, pedir) : [];
+  return sinLoQueNoSubio(r, { clips, imagenes });
 }
 
 /** Pide algo al Container del espacio → la Response. Sin Container (en local), 503 diciendo por qué. */

@@ -277,7 +277,10 @@ const seCruzan = (a, b) => a.desde < b.hasta && b.desde < a.hasta;
 
 /** Aire entre dos cosas del mismo bloque (un titular y su apoyo) y el mínimo entre dos bloques, en fracción del lado. */
 export const AIRE = Object.freeze({ junto: 0.022, minimo: 0.035 });
-/** Lo que mide como mínimo el logo del CIERRE (fracción del lado corto): es la firma del video, no un sello. */
+/**
+ * Lo que mide como mínimo el logo del CIERRE repartido por zonas (fracción del lado corto): es la firma del video, no un
+ * sello. Con una posición `{ x, y }` en el guion no vale: ahí el tamaño también lo decide el guion (un sello pequeño).
+ */
 export const MIN_LOGO_CIERRE = 0.5;
 
 /**
@@ -288,11 +291,11 @@ export const MIN_LOGO_CIERRE = 0.5;
 export const ANCHO_TEXTO = Object.freeze({ texto: 0.94, cifra: 0.94, llamado: 0.82, sello: 0.6 });
 
 /**
- * El ancho que pide una capa: su `tam` por el lado corto; el logo del cierre, al menos `MIN_LOGO_CIERRE`; el texto, al
- * menos lo que le toca de su columna (`ANCHO_TEXTO`, si se sabe `anchoMax`).
+ * El ancho que pide una capa: su `tam` por el lado corto; el logo del cierre, al menos `MIN_LOGO_CIERRE` (salvo con
+ * posición fija: `fija`); el texto, al menos lo que le toca de su columna (`ANCHO_TEXTO`, si se sabe `anchoMax`).
  */
-function anchoPedido(capa, c, anchoMax = 0) {
-  const tam = capa.tipo === "logo" && c.tipoEscena === "cierre" ? Math.max(capa.tam, MIN_LOGO_CIERRE) : capa.tam;
+function anchoPedido(capa, c, anchoMax = 0, { fija = false } = {}) {
+  const tam = capa.tipo === "logo" && c.tipoEscena === "cierre" && !fija ? Math.max(capa.tam, MIN_LOGO_CIERRE) : capa.tam;
   const minimo = capa.tipo === "texto" && capa.rol === "etiqueta" ? 0 : (ANCHO_TEXTO[capa.tipo] ?? 0) * anchoMax;
   return Math.max(tam * c.lado, minimo);
 }
@@ -426,7 +429,8 @@ function repartirColumna(ctx, items, caja, c, sitio) {
  * («arriba», «centro», «abajo») dice el ORDEN de arriba abajo; el motor mide cada capa (con el mismo código que la
  * dibuja), reparte el alto del área segura entre todas y, si no caben, encoge primero lo visual. Nada se encima:
  * una placa de texto y una imagen tienen cada una su sitio. Lo demás:
- *   · `{ x, y }` en el guion — la capa va ahí y no cuenta en el reparto (la decisión es del guion).
+ *   · `{ x, y }` en el guion — la capa va ahí y no cuenta en el reparto (la decisión es del guion, también el tamaño:
+ *     el logo del cierre no se agranda a `MIN_LOGO_CIERRE`).
  *   · una FORMA — es un fondo: va detrás de la siguiente capa de su zona (o de la siguiente que haya), a su escala.
  *   · 16:9 con algo visual y algo más — dos columnas: lo visual a la izquierda, el resto a la derecha.
  *   · los subtítulos tienen su franja dentro del área segura (`bandaDeSubtitulos`), y nada entra en ella.
@@ -442,7 +446,7 @@ export function repartirEscena(ctx, capas, tiempos, c) {
   }
   const lista = capas.filter((capa) => !esCapaCompleta(capa))
     .map((capa, i) => ({ capa, i, zona: zonaDe(capa.pos), lado: ladoDe(capa.pos), cuando: tiempos.get(capa.id) }));
-  for (const it of lista) if (it.capa.pos && typeof it.capa.pos === "object") sitio.set(it.capa.id, { ...centroDe(it.capa.pos, c.ancho, c.alto), escala: 1, ancho: anchoPedido(it.capa, c, caja.w) });
+  for (const it of lista) if (it.capa.pos && typeof it.capa.pos === "object") sitio.set(it.capa.id, { ...centroDe(it.capa.pos, c.ancho, c.alto), escala: 1, ancho: anchoPedido(it.capa, c, caja.w, { fija: true }) });
   const repartidas = lista.filter((it) => !(it.capa.pos && typeof it.capa.pos === "object") && it.capa.tipo !== "forma")
     .sort((p, q) => ORDEN_ZONA[p.zona] - ORDEN_ZONA[q.zona] || p.i - q.i);
   const apaisado = c.ancho > c.alto * 1.2;

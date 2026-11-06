@@ -4714,7 +4714,9 @@ son del servidor.
   en «·», comas y puntos (`partirEquilibrado`, recargo por cortar fuera de un separador): «Sin alcohol · sin / perfume»
   cortaba mal. Las imágenes se cargan SIN su borde transparente (`cajaOpaca` en el motor, puro; el recorte lo hace
   `motorVideoNavegador.js` y lo hará el gemelo del Container) y el logo del cierre mide al menos `MIN_LOGO_CIERRE` (la
-  mitad del lado corto): un logo con mucho aire se veía diminuto.
+  mitad del lado corto): un logo con mucho aire se veía diminuto. Con una posición `{ x, y }` en el guion, no: ahí el
+  tamaño también es del guion (`anchoPedido(…, { fija: true })`) y el dueño de 57DMC quería el logo como un sello
+  pequeño; antes todo `tam` por debajo de 0,5 daba lo mismo.
   · **El guion se valida también en el SERVIDOR** (`worker/rutas/videos.js`): lo que llega del navegador o de Claude no
   se cree, y con errores no se guarda (400 con cada error y su sitio). Guardar y aprobar llevan la `version` que se
   leyó: si otra persona guardó entremedias, 409 (`actualizar` con la versión como condición). Aprobar fija
@@ -4877,6 +4879,14 @@ son del servidor.
   `duplex: "half"`), y el pedido sólo lo nombra (`videos`). El Container lo guarda en disco con su medida de ffprobe
   (container/clips.mjs; hasta 2 GB, borra lo menos usado) y lo reutiliza mientras está despierto. `ContenedorVideo`
   pasa el PUT tal cual (flujo); lo demás, como bytes. Un clip que no sube sale con el «Video» de espera y se dice.
+  · **Las IMÁGENES van en el pedido sólo hasta 16 MB** (`TOPE_TOTAL` en cuadros.js, con el logo y la letra PRIMERO): lo
+  que no cabe (o pesa más de 8 MB) se sube igual que un clip, `PUT /imagen/<id>` (`subirImagenes`, container/imagenes.mjs,
+  en disco mientras el Container está despierto), y el pedido lo nombra en `imagenesSubidas`. Con 13 fondos de IA de ~2 MB
+  (57DMC) el último se caía del tope de entonces (24 MB) y salía como marcador; y el JSON entero vive varias veces en la
+  memoria del Durable Object del render. Una que no sube sale como marcador y el render lo dice.
+  · **El mp4 vuelve del Container a R2 POR FLUJO** (`guardarMp4` en render.js, con `FixedLengthStream` y el largo de
+  `X-Bytes`): leerlo entero mataba el Durable Object («Memory limit exceeded before EOF») con un video de 100 s con fondos y
+  grano. Y lleva tope de bitrate (`RENDER.kbpsVideoMax`, 12 Mbps): con `crf` solo pasaba de 100 MB, e Instagram admite 25 Mbps.
   · **El motor no espera nada**: pide el cuadro con `recursos.video({ id: escena/capa, archivo }, segundo)`. Quien dibuja
   lo pone ANTES: el render con un `Decodificador` por USO (ffmpeg saca los cuadros RGBA seguidos a 30 fps y se leen a
   medida que se piden, nunca el clip entero en memoria; se cierra cuando el uso deja de verse), /cuadro y /hoja con un
@@ -5710,6 +5720,9 @@ son del servidor.
   agencia se puede firmar (`claveServible` admite `biblioteca/<espacio>/musica/`).
   · **La herramienta** importa `cancion.js` EN EL MOMENTO (lee guionAnimado.js → mercado.js: estático cerraría el ciclo
   con herramientas.js).
+  · **Guardar el guion entero no se lleva la canción** (`conLaCancionGuardada` en videosProyectos.js): el formato le dice a
+  Claude que no escriba `cancion`, y `guardar_video` con el guion sin esa clave la borraba (el video volvía a pedir voz).
+  Sin la clave, se conserva la guardada; `cancion: null` a propósito sí la quita.
   · **Las imágenes de IA por sección de la canción (verso, coro, puente)** ya están: ver «El ESTILO del video animado».
   · **Nada de esto se ha probado contra ElevenLabs ni Gemini reales**: los tests (tests/migracion/videos.cancion.test.js)
   usan un `fetch` de mentira con la forma de su documentación. Lo primero con la llave: sincronizar UNA canción corta y

@@ -521,3 +521,62 @@ describe("un MONTAJE de clips (capas `video`)", () => {
     expect(recibidos[0].cuerpo.videos).toEqual([]);
   });
 });
+
+describe("las IMÁGENES que no caben en el pedido se suben aparte, por flujo", () => {
+  // Una de más de 8 MB no va en el pedido (el JSON lo tiene en memoria el Durable Object, que tiene 128 MB).
+  const CLAVE_GRANDE = "clientes/bc/estudio/2026-11/fondo-grande.png";
+  const GRANDE = new Uint8Array(9 * 1024 * 1024);
+  const CON_FONDO = {
+    version: 1, titulo: "Fondo grande", formatos: ["9:16"],
+    escenas: [{ id: "f1", tipo: "gancho", habla: "", capas: [
+      { tipo: "imagen", id: "fondo", archivo: "img1", encuadre: "completo", dura: 6 },
+      { tipo: "texto", id: "t", texto: "Mira esto", pos: "arriba", placa: "oscuro" }] }],
+  };
+
+  async function conFondo() {
+    db.sqlite.prepare("insert into estudio_archivos (id, owner_id, client_id, clave, tipo, mime, origen, created_at, updated_at) values (?,?,?,?,?,?,?,?,?)")
+      .run("img1", JEFE, "bc", CLAVE_GRANDE, "imagen", "image/png", "estudio", "2026-11-01T00:00:00Z", "2026-11-01T00:00:00Z");
+    env.MEDIA.objetos.set(CLAVE_GRANDE, GRANDE);
+    const get = env.MEDIA.get;
+    env.MEDIA.get = async (k) => { const o = await get(k); return o ? { ...o, body: new Blob([env.MEDIA.objetos.get(k)]).stream() } : null; };
+    const r = await pedir("/videos/bc", { method: "POST", body: JSON.stringify({ guion: CON_FONDO }) });
+    const { video: v } = await r.json();
+    expect(v.valido).toBe(true);
+    db.sqlite.prepare("update videos_proyectos set estado = 'aprobado', aprobada_version = 1 where id = ?").run(v.id);
+    return v.id;
+  }
+
+  it("se sube con PUT /imagen/<id> antes del pedido y el pedido sólo la nombra", async () => {
+    const id = await conFondo();
+    expect((await renderizar(id)).status).toBe(202);
+    const recibidos = [];
+    const crudos = [];
+    const subidas = new Map();
+    const crudo = async (ruta, init) => {
+      crudos.push(`${init.method} ${ruta}`);
+      const clave = ruta.split("/").pop();
+      if (init.method === "HEAD") return new Response(null, { status: subidas.has(clave) ? 200 : 404 });
+      subidas.set(clave, init.body);
+      return Response.json({ bytes: GRANDE.length });
+    };
+    const listo = await ejecutarRender(env, encargos.at(-1).cuerpo, container(recibidos), crudo);
+    expect(listo.estado).toBe("listo");
+    expect(crudos).toEqual(["HEAD /imagen/img1", "PUT /imagen/img1"]);
+    expect(subidas.get("img1")).toBeInstanceOf(ReadableStream);
+    const [{ cuerpo }] = recibidos;
+    expect(cuerpo.imagenes).toEqual({});
+    expect(cuerpo.imagenesSubidas).toEqual(["img1"]);
+    expect(listo.aviso).toBeNull();
+  });
+
+  it("una que no sube sale como marcador y se dice", async () => {
+    const id = await conFondo();
+    await renderizar(id);
+    const recibidos = [];
+    const malo = async (ruta, init) => new Response(null, { status: init.method === "HEAD" ? 404 : 500 });
+    const listo = await ejecutarRender(env, encargos.at(-1).cuerpo, container(recibidos), malo);
+    expect(listo.estado).toBe("listo");
+    expect(recibidos[0].cuerpo.imagenesSubidas).toEqual([]);
+    expect(listo.aviso).toMatch(/una imagen.*marcador/);
+  });
+});
