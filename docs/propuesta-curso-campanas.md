@@ -1,8 +1,8 @@
 # Propuesta: el curso de campañas en el calendario
 
 5 de noviembre de 2026. **Parte 1** del curso (módulos 1 a 6.2: campañas de **interacción a WhatsApp**), cruzada con el
-código de `main` (a367485) y con un calendario real (D'CASA, noviembre de 2026). Sólo lectura: nada de esto está
-implementado todavía. Este documento se actualiza con cada parte nueva de los apuntes (web, ventas, clientes
+código de `main` (a367485) y con un calendario real (D'CASA, noviembre de 2026). **El plan final está en §5** (6 de
+noviembre); nada está implementado todavía. Este documento se actualiza con cada parte nueva de los apuntes (web, ventas, clientes
 potenciales, reconocimiento, módulos 7 a 9).
 
 > **Ojo con la licencia.** El método del curso (las 7 maletas, las 3 Q, el número mágico) es el mismo de las skills de
@@ -33,8 +33,8 @@ potenciales, reconocimiento, módulos 7 a 9).
   (cliente, dolor, deseo, objeciones, alternativas, diferenciador, confianza) no son las del curso (público, problema,
   solución, diferenciales, testimonios, objeciones, garantía).
 
-**La dirección (revisada, §4):** las campañas se montan en el **Ads Manager**; el calendario planifica, escribe y
-vigila. **Orden:** lo que va a pauta nace como anuncio (fase A) → número mágico y 3 Q sobre lo que corre en el Ads
+**La dirección (§4) y el plan final (§5):** las campañas se montan en el **Ads Manager**; el calendario planifica, escribe
+y vigila, con las mismas cuentas que la agencia (los Excel del curso y la calculadora de deeplook). **Orden:** lo que va a pauta nace como anuncio (fase A) → número mágico y 3 Q sobre lo que corre en el Ads
 Manager (fase B) → la campaña completa sugerida con su guía de montaje (fase C) → cerrar el ciclo: qué pieza es cada
 anuncio y aprender (fase D) → WhatsApp e investigación (fase E).
 
@@ -195,7 +195,110 @@ diagnóstico se quedan: son cambios pequeños, con confirmación y fáciles de d
 
 ---
 
-## 5. La propuesta, por fases
+## 5. El plan final (6 de noviembre)
+
+Todas las decisiones están tomadas (§7). Lo que no se confirmó expresamente va con la propuesta y se cambia en el Manual
+de campañas sin tocar código.
+
+### 5.1 La idea en una línea
+
+**El Ads Manager monta; el calendario prepara y vigila.** Antes de montar: lo que se va a pautar nace escrito como
+anuncio, con los números del negocio y la campaña completa sugerida (con su guía y su Excel). Después de montar: lee lo
+que corre, lo compara con el número mágico y dice qué hacer con el método de las 3 Q.
+
+### 5.2 Las cuentas, el mismo sistema que la agencia
+
+Sin fórmulas propias: las mismas que la agencia ya usa, escritas con palabras propias.
+
+| Número | De dónde sale |
+|---|---|
+| Objetivo: costo por compra, costo por conversación, inversión del mes y ROAS objetivo | La «Calculadora de presupuesto» del curso |
+| Límite: margen efectivo, piso, ROAS, CAC y costo por conversación de equilibrio, utilidad a un ROAS dado | La calculadora de deeplook, en sus dos modos («todo el negocio» y «sólo la plataforma») |
+| Qué resultados da un presupuesto | El «Simulador de campañas» (5 modos), con los datos reales del cliente |
+| Qué campañas montar | El Excel de estrategia (5 hojas), entregado lleno |
+
+Dos excepciones, y las dos arreglan un error de la copia de la agencia: el % que se invierte siempre es un porcentaje
+(en la hoja de interacción estaba «16» y no «16 %»), y los clientes potenciales en la web se cuentan sobre las visitas.
+
+Qué se compara según el destino (decisión 13):
+
+- **WhatsApp:** el costo por conversación frente al objetivo y al de equilibrio. El equilibrio va en «todo el negocio»:
+  las ventas del mes (del enlace de ventas) ÷ la pauta frente al ROAS de equilibrio.
+- **Web (e-commerce):** el ROAS que registra Meta frente al de equilibrio en «sólo la plataforma». Las ventas de otros
+  canales, si el cliente las da, lo bajan.
+- **Costos fijos sin las ventas de otros canales:** la cuenta es la misma, pero la pauta carga todos los fijos. La app
+  lo avisa al lado del resultado («así sale el caso más exigente: añade las ventas de tienda o deja los fijos en 0 para
+  ver el piso»). No cambia ninguna cifra por su cuenta.
+
+### 5.3 Cómo queda la aplicación
+
+Ninguna pestaña nueva en el cliente: lo nuevo entra en las que ya existen.
+
+| Dónde | Hoy | Después |
+|---|---|---|
+| **Calendario** · una publicación | Caption orgánico | «Va a pauta» con su etapa; el caption escrito como anuncio y, aparte, de 3 a 5 textos principales, títulos, descripción y botón para copiar. Un sello pequeño en el chip del mes |
+| **Calendario** · asistente del mes | Estrategia con Atraer/Considerar/Convertir/Fidelizar | Las 4 etapas del curso. En el plan, marca solas las del tipo «Anuncio» y las de la oferta del mes |
+| **Calendario** · Revisar el mes | Reglas del orgánico | Además, la revisión de anuncio para lo que va a pauta |
+| **Marca** · nueva sub-sección **Números del negocio** | — | Tipo de negocio, destino, cuenta nueva o con historial, ticket, costos, ITBMS, devoluciones, fijos, meta y % a invertir, tasa de cierre. Las tres calculadoras (objetivo, equilibrio, simulador) con su ayuda y la IA que propone lo «estimado». El enlace de ventas del cliente |
+| **Marca** · Cerebro → estudio de mercado | 7 elementos propios | Las 7 maletas del curso, con su semáforo por producto («si falta una, no lances») y tareas para el cliente |
+| **Marca** · Kit y voz | — | «Los tipos de arte de esta marca» (2 a 4) |
+| **Resultados** · nueva sub-sección **Anuncios** (al lado de Redes) | Nada de anuncios por cliente | Lo que corre en su cuenta con las 3 Q: número mágico frente a lo real, 30/14/7 días, la etapa de cada campaña, las ventas de la semana, qué publicaciones están en pauta y a cuánto |
+| **Anuncios** (global) · Campañas | Cifras, «Nueva campaña», estratega, diagnóstico, informe | Cifras de todas las cuentas y la revisión 3Q de cada cliente. «Nueva campaña» se congela (sale del botón principal, queda en «Más») |
+| **Anuncios** · nueva pestaña **Plan de campañas** | El estratega (una campaña) | El ciclo completo (4 etapas + temporada) con presupuesto, públicos, exclusiones, anuncios y piezas; la guía de montaje con casillas; descarga en el formato del Excel de estrategia. También para alguien de fuera |
+| **Anuncios** · Biblioteca | — | Sin cambios |
+| **Producción → Publicadas** | — | «Versión para anuncio» de una ya publicada |
+| **Mi día** | — | «Revisar campañas de <cliente>» cada 5-7 días, con la revisión lista; lo grave (no gasta, rechazado, el doble del número mágico sin una conversación) en la campana |
+| **Ajustes → Cómo trabajamos → Manual de campañas** | Reglas, nomenclatura, tasa 20 % | Además: reparto por etapa, anuncios por conjunto (4-6), umbrales de las 3 Q, tasa de cierre por defecto 5 %, nomenclatura con `{etapa}` |
+| **Página pública** `/ventas?t=…` | — | «Tus ventas de la semana» para el cliente, sin sesión |
+| **Asistente y Claude (MCP)** | Diagnóstico y estratega de una campaña | Las mismas piezas: leer los números del negocio, la revisión 3Q y el plan del ciclo; escribir el caption de anuncio |
+
+Lo que se va de la pantalla: Frío/Tibio/Caliente y Atraer/Considerar/Convertir/Fidelizar (se leen como alias de las
+etapas del curso), el costo máximo tecleado en el diagnóstico (sale del número mágico), la tasa de cierre del 20 % por
+defecto (pasa a 5 %) y «Nueva campaña» como botón principal.
+
+### 5.4 Los datos
+
+| Qué | Dónde | Migración |
+|---|---|---|
+| Números del negocio, la etapa de cada campaña que no sigue la nomenclatura, el testigo del enlace de ventas | `anuncios_clientes`: columnas `negocio` (JSON, cada dato con su origen: cliente, agencia, estimado por la IA o leído de Meta), `etapas` (JSON) y `testigo_ventas` | 0069 |
+| Las ventas de cada semana | Tabla nueva `ventas_semana` (cliente, lunes de la semana, ventas, monto, de los anuncios, otros canales, quién la escribió: cliente o agencia). Una fila por cliente y semana | 0070 |
+| «Va a pauta» y los textos de anuncio | `post.pauta`, `post.anuncio`, dentro del JSON del calendario | No |
+| Los tipos de arte de la marca | `kit.tiposArte` | No |
+| El plan del ciclo y lo marcado en la guía | `planes_campana.datos` con `tipo: "ciclo"`, el mes y el progreso | No |
+| Reparto, umbrales, anuncios por conjunto, tasa por defecto | `manual_campanas` | No |
+| Las 7 maletas | El JSON del estudio de mercado; lo aprobado se lee con alias | No |
+
+`ventas_semana` entra en la capa de acceso con su `client_id` (`TABLAS_CON_CLIENTE`) y la página pública por su
+testigo, como la aprobación; los tests de despliegue lo exigen.
+
+### 5.5 Las entregas, en orden
+
+Cada una es un pull request que pasa `verificar`, se une a `main` y se despliega antes de empezar la siguiente.
+
+| # | Entrega | Qué trae | Tamaño |
+|---|---|---|---|
+| 1 | **La base del curso** | Etapas, 7 maletas con su semáforo, tipo de negocio y destino, tipos de arte, sesgos, qué pieza va en cada etapa según el negocio. Alias para lo ya escrito (A.1) | M |
+| 2 | **Lo que va a pauta** | «Va a pauta» (a mano y desde el asistente del mes), el caption como anuncio, los textos aparte, la revisión de anuncio, «Versión para anuncio» (A.2–A.6) | M |
+| 3 | **Números del negocio** | La ficha por cliente con la ayuda de la IA y las tres calculadoras; el diagnóstico, el estratega y el informe la leen (B.1, migración 0069) | M-L |
+| 4 | **El enlace de ventas** | `/ventas?t=…`, el mensaje de los lunes, la tasa de cierre medida y el ROAS real de WhatsApp (E.1, migración 0070) | M |
+| 5 | **La revisión 3Q** | Las métricas que faltan, Q1-Q2-Q3, 30/14/7 días, efecto desglose, fase de aprendizaje, etapa por el nombre, Resultados → Anuncios, la tarea de Mi día, los avisos y lo que lleva a producir (B.2–B.7) | L |
+| 6 | **El plan de campañas** | El ciclo con temporada, presupuesto desde la calculadora, públicos y exclusiones, 4-6 anuncios por conjunto, qué pieza va en cada anuncio, la guía de montaje y su Excel (C.1–C.3) | L |
+| 7 | **Cerrar el ciclo** | Qué publicación es cada anuncio, «En pauta» en la publicación, aprender qué tipo de arte rinde, sugerir qué pautar (D) | M |
+| 8 | **WhatsApp e investigación** | El kit de WhatsApp Business (bienvenida, respuestas con las objeciones, etiquetas, guion), la voz del cliente y la revisión mensual del estudio (E) | M |
+
+Las entregas 1 y 2 no dependen de Meta: se notan desde el mes siguiente. La 3 y la 4 dan el número mágico de cada
+cliente. La 5 empieza a vigilar lo que ya corre en el Ads Manager. La 6 junta todo en la campaña completa.
+
+### 5.6 Lo que no se ha probado y cómo se prueba
+
+Nada de anuncios se ha probado contra una cuenta real: los tests hablan con un `fetch` de mentira. El plan sólo LEE de
+Meta (la creación queda congelada), así que la primera prueba es segura: con la entrega 5, abrir la revisión de un
+cliente con campañas activas y comparar cada cifra con la del Ads Manager. Las calculadoras se prueban con los ejemplos
+de los Excel y de deeplook: con las mismas entradas tienen que dar los mismos números.
+
+---
+
+## 6. El detalle de cada pieza
 
 Tamaño: **S** (un par de días), **M** (una semana), **L** (más). La A no depende de Meta, así que puede empezar ya.
 
@@ -351,16 +454,15 @@ especiales.
 
 **Lo decidido (agencia, 6-nov):**
 
-1. **La «Campaña especial»** es la quinta hoja del Excel de estrategia (sin explicación en los apuntes). Se usa para lo
-   que tiene fecha: la oferta del mes, una fecha comercial (Black Friday, Día de la Madre) o un lanzamiento. Es opcional:
+1. **La «Campaña especial» es la campaña de TEMPORADA** (la quinta hoja del Excel de estrategia; «especial» porque no es
+   habitual). Se usa para lo que tiene fecha: la oferta del mes, una fecha comercial (Black Friday, Día de la Madre) o un lanzamiento. Es opcional:
    el plan la propone cuando el mes trae oferta o fecha comercial (ya están en la campaña del mes y en las fechas
    especiales). Su presupuesto es aparte del reparto 60/20/10/10 y dura lo que dura la fecha. Anuncios: **de 4 a 6 por
    conjunto** en todas las campañas, 4 por defecto (el promedio de la agencia).
-2. **Qué número se compara, según el destino.** Web (e-commerce): el ROAS que registra Meta frente al ROAS de equilibrio.
-   WhatsApp: el costo por conversación frente al objetivo y al de equilibrio (Meta no ve esas ventas). Los costos fijos y
-   las ventas de otros canales van JUNTOS o no van: sin ellos, el equilibrio es el PISO (la pauta se paga sola) y la app
-   lo dice; con ellos, el exacto. Los fijos sin las ventas de otros canales cargarían todo a la pauta y saldría un
-   equilibrio imposible para un negocio que también vende en tienda.
+2. **Qué número se compara, según el destino** (con las mismas fórmulas, ver §5.2). Web (e-commerce): el ROAS que
+   registra Meta frente al ROAS de equilibrio en «sólo la plataforma». WhatsApp: el costo por conversación frente al
+   objetivo y al de equilibrio, y las ventas del mes ÷ la pauta en «todo el negocio» (Meta no ve esas ventas). Con
+   costos fijos y sin las ventas de otros canales la pauta carga todos los fijos: la app lo avisa y no cambia la cifra.
 3. **Las ventas, por un enlace del cliente**, sin sesión, como el de aprobación (fase E.1).
 
 **B.2 Las métricas que faltan (S).** Clics únicos en el enlace, CTR único y su costo, reproducciones de 3 s, tiempo
@@ -404,9 +506,10 @@ nivel; «anuncios nuevos» produce 2 o 3 de tipos de arte que la campaña no tie
 
 **C.1 El plan de cuenta (M).** El estratega pasa de una campaña a el ciclo:
 
-- las 4 campañas (o presentación + evaluación si la cuenta es nueva), con el reparto (60/20/10/10 por defecto);
+- las 4 campañas (o presentación + evaluación si la cuenta es nueva), con el reparto (60/20/10/10 por defecto), y la de
+  temporada cuando el mes trae oferta o fecha comercial, con su presupuesto aparte;
 - los conjuntos con sus públicos y exclusiones;
-- cuántos anuncios lleva cada una (4 / hasta 4 / sin plantilla / hasta 3);
+- de 4 a 6 anuncios por conjunto (4 por defecto);
 - los tipos de arte y los niveles de cada etapa.
 
 El presupuesto sale del número mágico (B.1). Si la cuenta es nueva o tiene historial se apunta una vez en el cliente.
@@ -476,35 +579,33 @@ análisis de la Biblioteca. El CRM y las etiquetas de WhatsApp como público que
 
 ### Orden
 
-**A → B → C → D → E.** La A empieza ya, porque no depende de Meta, y resuelve el texto de lo que se pauta desde el
-siguiente mes. La B da valor desde el primer día sobre lo que ya corre en el Ads Manager. La C junta las dos en la
-campaña completa sugerida. La D necesita A y B funcionando un tiempo para tener qué aprender.
+El de las entregas de §5.5: A → B.1 → E.1 (las ventas, que la tasa de cierre necesita) → el resto de B → C → D → E.
 
 ---
 
-## 6. Decisiones antes de implementar
+## 7. Decisiones
 
 | # | Decisión | Propuesta |
 |---|---|---|
 | 0 | ¿Montar en el Ads Manager con el calendario como plan, guía y seguimiento? | **Decidido (agencia, 5-nov):** sí; «Nueva campaña» de la app, congelada |
-| 1 | Reparto: 60/20/10/10 (lámina) o 60-80 / 30 / 5-10 / 5-10 (nota) | 60/20/10/10 por defecto, editable en el Manual |
-| 2 | Advantage+ en cuentas nuevas | Sólo como conjunto de prueba en presentación; nunca en evaluación ni ascensión |
-| 3 | Cuenta nueva: 4 campañas o presentación + evaluación | Nueva = presentación + evaluación; con historial = las 4 |
+| 1 | Reparto: 60/20/10/10 (lámina) o 60-80 / 30 / 5-10 / 5-10 (nota) | Por defecto (sin confirmar; se cambia en el Manual): 60/20/10/10 por defecto, editable en el Manual |
+| 2 | Advantage+ en cuentas nuevas | Por defecto (sin confirmar; se cambia en el Manual): Sólo como conjunto de prueba en presentación; nunca en evaluación ni ascensión |
+| 3 | Cuenta nueva: 4 campañas o presentación + evaluación | Por defecto (sin confirmar; se cambia en el Manual): Nueva = presentación + evaluación; con historial = las 4 |
 | 4 | Tasa de cierre por defecto: 20 % (hoy) o 5 % (curso) | **5 %** (lo dice el Excel del curso) hasta medir la del cliente; cambia todos los números mágicos |
-| 5 | Nombres de etapas y maletas | Los del curso, con alias para lo ya escrito |
-| 6 | Tamaño del feed | Se queda 4:5 |
-| 7 | Cuándo se pausa un anuncio | Fuera del número mágico con el doble gastado, y nunca si el conjunto está sano |
+| 5 | Nombres de etapas y maletas | Por defecto (sin confirmar; se cambia en el Manual): Los del curso, con alias para lo ya escrito |
+| 6 | Tamaño del feed | Por defecto (sin confirmar; se cambia en el Manual): Se queda 4:5 |
+| 7 | Cuándo se pausa un anuncio | Por defecto (sin confirmar; se cambia en el Manual): Fuera del número mágico con el doble gastado, y nunca si el conjunto está sano |
 | 8 | ¿Lo normal es pautar la publicación existente o montar un anuncio nuevo? | **Decidido (agencia, 5-nov): las dos.** Toda publicación «Va a pauta» lleva su caption como anuncio (A.3) Y sus textos de anuncio aparte (A.4); `como` sólo dice cuál se espera |
 | 9 | ¿Qué publicaciones se marcan «Va a pauta» solas? | **Decidido (agencia, 5-nov):** las del tipo «Anuncio» del plan semanal y las de la oferta del mes, quitables |
-| 10 | ¿Hashtags en lo que va a pauta? | Ninguno o casi |
+| 10 | ¿Hashtags en lo que va a pauta? | Por defecto (sin confirmar; se cambia en el Manual): Ninguno o casi |
 | 11 | Los números del negocio | **Decidido (agencia, 5-nov):** se configuran por cliente en la app, con ayuda y propuestas de la IA (B.1) |
-| 12 | ¿Qué es la «Campaña especial» de la plantilla? ¿Cuántos anuncios por conjunto? | **Decidido (6-nov):** la de una oferta, una fecha o un lanzamiento, opcional y con presupuesto aparte; de 4 a 6 anuncios por conjunto, 4 por defecto |
-| 13 | ¿Equilibrio de todo el negocio o sólo de la pauta? | **Decidido (6-nov):** web con el ROAS de Meta, WhatsApp con el costo por conversación; fijos y otros canales juntos o el piso (B.1) |
+| 12 | ¿Qué es la «Campaña especial» de la plantilla? ¿Cuántos anuncios por conjunto? | **Decidido (6-nov):** la de temporada (una oferta, una fecha o un lanzamiento), opcional y con presupuesto aparte; de 4 a 6 anuncios por conjunto, 4 por defecto |
+| 13 | ¿Equilibrio de todo el negocio o sólo de la pauta? | **Decidido (6-nov):** las mismas fórmulas de la agencia; web con el ROAS de Meta («sólo la plataforma»), WhatsApp con el costo por conversación y las ventas del mes («todo el negocio») (§5.2) |
 | 14 | ¿Quién apunta las ventas de cada semana? | **Decidido (6-nov):** el cliente por un enlace; la agencia también puede escribirlas (E.1) |
 
 ---
 
-## 7. Lo que queda para la Parte 2
+## 8. Lo que queda para la Parte 2
 
 - Optimización de campañas de ventas, clientes potenciales y reconocimiento; los destinos e-commerce, formularios y
   negocio local; las columnas de esos objetivos (6.1).

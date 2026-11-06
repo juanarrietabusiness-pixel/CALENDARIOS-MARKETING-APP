@@ -4976,8 +4976,9 @@ son del servidor.
   WhatsApp) cruzado con la app: qué está y qué falta. La dirección: las campañas se MONTAN en el Ads Manager y el
   calendario planifica, escribe y vigila (la creación por API, congelada). Fases: lo que va a pauta nace como anuncio
   (`post.pauta`, textos de anuncio), número mágico y 3 Q sobre lo que corre en el Ads Manager, la campaña completa
-  sugerida con su guía de montaje, qué pieza es cada anuncio, WhatsApp. Propuesta; nada implementado. Se amplía con cada
-  parte del curso.
+  sugerida con su guía de montaje, qué pieza es cada anuncio, WhatsApp. Las cuentas son las de la agencia (los Excel
+  del curso y la calculadora de deeplook), con sus fórmulas confirmadas. El PLAN FINAL (§5: cómo queda cada pantalla,
+  los datos y 8 entregas en orden) está aprobado; nada implementado todavía. Se amplía con cada parte del curso.
 - `docs/propuesta-cerebro-por-cliente.md` — un cerebro por cliente (notas en D1, índice
   en R2, ficha técnica y cifras, búsqueda por pasajes) en lugar de volcar el ADN entero
   en cada llamada. Fases 0 y 1 implementadas; memoria de decisiones, visualización,
