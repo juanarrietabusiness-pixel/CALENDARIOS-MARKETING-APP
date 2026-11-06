@@ -97,12 +97,22 @@ export function semaforoMaletas(estudioProducto) {
 }
 
 const lista = (xs) => (xs.length <= 1 ? xs.join("") : `${xs.slice(0, -1).join(", ")} y ${xs[xs.length - 1]}`);
-const minus = (m) => m.titulo.toLowerCase();
+// Cada maleta con su artículo, para que las frases se lean bien («Faltan los testimonios y la garantía»).
+const CON_ARTICULO = Object.freeze({
+  publico: "el público", problema: "el problema", solucion: "la solución", diferenciales: "los diferenciales",
+  testimonios: "los testimonios", objeciones: "las objeciones", garantia: "la garantía",
+});
+const PLURALES = new Set(["diferenciales", "testimonios", "objeciones"]);
+const conArticulo = (m) => CON_ARTICULO[m.clave] ?? m.titulo.toLowerCase();
 
 /** El aviso del semáforo en una frase: «si falta una, no lances». Pura. */
 export function avisoDeMaletas(faltan = [], flojas = []) {
-  if (faltan.length) return `${faltan.length === 1 ? "Falta" : "Faltan"} ${lista(faltan.map(minus))}: si falta una maleta, no lances el anuncio.`;
-  if (flojas.length) return `Se puede anunciar, pero ${lista(flojas.map(minus))} ${flojas.length === 1 ? "está floja" : "están flojas"}: concrétal${flojas.length === 1 ? "a" : "as"} antes.`;
+  if (faltan.length) {
+    const verbo = faltan.length > 1 || PLURALES.has(faltan[0].clave) ? "Faltan" : "Falta";
+    const frase = lista(faltan.map(conArticulo));
+    return `${verbo} ${frase}: si falta una maleta, no lances el anuncio.`;
+  }
+  if (flojas.length) return `Se puede anunciar, pero conviene concretar ${lista(flojas.map(conArticulo))}.`;
   return "Las 7 maletas están: se puede anunciar.";
 }
 
@@ -143,7 +153,7 @@ export function resumenDeMaletas(estudio, catalogo) {
 export function tareaParaElCliente({ marca = "", producto = "", claves = [] } = {}) {
   const suyas = ELEMENTOS_MERCADO.filter((el) => el.delCliente && claves.includes(el.clave));
   if (!suyas.length) return null;
-  const que = lista(suyas.map(minus));
+  const que = lista(suyas.map(conArticulo));
   const sobre = producto ? ` de «${producto}»` : "";
   return {
     title: `Pedirle a ${marca || "el cliente"} ${que}${sobre}`,

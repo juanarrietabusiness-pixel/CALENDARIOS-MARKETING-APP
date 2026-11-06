@@ -38,7 +38,8 @@ import "./Estudio.css";
 function TiposArteDeMarca({ kit, lectura = false, ocupado = false, onCambiar }) {
   const ids = useId();
   const elegidos = kit.tiposArte ?? [];
-  const alternar = (id) => onCambiar(elegidos.includes(id) ? elegidos.filter((x) => x !== id) : [...elegidos, id]);
+  // Mientras guarda se ignora el toque (sin `disabled`: el chip pulsado soltaría el foco).
+  const alternar = (id) => { if (!ocupado) onCambiar(elegidos.includes(id) ? elegidos.filter((x) => x !== id) : [...elegidos, id]); };
   if (lectura && !elegidos.length) return null;
   return (
     <section className="field est-kit-artes" aria-labelledby={`${ids}-t`}>
@@ -52,7 +53,7 @@ function TiposArteDeMarca({ kit, lectura = false, ocupado = false, onCambiar }) 
           const dentro = elegidos.includes(t.id);
           return lectura ? (dentro ? <span key={t.id} className="filter-chip active">{t.nombre}</span> : null) : (
             <button key={t.id} type="button" className="filter-chip" aria-pressed={dentro} title={t.ayuda}
-              disabled={ocupado || (!dentro && elegidos.length >= MAX_TIPOS_ARTE)} onClick={() => alternar(t.id)}>{t.nombre}</button>
+              aria-disabled={ocupado || undefined} disabled={!dentro && elegidos.length >= MAX_TIPOS_ARTE} onClick={() => alternar(t.id)}>{t.nombre}</button>
           );
         })}
       </div>

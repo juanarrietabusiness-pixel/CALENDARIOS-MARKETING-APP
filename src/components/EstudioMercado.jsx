@@ -827,7 +827,8 @@ function RevisionProducto({ id, estudio: e, producto, client, lectura = false, e
       {/* El semáforo de las 7 maletas del producto (se recalcula con lo que se corrige en el borrador). */}
       <MaletasDeProducto client={client} estudio={e} producto={producto?.nombre ?? e.nombre} lectura={lectura} />
       <div className="mercado-rejilla">
-        {ELEMENTOS_MERCADO.map((el) => (
+        {/* De lectura, sólo las escritas: las que faltan ya las dice el semáforo de arriba. */}
+        {ELEMENTOS_MERCADO.filter((el) => editable || e.elementos[el.clave]).map((el) => (
           <div key={el.clave} className="mercado-ficha">
             <Campo etiqueta={el.titulo} valor={e.elementos[el.clave]} editable={editable} filas={3} onCambio={set((x, v) => { x.elementos[el.clave] = v; })} />
           </div>

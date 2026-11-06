@@ -813,7 +813,10 @@ describe("un solo director: el carrusel, las correcciones de la agencia y lo que
     db.sqlite.prepare("update clients set kit_marca = ? where id = 'c1'").run(JSON.stringify({ tiposArte: ["producto", "promocion"] }));
     anthropic(JSON.stringify({ concepto: "x", piezas: [{ n: 1, ficha: "Pieza: post.\nTexto: NINGUNO." }] }));
     await pedir("/api/estudio/c1/fichas", { method: "POST", body: { piezas: [{ n: 1, idea: "Un sofá", sinTexto: true }] } });
-    expect(textoDe(peticiones[0])).toMatch(/Tipos de arte de esta marca[^\n]*Producto[^\n]*Promoción/);
+    const t = textoDe(peticiones[0]);
+    expect(t).toMatch(/Tipos de arte de esta marca[^\n]*Producto[^\n]*Promoción/);
+    // Con sólo los tipos de arte, el kit sigue sin preparar: el director lo sabe (no los toma por «la marca»).
+    expect(t).toMatch(/aún no tiene kit de marca/);
   });
 
   it("cada tipo se diseña a su manera, y la plantilla asignada a un tipo va sola en las piezas de ese tipo", async () => {

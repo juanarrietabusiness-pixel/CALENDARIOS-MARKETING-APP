@@ -409,7 +409,7 @@ function lineaDeEncargo(p) {
  * (paleta, estilo, reglas); `guia`: la identidad visual del cerebro; `plantillas`: las del kit; `concepto`: el de la
  * tanda si ya lo hay. Pura.
  */
-export function pedidoDeFichas({ cliente = "la marca", rubro = "", piezas = [], marca = "", conLogo = true, guia = "", plantillas = [], manual = null, concepto = "", productos = "", catalogo = "", sobreLaMarca = "", correcciones = [], vistas = 0, especiales = [], previas = [], serie = 0 }) {
+export function pedidoDeFichas({ cliente = "la marca", rubro = "", piezas = [], marca = "", conLogo = true, guia = "", plantillas = [], manual = null, concepto = "", productos = "", catalogo = "", sobreLaMarca = "", correcciones = [], vistas = 0, especiales = [], previas = [], serie = 0, tiposArte = [] }) {
   const lista = piezas.slice(0, MAX_FICHAS).map(limpiarPiezaEncargo);
   const enSerie = lista.length > 1 || serie > 1;
   return [
@@ -430,6 +430,8 @@ export function pedidoDeFichas({ cliente = "la marca", rubro = "", piezas = [], 
     catalogo ? `\n${lineaDeCatalogo(catalogo)}` : "",
     previas.length ? `\nPIEZAS DE ESTA SERIE QUE YA DISEÑASTE (síguelas en el sistema visual —tipografía, márgenes, logo, paleta— y NO repitas su composición):\n${previas.slice(0, 3).map((f, i) => `${i + 1}. ${corto(f, 700)}`).join("\n")}` : "",
     plantillas.length ? `\nPLANTILLAS DE ESTE CLIENTE (diseños que ya funcionaron; si una encaja, síguela y di su id en «plantilla»; la que «ES LA DE» un tipo se usa en las piezas de ese tipo salvo que la pieza diga otra):\n${plantillas.map(lineaDePlantilla).join("\n")}` : "",
+    // Los tipos de arte de la marca (curso de campañas, `kit.tiposArte`): van aunque el kit no esté preparado.
+    lineaDeTiposArte(tiposArte) ? `\n${lineaDeTiposArte(tiposArte)}` : "",
     bloqueDeDisenoPorTipo(lista.map((p) => p.tipo), manual) ? `\n${bloqueDeDisenoPorTipo(lista.map((p) => p.tipo), manual)}` : "",
     lineaDeCorrecciones(correcciones),
     concepto ? `\nCONCEPTO DE LA TANDA (síguelo): ${corto(concepto, 600)}` : "",
@@ -486,7 +488,11 @@ const SIN_LOGO_EN_LA_FICHA = "Mientras no haya logo, en la ficha NO pidas ningú
  */
 export function resumenDelKit({ kit = null, marca = "", vacio = false, cliente = "este cliente" } = {}) {
   if (!kit || vacio) {
-    return `KIT DE MARCA DE ${cliente.toUpperCase()}: NO está preparado. Las piezas saldrán sin su paleta ni su logo: díselo a la persona en una línea y ofrécele prepararlo (Estudio → Kit de marca → «Preparar con IA») y cargar su logo («Usar como logo» en la galería). Mientras, saca los colores y el estilo del cerebro (buscar_cerebro) y escríbelos en cada ficha. ${SIN_LOGO_EN_LA_FICHA}`;
+    return [
+      `KIT DE MARCA DE ${cliente.toUpperCase()}: NO está preparado. Las piezas saldrán sin su paleta ni su logo: díselo a la persona en una línea y ofrécele prepararlo (Estudio → Kit de marca → «Preparar con IA») y cargar su logo («Usar como logo» en la galería). Mientras, saca los colores y el estilo del cerebro (buscar_cerebro) y escríbelos en cada ficha. ${SIN_LOGO_EN_LA_FICHA}`,
+      // Los tipos de arte se escogen aparte del kit (Marca → Kit y voz) y valen aunque el kit no esté preparado.
+      lineaDeTiposArte(kit?.tiposArte),
+    ].filter(Boolean).join("\n");
   }
   return [
     `KIT DE MARCA DE ${cliente.toUpperCase()} (el Estudio lo pone solo en cada pieza; tú escribe la ficha de acuerdo con él):`,
@@ -553,7 +559,7 @@ const REGLA_SERIE = "Un carrusel es UNA serie: el titular en la MISMA zona, del 
  * Lo que se le pide al director para un carrusel: con el guion (`laminas`: las de partirGuion) o sólo un tema, de 5 a 7
  * láminas. Devuelve el sistema de la serie y la ficha de cada lámina con su texto exacto. Pura.
  */
-export function pedidoDeCarrusel({ cliente = "la marca", rubro = "", laminas = [], tema = "", tipo = "", estilo = "", producto = "", personajes = [], marca = "", conLogo = true, guia = "", plantillas = [], manual = null, correcciones = [], vistas = 0, estructura = "", catalogo = "", sobreLaMarca = "", indicacion = "" }) {
+export function pedidoDeCarrusel({ cliente = "la marca", rubro = "", laminas = [], tema = "", tipo = "", estilo = "", producto = "", personajes = [], marca = "", conLogo = true, guia = "", plantillas = [], manual = null, correcciones = [], vistas = 0, estructura = "", catalogo = "", sobreLaMarca = "", indicacion = "", tiposArte = [] }) {
   const conGuion = laminas.length >= 2;
   const deCarrusel = plantillas.filter((p) => p.uso === "portada" || p.uso === "lamina");
   return [
@@ -581,6 +587,7 @@ export function pedidoDeCarrusel({ cliente = "la marca", rubro = "", laminas = [
     guia ? `\nIDENTIDAD VISUAL (del cerebro del cliente):\n${largo(guia, 3000)}` : "",
     catalogo ? `\n${lineaDeCatalogo(catalogo)}` : "",
     deCarrusel.length ? `\nPLANTILLAS DE CARRUSEL DE ESTE CLIENTE (si una encaja, sigue su sistema; la que «ES LA DE» este tipo, síguela):\n${deCarrusel.map(lineaDePlantilla).join("\n")}` : "",
+    lineaDeTiposArte(tiposArte) ? `\n${lineaDeTiposArte(tiposArte)}` : "",
     tipo && disenoDelTipo(tipo, manual) ? `\nCÓMO SE DISEÑA ESTE TIPO (${corto(tipo, 60)}): ${disenoDelTipo(tipo, manual)}` : "",
     lineaDeCorrecciones(correcciones),
     "",

@@ -27,6 +27,7 @@ function PedirAlCliente({ client, producto = "", claves = [], lectura = false })
   const tarea = tareaParaElCliente({ marca: client?.name ?? "", producto, claves });
   if (!tarea || lectura) return null;
   const crear = async () => {
+    if (estado === "creando" || estado === "hecha") return;
     setEstado("creando");
     try {
       await saveClientTask({ client_id: client.dbId || client.id, ...tarea, recurrence: "none", today_date: fmtDate(new Date()) });
@@ -39,7 +40,9 @@ function PedirAlCliente({ client, producto = "", claves = [], lectura = false })
   };
   return (
     <span className="maletas-pedir">
-      <button type="button" className="btn btn-secondary btn-sm" disabled={estado === "creando" || estado === "hecha"} onClick={crear}>
+      {/* `aria-disabled` y no `disabled`: un botón que se desactiva con el foco encima lo suelta al <body>, y dentro del
+          diálogo del estudio Escape y Tab dejaban de funcionar. */}
+      <button type="button" className="btn btn-secondary btn-sm" aria-disabled={estado === "creando" || estado === "hecha"} onClick={crear}>
         <Icon name="send" size={14} /> {estado === "creando" ? "Creando la tarea…" : estado === "hecha" ? "Tarea creada" : "Pedírselo al cliente"}
       </button>
       <span role="status" className="hint">
@@ -65,7 +68,7 @@ export function MaletasDeProducto({ client, estudio, producto = "", lectura = fa
           <li key={m.clave} data-estado={m.estado}>
             <span className="maletas-luz" aria-hidden="true"><Icon name={ICONO_ESTADO[m.estado]} size={12} /></span>
             <span className="maletas-texto">
-              <strong>{m.titulo}</strong> <span className="hint">· {NOMBRE_ESTADO[m.estado]}{m.estado !== "verde" ? `: ${m.motivo}` : ""}</span>
+              <span><strong>{m.titulo}</strong> <span className="hint">· {NOMBRE_ESTADO[m.estado]}{m.estado !== "verde" ? `: ${m.motivo}` : ""}</span></span>
               {m.arreglo && <span className="hint">{m.arreglo}</span>}
             </span>
           </li>
@@ -85,8 +88,8 @@ export function ResumenMaletas({ client, estudio, catalogo = [], lectura = false
   return (
     <section className="maletas-resumen" aria-labelledby={`${ids}-t`}>
       <p id={`${ids}-t`} className="maletas-resumen-titulo">
-        <strong>Las 7 maletas</strong>
-        <span className="hint"> · {sinEstudio ? "sin estudio de mercado todavía" : `${r.listos} de ${r.total} ${r.total === 1 ? "producto se puede anunciar" : "productos se pueden anunciar"}`} (si falta una maleta, no se lanza)</span>
+        <strong>Las 7 maletas:</strong>
+        <span className="hint"> {sinEstudio ? "sin estudio de mercado todavía" : `${r.listos} de ${r.total} ${r.total === 1 ? "producto se puede anunciar" : "productos se pueden anunciar"}`} (si falta una maleta, no se lanza)</span>
       </p>
       {!sinEstudio && (
         <ul className="maletas-resumen-lista">

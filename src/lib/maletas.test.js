@@ -54,10 +54,12 @@ describe("el semáforo de un producto", () => {
   it("si falta una, no se lanza; floja, se avisa pero se puede", () => {
     const sinTestimonio = semaforoMaletas({ ...COMPLETO, elementos: { ...COMPLETO.elementos, testimonios: "", garantia: "Garantía total" } });
     expect(sinTestimonio).toMatchObject({ estado: "rojo", listo: false, faltan: ["testimonios"], flojas: ["garantia"] });
-    expect(sinTestimonio.aviso).toBe("Falta testimonios: si falta una maleta, no lances el anuncio.");
+    expect(sinTestimonio.aviso).toBe("Faltan los testimonios: si falta una maleta, no lances el anuncio.");
     const floja = semaforoMaletas({ ...COMPLETO, elementos: { ...COMPLETO.elementos, garantia: "Garantía total" } });
     expect(floja).toMatchObject({ estado: "ambar", listo: true });
-    expect(floja.aviso).toMatch(/Se puede anunciar, pero garantía está floja/);
+    expect(floja.aviso).toBe("Se puede anunciar, pero conviene concretar la garantía.");
+    expect(semaforoMaletas({ elementos: { ...COMPLETO.elementos, solucion: "", problema: "" } }).aviso).toBe("Faltan el problema y la solución: si falta una maleta, no lances el anuncio.");
+    expect(semaforoMaletas({ elementos: { ...COMPLETO.elementos, solucion: "" } }).aviso).toMatch(/^Falta la solución:/);
     expect(semaforoMaletas(null)).toMatchObject({ estado: "rojo", listo: false });
     expect(semaforoMaletas(null).faltan).toHaveLength(7);
   });
@@ -98,7 +100,7 @@ describe("el resumen y la tarea para el cliente", () => {
 
   it("la tarea lleva el mensaje listo y sólo lo que es del cliente", () => {
     const t = tareaParaElCliente({ marca: "Dcasa", producto: "Lavado", claves: ["testimonios", "garantia", "problema"] });
-    expect(t.title).toBe("Pedirle a Dcasa testimonios y garantía de «Lavado»");
+    expect(t.title).toBe("Pedirle a Dcasa los testimonios y la garantía de «Lavado»");
     expect(t.description).toContain("Hola, equipo de Dcasa.");
     expect(t.description).toContain("testimonios reales");
     expect(t.description).toContain("qué garantía ofrecen");
