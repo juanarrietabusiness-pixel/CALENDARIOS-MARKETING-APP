@@ -274,7 +274,25 @@ src/
                           («Completar», «Generar con IA» de la lista, «Planificar mes») (en diferido)
     planMes.js            «Planificar mes» sin trampas: semanas = filas de la rejilla, el borrador por cliente y mes, los días
                           ocupados y la publicación que sale del plan con la ficha de diseño ya pagada (puro)
-    embudo.js             Los objetivos del mes, las etapas del embudo y la estrategia guardada (pequeño: lo lee la tarjeta de
+    cicloVentas.js        El CICLO DE VENTAS del curso de campañas: las 4 etapas (presentación, evaluación, conversión, ascensión)
+                          con sus alias de antes (`idEtapaCiclo`), tipos de negocio, destinos y cuenta (puro; carga inicial)
+    cicloNegocio.js       Qué pieza va en cada etapa según el negocio y el destino (`CICLO_POR_NEGOCIO`, `cicloDe`, `OBJETIVOS_CICLO`):
+                          la tabla del curso con palabras propias y lo deducido; se importa de AQUÍ, no de cicloVentas.js (puro)
+    tiposArte.js          Los 10 TIPOS DE ARTE (enlazados a COMPOSICIONES, PILARES y etapas) y los 6 SESGOS (con su táctica del
+                          gancho); `lineaDeTiposArte` para el director y el motor de ideas (puro; también el Worker)
+    maletas.js            El SEMÁFORO de las 7 maletas por producto (verde, ámbar, rojo; «si falta una, no lances»),
+                          `maletasQueFaltan` para el plan de campañas, el resumen y la tarea «Pedírselo al cliente» (puro)
+    numerosNegocio.js     Los NÚMEROS DEL NEGOCIO de un cliente (cada dato con su origen) y las tres calculadoras de la agencia,
+                          con sus mismas cuentas: objetivo (la Calculadora de presupuesto), equilibrio (deeplook, «todo el
+                          negocio» y «sólo la pauta»), el Simulador (5 modos y 3 escenarios), el número mágico con su alarma y
+                          lo que propone la IA (puro; también el Worker)
+    negocioApi.js         Cliente de /api/anuncios/clientes/<c>/negocio (leer, guardar con `antes`, proponer)
+    ventasSemana.js       «Tus ventas de la semana»: el lunes de Panamá, la ventana del cliente (3 semanas) y la de la
+                          agencia (8), limpiar lo que llega, la tasa de cierre MEDIDA (cada semana de ventas con las
+                          conversaciones de la anterior, 4 semanas), el ROAS real de WhatsApp, «sin medir desde…» y el
+                          mensaje de los lunes (puro; también el Worker)
+    ventasApi.js          Cliente de /api/ventas y /api/publico-ventas
+    embudo.js             Los objetivos del mes, las etapas del ciclo de ventas (las de antes, por alias) y la estrategia guardada (pequeño: lo lee la tarjeta de
                           la campaña; estrategiaMes.js lo reexporta) (puro)
     control.js            El CONTROL DE CALIDAD de una pieza: el pedido a la IA (que la mira), comparar el texto palabra por
                           palabra (con tildes), el veredicto, la corrección quirúrgica del texto (puro; también el Worker)
@@ -583,6 +601,12 @@ src/
     anuncios/Diagnostico.jsx       El diagnóstico: lo que dicen las reglas, «Apagar» y «Subir a…» (con confirmación) (lazy)
     anuncios/InformesAnuncios.jsx  «Informe» en Anuncios: generar, automático el día 1, el costo sí o no, compartir (lazy)
     anuncios/InformeAnunciosVista.jsx  El informe de anuncios como documento (lo usan el diálogo y la página pública)
+    SemaforoMaletas.jsx   Las 7 maletas en pantalla: por producto en el estudio de mercado y el resumen en Marca → Cerebro, con
+                          «Pedírselo al cliente» (una tarea del cliente con el mensaje listo)
+    negocio/NumerosNegocio.jsx  Marca → «Números del negocio»: la ficha, «Proponer lo que falta con IA», el número mágico, cuánto
+                          invertir, el equilibrio con su tabla, simular y las ventas de la semana (lazy)
+    negocio/VentasSemana.jsx  Las ventas de la semana dentro de Números del negocio: 8 semanas con la pauta y las conversaciones,
+                          escribir o corregir, copiar el enlace y el mensaje de los lunes, la tasa medida (`onTasaMedida`) y el ROAS real
   pages/
     Login.jsx             Acceso
     Equipo.jsx            Quién entra en el espacio; invitar y sacar
@@ -600,6 +624,7 @@ src/
     PublicarAMano.jsx     /a-mano/…: publicar desde el teléfono (música, stickers…)
     Informe.jsx           Lo que ve el cliente al abrir su informe mensual (sin sesión)
     InformeAnuncios.jsx   Lo que ve el cliente al abrir su informe de anuncios (sin sesión)
+    VentasCliente.jsx     Lo que abre el cliente con su enlace de ventas (sin sesión)
     Ajustes.jsx           IA, presupuesto y consumo, integraciones, tareas, copia
     LoMejor.jsx           /lo-mejor: «Lo mejor del momento» de todos los clientes (Esta semana · Este mes · Nuevo, filtros) (lazy)
     Campanas.jsx          /campanas («Anuncios»): cuenta publicitaria, cifras, campañas, crear (lazy)
@@ -640,6 +665,10 @@ worker/
                           el TOPE semanal de créditos (lo comparten anuncios y TikTok) y TikTok: leer una cuenta, buscar una
                           palabra y traer un video a la galería (sólo de sus dominios, sin la llave, sin pagar dos veces)
     tendencias.js         Las tendencias de TikTok de cada cliente: sus palabras, leer una (los videos con más vistas) y guardarlas
+    negocio.js            Los números del negocio: leer y guardar (`anuncios_clientes.negocio`), lo de Meta en 30 días (una
+                          llamada), la IA que propone sin guardar, y la ruta (la despacha rutas/anuncios.js)
+    ventas.js             El enlace de ventas: el testigo (una vez), guardar una semana, la pauta y las conversaciones de
+                          Meta por semana (una llamada) y lo que ven la agencia y el cliente
     anuncios.js           Meta Ads: cuentas publicitarias, campañas e /insights, subir el medio
                           (/adimages, /advideos por file_url), crear en pausa, activar y pausar
     mcp.js                Las herramientas de Claude por MCP (consulta + escritura)
@@ -753,11 +782,12 @@ worker/
                           el tope de créditos, releer los anuncios y el proxy de los videos del CDN de Meta
     historiasAuto.js      /api/historias-auto/<cliente>: ajustes, pendientes de preparar, piezas
     videos.js             /api/videos/<cliente>: los videos animados (listar, crear, guardar el guion, aprobar, borrar)
+    ventas.js             /api/ventas/<cliente> (8 semanas, escribir, quitar, el enlace) y /api/publico-ventas/<testigo>
 container/                El Container del video animado (Node + @napi-rs/canvas + ffmpeg, Dockerfile): /cuadro, /hoja, /revisar y
                           /render (render.mjs) con el MISMO motor de src/lib; los clips de video (clips.mjs, PUT /clip/<id>);
                           probar.mjs, probarAudio.mjs y probarClips.mjs son sus pruebas (job «contenedor»)
 migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales, 0033 kit de marca, 0034 estudio de mercado, 0035 ritmo de contenido, 0036 inventario, 0037 plantillas de plan, 0038 campañas con varios conjuntos y anuncios, 0039 estratega, 0040 historial de anuncios, 0041 informe de anuncios, 0042 galería agrupada y repetidos, 0043 conversaciones del asistente, 0044 banco de ideas único, 0045 fórmulas UGC, 0046 inspiración, 0047 conversaciones de diseño, 0048 historias automáticas, 0049 encargos del Estudio: lote y carrusel, 0050 historias apartadas, 0051 notas fijas de los días, 0052 programar al aprobar por cliente, 0053 qué se le cambió a una nota, 0054 qué redes entran en el informe, 0055 hasta 5 historias automáticas al día, 0056 los días fijos de cada empresa, 0057 la lista aplicada de una auditoría, 0058 la caché de Scrape Creators, 0059 proyectos de video animado, 0060 sonido e historial de los videos, 0061 recetas y «Crear con Claude», 0062 «Lo mejor del momento»)
-migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales, 0033 kit de marca, 0034 estudio de mercado, 0035 ritmo de contenido, 0036 inventario, 0037 plantillas de plan, 0038 campañas con varios conjuntos y anuncios, 0039 estratega, 0040 historial de anuncios, 0041 informe de anuncios, 0042 galería agrupada y repetidos, 0043 conversaciones del asistente, 0044 banco de ideas único, 0045 fórmulas UGC, 0046 inspiración, 0047 conversaciones de diseño, 0048 historias automáticas, 0049 encargos del Estudio: lote y carrusel, 0050 historias apartadas, 0051 notas fijas de los días, 0052 programar al aprobar por cliente, 0053 qué se le cambió a una nota, 0054 qué redes entran en el informe, 0055 hasta 5 historias automáticas al día, 0056 los días fijos de cada empresa, 0057 la lista aplicada de una auditoría, 0058 la caché de Scrape Creators, 0059 proyectos de video animado, 0060 sonido e historial de los videos, 0061 recetas y «Crear con Claude», 0063 de dónde sale un video animado, 0066 el plan semanal único, 0068 TikTok y tendencias por Scrape Creators)
+migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales, 0033 kit de marca, 0034 estudio de mercado, 0035 ritmo de contenido, 0036 inventario, 0037 plantillas de plan, 0038 campañas con varios conjuntos y anuncios, 0039 estratega, 0040 historial de anuncios, 0041 informe de anuncios, 0042 galería agrupada y repetidos, 0043 conversaciones del asistente, 0044 banco de ideas único, 0045 fórmulas UGC, 0046 inspiración, 0047 conversaciones de diseño, 0048 historias automáticas, 0049 encargos del Estudio: lote y carrusel, 0050 historias apartadas, 0051 notas fijas de los días, 0052 programar al aprobar por cliente, 0053 qué se le cambió a una nota, 0054 qué redes entran en el informe, 0055 hasta 5 historias automáticas al día, 0056 los días fijos de cada empresa, 0057 la lista aplicada de una auditoría, 0058 la caché de Scrape Creators, 0059 proyectos de video animado, 0060 sonido e historial de los videos, 0061 recetas y «Crear con Claude», 0063 de dónde sale un video animado, 0066 el plan semanal único, 0068 TikTok y tendencias por Scrape Creators, 0069 números del negocio, 0070 las ventas de la semana)
 scripts/migracion/        Volcado desde Supabase, conversión e importación
 tests/
   utils/                  Lector de wrangler.jsonc y _headers, fallos e informe
@@ -778,7 +808,7 @@ tests/
 | `/cliente/<slug>/<mes>-<año>` | Un mes del calendario de ese cliente (`octubre-2026`), exista o no su cajón. Los enlaces viejos con el nombre o el id del calendario siguen abriendo su mes |
 | `/cliente/<slug>/crear` · `/crear/director` · `/crear/galeria` | Crear: el director («¿Qué quieres crear?») arriba y la galería del Estudio debajo, con lo manual en «Avanzado» |
 | `/cliente/<slug>/referencias` · `/referencias/ideas` · `/inspiracion` · `/competencia` | Referencias: el banco de ideas, «Lo mejor» del cliente (`?pieza=<clave>` la señala) y la competencia del estudio de mercado |
-| `/cliente/<slug>/marca` · `/marca/ficha` · `/kit` · `/cerebro` · `/plan` · `/fechas` · `/drive` | Marca: ficha, kit y voz, cerebro (con el estudio de mercado), plan semanal, fechas especiales y la carpeta de Drive, con el semáforo del kit arriba |
+| `/cliente/<slug>/marca` · `/marca/ficha` · `/kit` · `/negocio` · `/cerebro` · `/plan` · `/fechas` · `/drive` | Marca: ficha, kit y voz, números del negocio, cerebro (con el estudio de mercado), plan semanal, fechas especiales y la carpeta de Drive, con el semáforo del kit arriba |
 | `/cliente/<slug>/resultados` | Resultados del cliente |
 | `/cliente/<slug>/tareas` | Todas las tareas del cliente (con las que se repiten). Ya no es pestaña: su cabecera lleva a Mi día por empresa |
 | `/cliente/<slug>/estudio` · `/diseno` · `/ideas` · `/inspiracion` · `/cerebro` · `/ficha` · `/contenido` | Las pestañas de antes: abren la nueva en su sub-sección (Crear → Galería / Director, Referencias → Ideas / Lo mejor, Marca → Cerebro / Ficha / Drive) sin reescribir la dirección, así `?lote=`, `?receta=` y `?pieza=` siguen |
@@ -801,6 +831,7 @@ tests/
 | `/aprobar?t=<testigo>` | Página del cliente final (sin sesión) |
 | `/informe?t=<testigo>` | Informe mensual del cliente final (sin sesión) |
 | `/informe-anuncios?t=<testigo>` | Informe de anuncios del cliente final (sin sesión) |
+| `/ventas?t=<testigo>` | «Tus ventas de la semana» del cliente final (sin sesión) |
 
 El slug sale del nombre normalizado, y `slugsUnicos()` garantiza que dos
 clientes que normalicen igual no compartan dirección. Los nombres de las
@@ -4935,6 +4966,64 @@ son del servidor.
   · **El CSS inicial estaba en su tope (12,48 de 12,5 kB)**: lo de Drive, el banco anterior y la ficha salió de index.css a
   Drive.css, PestanaContenido.css y FichaCliente.css, importados por sus componentes (todos en diferido). Lo nuevo va en
   cliente/cliente.css, con sus chunks.
+- **El curso de campañas cambió tres vocabularios, y ninguna fila se reescribió** (`src/lib/cicloVentas.js`, `embudo.js`,
+  `estudioMercado.js`, `estratega.js`). Lo guardado sigue con los ids de antes y se ENTIENDE al leerlo:
+  · **Las etapas.** `opciones.estrategia.etapas` de los calendarios (atraer, considerar, convertir, fidelizar) y el `embudo`
+  de `planes_campana` (frío, tibio, caliente) pasan por `idEtapaCiclo`, en `limpiarEstrategia`, `semanasConEtapa`,
+  `EtapaSemana` y `leerPlan`. El estratega abre un plan guardado pasándolo por `leerPlan`. Si alguien vuelve a indexar con
+  `ETAPAS[x].nombre` sin el alias, un borrador viejo del navegador revienta «Planificar mes».
+  · **Las maletas.** Un estudio aprobado con cliente, dolor, deseo, alternativas, diferenciador y confianza se lee con
+  `elementosConAlias`: «confianza» se parte por frases entre testimonios y garantía, y si no nombra garantía, la garantía queda
+  vacía y el semáforo la pone en rojo, a propósito. «Deseo» y «alternativas» no son maletas: quedan en `extra` del producto,
+  se ven y van en su nota del cerebro.
+  · **Las tácticas.** Las tres nuevas (reciprocidad, empatía, micro-compromiso) van AL FINAL de `TACTICAS`, para que lo
+  guardado en `post.tactica` siga valiendo.
+  · **La tabla del ciclo por negocio no se importa de `cicloVentas.js`, sino de `cicloNegocio.js`.** `cicloVentas.js` va en la
+  carga inicial y rollup reparte por MÓDULO: reexportada, la primera pantalla diferida que la usara metía unos 3 kB
+  comprimidos en el arranque, sin que saltara ningún tope. Lo vigila `rendimiento.bundle.test.js`. Por eso lo deducido es DATO
+  y se arma al pedirlo (`baseDe`).
+  · **Los tipos de arte (`kit.tiposArte`) NO van en `bloqueDeMarca`.** Ése llega en cada pieza al motor de imagen; esto es para
+  quien diseña: va como parámetro aparte del director (`pedidoDeFichas`, `pedidoDeCarrusel`) y del motor de ideas.
+  · **«Pedírselo al cliente» usa `aria-disabled`, no `disabled`.** Un botón que se desactiva con el foco encima lo suelta al
+  `<body>`, y en el diálogo del estudio Escape dejaba de cerrar. Lo cazó Chromium, no los tests.
+- **Los números del negocio usan las cuentas de la agencia, no unas propias, y los tests lo exigen celda a celda**
+  (`src/lib/numerosNegocio.js`; Marca → «Números del negocio»; `anuncios_clientes.negocio`, 0069). Los ejemplos de los Excel
+  del curso y los valores de deeplook tienen que dar lo mismo. Dos diferencias, a propósito: el % a invertir siempre es
+  porcentaje y los clientes potenciales en la web se cuentan sobre las visitas. Cosas que no se ven en la pantalla:
+  · **Cada dato guarda su origen** (cliente, agencia, estimado, meta, medida). La IA (`POST …/negocio/proponer`) propone
+  ticket, costos, devoluciones y % a invertir siempre como «estimado» y no guarda nada; con todo confirmado ni se la llama.
+  · **La fila es la misma que la del informe de anuncios:** el número se escribe con `actualizar` y no con `guardar`, que
+  pisaría las otras columnas. Un PUT con `antes` contesta 409 si otra persona guardó entremedias.
+  · **Con los fijos dentro, el equilibrio depende del presupuesto:** sin presupuesto escrito se usa lo gastado en Meta en 30
+  días (origen «meta») y, si no, la inversión que pide la meta. «Sólo la pauta» con fijos y sin ventas de otros canales
+  AVISA (`cargaTodosLosFijos`) y no cambia la cifra.
+  · **El simulador se prellena con el CTR único sobre las impresiones** (clics únicos ÷ impresiones), no con el de Meta, que
+  va sobre el alcance: si no, el «esperado» duplicaría los clics de verdad.
+  · **El diagnóstico usa el número mágico guardado** si nadie teclea otro (`origenCosto`), y el estratega toma de ahí el
+  margen efectivo y la tasa de cierre (`deNumeros`).
+  · **Lo de Meta es UNA llamada de sólo lectura** (dos si Meta rechaza un campo con #100), y sin cuenta, sin permisos o con
+  un error la ficha se abre igual con `avisoMeta`. Nada de esto se ha probado contra Meta ni contra la IA reales.
+- **Meta no ve las ventas que se cierran por WhatsApp: las apunta el cliente por su enlace** (`/ventas?t=…`;
+  `src/lib/ventasSemana.js`, `worker/lib/ventas.js`, 0070). Cosas que no se ven:
+  · **El testigo vive en `anuncios_clientes.testigo_ventas` y se crea UNA vez** (`crearEnlaceDeVentas`, que sólo escribe
+  si seguía vacío): regenerarlo mataría el enlace que el cliente guardó en su WhatsApp. La única lectura sin dueño es
+  `clienteDeVentasPorTestigo` (publico.js); todo lo demás va por `crearAcceso` del espacio de ese cliente.
+  · **Una semana es su LUNES en Panamá** y su fila tiene id fijo (`vs:<cliente>:<lunes>`): guardar dos veces es la misma
+  fila. El cliente sólo escribe la semana actual y las dos anteriores; la agencia, ocho. De lunes a miércoles se le
+  pregunta por la que acaba de terminar.
+  · **La tasa de cierre cruza cada semana de ventas con las conversaciones de la ANTERIOR** (quien escribe el jueves
+  compra el lunes), sobre las últimas 4 semanas apuntadas. Por eso la agencia lee de Meta NUEVE semanas para enseñar
+  ocho. Con el dato del cliente, cuentan las ventas «de los anuncios»; con más de la mitad cerradas, avisa. Sólo sustituye
+  al 5 % con 2 semanas y 20 conversaciones (`tasaParaUsar`).
+  · **Una semana sin apuntar NO es cero ventas** (no entra en la tasa), y lo opcional vacío es null («no lo sé»), no 0.
+  Las semanas sin pauta sí salen en 0 (`agruparPorSemana` las rellena).
+  · **El cliente nunca ve un costo**: su respuesta no lleva gasto, espacio ni quién del equipo escribió (un test busca
+  esas palabras). La pauta es la de toda la cuenta publicitaria.
+  · **Meta falla callado aquí**: sin cuenta, sin permisos o con un error, las ventas salen igual y `meta.estado` dice por
+  qué. **Nada se ha probado contra Meta real.**
+- **`TASA_CIERRE_POR_DEFECTO` pasó de 20 a 5** (decisión del curso), pero el Manual de campañas guardaba SIEMPRE la tasa de
+  entonces (`limpiarManual` la escribía aunque nadie la escogiera). Un 20 sin la marca `tasaCierreV: 2` se lee como el de
+  ahora; lo que se guarda desde entonces lleva la marca, así que un 20 escogido después se respeta.
 
 ## Documentos relacionados
 
