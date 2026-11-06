@@ -25,6 +25,9 @@
 //   PUT  /clip/<id> (el cuerpo: los bytes del VIDEO)  → JSON { ancho, alto, duracion, audio }: guarda un clip de la galería
 //                                              para las capas `video` (clips.mjs). Va por flujo: el Worker no lo carga.
 //   HEAD /clip/<id>  → 200 si ya está (no hace falta subirlo otra vez), 404 si no
+//   PUT  /imagen/<id> (el cuerpo: los bytes de la IMAGEN) → JSON { bytes }: una imagen de la galería que no cabía en el
+//                                              pedido (imagenes.mjs); el pedido la nombra en `imagenesSubidas`
+//   HEAD /imagen/<id> → 200 si ya está, 404 si no
 //   POST /acabado   { imagen, mime?, texto? { texto, plantilla, colores, familia?, fuente? }, logo? { datos, posicion } }
 //                                            → JSON { datos, mime, ancho, alto }: el texto de la plantilla y/o el logo
 //                                              estampado encima de una pieza del Estudio (src/lib/acabadoLienzo.js, el
@@ -43,6 +46,7 @@ import { dibujarFrame, paletaDelGuion, escenaEn } from "../src/lib/motorVideo.js
 import { revisarEscenas, textoDeRevision, instanteLleno } from "../src/lib/revisionEscenas.js";
 import { prepararRecursos, registrarRespaldo, registrarLetraDeLaCasa, registrarFuente, cuadrosParaUnInstante } from "./recursos.mjs";
 import { guardarClip, tieneClip, ErrorClip } from "./clips.mjs";
+import { guardarImagen, tieneImagen } from "./imagenes.mjs";
 import { dibujarTextoPlantilla, dibujarLogo, letraDe } from "../src/lib/acabadoLienzo.js";
 import { encajarEn, reducirEn } from "../src/lib/encajarLienzo.js";
 import { LADO_PUBLICAR } from "../src/lib/prepararRedes.js";
@@ -279,6 +283,14 @@ async function atender(ruta, p) {
 const servidor = createServer(async (req, res) => {
   try {
     if (req.method === "GET" && req.url === "/salud") { res.writeHead(200, { "Content-Type": "text/plain" }); res.end("ok"); return; }
+    const imagen = /^\/imagen\/([\w-]{1,80})$/.exec(new URL(req.url, "http://x").pathname);
+    if (imagen && req.method === "HEAD") { res.writeHead((await tieneImagen(imagen[1])) ? 200 : 404); res.end(); return; }
+    if (imagen && req.method === "PUT") {
+      const info = await guardarImagen(imagen[1], req);
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(info));
+      return;
+    }
     const clip = /^\/clip\/([\w-]{1,80})$/.exec(new URL(req.url, "http://x").pathname);
     if (clip && req.method === "HEAD") { res.writeHead((await tieneClip(clip[1])) ? 200 : 404); res.end(); return; }
     if (clip && req.method === "PUT") {

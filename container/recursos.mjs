@@ -20,6 +20,7 @@ import { ruidoDeGrano, cajaOpaca, FUENTE_CASA, ARCHIVO_FUENTE_CASA } from "../sr
 import { quitarFondoLiso, tonoDeImagen } from "../src/lib/motorPiezas.js";
 import { videosEnInstante } from "../src/lib/motorVideo.js";
 import { infoDe, cuadroDe } from "./clips.mjs";
+import { bytesDeImagen } from "./imagenes.mjs";
 
 /**
  * La letra de RESPALDO (la que usa un kit sin fuente): Roboto, que el motor nombra en `FUENTE_RESPALDO`. Llega por npm
@@ -95,7 +96,17 @@ async function cargarLogo(base64) {
 /** Una imagen en base64 → lista para el motor (sin borde), o null si no se pudo leer. */
 async function cargarImagen(base64) {
   if (!base64) return null;
-  const bytes = Buffer.from(base64, "base64");
+  return cargarBytes(Buffer.from(base64, "base64"));
+}
+
+/** Una imagen subida antes (`PUT /imagen/<id>`, imagenes.mjs) → lista para el motor, o null si no está o no se lee. */
+async function cargarSubida(id) {
+  const bytes = await bytesDeImagen(id).catch(() => null);
+  return bytes ? cargarBytes(bytes) : null;
+}
+
+/** Los bytes de una imagen → lista para el motor (sin borde), o null si no se pudo leer. */
+async function cargarBytes(bytes) {
   const k = huella(bytes);
   if (!imagenes.has(k)) {
     imagenes.set(k, loadImage(bytes).then(sinBordeTransparente).catch(() => { imagenes.delete(k); return null; }));
@@ -134,14 +145,19 @@ function texturaDeGrano() {
  *   imagenes — { [id de la galería]: base64 }   logo — base64 | null
  *   fuentes  — { titular: { datos }, cuerpo: { datos } } (la del kit, o la que pida el guion)
  *   videos   — [ids de la galería] de los clips que el Worker ya SUBIÓ (`PUT /clip/<id>`, clips.mjs)
+ *   imagenesSubidas — [ids de la galería] de las imágenes que no cabían en el pedido y ya SUBIÓ (`PUT /imagen/<id>`)
  * `cuadros` es el Map (uso → lienzo) que `recursos.video` lee: lo llena quien dibuja ANTES de cada cuadro
  * (`cuadrosParaUnInstante` o el decodificador del render), porque el motor no espera nada.
  */
-export async function prepararRecursos({ imagenes: imgs = {}, logo = null, fuentes: fs = {}, videos = [] } = {}) {
+export async function prepararRecursos({ imagenes: imgs = {}, logo = null, fuentes: fs = {}, videos = [], imagenesSubidas = [] } = {}) {
   const ids = Object.keys(imgs);
+  const subidas = (Array.isArray(imagenesSubidas) ? imagenesSubidas : []).filter((v) => typeof v === "string" && !ids.includes(v));
   const vids = (Array.isArray(videos) ? videos : []).filter((v) => typeof v === "string");
   const [cargadas, logoImg, infos] = await Promise.all([
-    Promise.all(ids.map(async (id) => [id, await cargarImagen(imgs[id])])),
+    Promise.all([
+      ...ids.map(async (id) => [id, await cargarImagen(imgs[id])]),
+      ...subidas.map(async (id) => [id, await cargarSubida(id)]),
+    ]),
     cargarLogo(logo),
     Promise.all(vids.map(async (id) => [id, await infoDe(id).catch(() => null)])),
   ]);

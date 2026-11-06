@@ -174,7 +174,7 @@ export async function guardarProyecto(acceso, cliente, fila, { guion: entrada, t
   const cambios = {};
   let avisos = [];
   if (entrada !== undefined) {
-    const r = guionValido(entrada);
+    const r = guionValido(conLaCancionGuardada(entrada, fila));
     avisos = r.avisos;
     if (JSON.stringify(r.guion) !== fila.guion) {
       const estado = estadoTrasEditar(fila.estado);
@@ -194,6 +194,18 @@ export async function guardarProyecto(acceso, cliente, fila, { guion: entrada, t
   // El guion de antes, al historial (sólo si cambió). Que falle no deshace el guardado: se pierde un paso del historial.
   if (cambios.guion) await guardarVersionAnterior(acceso, cliente.id, fila, por).catch(() => null);
   return { video: deFila({ ...fila, ...cambios }), avisos, cambio: true };
+}
+
+/**
+ * La CANCIÓN de un video con canción la pone la aplicación (`video_con_cancion`), y el formato le dice a Claude que no la
+ * escriba: un guion que llega entero SIN la clave `cancion` la conserva de lo guardado. Si no, guardar el guion entero la
+ * borraba y el video volvía a pedir voz. Mandar `cancion: null` a propósito sí la quita.
+ */
+export function conLaCancionGuardada(entrada, fila) {
+  const crudo = typeof entrada === "string" ? leerJSON(entrada, null) : entrada;
+  if (!crudo || typeof crudo !== "object" || Array.isArray(crudo) || "cancion" in crudo) return entrada;
+  const cancion = leerJSON(fila?.guion, null)?.cancion;
+  return cancion ? { ...crudo, cancion } : entrada;
 }
 
 /** Guarda en el historial el guion de `fila` (la versión que se va a dejar atrás) y recorta a MAX_VERSIONES. */

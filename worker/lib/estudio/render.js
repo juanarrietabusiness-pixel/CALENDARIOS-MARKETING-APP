@@ -22,7 +22,7 @@ import { ErrorVideo, deFila, publicacionDelCliente, ID_VIDEO } from "../videosPr
 import { marcarUso } from "./galeria.js";
 import { cambiarPublicacion } from "./ponerEnPost.js";
 import { conVideoEnPost, rellenarVacios } from "../../../src/lib/resultadoEnPost.js";
-import { pedidoDelVideo, aBase64, subirClips } from "./cuadros.js";
+import { pedidoDelVideo, aBase64, subirClips, subirImagenes, sinLoQueNoSubio } from "./cuadros.js";
 import { claveDeArchivo, claveDelCliente, slugCorto } from "./archivos.js";
 import { puedeRenderizar, esMp4, PLAZO_RENDER_MS } from "../../../src/lib/renderVideo.js";
 import { tieneHabla } from "../../../src/lib/videoEscenas.js";
@@ -177,11 +177,17 @@ export async function ejecutarRender(env, { ownerId, clienteId, videoId, intento
   try {
     const cliente = await acceso.leerUno("clients", { id: clienteId });
     if (!cliente) throw new Error("El cliente ya no existe.");
-    const { pedido: base, clips, guion } = await pedidoDelVideo(env, acceso, cliente, fila);
-    // Los clips de video, al Container del render por flujo ANTES del pedido. Uno que no sube sale con su «Video» de espera.
+    const armado = await pedidoDelVideo(env, acceso, cliente, fila);
+    const { clips, porSubir, guion } = armado;
+    // Los clips de video y las imágenes que no cabían en el pedido, al Container del render por flujo ANTES del pedido.
+    // Un clip que no sube sale con su «Video» de espera; una imagen, con su marcador.
     const fallaron = clips.length && pedir ? await subirClips(env, clips, pedir) : clips.map((c) => c.id);
-    const pedido = { ...base, videos: base.videos.filter((id) => !fallaron.includes(id)) };
-    const sinClips = fallaron.length ? `No se pudo cargar ${fallaron.length === 1 ? "un clip de video" : `${fallaron.length} clips de video`}: ${fallaron.length === 1 ? "salió" : "salieron"} con el cuadro de espera.` : null;
+    const imagenesFallidas = porSubir.length && pedir ? await subirImagenes(env, porSubir, pedir) : porSubir.map((c) => c.id);
+    const { pedido } = sinLoQueNoSubio(armado, { clips: fallaron, imagenes: imagenesFallidas });
+    const sinClips = [
+      fallaron.length ? `No se pudo cargar ${fallaron.length === 1 ? "un clip de video" : `${fallaron.length} clips de video`}: ${fallaron.length === 1 ? "salió" : "salieron"} con el cuadro de espera.` : "",
+      imagenesFallidas.length ? `No se pudo cargar ${imagenesFallidas.length === 1 ? "una imagen" : `${imagenesFallidas.length} imágenes`}: ${imagenesFallidas.length === 1 ? "salió" : "salieron"} como marcador.` : "",
+    ].filter(Boolean).join(" ") || null;
     // Un montaje sin habla no tiene locución: el audio es el de los clips (y la música).
     let audio = null;
     // Con una CANCIÓN ya grabada (src/lib/videoCancion.js) la toma ES la canción: del cliente o de la biblioteca de la

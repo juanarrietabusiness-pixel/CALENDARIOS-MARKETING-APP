@@ -455,3 +455,22 @@ describe("Claude y el asistente: video_con_cancion", () => {
     expect(ver.texto).toMatch(/NUNCA generar_locucion|la canción ya es su locución/);
   });
 });
+
+describe("guardar el guion entero no se lleva la canción", async () => {
+  const { conLaCancionGuardada } = await import("../../worker/lib/videosProyectos.js");
+  const cancion = { archivo: "m1", duracion: 30 };
+  const fila = { guion: JSON.stringify({ version: 1, escenas: [], cancion }) };
+
+  it("un guion SIN la clave «cancion» conserva la guardada (el formato le dice a Claude que no la escriba)", () => {
+    expect(conLaCancionGuardada({ version: 1, escenas: [] }, fila).cancion).toEqual(cancion);
+    expect(JSON.parse(JSON.stringify(conLaCancionGuardada(JSON.stringify({ version: 1 }), fila))).cancion).toEqual(cancion);
+  });
+
+  it("con «cancion» puesta (también null, para quitarla) manda lo que llega; sin canción guardada, no cambia nada", () => {
+    expect(conLaCancionGuardada({ version: 1, cancion: null }, fila).cancion).toBeNull();
+    const otra = { archivo: "m2", duracion: 20 };
+    expect(conLaCancionGuardada({ version: 1, cancion: otra }, fila).cancion).toEqual(otra);
+    const sin = { version: 1, escenas: [] };
+    expect(conLaCancionGuardada(sin, { guion: JSON.stringify({ version: 1 }) })).toBe(sin);
+  });
+});
