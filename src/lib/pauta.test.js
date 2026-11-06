@@ -143,6 +143,22 @@ describe("lo que lee la IA", () => {
   });
 });
 
+describe("la idea de lo que va a pauta (lib/ideaPublicacion.js)", () => {
+  it("las casillas sin idea y «Otra» llevan la pauta; la idea pone sus textos de anuncio sólo si no tenía", async () => {
+    const { casillasSinIdea, casillaParaOtra, rellenarConIdea, reemplazarConIdea } = await import("./ideaPublicacion.js");
+    const cal = { year: 2026, month: 10, days: [{ date: "2026-11-02", posts: [post({ id: "a", pauta: { etapa: "conversion" } }), post({ id: "b" })] }] };
+    const [a, b] = casillasSinIdea(cal);
+    expect(a.pauta).toEqual({ etapa: "conversion" });
+    expect(b).not.toHaveProperty("pauta");
+    expect(casillaParaOtra(post({ pauta: { etapa: "conversion" } }), {}).pauta).toEqual({ etapa: "conversion" });
+    const idea = { titulo: "T", brief: "B", anuncio: { textos: ["Uno", "Dos", "Tres"] } };
+    expect(rellenarConIdea(post(), idea).cambios.anuncio.textos).toHaveLength(3);
+    expect(rellenarConIdea(post(), idea).campos).toContain("textos del anuncio");
+    expect(rellenarConIdea(post({ anuncio: { textos: ["Mío"] } }), idea).cambios.anuncio).toBeUndefined();
+    expect(reemplazarConIdea(post({ anuncio: { textos: ["Mío"] } }), idea).anuncio.textos[0]).toBe("Uno");
+  });
+});
+
 describe("qué se marca solo (decisión 9)", () => {
   it("las del tipo «Anuncio» y las de la oferta del mes, con `auto`; nunca un directo, lo publicado, lo ya marcado o lo que se quitó", () => {
     const items = [

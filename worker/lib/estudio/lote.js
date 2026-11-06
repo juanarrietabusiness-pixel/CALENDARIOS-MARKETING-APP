@@ -18,7 +18,7 @@
 //                pantalla («Planificar mes» y «Mes completo» con la plantilla del cliente): formatos MEZCLADOS (post,
 //                carrusel, reel, historia), varias por día, la campaña y el concepto de cada semana. Cada idea vuelve con
 //                su `clave` para ponerla en su sitio.
-//   · publicacion { publicacion: { fecha?, pilar?, pilarSub?, productoId?, nivel?, deseo?, perfil?, rostro? }, nota? }: UNA pieza,
+//   · publicacion { publicacion: { fecha?, pilar?, pilarSub?, productoId?, nivel?, deseo?, perfil?, rostro?, pauta? }, nota? }: UNA pieza,
 //     la de una publicación del calendario («Generar» de su Idea / Brief), con lo que ya trae y la misma calidad del lote
 //   · campos     { publicaciones: [casilla + { escrito, campos, antes, formulaUgc?, duracionUgc? }] }: lo que LE FALTA a
 //     publicaciones que ya están en el calendario (los botones «IA» de cada campo, «Completar los textos que faltan»,
@@ -32,10 +32,10 @@
 // pantalla las pide una tras otra pasando lo que ya salió en `usados`. Escribir 30 en una sola llamada daba ideas
 // planas: cada pieza recibía muy poca atención. Sin tanda, todas (como antes).
 //
-// LO QUE VA A PAUTA (lib/pauta.js): una casilla con `pauta` (modos «plan» y «campos») lleva su etapa y su caption se
+// LO QUE VA A PAUTA (lib/pauta.js): una casilla con `pauta` (modos «plan», «campos» y «publicacion») lleva su etapa y su caption se
 // escribe como ANUNCIO, con el tipo de negocio y el destino del cliente (sus números del negocio, worker/lib/negocio.js:
 // una lectura, sólo si alguna va a pauta); en «campos», además, el campo «anuncio» (los textos aparte) cuando se pide,
-// y en «plan» lo trae cada una que va a pauta. 3 hashtags como mucho.
+// y en «plan» y «publicacion» lo trae cada una que va a pauta. 3 hashtags como mucho.
 //
 // No pide nada al motor de imagen: eso lo hace la pantalla, pieza a pieza,
 // después de que una persona revisa las ideas y ve el costo.
@@ -298,6 +298,8 @@ export async function produccionDeLote(env, acceso, cliente, datos = {}) {
       ...(fecha ? { fecha } : {}),
       // Un UGC: la idea trae su guion para grabar (lib/ugc.js), no uno de reel hecho con IA.
       ...(formato === "reel" && p.rostro === true ? { rostro: true } : {}),
+      // Va a pauta: se escribe como anuncio, con sus textos aparte (lib/pauta.js).
+      ...(limpiarPauta(p.pauta) ? { pauta: limpiarPauta(p.pauta) } : {}),
     };
     const delPost = p.productoId ? productosActivos(catalogo).find((x) => x.id === p.productoId) : null;
     if (delPost) celda.productoId = delPost.id;

@@ -67,6 +67,8 @@ export async function ideaParaPublicacion(clienteId, { post, day, cal }) {
         fecha: day?.date ?? "", pilar: post.pilar ?? "", pilarSub: post.pilarSub ?? "", productoId: post.productoId ?? "",
         nivel: post.nivel ?? "", deseo: post.deseo ?? "", perfil: post.perfil ?? "",
         ...(post.format === "reel" && post.rostro ? { rostro: true } : {}),
+        // Va a pauta: la idea sale escrita como anuncio, con sus textos aparte (lo limpia el servidor; lib/pauta.js).
+        ...(post.pauta && typeof post.pauta === "object" ? { pauta: post.pauta } : {}),
       },
       nota: notaDePublicacion(post, day, cal), usados: usadosDelMes(cal, post.id), semilla: Date.now() % 997,
       // La estrategia del mes entera (objetivo, foco, ofertas, código, cada semana con su etapa), no sólo la campaña.

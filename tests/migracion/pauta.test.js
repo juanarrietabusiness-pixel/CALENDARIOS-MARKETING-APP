@@ -157,6 +157,15 @@ describe("modo «plan» (el asistente del mes): las casillas que van a pauta", (
     expect(b.hashtags).toBe("#a #b #c #d");
   });
 
+  it("modo «publicacion» («Generar» la idea de una publicación vacía que va a pauta): también como anuncio, con sus textos", async () => {
+    anthropic(JSON.stringify({ ideas: [{ n: 1, titular: "Tu sala", escena: "Una sala", descripcion: "Gancho", hashtags: "#a #b #c #d", anuncio: { textos: ["A", "B", "C"] } }] }));
+    const r = await lote({ modo: "publicacion", formato: "post", publicacion: { fecha: "2030-03-04", pauta: { etapa: "fidelizar" } } });
+    expect(textoDe(peticiones[0])).toMatch(/VA A PAUTA · etapa Ascensión/);
+    const { ideas } = await r.json();
+    expect(ideas[0].anuncio.textos).toEqual(["A", "B", "C"]);
+    expect(ideas[0].hashtags).toBe("#a #b #c");
+  });
+
   it("sin ninguna casilla en pauta, el pedido no cambia", async () => {
     anthropic(JSON.stringify({ ideas: [{ n: 1, titular: "Uno", escena: "Una sala" }] }));
     await lote({ modo: "plan", casillas: [{ clave: "a", fecha: "2030-03-04", formato: "post", pilar: "educativo" }] });
