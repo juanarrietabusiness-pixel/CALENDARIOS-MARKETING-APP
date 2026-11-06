@@ -780,6 +780,31 @@ describe("programar lo aprobado de una vez y la cola del espacio", () => {
     expect(fallidas[0]).toMatchObject({ postId: "t", motivo: expect.stringMatching(/ninguna cuenta/) });
   });
 
+  // «Programar todo lo listo» (Ver el mes como se verá): para los clientes que no revisan, el lote programa lo que tiene
+  // pieza, hora y texto SIN pedir la aprobación. La cola no la exige: no hizo falta otra forma de pedirlo.
+  it("programa también lo que el cliente no aprobó (pendiente), con las mismas reglas", async () => {
+    await sembrar({ posts: [post({ id: "a", status: "pending" }), post({ id: "b", status: "pending", aprobacion: "pieza", enviadoAt: "2026-09-30T00:00:00Z" })] });
+    const { programadas, fallidas } = await (await lote(["a", "b"])).json();
+    expect(programadas.map((f) => f.postId).sort()).toEqual(["a", "b"]);
+    expect(fallidas).toEqual([]);
+  });
+
+  it("quien es de sólo lectura no programa en lote", async () => {
+    await sembrar({ posts: [post({ id: "a", status: "pending" })] });
+    // Un editor de sólo lectura del mismo espacio, con su sesión (el administrador nunca es de sólo lectura).
+    const s = db.sqlite;
+    s.prepare("insert into users (id, email, password_hash, salt) values (?,?,?,?)").run("u-lector", "lector@a.com", "x", "x");
+    s.prepare("insert into memberships (user_id, owner_id, rol, nombre, color, solo_lectura) values (?,?,?,?,?,1)").run("u-lector", DUENO, "editor", "Lector", "#777777");
+    s.prepare("insert into sessions (token_hash, user_id, created_at, expires_at) values (?,?,?,?)")
+      .run(await sha256("testigo-del-lector"), "u-lector", "2026-01-01T00:00:00.000Z", "2099-01-01T00:00:00.000Z");
+    const res = await worker.fetch(new Request("https://calendarios.test/api/publicar/lote", {
+      method: "POST", body: JSON.stringify({ calendarId: "cal1", postIds: ["a"] }),
+      headers: { Cookie: `${COOKIE}=testigo-del-lector`, "Content-Type": "application/json" },
+    }), env, {});
+    expect(res.status).toBe(403);
+    expect(filas()).toEqual([]);
+  });
+
   it("veinte publicaciones caben en el límite de consultas del plan gratuito", async () => {
     const posts = Array.from({ length: 20 }, (_, i) => post({ id: `p${i}`, redes: ["instagram", "facebook"] }));
     await sembrar({ posts });
