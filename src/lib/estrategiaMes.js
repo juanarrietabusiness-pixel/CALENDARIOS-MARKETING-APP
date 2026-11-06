@@ -3,8 +3,9 @@
 //
 // Antes de escribir ideas, el mes tiene un objetivo (vender, crecer, lanzar,
 // marca), un producto foco (o la marca entera), una campaña y una narrativa
-// por semanas que recorre el embudo: atraer → considerar → convertir →
-// fidelizar. La IA la PROPONE con lo que la aplicación ya sabe —el catálogo,
+// por semanas que recorre el ciclo de ventas: presentación → evaluación →
+// conversión → ascensión (cicloVentas.js; las etapas de antes se leen por
+// alias). La IA la PROPONE con lo que la aplicación ya sabe —el catálogo,
 // el estudio de mercado, las fechas especiales del mes y lo que mejor
 // funcionó el mes anterior— y una persona la ajusta. Lo propuesto entra en
 // el motor de ideas como `estrategia` (`textoEstrategiaDelMes`) y el foco
@@ -21,13 +22,13 @@
 
 import { nombreDePilar, pilarDe } from "./pilares.js";
 import { nombreDeNivel } from "./consciencia.js";
-import { OBJETIVOS_MES, objetivoDe, ETAPAS, embudoDelMes, limpiarEstrategia } from "./embudo.js";
+import { OBJETIVOS_MES, objetivoDe, ETAPAS, embudoDelMes, limpiarEstrategia, idEtapaCiclo } from "./embudo.js";
 
 const corto = (t, max) => String(t ?? "").replace(/\s+/g, " ").trim().slice(0, max).trim();
 
-// Los objetivos, las etapas del embudo y la estrategia guardada viven en embudo.js (pequeño: lo lee la tarjeta de la
+// Los objetivos, las etapas del ciclo de ventas y la estrategia guardada viven en embudo.js (pequeño: lo lee la tarjeta de la
 // campaña del mes, que va en la carga inicial). Se reexportan aquí, donde los buscan los demás.
-export { OBJETIVOS_MES, objetivoDe, ETAPAS, embudoDelMes, limpiarEstrategia, resumenEstrategia, etapaDe } from "./embudo.js";
+export { OBJETIVOS_MES, objetivoDe, ETAPAS, embudoDelMes, limpiarEstrategia, resumenEstrategia, etapaDe, idEtapaCiclo } from "./embudo.js";
 const IDS_ETAPA = Object.keys(ETAPAS);
 
 /**
@@ -52,7 +53,7 @@ export function pedidoDeEstrategia({
 } = {}) {
   const obj = objetivoDe(objetivo);
   return [
-    `Eres el estratega de contenido de una agencia. Diseña la estrategia de redes de ${marca}${rubro ? ` (${rubro})` : ""} para ${mes || "el mes"}: el objetivo, el producto foco, la campaña y una narrativa por semanas que recorra el embudo.`,
+    `Eres el estratega de contenido de una agencia. Diseña la estrategia de redes de ${marca}${rubro ? ` (${rubro})` : ""} para ${mes || "el mes"}: el objetivo, el producto foco, la campaña y una narrativa por semanas que recorra el ciclo de ventas.`,
     "",
     obj ? `OBJETIVO (lo decidió la agencia, respétalo): ${obj.nombre} — ${obj.ayuda}` : `OBJETIVO: escoge uno de ${OBJETIVOS_MES.map((o) => `"${o.id}" (${o.nombre})`).join(", ")}, el que más le convenga este mes.`,
     foco ? `PRODUCTO FOCO (lo decidió la agencia): ${corto(foco, 160)}.` : productos.length ? "PRODUCTO FOCO: escoge uno del catálogo (su id) o \"\" para la marca entera." : "",
@@ -64,18 +65,18 @@ export function pedidoDeEstrategia({
     ofertas ? `OFERTAS QUE YA HAY ESTE MES: ${corto(ofertas, 400)}` : "",
     "",
     `SEMANAS DEL MES (${semanas.length}):\n${semanas.map((s) => `- Semana ${s.n}: del ${s.desde} al ${s.hasta}`).join("\n")}`,
-    `Cada semana tiene un CONCEPTO (una frase concreta que guía todas sus piezas, no un eslogan genérico) y una ETAPA del embudo: ${IDS_ETAPA.map((e) => `"${e}" (${ETAPAS[e].ayuda})`).join("; ")}. Reparte las etapas según el objetivo y aprovecha las fechas especiales en su semana.`,
+    `Cada semana tiene un CONCEPTO (una frase concreta que guía todas sus piezas, no un eslogan genérico) y una ETAPA del ciclo de ventas: ${IDS_ETAPA.map((e) => `"${e}" (${ETAPAS[e].nombre}: ${ETAPAS[e].ayuda})`).join("; ")}. Reparte las etapas según el objetivo y aprovecha las fechas especiales en su semana.`,
     "La campaña es el hilo del mes: un nombre corto y memorable y de qué va, en una o dos frases.",
     "No inventes descuentos, cifras ni testimonios: una oferta sólo si está en «Ofertas» o en el catálogo.",
     "",
     "Responde SOLO con JSON, sin texto alrededor:",
-    `{"objetivo":"${obj ? obj.id : "ventas|seguidores|lanzamiento|marca"}","foco":"id del producto o \\"\\"","campana":"…","razon":"por qué esta estrategia, en dos frases","semanas":[{"concepto":"…","etapa":"atraer|considerar|convertir|fidelizar"}],"ofertas":"sugerencia de oferta si encaja con lo que hay, o \\"\\""}`,
+    `{"objetivo":"${obj ? obj.id : "ventas|seguidores|lanzamiento|marca"}","foco":"id del producto o \\"\\"","campana":"…","razon":"por qué esta estrategia, en dos frases","semanas":[{"concepto":"…","etapa":"${IDS_ETAPA.join("|")}"}],"ofertas":"sugerencia de oferta si encaja con lo que hay, o \\"\\""}`,
   ].filter((l) => l !== "").join("\n");
 }
 
 /**
  * La respuesta de la IA → { objetivo, focoId, campana, razon, semanas: [{ concepto, etapa }], ofertas }, o null.
- * `semanas`: cuántas tiene el mes (se rellena con el embudo por defecto); `productos`: ids válidos. Pura.
+ * `semanas`: cuántas tiene el mes (se rellena con el reparto por defecto del objetivo); `productos`: ids válidos. Pura.
  */
 export function leerEstrategia(texto, { semanas = 5, productos = [], objetivo = "" } = {}) {
   const m = String(texto ?? "").match(/\{[\s\S]*\}/);
@@ -94,18 +95,25 @@ export function leerEstrategia(texto, { semanas = 5, productos = [], objetivo = 
     ofertas: corto(d.ofertas, 400),
     semanas: Array.from({ length: semanas }, (_, i) => ({
       concepto: corto(lista[i]?.concepto ?? (typeof lista[i] === "string" ? lista[i] : ""), 200),
-      etapa: IDS_ETAPA.includes(lista[i]?.etapa) ? lista[i].etapa : defecto[i],
+      // La IA puede contestar con un nombre o una etapa de antes («Atraer»): se entiende por alias.
+      etapa: idEtapaCiclo(lista[i]?.etapa) || defecto[i],
     })),
   };
 }
 
-/** Las líneas de la semana con su etapa para el motor: «Semana 2 (Considerar): …». Pura. */
+/**
+ * Las líneas de la semana con su etapa para el motor: «Visitas (etapa: Evaluación — …)». Una etapa de antes (un
+ * borrador del navegador, un calendario planeado antes del ciclo) se lee por alias; una que no se entiende, se omite. Pura.
+ */
 export const semanasConEtapa = (conceptos = [], etapas = []) =>
-  conceptos.map((c, i) => (corto(c, 160) && etapas[i] ? `${corto(c, 160)} (etapa: ${ETAPAS[etapas[i]].nombre} — ${ETAPAS[etapas[i]].ayuda})` : corto(c, 160)));
+  conceptos.map((c, i) => {
+    const e = ETAPAS[idEtapaCiclo(etapas[i])];
+    return corto(c, 160) && e ? `${corto(c, 160)} (etapa: ${e.nombre} — ${e.ayuda})` : corto(c, 160);
+  });
 
 /**
  * La estrategia del mes que va al motor, sacada del calendario: campaña, ofertas, código, el concepto de cada semana
- * (con su etapa del embudo) y, si se planeó con estrategia (`opciones.estrategia`), el objetivo y el producto foco. La
+ * (con su etapa del ciclo de ventas) y, si se planeó con estrategia (`opciones.estrategia`), el objetivo y el producto foco. La
  * usan la pantalla (lib/ideaPublicacion.js) y el Worker, que la lee del calendario guardado cuando no se la mandan. Pura.
  */
 export function estrategiaDelCalendario(cal) {
@@ -162,7 +170,7 @@ export function balanceDelMes(days = [], { semanas = [], objetivo = "", foco = "
   const conNivel = posts.filter((p) => p.nivel);
   const venta = conNivel.filter((p) => NIVELES_VENTA.has(p.nivel)).length;
   if (conNivel.length >= 4 && venta === 0) avisos.push({ tipo: "aviso", texto: "Ninguna publicación va a quien ya conoce el producto: el mes no empuja a comprar." });
-  else if (conNivel.length >= 6 && venta / conNivel.length > 0.75 && objetivo !== "lanzamiento") avisos.push({ tipo: "aviso", texto: `El ${pct(venta, conNivel.length)} % vende: faltan piezas que atraigan gente nueva (educativo, contenido humano).` });
+  else if (conNivel.length >= 6 && venta / conNivel.length > 0.75 && objetivo !== "lanzamiento") avisos.push({ tipo: "aviso", texto: `El ${pct(venta, conNivel.length)} % vende: faltan piezas de presentación, para quien aún no conoce la marca (educativo, contenido humano).` });
   if (objetivo === "ventas" && conNivel.length >= 6 && venta / conNivel.length < 0.3) avisos.push({ tipo: "nota", texto: `El objetivo es vender y sólo el ${pct(venta, conNivel.length)} % de las piezas va a la compra.` });
 
   if (total >= 8 && !formatos.reel) avisos.push({ tipo: "nota", texto: "Sin reels: es el formato que más gente nueva trae." });

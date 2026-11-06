@@ -141,6 +141,14 @@ describe("guardar el kit", () => {
     expect(res.status).toBe(409);
   });
 
+  it("los tipos de arte de la marca: sólo los que existen, y «Guardar como regla» no se los lleva", async () => {
+    const res = await pedir("/api/estudio/c1/kit", { method: "PUT", body: { kit: { tiposArte: ["testimonio", "inventado", "producto"] } } });
+    expect(res.status).toBe(200);
+    expect(kitGuardado().tiposArte).toEqual(["testimonio", "producto"]);
+    await pedir("/api/estudio/c1/kit/reglas", { method: "POST", body: { regla: "Siempre con la foto real" } });
+    expect(kitGuardado().tiposArte).toEqual(["testimonio", "producto"]);
+  });
+
   it("la ficha guardada desde el cliente no pisa el kit", async () => {
     await pedir("/api/estudio/c1/kit", { method: "PUT", body: { kit: { tipografia: "Montserrat" } } });
     await pedir("/api/clientes/c1", { method: "PUT", body: { name: "Dcasa", industry: "Muebles" } });

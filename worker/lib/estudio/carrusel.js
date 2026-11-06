@@ -49,7 +49,7 @@ export async function propuestaDeCarrusel(env, acceso, cliente, datos = {}) {
     cliente: cliente.name, rubro: cliente.industry ?? "", laminas, tema, producto, personajes, indicacion: String(datos.indicacion ?? "").slice(0, 300),
     tipo: preset ? nombreDePreset(preset, kit) : "",
     estilo: lineaDeEstilo(kit, estiloDeLaPieza(kit, preset, String(datos.estilo ?? ""))),
-    marca: kitVacio(kit) ? "" : bloqueDeMarca(kit), guia: ctx.guia, sobreLaMarca: ctx.sobreLaMarca, catalogo: ctx.catalogo,
+    marca: kitVacio(kit) ? "" : bloqueDeMarca(kit), tiposArte: kit.tiposArte, guia: ctx.guia, sobreLaMarca: ctx.sobreLaMarca, catalogo: ctx.catalogo,
     plantillas: kit.plantillas, manual: ctx.manual, correcciones: ctx.correcciones, vistas: imagenes.length,
     estructura: estructura ? lineaDeEstructura(estructura) : "",
   }), pautas].filter(Boolean).join("\n\n");
