@@ -21,9 +21,9 @@ export async function leerVideo(clienteId, id) {
   return (await pedir(`${base(clienteId)}/${encodeURIComponent(id)}`))?.video ?? null;
 }
 
-/** → { video, avisos }. */
-export async function crearVideo(clienteId, { guion, titulo, calendarId, postId } = {}) {
-  const r = await pedir(base(clienteId), json("POST", { guion, titulo, calendarId, postId }));
+/** → { video, avisos }. `estructuraId`: la estructura de guion de la agencia que siguió (la dijo «escribir»). */
+export async function crearVideo(clienteId, { guion, titulo, calendarId, postId, estructuraId } = {}) {
+  const r = await pedir(base(clienteId), json("POST", { guion, titulo, calendarId, postId, ...(estructuraId ? { estructuraId } : {}) }));
   avisar(clienteId, r?.video?.id);
   return r;
 }
@@ -43,11 +43,12 @@ export async function aprobarVideo(clienteId, id, version) {
 }
 
 /**
- * La IA ESCRIBE el guion (no guarda nada): { idea, segundos, formato, postId? } → { guion, avisos, corregido, aviso,
- * publicacion: { calendarId, postId } | null }.
+ * La IA ESCRIBE el guion (no guarda nada): { idea, segundos, formato, postId?, estructuraId? } → { guion, avisos,
+ * corregido, aviso, publicacion: { calendarId, postId } | null, estructura: { id, nombre } | null }. `estructuraId`: la
+ * estructura de guion de la agencia que sigue la voz (vacía: la escoge la IA y vuelve en `estructura`).
  */
-export async function escribirGuionVideo(clienteId, { idea = "", segundos, formato, postId = "" } = {}) {
-  return pedir(`${base(clienteId)}/escribir`, json("POST", { idea, segundos, formato, postId }));
+export async function escribirGuionVideo(clienteId, { idea = "", segundos, formato, postId = "", estructuraId = "" } = {}) {
+  return pedir(`${base(clienteId)}/escribir`, json("POST", { idea, segundos, formato, postId, ...(estructuraId ? { estructuraId } : {}) }));
 }
 
 /**

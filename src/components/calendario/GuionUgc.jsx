@@ -19,10 +19,11 @@ const FormulasUgc = lazy(() => import("./FormulasUgc"));
 // teleprompter, y la lista de tomas—. El guion sigue siendo `post.guion`
 // (texto): se edita en su campo de siempre, debajo (lib/ugc.js).
 //
-// La FÓRMULA (`post.formulaUgc`, lib/formulasUgc.js) es la receta de la
-// agencia que sigue el guion: vacía, la IA escoge entre todas al pulsar «IA»
-// y la publicación recuerda cuál usó; escogida, la IA la sigue. La voz de la
-// marca (la nota «Voz UGC» de su cerebro) va siempre.
+// La ESTRUCTURA del guion (antes «fórmula»: `post.formulaUgc`,
+// lib/formulasUgc.js) es la receta de la agencia que sigue el guion: vacía,
+// la IA escoge entre las de UGC al pulsar «IA» y la publicación recuerda cuál
+// usó; escogida, la IA la sigue. La voz de la marca (la nota «Voz UGC» de su
+// cerebro) va siempre.
 // ============================================================
 
 export default function GuionUgc({ form, sf, setForm, client, onAviso }) {
@@ -44,6 +45,9 @@ export default function GuionUgc({ form, sf, setForm, client, onAviso }) {
     return () => { vivo = false; window.removeEventListener("formulas-ugc", leer); };
   }, []);
   const formula = (formulas ?? []).find((f) => f.id === form.formulaUgc) ?? null;
+  // Sólo se ofrecen las que sirven para UGC (`para`, lib/formulasUgc.js: el servidor la dice en todas); la escogida
+  // se queda aunque ya no sirva para UGC: la escogió una persona.
+  const deUgc = (formulas ?? []).filter((f) => !Array.isArray(f.para) || f.para.includes("ugc"));
 
   return (
     <section className="guion-ugc" aria-labelledby={`${ids}-t`}>
@@ -58,13 +62,14 @@ export default function GuionUgc({ form, sf, setForm, client, onAviso }) {
       </div>
 
       <div className="guion-ugc-formula">
-        <label htmlFor={`${ids}-f`}>Fórmula</label>
+        <label htmlFor={`${ids}-f`}>Estructura del guion <span className="hint">(de la agencia)</span></label>
         <select id={`${ids}-f`} className="input" value={formula ? formula.id : ""} onChange={(e) => sf("formulaUgc", e.target.value)} disabled={!formulas}>
-          <option value="">{formulas?.length ? "La IA escoge la que encaje" : "Sin fórmulas todavía"}</option>
-          {(formulas ?? []).map((f) => <option key={f.id} value={f.id}>{f.nombre}</option>)}
-          {form.formulaUgc && formulas && !formula && <option value={form.formulaUgc} disabled>(una fórmula que ya no está)</option>}
+          <option value="">{deUgc.length ? "La IA escoge la que encaje" : "Sin estructuras de UGC todavía"}</option>
+          {deUgc.map((f) => <option key={f.id} value={f.id}>{f.nombre}</option>)}
+          {formula && !deUgc.includes(formula) && <option value={formula.id}>{formula.nombre} (no es de UGC)</option>}
+          {form.formulaUgc && formulas && !formula && <option value={form.formulaUgc} disabled>(una estructura que ya no está)</option>}
         </select>
-        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setVerFormulas(true)}><Icon name="list" size={14} /> Fórmulas</button>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setVerFormulas(true)}><Icon name="list" size={14} /> Estructuras</button>
       </div>
       {formula?.cuando && <p className="hint" style={{ margin: 0 }}>Conviene: {formula.cuando}</p>}
 
@@ -126,7 +131,7 @@ export default function GuionUgc({ form, sf, setForm, client, onAviso }) {
       )}
       {verFormulas && (
         <Suspense fallback={null}>
-          <FormulasUgc onCerrar={() => setVerFormulas(false)} />
+          <FormulasUgc uso="ugc" onCerrar={() => setVerFormulas(false)} />
         </Suspense>
       )}
       {extrayendo && (

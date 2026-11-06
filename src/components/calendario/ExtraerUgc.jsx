@@ -10,7 +10,7 @@ import { proponerFormula } from "../../lib/formulasUgcApi";
 import { editaLaAgencia } from "../../lib/sesionActual";
 import "./GuionUgc.css";
 
-// Las fórmulas de la agencia: sólo al guardar una.
+// Las estructuras de guion de la agencia (antes «fórmulas»): sólo al guardar una.
 const FormulasUgc = lazy(() => import("./FormulasUgc"));
 
 // ============================================================
@@ -27,7 +27,7 @@ const FormulasUgc = lazy(() => import("./FormulasUgc"));
 // del Estudio o se sube aquí (a la galería). La transcripción se recuerda
 // en la ficha del video: adaptarlo otra vez no vuelve a pagar a Gemini.
 //
-// «Guardar como fórmula» saca del video ORIGINAL su receta (sin su
+// «Guardar como estructura» saca del video ORIGINAL su receta (sin su
 // contenido) para la biblioteca de la agencia (lib/formulasUgc.js): la IA la
 // propone y se abre en el editor; nada se guarda hasta «Guardar».
 // ============================================================
@@ -58,7 +58,7 @@ function Tabla({ tramos, etiqueta }) {
  * @param onUsar     recibe la publicación UGC (`publicacionDeUgc`); sin él, sólo se guarda en el banco.
  * @param inicial    un video de la galería con el que arrancar ({ id, src, nombre }), p. ej. desde el visor; o uno PÚBLICO
  *                   de YouTube ({ youtube, nombre }): Gemini lo ve por su enlace (Inspiración), sin bajarlo.
- * @param formula    abrir directo en «Guardar como fórmula»: sólo se transcribe el original (sin adaptar, no se paga
+ * @param formula    abrir directo en «Guardar como estructura»: sólo se transcribe el original (sin adaptar, no se paga
  *                   la llamada de texto) y la IA propone su receta.
  */
 export default function ExtraerUgc({ client, videos = [], duracion: duracionInicial = 30, productoId: productoInicial = "", inicial = null, onUsar = null, onCerrar, formula: soloFormula = false }) {
@@ -149,11 +149,11 @@ export default function ExtraerUgc({ client, videos = [], duracion: duracionInic
   const comoFormula = async () => {
     if (!resultado?.original) return;
     setError("");
-    setOcupado("Sacando la fórmula del video…");
+    setOcupado("Sacando la estructura del video…");
     try {
       await formulaDe(resultado.original, resultado.duracion);
     } catch (e) {
-      setError(`No se pudo sacar la fórmula: ${e.message}`);
+      setError(`No se pudo sacar la estructura: ${e.message}`);
     }
     setOcupado("");
   };
@@ -162,12 +162,12 @@ export default function ExtraerUgc({ client, videos = [], duracion: duracionInic
     if (!video || ocupado) return;
     setError("");
     setAviso("");
-    setOcupado("Viendo el video y sacando su fórmula (puede tardar un minuto)…");
+    setOcupado("Viendo el video y sacando su estructura (puede tardar un minuto)…");
     try {
       const r = await extraerUgc(clienteId, { ...origenDelVideo(video), soloTranscribir: true }, video.src ?? "");
       await formulaDe(r.original, duracion);
     } catch (e) {
-      setError(`No se pudo sacar la fórmula: ${e.message}`);
+      setError(`No se pudo sacar la estructura: ${e.message}`);
     }
     setOcupado("");
   };
@@ -245,8 +245,8 @@ export default function ExtraerUgc({ client, videos = [], duracion: duracionInic
             </label>
             {soloFormula && editaLaAgencia() ? (
               <button type="button" className="btn btn-primary" onClick={sacarFormula} disabled={!video || Boolean(ocupado)} aria-busy={Boolean(ocupado) || undefined}
-                title="La receta del video, sin su contenido, para la biblioteca de fórmulas de la agencia">
-                <Icon name="list" size={16} /> {ocupado ? "Trabajando…" : "Sacar su fórmula"}
+                title="La receta del video, sin su contenido, para las estructuras de guion de la agencia (para todos los clientes)">
+                <Icon name="list" size={16} /> {ocupado ? "Trabajando…" : "Sacar su estructura"}
               </button>
             ) : (
               <button type="button" className="btn btn-primary" onClick={extraer} disabled={!video || Boolean(ocupado)} aria-busy={Boolean(ocupado) || undefined}>
@@ -278,7 +278,7 @@ export default function ExtraerUgc({ client, videos = [], duracion: duracionInic
               {editaLaAgencia() && (
                 <button type="button" className="btn btn-secondary" onClick={comoFormula} disabled={Boolean(ocupado)}
                   title="La receta del video original, sin su contenido, para usarla con cualquier cliente">
-                  <Icon name="list" size={16} /> Guardar como fórmula
+                  <Icon name="list" size={16} /> Guardar como estructura
                 </button>
               )}
               <button type="button" className="btn btn-secondary" onClick={alBanco} disabled={Boolean(ocupado)}>
@@ -298,8 +298,8 @@ export default function ExtraerUgc({ client, videos = [], duracion: duracionInic
       </div>
       {formula && (
         <Suspense fallback={null}>
-          <FormulasUgc inicial={formula} onCerrar={() => setFormula(null)}
-            onGuardada={(f) => { setFormula(null); setAviso(`Fórmula «${f.nombre}» guardada: ya se puede escoger en cualquier guion UGC.`); }} />
+          <FormulasUgc inicial={formula} uso="ugc" onCerrar={() => setFormula(null)}
+            onGuardada={(f) => { setFormula(null); setAviso(`Estructura «${f.nombre}» guardada: ya se puede escoger con cualquier cliente.`); }} />
         </Suspense>
       )}
     </div>

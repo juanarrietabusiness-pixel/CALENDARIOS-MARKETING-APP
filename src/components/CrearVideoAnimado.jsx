@@ -4,7 +4,8 @@
 // El paso 4: crear un video SIN Claude. La idea (o la publicación del calendario de la que sale), la duración y el
 // formato; «Escribir el guion con IA» lo pide al servidor (`POST /api/videos/<c>/escribir`, texto, sin confirmación) y
 // lo devuelve SIN GUARDAR: la pantalla lo abre como borrador para revisarlo, editarlo y guardarlo. «Empezar con una
-// plantilla» abre el guion de arranque, como antes.
+// plantilla» abre el guion de arranque, como antes. «Estructura del guion» escoge cuál de las de la agencia sigue la voz
+// en off (o la IA escoge); la que siguió vuelve con el guion y el borrador la guarda (`origen.estructuraId`).
 // ============================================================
 
 import { useId, useMemo, useState } from "react";
@@ -13,6 +14,7 @@ import { escribirGuionVideo } from "../lib/videosApi";
 import { DURACIONES_ANIMADO, DURACION_ANIMADO_POR_DEFECTO, MAX_IDEA_ANIMADO } from "../lib/guionAnimadoIA";
 import { publicacionesParaVideo } from "../lib/renderVideo";
 import { fmtDate } from "../utils";
+import SelectorEstructura from "./SelectorEstructura";
 
 const FORMATOS = [["9:16", "Vertical 9:16"], ["1:1", "Cuadrado 1:1"], ["16:9", "Horizontal 16:9"]];
 
@@ -23,15 +25,21 @@ export default function CrearVideoAnimado({ client, publicacion = null, onListo,
   const [formato, setFormato] = useState("9:16");
   const opciones = useMemo(() => publicacionesParaVideo(client.calendars ?? [], { hoy: fmtDate(new Date()), ligada: publicacion?.postId ?? null }), [client.calendars, publicacion?.postId]);
   const [postId, setPostId] = useState(publicacion?.postId ?? "");
+  // La ESTRUCTURA de guion de la agencia que sigue la voz ("" = la escoge la IA entre las de voz en off).
+  const [estructuraId, setEstructuraId] = useState("");
   const [ocupado, setOcupado] = useState(false);
   const [error, setError] = useState("");
 
   const escribir = async () => {
     setOcupado(true); setError("");
     try {
-      const r = await escribirGuionVideo(client.id, { idea, segundos, formato, postId });
+      const r = await escribirGuionVideo(client.id, { idea, segundos, formato, postId, estructuraId });
       const destino = r.publicacion ?? (postId ? { postId, calendarId: opciones.find((o) => o.postId === postId)?.calendarId ?? publicacion?.calendarId ?? null } : null);
-      onListo(r.guion, { publicacion: destino, aviso: r.corregido ? "La IA corrigió su primer intento para que valide." : r.aviso || "" });
+      const sigue = r.estructura ? `Sigue la estructura «${r.estructura.nombre}».` : "";
+      onListo(r.guion, {
+        publicacion: destino, estructura: r.estructura ?? null,
+        aviso: [r.corregido ? "La IA corrigió su primer intento para que valide." : r.aviso || "", sigue].filter(Boolean).join(" "),
+      });
     } catch (e) { setError(e.message); } finally { setOcupado(false); }
   };
 
@@ -60,6 +68,7 @@ export default function CrearVideoAnimado({ client, publicacion = null, onListo,
           <button key={f} type="button" className="filter-chip" aria-pressed={formato === f} onClick={() => setFormato(f)}>{nombre}</button>
         ))}
       </fieldset>
+      <SelectorEstructura uso="voz" value={estructuraId} onChange={setEstructuraId} disabled={ocupado} />
       <div className="va-acciones">
         <button type="button" className="btn btn-primary" disabled={ocupado || (!idea.trim() && !postId)} onClick={escribir}>
           <Icon name="sparkles" /> {ocupado ? "Escribiendo el guion… (hasta un minuto)" : "Escribir el guion con IA"}

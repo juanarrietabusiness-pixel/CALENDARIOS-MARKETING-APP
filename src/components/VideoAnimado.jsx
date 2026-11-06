@@ -23,6 +23,7 @@ import { textoDeSubtitulo } from "../lib/subtitulos";
 import { listarVideos, leerVideo, crearVideo, guardarVideo, aprobarVideo, borrarVideo } from "../lib/videosApi";
 import { limpiarKit } from "../lib/kitMarca";
 import { conPersonajeDelKit } from "../lib/personajeVideo";
+import { editaLaAgencia } from "../lib/sesionActual";
 import RenderVideo from "./RenderVideo";
 import "./VideoAnimado.css";
 
@@ -33,6 +34,8 @@ const VideoSonido = lazy(() => import("./VideoSonido"));
 const CrearVideoAnimado = lazy(() => import("./CrearVideoAnimado"));
 const EditorEscenas = lazy(() => import("./EditorEscenas"));
 const LocucionVideo = lazy(() => import("./LocucionVideo"));
+// «Guardar como estructura»: la IA saca la estructura de esta voz en off para las de la agencia (sólo al pulsarlo).
+const GuardarEstructura = lazy(() => import("./GuardarEstructura"));
 
 /** Un guion de arranque: tres escenas que se ven bien con cualquier kit. Se edita antes de guardar. */
 const ARRANQUE = {
@@ -70,6 +73,7 @@ export default function VideoAnimado({ client, estudio, publicacion = null, abri
   // «Video nuevo»: la idea y la IA (o la plantilla). Desde una publicación del calendario arranca abierto.
   const [creando, setCreando] = useState(Boolean(publicacion?.postId));
   const [editarTextos, setEditarTextos] = useState(false);
+  const [sacarEstructura, setSacarEstructura] = useState(false);
 
   const recargarLista = useCallback(async () => {
     try { setLista(await listarVideos(client.id)); } catch (e) { setMsg({ error: true, texto: e.message }); setLista([]); }
@@ -101,10 +105,11 @@ export default function VideoAnimado({ client, estudio, publicacion = null, abri
   const abrirRef = useRef(abrir);
   abrirRef.current = abrir;
   useEffect(() => { if (abrirId) { setCreando(false); abrirRef.current(abrirId); } }, [abrirId]);
-  const nuevo = (guion = ARRANQUE, { publicacion: destino = null, aviso = "" } = {}) => {
+  const nuevo = (guion = ARRANQUE, { publicacion: destino = null, aviso = "", estructura = null } = {}) => {
     setMsg(aviso ? { texto: aviso } : guion === ARRANQUE ? null : { texto: "Guion escrito: revísalo y guárdalo como borrador." });
     setErrServidor([]); setCreando(false); setEditarTextos(guion !== ARRANQUE);
-    setAbierto({ nuevo: true, calendarId: destino?.calendarId ?? null, postId: destino?.postId ?? null });
+    // La estructura de guion que siguió la voz: el borrador la guarda al crearse (`origen.estructuraId`).
+    setAbierto({ nuevo: true, calendarId: destino?.calendarId ?? null, postId: destino?.postId ?? null, estructuraId: estructura?.id ?? null });
     setTexto(JSON.stringify(guion, null, 2));
   };
 
@@ -116,7 +121,7 @@ export default function VideoAnimado({ client, estudio, publicacion = null, abri
     setOcupado("guardar"); setMsg(null); setErrServidor([]);
     try {
       const r = abierto.nuevo
-        ? await crearVideo(client.id, { guion: validacion.guion, calendarId: abierto.calendarId ?? undefined, postId: abierto.postId ?? undefined })
+        ? await crearVideo(client.id, { guion: validacion.guion, calendarId: abierto.calendarId ?? undefined, postId: abierto.postId ?? undefined, estructuraId: abierto.estructuraId ?? undefined })
         : await guardarVideo(client.id, abierto.id, { guion: validacion.guion, version: abierto.version });
       setAbierto(r.video); setTexto(JSON.stringify(r.video.guion, null, 2));
       setMsg({ texto: abierto.nuevo ? "Guardado como borrador." : r.video.version > abierto.version ? "Guardado. El guion cambió: hay que aprobarlo otra vez." : "Guardado." });
@@ -251,7 +256,20 @@ export default function VideoAnimado({ client, estudio, publicacion = null, abri
                 <Icon name="trash" /> {confirmaBorrar ? "Toca otra vez para borrarlo" : "Borrar"}
               </button>
             )}
+            {/* Una voz en off que salió bien → su estructura, para todos los clientes (la cambian admin y editores). */}
+            {validacion.ok && editaLaAgencia() && (validacion.guion?.escenas ?? []).filter((e) => String(e.habla ?? "").trim()).length >= 2 && (
+              <button type="button" className="btn btn-ghost btn-sm" disabled={Boolean(ocupado) || sacarEstructura} onClick={() => setSacarEstructura(true)}
+                title="La forma de esta voz en off, sin su contenido, para escogerla con cualquier cliente (la IA la saca y tú la revisas)">
+                <Icon name="list" /> Guardar como estructura
+              </button>
+            )}
           </div>
+          {sacarEstructura && (
+            <Suspense fallback={<p className="hint">Cargando…</p>}>
+              <GuardarEstructura client={client} guion={validacion.guion} palabras={abierto.locucion?.estado === "lista" ? abierto.locucion.palabras ?? null : null}
+                onCerrar={() => setSacarEstructura(false)} onAviso={(texto) => setMsg({ texto })} />
+            </Suspense>
+          )}
           {sucio && <p className="hint">Hay cambios sin guardar.</p>}
           {!abierto.nuevo && <Suspense fallback={null}><LocucionVideo client={client} video={abierto} sucio={sucio} onCambio={setAbierto} /></Suspense>}
           {!abierto.nuevo && <RenderVideo client={client} video={abierto} sucio={sucio} onCambio={setAbierto} />}

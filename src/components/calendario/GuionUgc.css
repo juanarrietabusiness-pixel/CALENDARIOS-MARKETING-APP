@@ -131,3 +131,11 @@
 .grabar-item-texto { display: flex; flex-direction: column; gap: 2px; font-size: var(--fs-xs); cursor: pointer; min-height: var(--tap-sm); justify-content: center; }
 .grabar-item-mover { display: flex; gap: 2px; }
 .grabar-texto { width: 100%; font-size: var(--fs-xs); font-family: inherit; }
+
+/* Las estructuras de guion: para qué sirve cada una (UGC, voz en off), el filtro de la lista y el «Sirve para» del editor. */
+.estructura-usos { display: inline-flex; gap: var(--sp-1); flex-wrap: wrap; vertical-align: middle; }
+.estructura-uso { background: var(--accent-soft); color: var(--text); }
+.estructura-uso[data-uso="voz"] { background: var(--alt-soft); }
+.estructura-filtro { display: flex; gap: var(--sp-1); flex-wrap: wrap; margin-bottom: var(--sp-2); }
+.estructura-para { border: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: var(--sp-1); }
+.estructura-para-op { display: flex; align-items: center; gap: var(--sp-2); min-height: var(--tap-sm); font-size: var(--fs-sm); }
