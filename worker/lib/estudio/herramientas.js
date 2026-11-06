@@ -207,17 +207,20 @@ export const DEFINICIONES_ESTUDIO = Object.freeze([
     name: "generar_musica",
     description:
       "Genera una MÚSICA de fondo con Suno (por Kie.ai) y la guarda en la galería del cliente (Suno entrega DOS versiones; las dos quedan en " +
-      "musicas). Con video_id, el estilo y la duración salen del campo «musica» de su guion si no se dicen, y la primera versión queda puesta " +
-      "en el sonido del video (va debajo de la voz con ducking y fundido; cambiarla no pide otra voz: sólo volver a renderizar). Describe la " +
-      "música en «estilo»: género, instrumentos, ánimo, tempo (en inglés suele salir mejor), sin nombrar artistas ni canciones. Instrumental por " +
-      "defecto; con voz cantada, la letra va en «letra». SIEMPRE cuesta y SIEMPRE se confirma: la primera llamada devuelve la cifra y NO crea " +
-      "nada; díselo al usuario y sólo si dice que sí vuelve a llamarla con los MISMOS datos y confirmado=true. Nunca pongas confirmado=true por " +
-      "tu cuenta. No espera: tarda unos minutos (estado_trabajo con el ID para saber cómo va).",
+      "musicas). Con video_id y SIN «estilo», la escribe el DIRECTOR MUSICAL de la aplicación: escucha el video ya hecho (escenas, cortes, " +
+      "silencios, el llamado, la voz) y la música de la MARCA del kit, y elige género, BPM que casa con los cortes, instrumentos y cómo sube " +
+      "la energía; la respuesta dice qué pidió y por qué (es lo recomendado: no escribas un estilo genérico). La duración es la del video y la " +
+      "primera versión queda puesta en su sonido (va debajo de la voz con ducking y fundido; cambiarla no pide otra voz: sólo volver a " +
+      "renderizar). Con «estilo», manda el tuyo: género, instrumentos, ánimo, tempo (en inglés suele salir mejor), sin nombrar artistas ni " +
+      "canciones. Instrumental por defecto; con voz cantada, la letra va en «letra». SIEMPRE cuesta y SIEMPRE se confirma: la primera llamada " +
+      "devuelve la cifra y lo que se pediría, y NO crea nada; díselo al usuario y sólo si dice que sí vuelve a llamarla con los MISMOS datos y " +
+      "confirmado=true (sale lo mismo que le dijiste). Nunca pongas confirmado=true por tu cuenta. No espera: tarda unos minutos " +
+      "(estado_trabajo con el ID para saber cómo va).",
     input_schema: {
       type: "object",
       properties: {
         ...clienteParam,
-        estilo: { type: "string", description: "Qué música: género, instrumentos, ánimo, tempo (≤ 1000). Con video_id se puede omitir si su guion lo dice." },
+        estilo: { type: "string", description: "Qué música: género, instrumentos, ánimo, tempo (≤ 1000). Con video_id, mejor omitirlo: lo escribe el director musical." },
         instrumental: { type: "boolean", description: "Sin voz cantada (por defecto sí)." },
         letra: { type: "string", description: "La letra, sólo si instrumental=false (≤ 5000; con [Verse], [Chorus]…)." },
         duracion: { type: "integer", description: `Segundos (${DURACION_MUSICA.min}–${DURACION_MUSICA.max}). Con video_id, lo que dura el video.` },
@@ -307,6 +310,20 @@ export function lineaDePieza(f, n) {
     pedido ? `pedido: «${pedido.slice(0, 280)}${pedido.length > 280 ? "…" : ""}»` : "",
   ];
   return `· ${partes.filter(Boolean).join(" · ")}`;
+}
+
+/**
+ * Qué música se pide y por qué, para el modelo: el estilo que va a Suno, lo que se evita y, si lo escribió el director
+ * musical, su porqué (o que fue el respaldo). Pura.
+ */
+function lineasDelPedido(pedido, propuesta, aviso) {
+  if (!pedido) return [];
+  const de = propuesta ? (propuesta.deRespaldo ? "Sin el director musical (respaldo)" : "El director musical escuchó el video y pide") : "Se pide";
+  return [
+    `${de}: «${pedido.estilo}»${pedido.evitar ? ` · evitar: ${pedido.evitar}` : ""}.`,
+    propuesta?.porque ? `Por qué: ${propuesta.porque}` : "",
+    aviso ? `Aviso: ${aviso}` : "",
+  ].filter(Boolean);
 }
 
 function confirmacionDeVoz(e) {
@@ -716,14 +733,18 @@ export function crearHerramientasEstudio({ env, acceso, resolverCliente, usuario
         });
         return [
           `Pedido creado: ${r.trabajoId} (música «${r.pedido.titulo}», ${r.pedido.duracion} s, ${r.pedido.instrumental ? "instrumental" : "con voz"}, ${textoCosto(r.costo)} aprox.).`,
+          ...lineasDelPedido(r.pedido, r.propuesta, r.aviso),
           `Tarda unos minutos y sigue solo. Las versiones quedan en la galería (musicas)${video ? " y la primera, puesta en el video: para oírla, renderizar_video otra vez" : ""}.`,
           `Para saber cómo va: estado_trabajo con el ID ${r.trabajoId}.`,
         ].join("\n");
       } catch (e) {
         if (e instanceof ErrorMusica) {
           if (e.codigo === "confirmar") {
-            return `NO SE CREÓ NADA. ${e.message.replace(/ Confírmalo para generarla\.$/, "")}. ` +
-              "Díselo al usuario con esa cifra y pregúntale si lo hago. Sólo si responde que sí, vuelve a llamar con los MISMOS datos y confirmado=true.";
+            return [
+              `NO SE CREÓ NADA. ${e.message.replace(/ Confírmalo para generarla\.$/, "")}.`,
+              ...lineasDelPedido(e.pedido, e.propuesta, e.aviso),
+              "Díselo al usuario con esa cifra (y qué música es) y pregúntale si lo hago. Sólo si responde que sí, vuelve a llamar con los MISMOS datos y confirmado=true: se pide exactamente esto.",
+            ].join("\n");
           }
           throw new ErrorHerramientaEstudio(e.message);
         }

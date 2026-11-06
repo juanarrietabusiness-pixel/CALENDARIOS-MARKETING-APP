@@ -162,6 +162,29 @@ export const MAX_REFS_PRESET = 2;
 const CLAVE = /^clientes\/[^/]+\/.+/;
 const corto = (t, n) => String(t ?? "").replace(/\s+/g, " ").trim().slice(0, n);
 
+/** Las músicas que gustaron y quedan de referencia de la marca («Me gusta esta» en «Sonido»), como mucho. */
+export const MAX_REFS_MUSICA = 3;
+const ID_ARCHIVO_MUSICA = /^[\w-]{1,64}$/;
+
+/**
+ * La MÚSICA DE LA MARCA en el kit (`kit.musica`): el estilo y lo que nunca debe sonar, escritos por la agencia, y las
+ * músicas generadas que gustaron (su estilo: lo que se le mandó a Suno). El director musical la respeta por encima de
+ * todo (src/lib/directorMusical.js). Pura.
+ */
+export function limpiarMusicaDeMarca(m) {
+  const o = m && typeof m === "object" && !Array.isArray(m) ? m : {};
+  const vistos = new Set();
+  const referencias = (Array.isArray(o.referencias) ? o.referencias : [])
+    .map((r) => ({
+      estilo: corto(r?.estilo, 600), titulo: corto(r?.titulo, 80),
+      ...(ID_ARCHIVO_MUSICA.test(String(r?.archivoId ?? "")) ? { archivoId: String(r.archivoId) } : {}),
+      ...(r?.at ? { at: corto(r.at, 30) } : {}),
+    }))
+    .filter((r) => r.estilo && !vistos.has(r.estilo.toLowerCase()) && vistos.add(r.estilo.toLowerCase()))
+    .slice(0, MAX_REFS_MUSICA);
+  return { estilo: corto(o.estilo, 400), evitar: corto(o.evitar, 200), referencias };
+}
+
 /** Lo guardado, limpio: lo que no se entiende se descarta. Pura. */
 export function limpiarKit(guardado) {
   const g = guardado && typeof guardado === "object" ? guardado : {};
@@ -244,6 +267,8 @@ export function limpiarKit(guardado) {
     // La LOCUCIÓN del video animado (ElevenLabs por Kie, src/lib/voces.js): la voz escogida, v3 o v2 y las voces
     // propias que la agencia escogió en el panel de Kie. Otra cosa que la de Omni de arriba.
     locucion: limpiarLocucion(g.locucion),
+    // La MÚSICA de la marca en los videos (estilo, lo que nunca suena y las que gustaron): la lee el director musical.
+    musica: limpiarMusicaDeMarca(g.musica),
     // El PERSONAJE del video animado (src/lib/personajeVideo.js): el aspecto con que se dibuja la figura de la casa en
     // todos los videos del cliente (el bebé de Baby Caleb es siempre el mismo). Sin aspecto, no va.
     ...(tieneAspecto(g.personajeVideo) ? { personajeVideo: limpiarPersonaje(g.personajeVideo) } : {}),
@@ -692,7 +717,7 @@ export function fundirKit(guardado, propuesto, ahora = new Date().toISOString())
   return limpiarKit({
     ...propuesto, logo: antes.logo, propios: antes.propios, estilos: antes.estilos, estiloPorTipo: antes.estiloPorTipo, personajes: antes.personajes,
     aprendido: antes.aprendido, referencias: antes.referencias, modelos: antes.modelos, reglas: antes.reglas,
-    logoModo: antes.logoModo, logoPosicion: antes.logoPosicion, fuente: antes.fuente, voz: antes.voz, locucion: antes.locucion, ...(antes.personajeVideo ? { personajeVideo: antes.personajeVideo } : {}), plantillas: antes.plantillas, tiposArte: antes.tiposArte, preparadoAt: ahora,
+    logoModo: antes.logoModo, logoPosicion: antes.logoPosicion, fuente: antes.fuente, voz: antes.voz, locucion: antes.locucion, musica: antes.musica, ...(antes.personajeVideo ? { personajeVideo: antes.personajeVideo } : {}), plantillas: antes.plantillas, tiposArte: antes.tiposArte, preparadoAt: ahora,
   });
 }
 

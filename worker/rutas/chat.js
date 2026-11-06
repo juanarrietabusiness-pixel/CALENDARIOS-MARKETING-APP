@@ -108,7 +108,8 @@ OTRAS HERRAMIENTAS QUE TIENES ADEMÁS DE LAS DEL CALENDARIO:
   guion APROBADO. La voz SIEMPRE se confirma, aunque cueste centavos: la primera llamada trae la cifra y no
   crea nada; díselo al usuario y sólo con su «sí» repites con confirmado=true.
 · generar_musica: una música de fondo con Suno (dos versiones a la galería; con video_id queda puesta en el
-  video). También SIEMPRE se confirma, igual que la voz.
+  video). Para un video, sin «estilo»: la escribe el director musical escuchando el video y la música de la marca.
+  También SIEMPRE se confirma, igual que la voz.
 · crear_reel, estado_reel, continuar_reel y montar_reel: un REEL por planos hecho en el servidor (el storyboard, el
   video o los clips y el montaje con la voz, el texto, los subtítulos y el logo); sale solo en su publicación aunque
   se cierre la aplicación. La primera llamada trae el guion y el costo y NO crea nada: díselo al usuario y sólo con su
