@@ -135,6 +135,8 @@ export const TABLAS_CON_DUENO = Object.freeze([
   "anuncios_clientes",
   // Las ventas de cada semana que apunta el cliente por su enlace (o la agencia): worker/lib/ventas.js.
   "ventas_semana",
+  // Lo que contestan los clientes de un cliente en «La voz de tus clientes» (worker/lib/whatsapp.js).
+  "voz_cliente",
   // Las historias automáticas: el interruptor de cada cliente y la historia hecha de cada publicación (worker/lib/historiasAuto.js).
   "historias_auto",
   "historias_auto_piezas",
@@ -180,6 +182,7 @@ export const TABLAS_CON_CLIENTE = Object.freeze([
   "handoffs",
   "lo_mejor_anuncios",
   "tendencias_palabras", "tendencias_videos",
+  "voz_cliente",
 ]);
 
 /** Las que cuelgan de un calendario sin llevar el cliente: se acotan por el calendario. */
@@ -801,6 +804,27 @@ export async function espaciosPorClasificar(db, desde, limite = 1) {
        ) limit ?`,
     )
     .bind(desde, desde, desde, limite)
+    .all();
+  return results ?? [];
+}
+
+/**
+ * Los clientes con cuenta publicitaria asignada (y Meta conectado en su espacio) cuyo repaso de lo GRAVE de hoy
+ * (`anuncios_clientes.alertas`, la revisión 3Q) no se hizo todavía, de TODOS los espacios, el más atrasado primero.
+ * Ids y dueño, como `clientesSinInformeAnuncios`: lo demás se lee después con la capa de ese espacio.
+ */
+export async function clientesPorAlertar(db, hoy, limite = 1) {
+  const { results } = await db
+    .prepare(
+      `select c.client_id, c.owner_id from cuentas_anuncios c
+        join integracion_meta m on m.owner_id = c.owner_id
+        left join anuncios_clientes a on a.client_id = c.client_id and a.owner_id = c.owner_id
+        where c.client_id is not null
+          and coalesce(json_extract(a.alertas, '$.fecha'), '') < ?
+        order by coalesce(json_extract(a.alertas, '$.fecha'), '') asc
+        limit ?`,
+    )
+    .bind(hoy, limite)
     .all();
   return results ?? [];
 }

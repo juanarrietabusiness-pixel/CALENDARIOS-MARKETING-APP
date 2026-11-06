@@ -1,0 +1,79 @@
+/* ============================================================
+   La revisión 3Q (Resultados → Anuncios y el diagnóstico de Anuncios → Campañas)
+   Va con su chunk (lazy): el CSS inicial está en su tope.
+   ============================================================ */
+
+.r3q { display: flex; flex-direction: column; gap: var(--sp-3); min-width: 0; outline: none; }
+.r3q-barra { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2) var(--sp-3); }
+.r3q-ia { display: flex; align-items: center; gap: var(--sp-2); font-size: var(--fs-sm); cursor: pointer; min-height: var(--tap-sm); }
+.r3q-ia input { width: 20px; height: 20px; flex-shrink: 0; margin: 0; }
+.r3q-titulo { display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-2); font-size: var(--fs-md); margin: 0 0 var(--sp-2); }
+.r3q-pendientes { font-size: var(--fs-2xs); font-weight: 600; padding: 2px var(--sp-2); border-radius: var(--radius-pill); background: var(--danger-soft); color: var(--danger); }
+
+.r3q-arriba { display: grid; gap: var(--sp-3); grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 1024px) { .r3q-arriba { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); } }
+.r3q-tarjeta { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: var(--sp-4); min-width: 0; }
+.r3q-explicacion { margin: 0; padding: var(--sp-3); background: var(--surface-2); border-radius: var(--radius); white-space: pre-wrap; font-size: var(--fs-sm); }
+
+.r3q-magico { margin: 0 0 var(--sp-3); display: grid; gap: var(--sp-2); grid-template-columns: repeat(auto-fill, minmax(min(100%, 160px), 1fr)); }
+.r3q-magico div { display: flex; flex-direction: column; gap: 2px; padding: var(--sp-2); background: var(--surface-2); border-radius: var(--radius-sm); }
+.r3q-magico dt { font-size: var(--fs-2xs); color: var(--text-dim); }
+.r3q-magico dd { margin: 0; font-size: var(--fs-md); font-weight: 700; }
+
+/* Las ventanas lado a lado: en el teléfono la tabla desplaza dentro de su marco, nunca la página. */
+.r3q-tabla-marco { overflow-x: auto; max-width: 100%; }
+.r3q-tabla { width: 100%; border-collapse: collapse; font-size: var(--fs-xs); font-variant-numeric: tabular-nums; }
+.r3q-tabla th, .r3q-tabla td { padding: var(--sp-1) var(--sp-2); text-align: right; border-bottom: 1px solid var(--border-soft); white-space: nowrap; }
+.r3q-tabla th[scope="row"], .r3q-tabla thead th:first-child { text-align: left; font-weight: 500; color: var(--text-dim); }
+.r3q-tabla thead th { font-size: var(--fs-2xs); color: var(--text-dim); font-weight: 600; }
+@media (max-width: 599px) { .r3q-tabla th, .r3q-tabla td { padding: var(--sp-1); } .r3q-tarjeta, .r3q-campana { padding: var(--sp-3); } }
+
+.r3q-estado, .r3q-veredicto {
+  display: inline-flex; align-items: center; font-size: var(--fs-2xs); font-weight: 700; padding: 2px var(--sp-2);
+  border-radius: var(--radius-pill); background: var(--surface-2); color: var(--text-dim); white-space: nowrap;
+}
+.r3q-estado[data-tono="ok"], .r3q-veredicto[data-tono="ok"] { color: var(--success); }
+.r3q-estado[data-tono="mal"], .r3q-veredicto[data-tono="mal"] { background: var(--danger-soft); color: var(--danger); }
+.r3q-estado[data-tono="espera"], .r3q-veredicto[data-tono="espera"] { background: var(--alt-soft); color: var(--accent-alt); }
+
+.r3q-campanas, .r3q-elementos { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-3); }
+.r3q-campana { background: var(--surface); border: 1px solid var(--border); border-left: 4px solid var(--border-strong); border-radius: var(--radius); padding: var(--sp-4); display: flex; flex-direction: column; gap: var(--sp-2); min-width: 0; }
+.r3q-campana[data-tono="mal"], .r3q-elemento[data-tono="mal"] { border-left-color: var(--danger); }
+.r3q-campana[data-tono="espera"], .r3q-elemento[data-tono="espera"] { border-left-color: var(--accent-alt); }
+.r3q-campana[data-tono="ok"], .r3q-elemento[data-tono="ok"] { border-left-color: var(--success); }
+.r3q-campana-cabeza, .r3q-elemento-cabeza { display: flex; align-items: flex-start; gap: var(--sp-2); flex-wrap: wrap; }
+.r3q-campana-nombre, .r3q-elemento-nombre { flex: 1 1 200px; min-width: 0; }
+.r3q-campana-nombre h3 { margin: 0; font-size: var(--fs-sm); overflow-wrap: anywhere; }
+.r3q-campana-nombre p { margin: 2px 0 0; }
+.r3q-etapa { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--sp-2) var(--sp-3); }
+.r3q-etapa-select { max-width: 220px; }
+.r3q-etapa-chip { background: var(--accent-soft); color: var(--text); }
+.r3q-exigencia { margin: 0; flex: 1 1 240px; }
+.r3q-motivo { margin: 0; font-size: var(--fs-sm); }
+.r3q-cifras, .r3q-luego, .r3q-hecho { margin: 0; }
+.r3q-desplegar { align-self: flex-start; }
+
+.r3q-elemento { padding: var(--sp-3); background: var(--surface-2); border-left: 3px solid var(--border-strong); border-radius: var(--radius-sm); display: flex; flex-direction: column; gap: var(--sp-1); min-width: 0; }
+.r3q-elemento-nombre { display: flex; flex-direction: column; overflow-wrap: anywhere; }
+.r3q-nivel { font-size: var(--fs-3xs); font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--text-dim); }
+.r3q-mini { width: 44px; height: 44px; object-fit: cover; border-radius: var(--radius-sm); flex-shrink: 0; background: var(--surface-3); }
+
+.r3q-q2 { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--sp-1); }
+.r3q-q2 li { display: inline-flex; align-items: baseline; gap: var(--sp-1); flex-wrap: wrap; font-size: var(--fs-2xs); padding: 2px var(--sp-2); border-radius: var(--radius-pill); background: var(--surface-3); color: var(--text-dim); }
+.r3q-q2 li[data-mal="true"] { background: var(--danger-soft); color: var(--danger); }
+.r3q-q2 strong { color: var(--text); }
+.r3q-q2 li[data-mal="true"] strong { color: var(--danger); }
+.r3q-q2-umbral { opacity: .85; }
+
+.r3q-q3 { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-1); font-size: var(--fs-xs); }
+.r3q-q3 li { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-1) var(--sp-2); }
+.r3q-q3 li > span { flex: 1 1 260px; }
+.r3q-botones { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
+
+.r3q-como summary { cursor: pointer; font-weight: 600; min-height: var(--tap-sm); display: flex; align-items: center; }
+.r3q-como ul { margin: var(--sp-2) 0; padding-left: var(--sp-4); font-size: var(--fs-xs); display: flex; flex-direction: column; gap: var(--sp-1); }
+.r3q-leyenda { margin: 0; }
+
+/* El diálogo de Anuncios → Campañas. */
+.r3q-dialogo { max-width: 980px; }
+.r3q-dialogo .sheet-body { display: flex; flex-direction: column; gap: var(--sp-3); }

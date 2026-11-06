@@ -74,6 +74,14 @@ async function falso(entrada, init = {}) {
   if (u.hostname !== "graph.facebook.com") throw new Error(`Petición a Internet en un test: ${u.href}`);
   const ruta = u.pathname.replace(/^\/v[\d.]+/, "");
   llamadas.push({ ruta, params: Object.fromEntries(u.searchParams) });
+  // La revisión 3Q (el diagnóstico) lee la cuenta por nivel: una campaña con un conjunto que gastó 60 y dio 5 conversaciones.
+  if (ruta === "/act_111/insights" && u.searchParams.get("level")) {
+    const fila = { spend: "60", impressions: "6000", reach: "3000", clicks: "200", frequency: "2", actions: [{ action_type: ACCION_MENSAJE, value: "5" }] };
+    const nivel = u.searchParams.get("level");
+    return respuesta({ data: nivel === "campaign" ? [{ campaign_id: "800", ...fila }] : nivel === "adset" ? [{ campaign_id: "800", adset_id: "901", ...fila }] : [] });
+  }
+  if (ruta === "/act_111/adsets") return respuesta({ data: [{ id: "901", name: "Intereses", campaign_id: "800", status: "ACTIVE", effective_status: "ACTIVE", daily_budget: "1000" }] });
+  if (ruta === "/act_111/ads") return respuesta({ data: [] });
   if (ruta === "/act_111/insights") return typeof insights === "function" ? insights(u) : respuesta({ data: insights ? [insights] : [] });
   if (ruta === "/act_111/campaigns") {
     return respuesta({ data: [{ id: "800", name: "WhatsApp octubre", status: "ACTIVE", effective_status: "ACTIVE", objective: "OUTCOME_ENGAGEMENT", account_id: "111",

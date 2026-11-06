@@ -14,7 +14,7 @@ import { completitud, resumenCompletitud } from "../../lib/completitud";
 import Icon from "../Icon";
 import { fmt12h } from "./formato";
 import { resumenCola } from "../../lib/cola";
-import { estadoDelChip, miniaturaDe, ESTADOS_CHIP } from "../../lib/estadoChip";
+import { estadoDelChip, miniaturaDe, enPauta, ESTADOS_CHIP } from "../../lib/estadoChip";
 
 /**
  * `vecinos`: los días de los meses de al lado que asoman en la rejilla
@@ -156,6 +156,7 @@ export function MonthGrid({ cal, cola = [], miembros = [], onPostClick, onMove, 
               const avance = mini ? null : completitud(post, dd);
               const resumen = resumenCompletitud(post, dd);
               const lleva = post.responsableId ? miembros.find((m) => m.userId === post.responsableId) : null;
+              const pauta = enPauta(post);
               return (
                 <button
                   key={post.id}
@@ -166,7 +167,7 @@ export function MonthGrid({ cal, cola = [], miembros = [], onPostClick, onMove, 
                   data-idea={mini ? undefined : true}
                   title={`${textoEstado}. ${resumen}`}
                   className={`cal-post${mini ? " con-mini" : ""}`}
-                  aria-label={`${vecina ? "Del mes de al lado. " : ""}${f.label}${briefIdea ? `: ${briefIdea}` : ""} — ${estado === "programada" && enCola ? enCola.texto : textoEstado}${mini ? ", con contenido" : ", sin contenido todavía"}${post.publishTime ? `, ${fmt12h(post.publishTime)}` : ""}${lleva ? `. Lo lleva ${lleva.nombre}` : ""}. ${resumen}`}
+                  aria-label={`${vecina ? "Del mes de al lado. " : ""}${f.label}${briefIdea ? `: ${briefIdea}` : ""} — ${estado === "programada" && enCola ? enCola.texto : textoEstado}${mini ? ", con contenido" : ", sin contenido todavía"}${post.publishTime ? `, ${fmt12h(post.publishTime)}` : ""}${lleva ? `. Lo lleva ${lleva.nombre}` : ""}${pauta ? ". Va a pauta" : ""}. ${resumen}`}
                   onDragStart={(e) => { if (vecina) return; e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", JSON.stringify({ postId: post.id, sourceDate: date })); setDrag({ postId: post.id, sourceDate: date }); }}
                   onDragEnd={() => { setDrag(null); setDropTarget(null); }}
                   onClick={() => (vecina ? onVecina?.(vecina.cal, post) : onPostClick(post, dd))}
@@ -185,7 +186,11 @@ export function MonthGrid({ cal, cola = [], miembros = [], onPostClick, onMove, 
                       <Icon name={iconoEstado} size={12} />
                     </span>
                   )}
-                  <span className="cal-post-label" aria-hidden="true">{chipLabel}</span>
+                  <span className="cal-post-label" aria-hidden="true">
+                    {/* Va a pauta (lib/pauta.js): un megáfono delante del texto, sin tocar la rejilla del chip. */}
+                    {pauta && <Icon name="megaphone" size={11} style={{ display: "inline-block", verticalAlign: "-1px", marginRight: 2 }} />}
+                    {chipLabel}
+                  </span>
                   {post.publishTime && <span className="cal-post-time" aria-hidden="true">{fmt12h(post.publishTime)}</span>}
                   {avance && (
                     <span className="cal-post-avance" aria-hidden="true">
@@ -227,6 +232,7 @@ function LeyendaMes() {
           <li key={k}><span className="cal-post-estado" data-estado={k} aria-hidden="true"><Icon name={e.icono} size={12} /></span> {e.etiqueta}</li>
         ))}
         <li><span className="cal-leyenda-vacio" aria-hidden="true" /> Sin icono: pendiente de aprobar</li>
+        <li><Icon name="megaphone" size={12} style={{ display: "inline-block", verticalAlign: "-2px" }} /> Megáfono: va a pauta (su caption se escribe como anuncio)</li>
       </ul>
     </details>
   );

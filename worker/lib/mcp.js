@@ -21,6 +21,7 @@ import { difundir } from "./vivo.js";
 import { uuid, ahora } from "./ids.js";
 import { programar, programarLote, cancelarPendientes, resincronizarCalendario, filaPublica, filaConResumen, ErrorPublicar } from "./publicador.js";
 import { normalizarHora } from "../../src/lib/horas.js";
+import { limpiarPauta, vaAPauta, describirPauta } from "../../src/lib/pauta.js";
 import { nuevaIdea } from "../../src/lib/bancoIdeas.js";
 import { aprobadasSinProgramar, fechaHora } from "../../src/lib/cola.js";
 import { fechaEnZona, sumarDias } from "../../src/lib/agenda.js";
@@ -59,6 +60,8 @@ export const HERRAMIENTAS_MCP = Object.freeze([
   { name: "buscar_cerebro", description: "Busca en el cerebro de un cliente —su ficha técnica, marca, precios, personas, límites y los documentos que se le subieron— y devuelve los pasajes que responden. Úsala antes de escribir para un cliente o de decir que no sabes algo de él. Incluye notas internas: es para el equipo, no las uses en textos que se publican.", inputSchema: { type: "object", properties: { ...clienteParam, consulta: { type: "string", description: "Qué buscar, en palabras del tema." } }, required: ["cliente", "consulta"] }, annotations: soloLectura },
   { name: "leer_nota_cerebro", description: "Lee ENTERA una nota del cerebro de un cliente, por su ruta (la que da buscar_cerebro entre corchetes) o por su título. Para cuando buscar_cerebro dio sólo pasajes de una nota larga.", inputSchema: { type: "object", properties: { ...clienteParam, nota: { type: "string", description: "La ruta de la nota o su título." } }, required: ["cliente", "nota"] }, annotations: soloLectura },
   { name: "ver_resultados", description: "Cómo le va en redes a un cliente: seguidores, alcance, interacción, mejores publicaciones, formatos, horarios y competencia.", inputSchema: { type: "object", properties: { ...clienteParam, dias: { type: "integer", description: "7 a 90. Por defecto 30." } }, required: ["cliente"] }, annotations: soloLectura },
+  { name: "kit_whatsapp", description: "El kit de WhatsApp Business de un cliente tal como lo guardó la agencia: bienvenida, ausencia, respuestas rápidas con su atajo (con las objeciones del estudio de mercado), etiquetas por etapa del ciclo de ventas y un guion de ventas por producto. Úsala antes de escribir mensajes de WhatsApp para un cliente.", inputSchema: { type: "object", properties: { ...clienteParam }, required: ["cliente"] }, annotations: soloLectura },
+  { name: "revisar_campanas", description: "La revisión 3Q de los anuncios que corren en el Ads Manager de un cliente: su número mágico, lo real en 30, 14 y 7 días y cada campaña activa con su etapa y qué hacer con cada conjunto y anuncio (qué pasó, por qué, qué cambiar). Sólo lee de Meta: no cambia nada ni gasta.", inputSchema: { type: "object", properties: { ...clienteParam }, required: ["cliente"] }, annotations: { readOnlyHint: true, openWorldHint: true } },
   {
     name: "crear_publicacion",
     description: "Añade una publicación al calendario del cliente para ese día (el calendario de ese mes tiene que existir). Queda pendiente de aprobación.",
@@ -87,6 +90,13 @@ export const HERRAMIENTAS_MCP = Object.freeze([
         texto_pieza: { type: "string", description: "Lo que va escrito encima del diseño (no el caption): titular, apoyo y precio, una línea cada uno." },
         hashtags: { type: "string" }, hora: { type: "string" }, formato: { type: "string", enum: FORMATOS },
         redes: { type: "array", items: { type: "string", enum: REDES } }, nota_interna: { type: "string" },
+        pauta: {
+          description: "Si se va a pautar en Meta: { etapa, como } para marcarla (su caption se escribe como ANUNCIO: en el Ads Manager ya no se cambia) o false para quitarla. etapa: presentacion, evaluacion, conversion o ascension; como: publicacion, anuncio o vacío (las dos).",
+          anyOf: [
+            { type: "object", properties: { etapa: { type: "string", enum: ["presentacion", "evaluacion", "conversion", "ascension"] }, como: { type: "string", enum: ["publicacion", "anuncio", ""] } }, required: ["etapa"] },
+            { type: "boolean" },
+          ],
+        },
       },
       required: ["publicacion_id"],
     },
@@ -176,7 +186,7 @@ export function crearHerramientasMCP({ env, acceso, usuario }) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(String(f ?? ""))) throw new ErrorHerramienta("La fecha va como AAAA-MM-DD.");
     return f;
   };
-  const describir = (p, fecha) => `${fecha} · ${p.format} · «${p.title || p.idea || "sin título"}»${p.publishTime ? ` a las ${p.publishTime}` : ""} (ID ${p.id})`;
+  const describir = (p, fecha) => `${fecha} · ${p.format} · «${p.title || p.idea || "sin título"}»${p.publishTime ? ` a las ${p.publishTime}` : ""}${vaAPauta(p) ? ` · va a pauta (${describirPauta(p.pauta)})` : ""} (ID ${p.id})`;
 
   const acciones = {
     async listar_clientes() {
@@ -244,12 +254,15 @@ export function crearHerramientasMCP({ env, acceso, usuario }) {
       return `Creada: ${describir(post, fecha)} en el calendario de ${c.name}.`;
     },
 
-    async editar_publicacion({ publicacion_id: id, titulo, idea, descripcion, guion, texto_pieza: textoPieza, hashtags, hora: h, formato, redes, nota_interna: nota }) {
+    async editar_publicacion({ publicacion_id: id, titulo, idea, descripcion, guion, texto_pieza: textoPieza, hashtags, hora: h, formato, redes, nota_interna: nota, pauta: p }) {
       const { cal, days, dia, indice, post } = await buscar(id);
       if (formato !== undefined && !FORMATOS.includes(formato)) throw new ErrorHerramienta(`Formato no válido: ${formato}.`);
+      // «Va a pauta» (src/lib/pauta.js): { etapa, como } limpio, o false para quitarla (y que no se vuelva a proponer).
+      const pauta = p === undefined ? undefined : p === false ? false : limpiarPauta(p);
+      if (pauta === null) throw new ErrorHerramienta("«pauta» es { etapa, como } (etapa: presentacion, evaluacion, conversion o ascension) o false para quitarla.");
       const cambios = Object.fromEntries(Object.entries({
         title: titulo, idea, descripcion, guion, textoPieza, hashtagsFinales: hashtags, publishTime: hora(h), format: formato,
-        redes: Array.isArray(redes) ? redes.filter((r) => REDES.includes(r)) : undefined, comment: nota,
+        redes: Array.isArray(redes) ? redes.filter((r) => REDES.includes(r)) : undefined, comment: nota, pauta,
       }).filter(([, v]) => v !== undefined));
       if (!Object.keys(cambios).length) throw new ErrorHerramienta("No indicaste nada que cambiar.");
       dia.posts[indice] = { ...post, ...cambios };
@@ -382,7 +395,7 @@ export function crearHerramientasMCP({ env, acceso, usuario }) {
         }
         return { content: [{ type: "text", text: r }] };
       }
-      if (["ver_calendario", "ver_tareas", "ver_banco_ideas", "ver_resultados", "buscar_cerebro", "leer_nota_cerebro"].includes(nombre)) {
+      if (["ver_calendario", "ver_tareas", "ver_banco_ideas", "ver_resultados", "buscar_cerebro", "leer_nota_cerebro", "kit_whatsapp", "revisar_campanas"].includes(nombre)) {
         const r = await consultas.ejecutar({ id: "mcp", name: nombre, input: entrada ?? {} });
         return { content: [{ type: "text", text: String(r.content) }], ...(r.is_error ? { isError: true } : {}) };
       }

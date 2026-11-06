@@ -33,7 +33,7 @@
 import { MONTHS } from "../constants";
 import { DESEOS_REISS, NIVELES_CONSCIENCIA, nombreDeNivel } from "./consciencia";
 import { separarHashtags, juntarHashtags } from "./reglasFormato.js";
-import { SESGOS, limpiarSesgos, nombresDeSesgos } from "./tiposArte.js";
+import { SESGOS, TIPOS_ARTE, limpiarSesgos, nombresDeSesgos, tipoArteDe, idSesgo, sesgoDe } from "./tiposArte.js";
 
 /**
  * Las 7 maletas del curso de campañas, por producto o servicio: lo que tiene que estar respondido antes de anunciar
@@ -716,8 +716,9 @@ export function pedidoDeReferencia({ marca, competidor = "", desde = "", nota = 
     nota ? `Nota de la agencia: ${corto(nota, 400)}` : "",
     ...(resumen ? ["", `LO QUE SABEMOS DEL MERCADO DE ${marca.toUpperCase()}:`, resumen] : []),
     "",
-    `Responde SOLO con JSON, sin texto alrededor. «nivel» es uno de: ${CLAVES_NIVEL.join(", ")}. «deseo», uno de: ${DESEOS_REISS.join(", ")}.`,
-    '{"gancho":"el gancho, tal cual o resumido","angulo":"el ángulo (dolor, ganancia, prueba social, urgencia…)","oferta":"la oferta o el llamado a la acción","formato":"cómo está hecho (foto, gráfico, texto encima, antes/después…)","nivel":"…","deseo":"…","porQueFunciona":"en 2 o 3 frases","ideaParaNosotros":"cómo adaptar lo que funciona para ' + marca.replace(/"/g, "") + ', sin copiar, en 2 o 3 frases"}',
+    "Antes de nada, las preguntas de siempre ante un anuncio que funciona: qué PROBLEMA ataca, a qué NIVEL de consciencia le habla, qué TIPO DE ARTE es, qué SESGO usa para mover a decidir, qué OFERTA da (lo que recibe quien compra) y qué LLAMADO hace (qué le pide hacer). Y lo que todos repiten y lo que nadie dice, que es donde la marca puede diferenciarse.",
+    `Responde SOLO con JSON, sin texto alrededor. «nivel» es uno de: ${CLAVES_NIVEL.join(", ")}. «deseo», uno de: ${DESEOS_REISS.join(", ")}. «tipoArte», uno de: ${TIPOS_ARTE.map((t) => `${t.id} (${t.nombre})`).join(", ")}. «sesgo», uno de: ${SESGOS.map((x) => `${x.id} (${x.nombre})`).join(", ")} (vacío si no usa ninguno).`,
+    '{"gancho":"el gancho, tal cual o resumido","problema":"el problema que ataca, en una frase","angulo":"el ángulo (dolor, ganancia, prueba social, urgencia…)","oferta":"la oferta: lo que recibe quien compra (precio, regalo, garantía, condición), o vacío si no hay","llamado":"el llamado a la acción: qué le pide hacer (escribir, comprar, agendar…)","formato":"cómo está hecho (foto, gráfico, texto encima, antes/después…)","tipoArte":"…","sesgo":"…","nivel":"…","deseo":"…","porQueFunciona":"en 2 o 3 frases","ideaParaNosotros":"cómo adaptar lo que funciona para ' + marca.replace(/"/g, "") + ', sin copiar, en 2 o 3 frases"}',
   ].filter((x) => x !== "").join("\n");
 }
 
@@ -731,7 +732,7 @@ export function pedidoDeReferenciaVideo({ marca, competidor = "", desde = "", no
   return [
     base.replace(/\{"gancho"[\s\S]*$/, "").trimEnd(),
     "Mira el video ENTERO (imagen y audio). Además de lo anterior, saca su ESTRUCTURA tramo a tramo con los segundos reales: qué se ve y qué se dice o se lee en cada momento. Sé fiel a lo que hay: no inventes nada que no se vea o no se oiga. Responde en español.",
-    '{"gancho":"…","angulo":"…","oferta":"…","formato":"…","nivel":"…","deseo":"…","porQueFunciona":"…","ideaParaNosotros":"…","estructura":{"duracion":12,"tramos":[{"desde":0,"hasta":2,"que":"qué pasa (el gancho)"}],"textoPantalla":"los textos que aparecen","sonido":"voz, música o sonido","camara":"planos y movimientos","ritmo":"cortes por segundo, lento o rápido"}}',
+    '{"gancho":"…","problema":"…","angulo":"…","oferta":"…","llamado":"…","formato":"…","tipoArte":"…","sesgo":"…","nivel":"…","deseo":"…","porQueFunciona":"…","ideaParaNosotros":"…","estructura":{"duracion":12,"tramos":[{"desde":0,"hasta":2,"que":"qué pasa (el gancho)"}],"textoPantalla":"los textos que aparecen","sonido":"voz, música o sonido","camara":"planos y movimientos","ritmo":"cortes por segundo, lento o rápido"}}',
   ].join("\n");
 }
 
@@ -783,7 +784,33 @@ export function leerReferencia(texto) {
     ideaParaNosotros: corto(d.ideaParaNosotros, 600),
     ...(estructura ? { estructura } : {}),
   };
+  // Las preguntas del curso ante un anuncio (entrega 8): sólo si vienen, y sólo ids que existen. Un análisis de antes
+  // no las trae y se ve igual que siempre.
+  const problema = corto(d.problema, 240);
+  const llamado = corto(d.llamado, 160);
+  const tipoArte = tipoArteDe(d.tipoArte)?.id ?? TIPOS_ARTE.find((t) => t.nombre.toLowerCase() === String(d.tipoArte ?? "").trim().toLowerCase())?.id ?? "";
+  const sesgo = idSesgo(d.sesgo);
+  if (problema) r.problema = problema;
+  if (llamado) r.llamado = llamado;
+  if (tipoArte) r.tipoArte = tipoArte;
+  if (sesgo) r.sesgo = sesgo;
   return r.gancho || r.porQueFunciona ? r : null;
+}
+
+/**
+ * Las preguntas del curso sobre un anuncio analizado, como chips de la pantalla: qué problema ataca, el nivel, el tipo
+ * de arte, el sesgo, la oferta y el llamado → [{ clave, etiqueta, valor }] (sólo lo que el análisis trae). Pura.
+ */
+export function chipsDeAnalisis(analisis) {
+  const a = analisis && typeof analisis === "object" ? analisis : {};
+  return [
+    ["problema", "Problema", a.problema],
+    ["nivel", "Nivel", nombreDeNivel(a.nivel)],
+    ["tipoArte", "Tipo de arte", tipoArteDe(a.tipoArte)?.nombre],
+    ["sesgo", "Sesgo", sesgoDe(a.sesgo)?.nombre],
+    ["oferta", "Oferta", a.oferta],
+    ["llamado", "Llamado", a.llamado],
+  ].filter(([, , v]) => v).map(([clave, etiqueta, valor]) => ({ clave, etiqueta, valor: String(valor) }));
 }
 
 /** Una referencia guardada, limpia. Pura. */
@@ -825,9 +852,13 @@ export function notaDeReferencia(referencia) {
     ...(a ? [
       "",
       a.gancho && `- Gancho: ${a.gancho}`,
+      a.problema && `- Problema que ataca: ${a.problema}`,
       a.angulo && `- Ángulo: ${a.angulo}`,
       a.oferta && `- Oferta: ${a.oferta}`,
+      a.llamado && `- Llamado a la acción: ${a.llamado}`,
       a.formato && `- Formato: ${a.formato}`,
+      a.tipoArte && `- Tipo de arte: ${tipoArteDe(a.tipoArte)?.nombre ?? a.tipoArte}`,
+      a.sesgo && `- Sesgo: ${sesgoDe(a.sesgo)?.nombre ?? a.sesgo}`,
       a.nivel && `- Nivel de consciencia: ${nombreDeNivel(a.nivel)}`,
       a.deseo && `- Deseo: ${a.deseo}`,
       "",

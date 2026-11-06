@@ -16,6 +16,7 @@ import {
 } from "../lib/estudioMercado";
 import { SESGOS, MAX_SESGOS, nombresDeSesgos } from "../lib/tiposArte";
 import { MaletasDeProducto, ResumenMaletas } from "./SemaforoMaletas";
+import ChipsAnalisis from "./ChipsAnalisis";
 import { claveDeEnlace, caminosPosibles, caminoPorDefecto } from "../lib/loMejor";
 
 // «Recrear para [cliente]»: el MISMO recreador que «Lo mejor» (sólo se descarga al abrirlo).
@@ -1029,10 +1030,12 @@ function PanelCompetencia({ client, datos, lectura, onOcupado, onDatos, onCambio
                 {r.desde && <span className="hint"> · {fraseActivo(r.desde)}</span>}
                 {r.enlace && <> · <a href={r.enlace} target="_blank" rel="noreferrer">Ver anuncio <Icon name="external" size={12} /></a></>}
               </p>
+              {/* Las preguntas del curso (problema, nivel, tipo de arte, sesgo, oferta, llamado), en chips. */}
+              {r.analisis && <ChipsAnalisis analisis={r.analisis} etiqueta={`Lo que hace el anuncio de ${r.competidor || "la competencia"}`} />}
               {r.analisis ? (
                 <dl className="mercado-analisis">
-                  {[["Gancho", r.analisis.gancho], ["Ángulo", r.analisis.angulo], ["Oferta", r.analisis.oferta], ["Formato", r.analisis.formato],
-                    ["Nivel", nombreDeNivel(r.analisis.nivel)], ["Deseo", r.analisis.deseo], ["Por qué funciona", r.analisis.porQueFunciona],
+                  {[["Gancho", r.analisis.gancho], ["Ángulo", r.analisis.angulo], ["Formato", r.analisis.formato],
+                    ["Deseo", r.analisis.deseo], ["Por qué funciona", r.analisis.porQueFunciona],
                     ["Cómo adaptarlo", r.analisis.ideaParaNosotros]].filter(([, v]) => v).map(([k, v]) => (
                     <div key={k}><dt>{k}</dt><dd>{v}</dd></div>
                   ))}

@@ -40,6 +40,7 @@ import { conPromptListo } from "../lib/promptImagen";
 import { enlaceLimpio, nuevaIdea } from "../lib/bancoIdeas";
 import { anadirAlBanco } from "../lib/bancoIdeasApi";
 import { mesDeFecha, mismoMes } from "../lib/meses";
+import { limpiarPauta } from "../lib/pauta";
 
 const MAX_ADJUNTOS = 6;
 const CLAVE_AMPLIADO = "chat-ampliado";
@@ -1070,6 +1071,9 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
     if (toolName === "editar_publicacion") {
       const hora = leerHora(toolInput.hora);
       if (hora === MAL) return { ok: false, mensaje: `No entendí la hora «${toolInput.hora}». Escríbela como «9am», «21:30» o «6 pm».` };
+      // «Va a pauta» (lib/pauta.js): { etapa, como } limpio, o false para quitarla (y que no se vuelva a proponer).
+      const pauta = toolInput.pauta === undefined ? undefined : toolInput.pauta === false ? false : limpiarPauta(toolInput.pauta);
+      if (pauta === null) return { ok: false, mensaje: "«pauta» es { etapa, como } (etapa: presentacion, evaluacion, conversion o ascension) o false para quitarla." };
       let found = false;
       const newDays = cal.days.map((d) => ({
         ...d,
@@ -1087,6 +1091,7 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
           if (toolInput.categoria !== undefined) upd.category = toolInput.categoria;
           if (toolInput.formato !== undefined) upd.format = toolInput.formato;
           if (hora !== undefined) upd.publishTime = hora;
+          if (pauta !== undefined) upd.pauta = pauta;
           return upd;
         }),
       }));

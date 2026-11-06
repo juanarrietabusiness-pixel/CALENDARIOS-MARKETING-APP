@@ -59,6 +59,8 @@ import { SeRepite } from "./repeticionesMes";
 import { promptListo } from "../../lib/promptImagen";
 import GuionUgc from "./GuionUgc";
 import { ReferenciasPost } from "./referenciasPost";
+import { PautaPublicacion } from "./pautaPublicacion";
+import { vaAPauta } from "../../lib/pauta";
 
 // El asistente DENTRO de la publicación (lib/asistentePost.js): el mismo chat, sólo para este post.
 const ChatPanel = lazy(() => import("../ChatPanel"));
@@ -235,7 +237,7 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
         await deUnCampo(form, field);
       }
     } catch (e) {
-      setFieldError(`No se pudo generar «${field}»: ${e.message}`);
+      setFieldError(`No se pudo generar «${field === "anuncio" ? "los textos del anuncio" : field}»: ${e.message}`);
     }
     setFieldLoading((p) => ({ ...p, [field]: false }));
   };
@@ -398,6 +400,11 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
 
         <TipoContenido form={form} sf={sf} clienteId={client?.dbId || client?.id} />
 
+        {/* Lo que va a pauta nace escrito como anuncio (lib/pauta.js): su etapa y sus textos de anuncio aparte. */}
+        {form.format !== "live" && (
+          <PautaPublicacion form={form} sf={sf} clienteId={clientId} onEscribir={clientId ? () => generateField("anuncio") : null} escribiendo={Boolean(fieldLoading.anuncio)} />
+        )}
+
         <div className="field">
           <div style={fieldHeaderStyle}>
             <label className="label" style={{ margin: 0 }} htmlFor={`${ids}-idea`}>Idea / Brief</label>
@@ -496,6 +503,11 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
             placeholder="Caption / descripción del contenido…"
           />
           {/* Los hashtags van APARTE (los escribe la IA en su campo, pestaña Publicar): dentro del caption saldrían dos veces. */}
+          {vaAPauta(form) && (
+            <p className="hint" style={{ margin: 0 }}>
+              <Icon name="megaphone" size={13} /> Va a pauta: este caption ES el texto principal del anuncio (en el Ads Manager no se cambia). La IA lo escribe como anuncio, sin hashtags dentro.
+            </p>
+          )}
         </div>
         )}
 

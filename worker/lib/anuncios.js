@@ -36,7 +36,7 @@ import { graph, urlGraph, urlGraphVideo, ErrorMeta, mensajeMeta, descifrarMeta, 
 import {
   permisosAnunciosQueFaltan, CAMPOS_INSIGHTS, modificadorInsights, validarBorrador,
   cuerpoCampana, cuerpoConjunto, cuerpoCreativo, cuerpoAnuncio, normalizarBorrador, presupuestoDelBorrador,
-  MAX_CONJUNTOS, MAX_ANUNCIOS, rangoInsights, deMenores,
+  MAX_CONJUNTOS, MAX_ANUNCIOS,
 } from "../../src/lib/anuncios.js";
 import { fechaEnZona } from "../../src/lib/agenda.js";
 import { claveDelCliente } from "./estudio/archivos.js";
@@ -177,66 +177,21 @@ export async function detalleCampana(env, token, campanaId, rango) {
 /**
  * Las cifras de la cuenta: el total del rango y día a día. Son dos
  * llamadas porque el alcance NO se suma: diez días de 1.000 personas no
- * son 10.000 personas.
+ * son 10.000 personas. `camposTotal`: el informe de anuncios pide además
+ * los del curso (clics únicos) en el total, sin una llamada más.
  */
-export async function estadisticasCuenta(env, token, cuenta, rango) {
+export async function estadisticasCuenta(env, token, cuenta, rango, { camposTotal = CAMPOS_INSIGHTS } = {}) {
   const [total, dias] = await Promise.all([
-    graph(env, token, `/${cuenta.externo_id}/insights`, { params: { fields: CAMPOS_INSIGHTS, ...rango } }),
+    graph(env, token, `/${cuenta.externo_id}/insights`, { params: { fields: camposTotal, ...rango } }),
     graph(env, token, `/${cuenta.externo_id}/insights`, { params: { fields: `${CAMPOS_INSIGHTS},date_start`, time_increment: 1, ...rango, limit: 100 } }),
   ]);
   return { total: total?.data?.[0] ?? null, dias: dias?.data ?? [] };
 }
 
 // ------------------------------------------------------------
-// El diagnóstico: las campañas activas, con 7 y 30 días
+// El diagnóstico de las campañas activas es ahora la revisión 3Q (worker/lib/revision3q.js), que lee la cuenta por
+// nivel y no campaña a campaña. Aquí quedan lo que cambia algo y se confirma: apagar y el presupuesto.
 // ------------------------------------------------------------
-
-/** Como mucho estas campañas activas por diagnóstico: cada una son cuatro llamadas (conjuntos y anuncios, × 2 rangos). */
-const MAX_DIAGNOSTICO = 6;
-const CAMPOS_DIAGNOSTICO = `${CAMPOS_INSIGHTS},frequency`;
-const conCifras = (campos, rango) => `${campos},insights${modificadorInsights(rango)}{${CAMPOS_DIAGNOSTICO}}`;
-
-/**
- * Lo que necesita `diagnosticar()` (src/lib/diagnostico.js): las campañas ACTIVAS de la cuenta con sus conjuntos y
- * anuncios, cada uno con las cifras de los últimos 7 y 30 días. Meta no deja pedir dos rangos en un mismo campo, así
- * que cada nivel se pide dos veces (el de 7 días, sólo con el id). 2 + 4 por campaña llamadas: 26 con seis.
- */
-export async function datosDiagnostico(env, token, cuenta) {
-  const r30 = rangoInsights({ rango: 30 });
-  const r7 = rangoInsights({ rango: 7 });
-  const act = cuenta.externo_id;
-  const [l30, l7] = await Promise.all([
-    graph(env, token, `/${act}/campaigns`, { params: { fields: conCifras(CAMPOS_CAMPANA, r30), limit: 100 } }),
-    graph(env, token, `/${act}/campaigns`, { params: { fields: conCifras("id", r7), limit: 100 } }),
-  ]);
-  const de7 = (lista) => new Map((lista?.data ?? []).map((x) => [String(x.id), primeraFila(x)]));
-  const c7 = de7(l7);
-  const activas = (l30?.data ?? []).filter((c) => String(c.effective_status ?? c.status).toUpperCase() === "ACTIVE").slice(0, MAX_DIAGNOSTICO);
-  const salida = [];
-  for (const c of activas) {
-    const [s30, s7, a30, a7] = await Promise.all([
-      graph(env, token, `/${c.id}/adsets`, { params: { fields: conCifras(CAMPOS_CONJUNTO, r30), limit: 50 } }),
-      graph(env, token, `/${c.id}/adsets`, { params: { fields: conCifras("id", r7), limit: 50 } }),
-      graph(env, token, `/${c.id}/ads`, { params: { fields: conCifras("id,name,status,effective_status,adset_id", r30), limit: 50 } }),
-      graph(env, token, `/${c.id}/ads`, { params: { fields: conCifras("id", r7), limit: 50 } }),
-    ]);
-    const s7m = de7(s7);
-    const a7m = de7(a7);
-    salida.push({
-      id: String(c.id), nombre: c.name ?? "", objetivo: c.objective ?? "", estado: c.effective_status ?? c.status ?? "",
-      i30: primeraFila(c), i7: c7.get(String(c.id)) ?? null,
-      conjuntos: (s30?.data ?? []).map((x) => ({
-        id: String(x.id), nombre: x.name ?? "", estado: x.effective_status ?? x.status ?? "",
-        presupuestoDiario: deMenores(x.daily_budget, cuenta.moneda), i30: primeraFila(x), i7: s7m.get(String(x.id)) ?? null,
-      })),
-      anuncios: (a30?.data ?? []).map((x) => ({
-        id: String(x.id), nombre: x.name ?? "", conjuntoId: String(x.adset_id ?? ""), estado: x.effective_status ?? x.status ?? "",
-        i30: primeraFila(x), i7: a7m.get(String(x.id)) ?? null,
-      })),
-    });
-  }
-  return salida;
-}
 
 /** Un conjunto o un anuncio leído de Meta, sólo si es de ESTA cuenta (si no, null): el id lo manda el navegador. */
 export async function objetoDeLaCuenta(env, token, cuenta, id) {

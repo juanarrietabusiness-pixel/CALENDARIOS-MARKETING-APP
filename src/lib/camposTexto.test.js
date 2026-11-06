@@ -138,3 +138,76 @@ describe("desde la pantalla (lib/escribirTextos.js)", () => {
     expect(nuevos[0].descripcion).toBe("La mía");
   });
 });
+
+describe("lo que va a pauta (lib/pauta.js)", () => {
+  afterEach(() => vi.unstubAllGlobals());
+  const enPauta = { id: "p9", format: "post", idea: "Sofá cama", pauta: { etapa: "atraer", como: "publicacion" } };
+
+  it("la casilla viaja con su pauta limpia y «anuncio» sólo se pide si va a pauta (nunca en un directo)", () => {
+    const c = casillaDeCampos(enPauta, {}, { campos: ["descripcion", "anuncio"] });
+    expect(c).toMatchObject({ pauta: { etapa: "presentacion", como: "publicacion" }, campos: ["descripcion", "anuncio"] });
+    expect(casillaDeCampos({ id: "a", format: "post" }, {}, { campos: ["descripcion", "anuncio"] }).campos).toEqual(["descripcion"]);
+    expect(casillaDeCampos({ id: "b", format: "post", pauta: false }, {}, { campos: ["anuncio"] })).toBeNull();
+    expect(casillaDeCampos({ id: "l", format: "live", pauta: { etapa: "presentacion" } }, {}, { campos: ["anuncio"] })).toBeNull();
+    // Una historia no lleva caption, pero sí sus textos para montarla subiendo la pieza.
+    expect(casillaDeCampos({ id: "h", format: "historia", pauta: { etapa: "conversion" } }, {}, { campos: ["descripcion", "anuncio"] }).campos).toEqual(["anuncio"]);
+  });
+
+  it("el pedido lleva la regla del anuncio, la línea de su etapa y cómo es el campo «anuncio»", () => {
+    const plan = darForma([{ ...casillaDeCampos(enPauta, {}, { campos: ["descripcion", "hashtags", "anuncio"] }), tipo: "anuncio" }]);
+    const t = pedidoDeCampos({ marca: "Dcasa", plan });
+    expect(t).toMatch(/LO QUE VA A PAUTA \(anuncios de Meta\)/);
+    expect(t).toMatch(/VA A PAUTA · etapa Presentación · nivel Consciente del problema · se monta con la publicación/);
+    expect(t).toMatch(/En las que VAN A PAUTA es el texto principal del anuncio/);
+    expect(t).toMatch(/En las que van a pauta, 3 como mucho/);
+    expect(t).toMatch(/- "anuncio" \(en las que van a pauta\)/);
+    expect(t).toMatch(/"anuncio":\{"textos":\[/);
+    // Con el bloque del servidor (el destino y el tipo de negocio del cliente), ése.
+    expect(pedidoDeCampos({ plan, pauta: "BLOQUE DEL SERVIDOR" })).toMatch(/BLOQUE DEL SERVIDOR/);
+    // Sin pauta, nada de esto.
+    const sin = pedidoDeCampos({ plan: darForma([{ ...casillaDeCampos({ id: "x", format: "post" }, {}, { campos: ["descripcion"] }), tipo: "anuncio" }]) });
+    expect(sin).not.toMatch(/VA A PAUTA/);
+    expect(sin).not.toMatch(/"anuncio"/);
+  });
+
+  it("la lectura: 3 hashtags como mucho y el «anuncio» como objeto; se pone sólo si no tenía (salvo su botón)", () => {
+    const plan = [{ n: 1, clave: "p9", formato: "post", pauta: { etapa: "presentacion" }, campos: ["descripcion", "hashtags", "anuncio"] }];
+    const r = leerCampos(JSON.stringify({ textos: [{ n: 1, descripcion: "Gancho\n\nEscríbenos por WhatsApp.", hashtags: "#a #b #c #d #e", anuncio: { textos: ["Uno", "Dos", "Tres"], titulos: ["Título"], descripcion: "Envío gratis", boton: "nada" } }] }), plan, { destino: "web" });
+    expect(r[0].campos.hashtags).toBe("#a #b #c");
+    expect(r[0].campos.anuncio).toEqual({ textos: ["Uno", "Dos", "Tres"], titulos: ["Título"], descripcion: "Envío gratis", boton: "SHOP_NOW" });
+    const vacio = aplicarCampos({ id: "p9", format: "post", pauta: { etapa: "presentacion" } }, r[0]);
+    expect(vacio.cambios.anuncio.textos).toHaveLength(3);
+    expect(vacio.campos).toContain("textos del anuncio");
+    const conTextosYa = { id: "p9", format: "post", anuncio: { textos: ["Mío"] } };
+    expect(aplicarCampos(conTextosYa, r[0]).cambios.anuncio).toBeUndefined();
+    expect(aplicarCampos(conTextosYa, r[0], { reemplazar: ["anuncio"] }).cambios.anuncio.textos[0]).toBe("Uno");
+  });
+
+  it("desde la pantalla: el caption de lo que va a pauta pide también sus textos aparte, y «Completar» los cuenta como lo que falta", async () => {
+    const cuerpos = [];
+    vi.stubGlobal("fetch", async (url, op = {}) => {
+      const b = JSON.parse(op.body);
+      cuerpos.push(b);
+      return Response.json({ textos: b.publicaciones.map((c, i) => ({ clave: c.clave, n: i + 1, campos: { descripcion: "Ven", anuncio: { textos: ["A", "B", "C"], titulos: [], descripcion: "", boton: "WHATSAPP_MESSAGE" } } })) });
+    });
+    await textoDeUnCampo("c1", { post: { ...enPauta, hashtagsFinales: "#a" }, day: { date: "2026-10-05" }, cal: null, campo: "descripcion" });
+    expect(cuerpos[0].publicaciones[0].campos).toEqual(["descripcion", "anuncio"]);
+    expect(cuerpos[0].publicaciones[0].pauta).toEqual({ etapa: "presentacion", como: "publicacion" });
+    const days = [{ date: "2026-10-05", posts: [{ ...enPauta, descripcion: "Ya", textoPieza: "t", hashtagsFinales: "#a" }] }];
+    await escribirLoQueFalta("c1", { year: 2026, month: 9, days }, [{ post: days[0].posts[0], day: days[0] }]);
+    expect(cuerpos[1].publicaciones[0].campos).toEqual(["anuncio"]);
+  });
+
+  it("«Reescribir como anuncio»: los campos pedidos se reescriben, con lo que pide la agencia", async () => {
+    const cuerpos = [];
+    vi.stubGlobal("fetch", async (url, op = {}) => {
+      const b = JSON.parse(op.body);
+      cuerpos.push(b);
+      return Response.json({ textos: [{ clave: "p9", n: 1, campos: { descripcion: "Nuevo como anuncio" } }] });
+    });
+    const { reescribirComoAnuncio } = await import("./escribirTextos.js");
+    const cambios = await reescribirComoAnuncio("c1", { post: { ...enPauta, descripcion: "¡Hoy abrimos!" }, campos: ["descripcion"], pide: "Distinta de otra" });
+    expect(cambios).toEqual({ descripcion: "Nuevo como anuncio" });
+    expect(cuerpos[0].publicaciones[0]).toMatchObject({ campos: ["descripcion"], antes: { descripcion: "¡Hoy abrimos!" }, pide: "Distinta de otra" });
+  });
+});

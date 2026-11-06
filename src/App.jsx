@@ -47,7 +47,8 @@ const Tareas = lazy(() => import("./pages/Tareas"));
 // Igual Equipo y Ajustes, que no se abren en cada visita.
 const Equipo = lazy(() => import("./pages/Equipo"));
 const Ajustes = lazy(() => import("./pages/Ajustes"));
-const Resultados = lazy(() => import("./pages/Resultados"));
+// Resultados de un cliente: Redes (pages/Resultados.jsx) y Anuncios (la revisión 3Q), como sub-secciones.
+const Resultados = lazy(() => import("./components/cliente/ResultadosCliente"));
 const Programacion = lazy(() => import("./pages/Programacion"));
 const Bandeja = lazy(() => import("./pages/Bandeja"));
 const ResumenAgencia = lazy(() => import("./pages/Resultados").then((m) => ({ default: m.ResumenAgencia })));
@@ -61,6 +62,8 @@ const Informe = lazy(() => import("./pages/Informe"));
 const InformeAnuncios = lazy(() => import("./pages/InformeAnuncios"));
 // «Tus ventas de la semana»: la página del cliente final para apuntar sus ventas (sin sesión).
 const VentasCliente = lazy(() => import("./pages/VentasCliente"));
+// «La voz de tus clientes»: la encuesta que el cliente reenvía a sus clientes (sin sesión).
+const VozCliente = lazy(() => import("./pages/VozCliente"));
 const AuditoriaPublica = lazy(() => import("./pages/AuditoriaPublica"));
 const Auditorias = lazy(() => import("./pages/Auditorias"));
 const LoMejor = lazy(() => import("./pages/LoMejor"));
@@ -127,6 +130,8 @@ function App() {
   if (ruta.vista === "informe-anuncios") return <Suspense fallback={<Aviso>Cargando…</Aviso>}><InformeAnuncios /></Suspense>;
   // Y el enlace de ventas de la semana.
   if (ruta.vista === "ventas") return <Suspense fallback={<Aviso>Cargando…</Aviso>}><VentasCliente /></Suspense>;
+  // Y la encuesta de la voz de los clientes.
+  if (ruta.vista === "voz") return <Suspense fallback={<Aviso>Cargando…</Aviso>}><VozCliente /></Suspense>;
   // Y la auditoría de perfil que se le manda a un cliente o a un prospecto.
   if (ruta.vista === "auditoria") return <Suspense fallback={<Aviso>Cargando…</Aviso>}><AuditoriaPublica /></Suspense>;
   return <Panel ruta={ruta} />;
@@ -641,6 +646,11 @@ function Workspace({ session, ruta }) {
         case "ventas":
           window.dispatchEvent(new CustomEvent("ventas", { detail: ev }));
           if (ev.por?.userId === "cliente") setToast(`${ev.por?.nombre || "El cliente"} apuntó sus ventas de la semana.`);
+          break;
+
+        // El kit de WhatsApp de un cliente se guardó, o llegó una respuesta a «La voz de tus clientes»: quien lo vea relee.
+        case "whatsapp":
+          window.dispatchEvent(new CustomEvent("whatsapp", { detail: ev }));
           break;
 
         case "editando":
@@ -1702,7 +1712,7 @@ function Workspace({ session, ruta }) {
                 )}
 
                 {pestana === "resultados" && (
-                  <Resultados client={client} pulso={pulso} onPersistClient={persistClient} />
+                  <Resultados client={client} seccion={ruta.seccion} pulso={pulso} yo={yo} onIr={(p, seccion) => irAPestana(p, seccion)} onPersistClient={persistClient} />
                 )}
                 </Suspense>
 

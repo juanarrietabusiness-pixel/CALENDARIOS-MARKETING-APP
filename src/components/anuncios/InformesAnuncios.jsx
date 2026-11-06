@@ -5,6 +5,7 @@ import { useDialogA11y } from "../../hooks/useDialogA11y";
 import * as api from "../../lib/anunciosApi";
 import { sinCosto, nombreDelMes } from "../../lib/informeAnuncios";
 import { fechaEnZona, sumarDias } from "../../lib/agenda";
+import { formatoMoneda } from "../../lib/anuncios";
 
 // ============================================================
 // Anuncios → Informes: el informe de publicidad de un cliente
@@ -18,6 +19,31 @@ import { fechaEnZona, sumarDias } from "../../lib/agenda";
 // ============================================================
 
 const mayuscula = (t) => (t ? t.charAt(0).toUpperCase() + t.slice(1) : "");
+const coma = (n) => String(Math.round(n * 10) / 10).replace(".", ",");
+
+/**
+ * Lo que ve SÓLO la agencia del mes (la revisión 3Q, curso de campañas): el % de mensajes, el CTR único y el costo real
+ * frente al número mágico. Va en `contenido.agencia`, aparte de las cifras: el enlace del cliente no lo lleva.
+ */
+function SoloAgencia({ a, moneda }) {
+  if (!a) return null;
+  const d = (n) => (n == null ? "—" : formatoMoneda(n, moneda));
+  const bajo = (v, u) => v != null && u != null && v < u;
+  return (
+    <section className="notice no-imprimir" style={{ display: "block" }} aria-label="Sólo para la agencia">
+      <p style={{ fontWeight: 700, margin: 0 }}><Icon name="lock" size={14} /> Sólo para la agencia (el cliente no lo ve)</p>
+      <ul style={{ margin: "var(--sp-1) 0 0 var(--sp-4)", fontSize: "var(--fs-2xs)" }}>
+        {a.pctMensajes != null && <li>% de mensajes: <strong>{coma(a.pctMensajes)} %</strong> (avisa por debajo de {a.umbrales?.pctMensajes} %){bajo(a.pctMensajes, a.umbrales?.pctMensajes) ? ": el llamado a escribir no es claro." : "."}</li>}
+        {a.ctrUnico != null && <li>CTR único: <strong>{coma(a.ctrUnico)} %</strong> (avisa por debajo de {a.umbrales?.ctrUnico} %){a.costoClicUnico != null ? ` · ${d(a.costoClicUnico)} por clic único` : ""}{bajo(a.ctrUnico, a.umbrales?.ctrUnico) ? ": los anuncios casi no reciben clics." : "."}</li>}
+        <li>
+          {a.metrica}: <strong>{d(a.real)}</strong> real
+          {a.objetivo != null ? ` · objetivo ${d(a.objetivo)}` : ""}{a.equilibrio != null ? ` · equilibrio ${d(a.equilibrio)}` : ""}
+          {a.objetivo == null && a.equilibrio == null ? " (sin números del negocio: se ponen en Marca → Números del negocio)" : a.real != null && a.equilibrio != null && a.real > a.equilibrio ? ": pierde dinero." : a.real != null && a.objetivo != null && a.real > a.objetivo ? ": por encima del número mágico." : "."}
+        </li>
+      </ul>
+    </section>
+  );
+}
 
 /** El mes en curso y los doce anteriores, del más reciente al más viejo. */
 function meses() {
@@ -244,6 +270,7 @@ export default function InformesAnuncios({ clientId, cliente, soloLectura = fals
                 <button type="button" className="btn btn-secondary btn-sm" onClick={() => window.print()}><Icon name="download" size={14} /> Imprimir o guardar PDF</button>
               </div>
               {a.contenido?.avisos?.map((t) => <p key={t} className="notice notice-warn no-imprimir">{t}</p>)}
+              <SoloAgencia a={a.contenido?.agencia} moneda={a.contenido?.cifras?.moneda ?? "USD"} />
               {a.contenido?.costoEnAnalisis && !a.mostrarCosto && (
                 <p className="notice notice-warn no-imprimir">El texto de la IA se escribió con el costo a la vista y puede nombrarlo: regenera el informe para que no lo haga.</p>
               )}

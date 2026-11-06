@@ -101,7 +101,8 @@ export const PESTANAS_DEL_CLIENTE = Object.freeze([
 export const SECCIONES_DEL_CLIENTE = Object.freeze({
   crear: ["director", "galeria"],
   referencias: ["ideas", "inspiracion", "competencia"],
-  marca: ["ficha", "kit", "negocio", "cerebro", "plan", "fechas", "drive"],
+  marca: ["ficha", "kit", "negocio", "whatsapp", "cerebro", "plan", "fechas", "drive"],
+  resultados: ["redes", "anuncios"],
 });
 
 /**
@@ -189,6 +190,7 @@ export function analizarRuta(url = window.location) {
   if (partes[0] === "informe") return { vista: "informe" };
   if (partes[0] === "informe-anuncios") return { vista: "informe-anuncios" };
   if (partes[0] === "ventas") return { vista: "ventas" };
+  if (partes[0] === "voz") return { vista: "voz" };
   if (partes[0] === "auditoria") return { vista: "auditoria" };
   if (partes[0] === "auditorias") return { vista: "auditorias" };
   if (partes[0] === "conectar-claude") return { vista: "conectar-claude" };

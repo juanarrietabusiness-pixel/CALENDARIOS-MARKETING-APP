@@ -25,7 +25,8 @@ const InformesAnuncios = lazy(() => import("../components/anuncios/InformesAnunc
 // del administrador, con un diálogo que enseña lo que se va a gastar.
 // «Estratega» arma el plan (también para alguien de fuera) y lo lleva a
 // «Nueva campaña» con todo puesto. «Informe» es el de publicidad del mes
-// para el cliente, aparte del de redes.
+// para el cliente, aparte del de redes. «Revisión 3Q» es la de Resultados →
+// Anuncios del cliente (la misma pantalla, en un diálogo).
 //
 // Nada habla con Meta desde aquí: todo pasa por /api/anuncios.
 // ============================================================
@@ -310,7 +311,7 @@ export default function Campanas({ clients = [], pulso = 0, yo = {}, onClienteNu
               </button>
             )}
             <button type="button" className="btn btn-secondary" onClick={() => setDiagnostico(true)} disabled={!listo}>
-              <Icon name="chart" size={16} /> Diagnóstico
+              <Icon name="chart" size={16} /> Revisión 3Q
             </button>
             <button type="button" className="btn btn-secondary" onClick={() => setInformes(true)} disabled={!clienteId}>
               <Icon name="file" size={16} /> Informe
@@ -437,7 +438,7 @@ export default function Campanas({ clients = [], pulso = 0, yo = {}, onClienteNu
             onCerrar={() => setEstratega(false)} />
         )}
         {diagnostico && (
-          <Diagnostico clientId={clienteId} moneda={moneda} esAdmin={esAdmin} soloLectura={soloLectura}
+          <Diagnostico clientId={clienteId} client={clients.find((c) => c.id === clienteId) ?? null} esAdmin={esAdmin} soloLectura={soloLectura}
             onCambio={() => void cargar()} onCerrar={() => setDiagnostico(false)} />
         )}
         {informes && (

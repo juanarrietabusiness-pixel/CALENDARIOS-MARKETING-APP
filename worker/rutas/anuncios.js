@@ -15,7 +15,10 @@
 //   GET  /clientes/:c/intereses?q=                 Buscar intereses de Meta (conjuntos por intereses)
 //   GET  /clientes/:c/publicos                     Públicos de la cuenta (personalizados y similares)
 //   POST /clientes/:c/similares { origenId, pais, porcentaje }  Crear un público similar (no gasta)
-//   POST /clientes/:c/diagnostico { costoMax?, conIA? }   Qué apagar, escalar o renovar (reglas; la IA lo explica).
+//   GET|POST /clientes/:c/revision { conIA? }       La revisión 3Q de lo que corre en el Ads Manager (worker/lib/revision3q.js)
+//   PUT  /clientes/:c/etapas { campanaId, etapa }  La etapa de una campaña cuyo nombre no la dice
+//   GET  /revision/pendientes                      Mi día: los clientes con cuenta sin revisar hace 6 días o más
+//   POST /clientes/:c/diagnostico { costoMax?, conIA? }   El de antes: la misma revisión con la forma de entonces.
 //                                                  Sin costoMax, el número mágico de los números del negocio
 //   POST /clientes/:c/objetos/:id/pausar           Pausar un conjunto o un anuncio de la cuenta del cliente
 //   POST /clientes/:c/conjuntos/:id/presupuesto { diario, confirmado }  Subir o bajar (admin, confirmando)
@@ -50,18 +53,18 @@ import {
   ErrorAnuncios, mensajeAnuncios, conexionMeta, cuentaPublica, sincronizarCuentasAnuncios, clienteYCuenta,
   listarCampanas, campanaDeLaCuenta, detalleCampana, estadisticasCuenta, buscarCiudades, pixelesDeLaCuenta,
   mediosDelCliente, prepararMedio, estadoVideo, crearCampana, apuntar, presupuestoDe, fechasDe, cambiarEstado,
-  buscarIntereses, publicosDeLaCuenta, crearSimilar, datosDiagnostico, objetoDeLaCuenta, pausarObjeto, presupuestoDeConjunto,
+  buscarIntereses, publicosDeLaCuenta, crearSimilar, objetoDeLaCuenta, pausarObjeto, presupuestoDeConjunto,
 } from "../lib/anuncios.js";
-import { diagnosticar, pedidoDiagnosticoIA } from "../../src/lib/diagnostico.js";
 import { rangoInsights, RANGOS, deMenores, aMenores, formatoMoneda, resumenPresupuesto, permisosAnunciosQueFaltan } from "../../src/lib/anuncios.js";
-import { ErrorIA, llamarIA } from "../lib/cerebro/ia.js";
+import { ErrorIA } from "../lib/cerebro/ia.js";
 import { ErrorEstratega, leerManual, guardarManual, armarPlan, listarPlanes, guardarPlan, borrarPlan } from "../lib/estratega.js";
 import { fechaEnZona, sumarDias } from "../../src/lib/agenda.js";
 import {
   generarInformeAnuncios, ajustesInforme, guardarAjustesInforme, resumenInformeAnuncios, contenidoInforme,
 } from "../lib/informeAnuncios.js";
 import { testigo as nuevoTestigo } from "../lib/ids.js";
-import { rutasNegocio, costoAceptableDelCliente } from "../lib/negocio.js";
+import { rutasNegocio } from "../lib/negocio.js";
+import { rutasRevision, rutasRevisionGlobal, rutaDiagnostico } from "../lib/revision3q.js";
 
 const leerJSON = (t, d) => { try { return JSON.parse(t) ?? d; } catch { return d; } };
 const miniatura = (u) => (u ? `/api/metricas/miniatura?u=${encodeURIComponent(u)}` : "");
@@ -186,6 +189,9 @@ async function atender(req, env, { acceso, usuario, partes, metodo }) {
   }
   if (grupo === "planes" && id && metodo === "DELETE") return (await borrarPlan(acceso, id)) ? json({ ok: true }) : noEncontrado("Plan");
 
+  // ---- Mi día: los clientes cuyas campañas toca revisar (la revisión 3Q, worker/lib/revision3q.js) ----
+  if (grupo === "revision") return await rutasRevisionGlobal(req, env, { acceso, accion: id, metodo });
+
   if (grupo !== "clientes" || !id) return noEncontrado("Ruta");
 
   // Activar, antes de nada: el papel no depende ni del cliente ni de lo que diga Meta.
@@ -200,6 +206,9 @@ async function atender(req, env, { acceso, usuario, partes, metodo }) {
   if (sub === "informes" || sub === "ajustes-informe") return await rutasInforme(req, env, { acceso, usuario, clientId: id, sub, mes: subId, accion, metodo });
   // ---- Los números del negocio (Marca): tampoco piden cuenta asignada ----
   if (sub === "negocio") return await rutasNegocio(req, env, { acceso, usuario, clientId: id, accion: subId, metodo });
+  // ---- La revisión 3Q (Resultados → Anuncios): lee lo que corre en el Ads Manager; el diagnóstico de antes es ella ----
+  if (sub === "revision" || sub === "etapas") return await rutasRevision(req, env, { acceso, usuario, clientId: id, sub, metodo });
+  if (sub === "diagnostico" && metodo === "POST") return await rutaDiagnostico(req, env, { acceso, usuario, clientId: id });
 
   // ---- De un cliente ----
   const { cliente, cuenta } = await clienteYCuenta(acceso, id, { exigirCuenta: sub !== "historial" && sub !== "medios" });
@@ -292,32 +301,7 @@ async function atender(req, env, { acceso, usuario, partes, metodo }) {
     return json({ ok: true, estado: status });
   }
 
-  // ---- El diagnóstico y lo que propone ----
-  if (sub === "diagnostico" && metodo === "POST") {
-    const datos = (await cuerpo(req)) ?? {};
-    // Lo aceptable: lo que se teclee; si no, el número mágico guardado (Marca → Números del negocio); si no, el
-    // promedio de 30 días de cada campaña (lo hace `diagnosticar` con 0).
-    let costoMax = Number(datos.costoMax) > 0 ? Number(datos.costoMax) : 0;
-    let origenCosto = costoMax ? "escrito" : "promedio";
-    if (!costoMax) {
-      const aceptable = await costoAceptableDelCliente(acceso, cliente.id);
-      if (aceptable) { costoMax = aceptable.valor; origenCosto = "numero-magico"; }
-    }
-    const d = diagnosticar(await datosDiagnostico(env, token, cuenta), { costoMax, moneda: cuenta.moneda });
-    let explicacion = "";
-    let avisoIA = null;
-    if (datos.conIA === true) {
-      try {
-        const r = await llamarIA(env, acceso, cliente, { prompt: pedidoDiagnosticoIA({ marca: cliente.name, diagnostico: d, moneda: cuenta.moneda, costoMax }), salida: 1500, funcion: "diagnóstico de campañas" });
-        explicacion = String(r.texto ?? "").trim().slice(0, 3000);
-      } catch (e) {
-        // La explicación es un extra: sin ella, las reglas siguen valiendo.
-        avisoIA = e.message;
-      }
-    }
-    return json({ ...d, moneda: cuenta.moneda, costoMax, origenCosto, explicacion, avisoIA });
-  }
-
+  // ---- Lo que propone la revisión 3Q y se hace aquí: apagar un conjunto o un anuncio, subir el presupuesto ----
   if (sub === "objetos" && subId && accion === "pausar" && metodo === "POST") {
     const o = await objetoDeLaCuenta(env, token, cuenta, subId);
     if (!o) return noEncontrado("Conjunto o anuncio");

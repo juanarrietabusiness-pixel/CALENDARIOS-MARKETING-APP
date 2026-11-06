@@ -510,6 +510,27 @@ describe("la puerta, en general", () => {
     expect((await worker.fetch(conSesion("/api/ventas/cliente-ajeno"), env)).status).toBe(404);
   });
 
+  it("la voz del cliente va ANTES de la sesión (404 con un testigo que no existe, nunca 401) y el kit de WhatsApp después", async () => {
+    // Quien responde la encuesta es un cliente del cliente: no tiene cuenta. Detrás de la sesión vería «No autenticado».
+    const env = await entorno();
+    const testigo = "b".repeat(48);
+    const leer = await worker.fetch(new Request(`https://calendarios.test/api/publico-voz/${testigo}`), env);
+    expect(leer.status).toBe(404);
+    expect(leer.headers.get("content-type")).toContain("application/json");
+    const escribir = await worker.fetch(new Request(`https://calendarios.test/api/publico-voz/${testigo}`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ respuestas: { porque: "x" } }),
+    }), env);
+    expect(escribir.status).toBe(404);
+    const pagina = await worker.fetch(new Request(`https://calendarios.test/voz?t=${testigo}`), env);
+    expect(pagina.headers.get("content-type")).toContain("text/html");
+    const marca = await worker.fetch(new Request("https://calendarios.test/cliente/baby-caleb/marca/whatsapp"), env);
+    expect(marca.headers.get("content-type")).toContain("text/html");
+    // El kit es con sesión: sin ella, 401; con ella, un cliente que no es del espacio no existe.
+    expect((await worker.fetch(new Request("https://calendarios.test/api/whatsapp/cliente-1"), env)).status).toBe(401);
+    expect((await worker.fetch(conSesion("/api/whatsapp/cliente-ajeno"), env)).status).toBe(404);
+    expect((await worker.fetch(conSesion("/api/whatsapp/cliente-ajeno/voz"), env)).status).toBe(404);
+  });
+
   it("/api/live sin cabecera de Upgrade es 426, no un socket a medias", async () => {
     const env = await entorno();
     const res = await worker.fetch(conSesion("/api/live"), env);
@@ -1372,6 +1393,25 @@ describe("anuncios de Meta (/api/anuncios)", () => {
     }), env);
     expect(p.status).toBe(503);
     expect((await p.json()).error).toMatch(/llave de IA/);
+  });
+
+  it("la revisión 3Q llega a su rama: la del cliente pide cuenta (409, no 404), la etapa y Mi día no", async () => {
+    // La lógica entera, contra una D1 de verdad, está en revision3q.test.js.
+    const env = await entorno();
+    const r = await worker.fetch(conSesion("/api/anuncios/clientes/cliente-1/revision"), env);
+    expect(r.status).toBe(409);
+    expect((await r.json()).error).toMatch(/cuenta publicitaria/);
+    expect((await worker.fetch(conSesion("/api/anuncios/clientes/cliente-de-otro/revision"), env)).status).toBe(404);
+    // El diagnóstico de antes es la misma revisión: también llega.
+    expect((await worker.fetch(conSesion("/api/anuncios/clientes/cliente-1/diagnostico", { method: "POST", body: "{}", headers: { "Content-Type": "application/json" } }), env)).status).toBe(409);
+    const etapa = await worker.fetch(conSesion("/api/anuncios/clientes/cliente-1/etapas", {
+      method: "PUT", body: JSON.stringify({ campanaId: "no-es-un-id", etapa: "conversion" }), headers: { "Content-Type": "application/json" },
+    }), env);
+    expect(etapa.status).toBe(400);
+    const pendientes = await worker.fetch(conSesion("/api/anuncios/revision/pendientes"), env);
+    expect(pendientes.status).toBe(200);
+    expect(await pendientes.json()).toMatchObject({ pendientes: [] });
+    expect((await worker.fetch(new Request("https://calendarios.test/api/anuncios/revision/pendientes"), env)).status).toBe(401);
   });
 
   it("una ruta que no existe es 404, y sin sesión 401", async () => {

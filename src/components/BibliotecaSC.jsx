@@ -2,6 +2,7 @@ import { useId, useState } from "react";
 import Icon from "./Icon";
 import * as api from "../lib/bibliotecaApi";
 import { agregarReferencia } from "../lib/mercado";
+import ChipsAnalisis from "./ChipsAnalisis";
 import { anadirAlBanco } from "../lib/bancoIdeasApi";
 import { nuevaIdea } from "../lib/bancoIdeas";
 import { PAISES } from "../lib/biblioteca";
@@ -226,6 +227,8 @@ function TarjetaSC({ a, cliente, lectura, onAviso }) {
   const [ocupado, setOcupado] = useState("");
   const [archivo, setArchivo] = useState(null);
   const [transcripcion, setTranscripcion] = useState(null);
+  // El análisis que devolvió «Analizar como referencia»: sus preguntas del curso se ven en la tarjeta.
+  const [analisis, setAnalisis] = useState(null);
   const [verTodo, setVerTodo] = useState(false);
   const [sinImagen, setSinImagen] = useState(false);
   const video = a.videos[0] ?? null;
@@ -253,6 +256,7 @@ function TarjetaSC({ a, cliente, lectura, onAviso }) {
       archivoId: arch.id, competidor: a.pagina, enlace: a.enlace, origen: "anuncio",
       nota: [a.activo ? `activo desde el ${a.inicio}` : `corrió del ${a.inicio} al ${a.fin}`, a.texto && `su texto: ${a.texto.slice(0, 400)}`, a.cta && `botón: ${a.cta}`].filter(Boolean).join("; "),
     }, arch.tipo === "video" ? arch.src : "");
+    setAnalisis(r.referencia?.analisis ?? null);
     onAviso(r.aviso ? `Guardado, pero sin analizar: ${r.aviso}` : `Analizado y guardado en las referencias de ${cliente.name} (Cerebro → Estudio de mercado → Competencia): desde ahí, «Adaptar» o «Recrear con mi marca».`);
   });
   const alBanco = () => hacer("banco", async () => {
@@ -299,6 +303,7 @@ function TarjetaSC({ a, cliente, lectura, onAviso }) {
       ) : <p className="bib-tarjeta-texto hint">Sin texto (sólo imagen o video).</p>}
       {largo && <button type="button" className="btn btn-ghost btn-sm" onClick={() => setVerTodo((v) => !v)} aria-expanded={verTodo}>{verTodo ? "Ver menos" : "Ver todo el texto"}</button>}
       {a.cta && <p className="hint">Botón: «{a.cta}»{a.destino ? ` → ${new URL(a.destino).hostname}` : ""}</p>}
+      {analisis && <ChipsAnalisis analisis={analisis} etiqueta={`Lo que hace el anuncio de ${a.pagina || "la competencia"}`} />}
       {transcripcion && <blockquote className="bib-sc-transcripcion"><strong>Lo que dice:</strong> {transcripcion}</blockquote>}
       <div className="bib-tarjeta-pie">
         <ul className="bib-plataformas" aria-label="Plataformas">

@@ -294,6 +294,8 @@ export function lineaDePieza(r, productos = {}) {
     r.pide ? `   lo que pide la agencia para esta: ${corto(r.pide, 300)}` : "",
     r.cambio ? `   ojo: ${r.cambio}` : "",
     r.rostro ? `   ${LINEA_ROSTRO}` : "",
+    // Va a pauta (lib/pauta.js `lineaDePauta`: la pone quien arma el pedido): su etapa y que el caption es el anuncio.
+    r.lineaPauta ? `   ${corto(r.lineaPauta, 300)}` : "",
   ].filter(Boolean).join("\n");
 }
 
@@ -366,7 +368,7 @@ export function textoDelCliente(c = null) {
  */
 export function pedidoDeProduccion({
   marca = "la marca", plan = [], productos = {}, perfiles = {}, estudio = "", contexto = "", usados = [], formato = "post", fechasEspeciales = [], mes = false,
-  nota = "", estrategia = null, falta = "", ugc = "", identidad = "", cliente = "",
+  nota = "", estrategia = null, falta = "", ugc = "", identidad = "", cliente = "", pauta = "",
 }) {
   const perfilesUsados = [...new Set(plan.map((r) => r.perfil).filter(Boolean))].filter((n) => perfiles[n]);
   const cuantas = plan.length === 1 ? "UNA publicación" : `${plan.length} publicaciones`;
@@ -390,6 +392,8 @@ export function pedidoDeProduccion({
     cliente ? String(cliente).slice(0, 4000) : "",
     nota ? `Contexto de esta publicación: ${corto(nota, 600)}` : "",
     textoEstrategiaDelMes(estrategia),
+    // Lo que va a pauta (lib/pauta.js `bloqueDeAnuncio`, con el negocio del cliente): la regla y el campo «anuncio».
+    pauta ? String(pauta).slice(0, 5000) : "",
     perfilesUsados.length ? `Los perfiles:\n${perfilesUsados.map((n) => `- ${n}: ${perfiles[n]}`).join("\n")}` : "",
     fechasEspeciales.length ? `Fechas especiales:\n${fechasEspeciales.map((f) => `- ${f}`).join("\n")}` : "",
     "",

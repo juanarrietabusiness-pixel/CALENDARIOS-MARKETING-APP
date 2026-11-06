@@ -6,6 +6,7 @@ import {
   productosParaPlan, mensajePedirDatos, lineaDeProducto, fechaLarga,
   pedidoDeReferenciaVideo, limpiarEstructura, estructuraATexto, pedidoDeAdaptacion, leerAdaptacion, ideaParaRecrear, ideaParaSeguirVideo,
   limpiarReferencia, limpiarProducto, fotosDeProducto, fotosDelCatalogo, ELEMENTOS_MERCADO, elementosConAlias, resumenGeneral,
+  pedidoDeReferencia, chipsDeAnalisis,
 } from "./estudioMercado";
 
 const CATALOGO = [
@@ -238,6 +239,39 @@ describe("las referencias de la competencia", () => {
     expect(nota).toContain("# Referencia de la competencia: LimpiaYa");
     expect(nota).toContain("- Nivel de consciencia: Listo para comprar");
     expect(leerReferencia("nada")).toBeNull();
+  });
+
+  it("las preguntas del curso: el pedido las pide con sus ids (tipo de arte y sesgo)", () => {
+    const t = pedidoDeReferencia({ marca: "Dcasa" });
+    for (const k of ['"problema"', '"llamado"', '"tipoArte"', '"sesgo"']) expect(t).toContain(k);
+    expect(t).toContain("dividida (Pantalla dividida)");
+    expect(t).toContain("prueba-social (Prueba social)");
+    expect(pedidoDeReferenciaVideo({ marca: "Dcasa" })).toContain('"tipoArte":"…","sesgo":"…"');
+  });
+
+  it("las lee limpias: ids que existen (también por su nombre), y van en la nota y en los chips", () => {
+    const a = leerReferencia(JSON.stringify({
+      gancho: "¿Tu sofá no cabe?", problema: "No cabe en casa", oferta: "Envío gratis", llamado: "Escríbenos por WhatsApp",
+      tipoArte: "Pantalla dividida", sesgo: "prueba social", nivel: "problema", porQueFunciona: "Toca el dolor",
+    }));
+    expect(a).toMatchObject({ problema: "No cabe en casa", llamado: "Escríbenos por WhatsApp", tipoArte: "dividida", sesgo: "prueba-social" });
+    expect(leerReferencia('{"gancho":"x","tipoArte":"inventado","sesgo":"magia"}')).not.toHaveProperty("tipoArte");
+    expect(chipsDeAnalisis(a).map((c) => `${c.etiqueta}: ${c.valor}`)).toEqual([
+      "Problema: No cabe en casa", "Nivel: Consciente del problema", "Tipo de arte: Pantalla dividida", "Sesgo: Prueba social",
+      "Oferta: Envío gratis", "Llamado: Escríbenos por WhatsApp",
+    ]);
+    const nota = notaDeReferencia({ id: "r1", analisis: a });
+    expect(nota).toContain("- Tipo de arte: Pantalla dividida");
+    expect(nota).toContain("- Llamado a la acción: Escríbenos por WhatsApp");
+  });
+
+  it("un análisis de antes, sin las preguntas, se sigue leyendo igual", () => {
+    const viejo = { gancho: "50% hoy", oferta: "50%", nivel: "decision", porQueFunciona: "Urgencia" };
+    const r = limpiarReferencia({ id: "r1", analisis: viejo });
+    expect(r.analisis).not.toHaveProperty("problema");
+    expect(r.analisis).not.toHaveProperty("tipoArte");
+    expect(chipsDeAnalisis(r.analisis).map((c) => c.clave)).toEqual(["nivel", "oferta"]);
+    expect(chipsDeAnalisis(null)).toEqual([]);
   });
 });
 

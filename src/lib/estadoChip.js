@@ -40,6 +40,12 @@ export function estadoDelChip(post, enCola = null) {
 }
 
 /**
+ * ¿Va a pauta? La MISMA regla que `vaAPauta` de lib/pauta.js (un test lo compara), en una línea: aquel arrastra la
+ * regla del anuncio y el estudio de mercado, y esto va en la carga inicial.
+ */
+export const enPauta = (post) => Boolean(post?.pauta) && typeof post.pauta === "object" && !Array.isArray(post.pauta);
+
+/**
  * La miniatura del chip: la primera imagen o, de un video, su portada.
  * Un video sin portada da `{ video: true }` sin imagen: se pinta su icono.
  * null si no tiene nada subido (es una idea).

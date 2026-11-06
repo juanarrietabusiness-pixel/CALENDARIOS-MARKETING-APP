@@ -1,0 +1,92 @@
+/* ============================================================
+   /voz?t=… — «Tu opinión», la encuesta para los clientes del cliente
+   Clara, con el color del cliente (`--voz-color`, y el texto que se lee
+   encima, `--voz-sobre-color`) y pensada para el teléfono: campos de 16 px
+   (iOS no hace zoom) y botones de 44 px. Va con su chunk.
+   ============================================================ */
+
+.voz-pagina {
+  --voz-fondo: #F3F5F9;
+  --voz-tarjeta: #FFFFFF;
+  --voz-texto: #1A2433;
+  --voz-suave: #5B6B80;
+  --voz-borde: #D5DCE6;
+  color-scheme: light;
+  min-height: 100dvh;
+  background: var(--voz-fondo);
+  color: var(--voz-texto);
+  padding: calc(var(--sp-5) + var(--safe-top, 0px)) var(--sp-4) calc(var(--sp-8) + var(--safe-bottom, 0px));
+  font-size: var(--fs-md);
+  line-height: var(--lh-normal);
+}
+.voz-contenido { display: flex; flex-direction: column; gap: var(--sp-4); max-width: 560px; margin: 0 auto; }
+
+.voz-cabecera { text-align: center; display: flex; flex-direction: column; align-items: center; gap: var(--sp-1); }
+.voz-cabecera h1 { font-size: var(--fs-xl); margin: 0; line-height: var(--lh-tight); }
+.voz-logo { width: 64px; height: 64px; object-fit: contain; border-radius: var(--radius); background: var(--voz-tarjeta); }
+.voz-marca { margin: 0; font-weight: 700; color: var(--voz-color); font-size: var(--fs-sm); }
+.voz-ayuda { margin: 0; color: var(--voz-suave); font-size: var(--fs-xs); }
+.voz-solo { margin: var(--sp-8) auto; text-align: center; max-width: 420px; }
+
+.voz-tarjeta {
+  background: var(--voz-tarjeta);
+  border: 1px solid var(--voz-borde);
+  border-radius: var(--radius-lg);
+  padding: var(--sp-4);
+}
+.voz-form { display: flex; flex-direction: column; gap: var(--sp-4); }
+.voz-campo { display: flex; flex-direction: column; gap: var(--sp-1); border: 0; margin: 0; padding: 0; }
+.voz-campo > label, .voz-campo > legend { font-weight: 600; font-size: var(--fs-sm); padding: 0; }
+.voz-obligatoria { font-weight: 400; color: var(--voz-suave); }
+.voz-campo > textarea,
+.voz-campo > input,
+.voz-campo > select {
+  min-height: var(--tap);
+  border: 1px solid var(--voz-borde);
+  border-radius: var(--radius-sm);
+  background: var(--voz-tarjeta);
+  color: var(--voz-texto);
+  /* 16 px: por debajo, Safari del iPhone acerca la pantalla al enfocar. */
+  font-size: var(--fs-md);
+  padding: var(--sp-2) var(--sp-3);
+  font-family: inherit;
+  width: 100%;
+  box-sizing: border-box;
+}
+.voz-campo > textarea { resize: vertical; }
+.voz-campo > textarea:focus, .voz-campo > input:focus, .voz-campo > select:focus { outline: none; border-color: var(--voz-color); box-shadow: 0 0 0 3px rgba(31, 111, 209, .18); }
+
+.voz-opciones { display: flex; gap: var(--sp-2); flex-wrap: wrap; margin-top: var(--sp-1); }
+.voz-opcion {
+  flex: 1 1 90px;
+  min-height: var(--tap);
+  display: flex; align-items: center; justify-content: center; gap: var(--sp-2);
+  border: 1px solid var(--voz-borde); border-radius: var(--radius-pill);
+  cursor: pointer; font-weight: 600; font-size: var(--fs-sm);
+}
+.voz-opcion input { width: 18px; height: 18px; margin: 0; accent-color: var(--voz-color); }
+.voz-opcion[data-escogida] { border-color: var(--voz-color); background: var(--voz-fondo); }
+.voz-opcion:focus-within { outline: 3px solid var(--voz-color); outline-offset: 2px; }
+
+.voz-permiso { display: flex; gap: var(--sp-2); align-items: flex-start; font-size: var(--fs-sm); min-height: var(--tap); cursor: pointer; }
+.voz-permiso input { width: 20px; height: 20px; margin-top: 2px; flex: none; accent-color: var(--voz-color); }
+
+/* La trampa para robots: fuera de la pantalla (no `display: none`: algunos robots lo saltan). */
+.voz-trampa { position: absolute; left: -10000px; width: 1px; height: 1px; overflow: hidden; }
+
+.voz-boton {
+  min-height: var(--tap);
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--voz-color);
+  color: var(--voz-sobre-color);
+  font-size: var(--fs-md);
+  font-weight: 700;
+  padding: var(--sp-3) var(--sp-5);
+  cursor: pointer;
+}
+.voz-boton:disabled { opacity: .6; cursor: default; }
+.voz-boton:focus-visible { outline: 3px solid var(--voz-color); outline-offset: 2px; }
+
+.voz-error { margin: 0; padding: var(--sp-2) var(--sp-3); border-radius: var(--radius-sm); background: #FDECEC; color: #9B1C1C; font-size: var(--fs-sm); }
+.voz-gracias { margin: 0; padding: var(--sp-4); border-radius: var(--radius); background: #E7F6EC; color: #1B5E2B; font-weight: 600; text-align: center; }

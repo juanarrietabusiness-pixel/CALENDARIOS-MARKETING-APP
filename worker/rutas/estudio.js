@@ -146,6 +146,8 @@ export async function rutasEstudio(req, env, { acceso, usuario, partes, metodo }
           ? productosActivos(mercado.catalogo).filter((p) => !limpio.productos.some((x) => x.id === p.id)).slice(0, 30).map((p) => ({ id: p.id, nombre: p.nombre }))
           : [],
         ...(perdidas.size ? { perdidas: [...perdidas].map((c) => ({ clave: c, ...protegidas.get(c) })) } : {}),
+        // Cuándo se aprobó el estudio de mercado: el semáforo de Marca pide revisarlo cada mes (curso, entrega 8).
+        estudioMercado: { aprobadoAt: mercado?.estudio?.aprobadoAt ?? null, conBorrador: Boolean(mercado?.borrador) },
       });
     }
 

@@ -43,6 +43,7 @@ import { rutasInspiracion } from "./rutas/inspiracion.js";
 import { inspiracionPendiente } from "./lib/inspiracion.js";
 import { rutasLoMejor } from "./rutas/loMejor.js";
 import { loMejorPendiente } from "./lib/loMejor.js";
+import { revision3qPendiente } from "./lib/revision3q.js";
 import { rutaModelos, rutaConsumo, rutaGasto } from "./rutas/iaEspacio.js";
 import { rutaADN, rutaImagenADN } from "./rutas/adn.js";
 import { rutaGenerarImagen } from "./rutas/imagen.js";
@@ -64,6 +65,7 @@ import { rutasRecetas } from "./rutas/recetas.js";
 import { rutasAnuncios } from "./rutas/anuncios.js";
 import { rutasHistoriasAuto } from "./rutas/historiasAuto.js";
 import { rutasVentas, rutaVentasPublica } from "./rutas/ventas.js";
+import { rutasWhatsApp, rutaVozPublica } from "./rutas/whatsapp.js";
 import { rutasTrozos } from "./rutas/trozos.js";
 import { avanzarPendientes } from "./lib/estudio/trabajos.js";
 import { rutasMCP, rutasMCPPublicas } from "./rutas/mcp.js";
@@ -269,6 +271,8 @@ export default {
       // «Tus ventas de la semana»: el enlace fijo de cada cliente, sin sesión.
       // Lee y escribe sólo SUS semanas (la actual y las dos anteriores).
       if (partes[0] === "publico-ventas") return await rutaVentasPublica(req, env, { partes, metodo });
+      // «La voz de tus clientes»: la encuesta que el cliente reenvía a sus clientes, sin sesión.
+      if (partes[0] === "publico-voz") return await rutaVozPublica(req, env, { partes, metodo });
 
       // La auditoría de perfil que se le manda a un cliente o a un
       // prospecto: igual que el informe, sin sesión y sólo si se compartió.
@@ -460,6 +464,8 @@ export default {
       if (partes[0] === "historias-auto") return await rutasHistoriasAuto(req, env, { acceso, partes, metodo });
       // Las ventas de cada semana que apunta el cliente (o la agencia), con la tasa de cierre medida y el ROAS real.
       if (partes[0] === "ventas") return await rutasVentas(req, env, { acceso, usuario, partes, metodo });
+      // El kit de WhatsApp Business de cada cliente y la voz de sus clientes (curso de campañas, entrega 8).
+      if (partes[0] === "whatsapp") return await rutasWhatsApp(req, env, { acceso, usuario, partes, metodo });
 
       // ---------- Medios ----------
       //
@@ -564,7 +570,11 @@ export default {
       if (inspiracion) return;
       // «Lo mejor»: los anuncios de las búsquedas guardadas una vez por semana (con su tope de créditos) o, si no, unas
       // pocas piezas sin clasificar (una llamada barata a la IA). Sólo si nada de lo de arriba tuvo trabajo.
-      await loMejorPendiente(env, cuando).catch((e) => console.error("cron lo mejor:", e));
+      const loMejor = await loMejorPendiente(env, cuando).catch((e) => { console.error("cron lo mejor:", e); return 1; });
+      if (loMejor) return;
+      // La revisión 3Q: lo GRAVE de las campañas de UN cliente al día (no gasta, anuncio rechazado, el doble del número
+      // mágico sin una conversación) a la campana. Lo último: tres lecturas de Meta y sólo si nada más tuvo trabajo.
+      await revision3qPendiente(env, cuando).catch((e) => console.error("cron revisión 3Q:", e));
     })());
   },
 };
