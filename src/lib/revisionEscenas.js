@@ -22,6 +22,7 @@ import {
 } from "./motorVideo.js";
 import { FORMATOS_VIDEO, tiempoDeCapa } from "./videoEscenas.js";
 import { DURACION_CUENTA } from "./motorPiezas.js";
+import { partirEnfasis, tiemposDePalabras } from "./motorTexto.js";
 
 /** Lo que se perdona al comparar con un borde (redondeos del reparto). */
 const TOLERANCIA = 2;
@@ -86,6 +87,13 @@ export function instanteLleno(guion, linea, indice) {
     // Lo que entra por partes también: la lista ítem a ítem, los mensajes del teléfono, el «después».
     const resto = tardaEnLlenarse(capa);
     if (resto) cuenta = Math.max(cuenta, desde + resto);
+    // Un texto palabra por palabra está entero cuando se DICE (o se canta) su última palabra, no cuando entra: con un
+    // titular cantado, la hoja enseñaba la escena con una palabra o vacía.
+    if (capa.tipo === "texto" && capa.porPalabra) {
+      const cuando = tiemposDePalabras(partirEnfasis(capa.texto).map((p) => p.texto), m.palabras ?? []).filter((x) => Number.isFinite(x));
+      const ultima = cuando.length ? Math.max(...cuando) : null;
+      if (ultima !== null && ultima < m.hasta) cuenta = Math.max(cuenta, ultima + dEntra + 0.05);
+    }
   }
   return Math.round(Math.min(m.hasta - 0.05, Math.max(m.desde, ultimo + dEntra + 0.1, cuenta)) * 100) / 100;
 }
@@ -110,6 +118,28 @@ export function revisarEscenas(ctx, { guion, linea, formato, recursos = {}, fuen
 
   // Lo más alto que puede ser un bloque (lo mismo que le da el motor: `altoUtil`).
   const maxAlto = area.h * (ancho > alto * 1.2 ? 0.82 : 0.62);
+  /**
+   * Lo que se VE de un texto: sus letras (y su placa), no la columna que le dio el reparto. El motor mide un texto con
+   * el ancho de su columna, que en 9:16 llega al 94 % del cuadro: comparar ESO con la zona estricta (hasta el 91 %)
+   * avisaba de todo titular, aunque sus letras quedaran en el centro. → la caja estrechada a lo que se dibuja (mismo
+   * cálculo que `dibujarCapa`).
+   */
+  function cajaVisible(capa, caja) {
+    if (capa?.tipo !== "texto") return caja;
+    const anchoTexto = caja.ancho ?? caja.w;
+    let tinta;
+    if (esTextoRico(capa)) tinta = encajarCapaTexto(ctx, capa, { ancho: anchoTexto, lado, fuentes, maxAlto }).anchoMax;
+    else {
+      const familia = (TIPO_POR_ROL[capa.rol] ?? TIPO_POR_ROL.titular).fuente === "titular" ? titular : cuerpo;
+      const enc = encajarTexto(ctx, capa.mayusculas ? String(capa.texto ?? "").toUpperCase() : (capa.texto ?? ""), { ancho: anchoTexto, lado, rol: capa.rol, familia });
+      ctx.font = enc.fuente;
+      tinta = Math.max(0, ...enc.lineas.map((l) => ctx.measureText(l).width));
+    }
+    const w = (tinta + (capa.placa ? lado * 0.035 * 2 : 0)) * (caja.escala ?? 1);
+    if (!(w > 0) || w >= caja.w) return caja;
+    const x = capa.alinear === "izq" ? caja.x : capa.alinear === "der" ? caja.x + caja.w - w : caja.x + (caja.w - w) / 2;
+    return { ...caja, x, w };
+  }
   /** Un texto con carácter: se sale, se encoge o se lee pequeño (el gigante, por su línea más pequeña). */
   function revisarTextoRico(capa, caja, de) {
     const r = TIPO_POR_ROL[capa.rol] ?? TIPO_POR_ROL.titular;
@@ -169,7 +199,7 @@ export function revisarEscenas(ctx, { guion, linea, formato, recursos = {}, fuen
       // 2b. En 9:16, el texto ESENCIAL (titular, llamado, sello, cifra) dentro de la zona estricta: entre el 13,5 y el 76 %
       //     del alto y el 5,5 y el 91 % del ancho (a la derecha van los botones de la red). Aviso: el reparto ya lo deja
       //     casi siempre dentro; esto caza una posición x/y o un tamaño que lo empuja.
-      else if (f === "9:16" && ESENCIAL.has(caja.tipo) && fueraDeLaZonaEstricta(caja, ancho, alto)) {
+      else if (f === "9:16" && ESENCIAL.has(caja.tipo) && fueraDeLaZonaEstricta(cajaVisible(porId.get(caja.id), caja), ancho, alto)) {
         de(caja, "zona_esencial", `${nombre} es texto esencial y queda fuera de la zona estricta de 9:16 (del 13,5 al 76 % del alto y del 5,5 al 91 % del ancho): ahí lo tapan la descripción o los botones de la red.`, false);
       }
       // 3. Encima de los subtítulos.

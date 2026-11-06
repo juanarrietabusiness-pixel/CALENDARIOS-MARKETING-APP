@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { validarGuion, lineaDeTiempo, ENTRADAS } from "./videoEscenas.js";
-import { dibujarFrame, estadoDeCapa, paletaDelKit, FILTRO_BYN, DURACION_GOLPE, esTextoRico, cajasDeEscena } from "./motorVideo.js";
+import { dibujarFrame, estadoDeCapa, paletaDelKit, FILTRO_BYN, DURACION_GOLPE, esTextoRico, cajasDeEscena, areaSegura } from "./motorVideo.js";
 import {
   partirEnfasis, sinMarcas, tieneEnfasis, lineasGigantes, tiemposDePalabras, impactoDe, FUENTE_CASA, FUENTE_IMPACTO,
   ARCHIVO_FUENTE_CASA, PESO_CASA,
@@ -181,13 +181,16 @@ describe("el motor", () => {
     expect(esTextoRico({ tipo: "texto", texto: "Hola", rol: "gigante" })).toBe(true);
   });
 
-  it("el gigante llena el ancho de su caja y la revisión no lo da por partido", () => {
+  it("el gigante llena el ancho de su caja, sin llegar a los botones de la red, y la revisión no lo da por partido", () => {
     const g = conCapa({ tipo: "texto", id: "t", texto: "Las manos más bellas de la historia", rol: "gigante" });
     const { ctx } = lienzo();
     const [caja] = cajasDeEscena(ctx, { guion: g, linea: lineaDeTiempo(g), indice: 0 });
-    expect(caja.w / caja.escala).toBeGreaterThan(1080 * 0.8);
+    expect(caja.w / caja.escala).toBeGreaterThan(areaSegura("9:16", 1080, 1920).w * 0.9);
+    // Lleno de lado a lado del área segura de 9:16 (del 9 al 91 %): dentro de la zona estricta del texto esencial.
+    expect(caja.x + caja.w).toBeLessThanOrEqual(1080 * 0.91 + 2);
     const problemas = revisarEscenas(lienzo().ctx, { guion: g, linea: lineaDeTiempo(g), formato: "9:16" });
     expect(problemas.map((p) => p.tipo)).not.toContain("texto_se_parte");
+    expect(problemas.map((p) => p.tipo)).not.toContain("zona_esencial");
     expect(problemas.filter((p) => p.grave)).toEqual([]);
   });
 });

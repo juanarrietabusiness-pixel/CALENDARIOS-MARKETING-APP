@@ -231,7 +231,7 @@ export const colorDe = (c, paleta) => (HEX.test(String(c ?? "")) ? c : paleta?.[
  * margen es menor y cumple lo mismo.
  */
 export const ZONA_SEGURA = Object.freeze({
-  "9:16": Object.freeze({ arriba: 0.12, abajo: 0.2, lados: 0.06 }),
+  "9:16": Object.freeze({ arriba: 0.12, abajo: 0.2, lados: 0.09 }),
   "1:1": Object.freeze({ arriba: 0.07, abajo: 0.1, lados: 0.07 }),
   "16:9": Object.freeze({ arriba: 0.08, abajo: 0.12, lados: 0.06 }),
 });

@@ -4698,7 +4698,7 @@ son del servidor.
   · **El MOTOR reparte por zonas; el guion no pone coordenadas** (`repartirEscena`, `areaSegura`, `bandaDeSubtitulos`).
   Con puntos fijos por nombre, la placa del texto tapaba la foto del producto y el tercio de abajo quedaba vacío. La
   zona de una capa dice su ORDEN; el motor la mide con el MISMO código que la dibuja (`medirCapa` pasa `dibujarCapa`
-  por un lienzo que sólo mide: no pueden discrepar) y reparte el alto del área segura (9:16: 12 % arriba y 20 % abajo
+  por un lienzo que sólo mide: no pueden discrepar) y reparte el alto del área segura (9:16: 12 % arriba, 20 % abajo y 9 % a cada lado
   libres) menos la franja de subtítulos. Una `forma` va detrás de la capa que la sigue; dos que no se ven a la vez
   comparten sitio; en 16:9 (el LIENZO, no la caja: en 1:1 la caja sin subtítulos es más ancha que alta) lo visual va en
   su columna. `cajasDeEscena` da las cajas para los tests, que exigen sin encimarse, dentro del área y usando el tercio
@@ -4940,7 +4940,12 @@ son del servidor.
   terminen de contar): `texto_pequeno` (menos del 3,5 % del lado, ~38 px), `espacio_vacio` (lo que se ve ocupa menos
   del 12 % del cuadro, o cabe en una franja de menos del 35 % del alto) y `desequilibrio` (el centro de lo que OCUPA la
   escena —no pesado por área: un titular ancho abajo y una cifra arriba no están «abajo»— se va más del 15 % del alto o
-  del 12 % del ancho). Son avisos, no graves.
+  del 12 % del ancho). Son avisos, no graves. Un texto `porPalabra` está «lleno» cuando se dice su ÚLTIMA palabra
+  (`instanteLleno`): con un titular cantado, la hoja enseñaba la escena con una palabra o vacía.
+  · **La zona estricta mira lo que SE VE** (`cajaVisible` en revisionEscenas.js): el motor mide un texto con el ancho de
+  su COLUMNA, no el de sus letras, y comparar eso con el 91 % avisaba de todos los titulares (37 avisos en el video de
+  57DMC). Y el área segura de 9:16 tiene ahora el 9 % libre a cada lado (`ZONA_SEGURA`, antes 6 %): el gigante y el
+  texto que crece llegaban al 94 %, debajo de los botones de la red.
   · **El SONIDO va aparte del guion** (`videos_proyectos.sonido`, 0060; `src/lib/sonidoVideo.js`, `efectosSonido.js`,
   `VideoSonido.jsx`; `PUT /api/videos/<c>/<id>/sonido`, herramientas `sonido_video` y `musicas`): cambiarlo NO sube la
   versión ni devuelve a borrador, así que no obliga a pagar otra voz; se oye al volver a renderizar (gratis). Los EFECTOS
