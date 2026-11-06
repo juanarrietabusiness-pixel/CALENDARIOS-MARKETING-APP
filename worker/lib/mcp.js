@@ -52,7 +52,7 @@ const escribe = (destructiva = false) => ({ readOnlyHint: false, destructiveHint
 
 /** La lista de herramientas, con la forma de MCP (`inputSchema`, `annotations`). */
 export const HERRAMIENTAS_MCP = Object.freeze([
-  { name: "listar_clientes", description: "Los clientes de la agencia, con su rubro, su Instagram y sus calendarios (mes y nombre). Empieza por aquí si no sabes el nombre exacto.", inputSchema: { type: "object", properties: {} }, annotations: soloLectura },
+  { name: "listar_clientes", description: "Los clientes de la agencia, con su rubro, su Instagram, sus calendarios (mes y nombre) y sus días fijos de la semana (los de Mi día). Empieza por aquí si no sabes el nombre exacto.", inputSchema: { type: "object", properties: {} }, annotations: soloLectura },
   { name: "ver_calendario", description: "Las publicaciones de un calendario de un cliente: fecha, ID, formato, hora, estado de aprobación, idea, descripción y guion, y si están EN PAUTA de verdad en su Ads Manager (etapa y costo por resultado, de la última revisión de campañas).", inputSchema: { type: "object", properties: { ...clienteParam, mes: { type: "string", description: "AAAA-MM. Si se omite, el más reciente." } }, required: ["cliente"] }, annotations: soloLectura },
   { name: "ver_cola", description: "La cola de publicación: qué sale en los próximos días, qué falló (con el motivo) y qué salió. De todos los clientes o de uno.", inputSchema: { type: "object", properties: { ...clienteParam, dias: { type: "integer", description: "Días hacia delante. Por defecto 7." } } }, annotations: soloLectura },
   { name: "ver_tareas", description: "Las tareas de un cliente, o todas si no se indica cliente.", inputSchema: { type: "object", properties: { ...clienteParam, estado: { type: "string", enum: ["pendientes", "terminadas", "todas"] } } }, annotations: soloLectura },
@@ -132,6 +132,21 @@ export const HERRAMIENTAS_MCP = Object.freeze([
 /** Un error de lo pedido: vuelve a Claude como resultado con `isError`, no como fallo del servidor. */
 class ErrorHerramienta extends Error {}
 
+// Los días fijos de cada empresa en Mi día (`clients.dias_trabajo`, 1 = lunes … 6 = sábado). La agenda personal de Juan
+// los lee de aquí para decirle qué empresa toca hoy en su bloque de Trabajo.
+const NOMBRES_DIA = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
+export function diasFijos(valor) {
+  let v = valor;
+  if (typeof v === "string") {
+    try {
+      v = JSON.parse(v);
+    } catch {
+      return [];
+    }
+  }
+  return Array.isArray(v) ? [...new Set(v.map(Number).filter((n) => Number.isInteger(n) && n >= 1 && n <= 6))].sort((a, b) => a - b) : [];
+}
+
 export function crearHerramientasMCP({ env, acceso, usuario }) {
   const consultas = crearEjecutor({ env, acceso });
   const por = { userId: usuario.id, nombre: `Claude (${usuario.nombre})`, color: "#D97757", tab: null };
@@ -195,7 +210,8 @@ export function crearHerramientasMCP({ env, acceso, usuario }) {
       const cals = await acceso.leer("calendars", {}, "year desc, month desc");
       return clientes.map((c) => {
         const suyos = cals.filter((k) => k.client_id === c.id).map((k) => `${k.year}-${String(k.month + 1).padStart(2, "0")}${k.name ? ` («${k.name}»)` : ""}`);
-        return `· ${c.name}${c.industry ? ` — ${c.industry}` : ""}${c.instagram ? ` · ${c.instagram}` : ""}\n  Calendarios: ${suyos.join(", ") || "ninguno"}`;
+        const fijos = diasFijos(c.dias_trabajo);
+        return `· ${c.name}${c.industry ? ` — ${c.industry}` : ""}${c.instagram ? ` · ${c.instagram}` : ""}\n  Calendarios: ${suyos.join(", ") || "ninguno"}${fijos.length ? `\n  Días fijos: ${fijos.map((d) => NOMBRES_DIA[d]).join(", ")}` : ""}`;
       }).join("\n") || "Todavía no hay clientes.";
     },
 
