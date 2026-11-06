@@ -135,6 +135,8 @@ export const TABLAS_CON_DUENO = Object.freeze([
   "anuncios_clientes",
   // Las ventas de cada semana que apunta el cliente por su enlace (o la agencia): worker/lib/ventas.js.
   "ventas_semana",
+  // Lo que contestan los clientes de un cliente en «La voz de tus clientes» (worker/lib/whatsapp.js).
+  "voz_cliente",
   // Las historias automáticas: el interruptor de cada cliente y la historia hecha de cada publicación (worker/lib/historiasAuto.js).
   "historias_auto",
   "historias_auto_piezas",
@@ -180,6 +182,7 @@ export const TABLAS_CON_CLIENTE = Object.freeze([
   "handoffs",
   "lo_mejor_anuncios",
   "tendencias_palabras", "tendencias_videos",
+  "voz_cliente",
 ]);
 
 /** Las que cuelgan de un calendario sin llevar el cliente: se acotan por el calendario. */

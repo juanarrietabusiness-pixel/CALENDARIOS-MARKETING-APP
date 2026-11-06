@@ -473,3 +473,29 @@ export async function clienteDeVentasPorTestigo(db, token) {
     logo: typeof f.logo === "string" && f.logo.startsWith("data:image/") ? f.logo : null,
   };
 }
+
+/**
+ * El cliente del enlace «La voz de tus clientes» (`/voz?t=…`), o null. Como el de ventas: la ÚNICA lectura sin dueño
+ * del enlace, que devuelve el espacio y el cliente para construir la capa de acceso; lo demás (el catálogo, guardar una
+ * respuesta) va acotado por ella en worker/lib/whatsapp.js. El cliente tiene que ser del mismo espacio que la fila.
+ */
+export async function clienteDeVozPorTestigo(db, token) {
+  if (!testigoValido(token)) return null;
+  const f = await db
+    .prepare(
+      `select a.owner_id, a.client_id, c.name, c.primary_color, c.logo
+         from anuncios_clientes a
+         join clients c on c.id = a.client_id and c.owner_id = a.owner_id
+        where a.testigo_voz = ?`,
+    )
+    .bind(token)
+    .first();
+  if (!f) return null;
+  return {
+    ownerId: f.owner_id,
+    clientId: f.client_id,
+    nombre: f.name ?? "",
+    color: f.primary_color ?? "",
+    logo: typeof f.logo === "string" && f.logo.startsWith("data:image/") ? f.logo : null,
+  };
+}

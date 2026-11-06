@@ -9,6 +9,8 @@
 // Se calcula con lo que YA devuelve GET /api/estudio (kit, productos con fotos, `sinFotos`, archivos con su «Me gusta»,
 // `perdidas`) y, si se tiene, el estado del cerebro (GET /api/cerebro/<c>: `conFicha`, `fichaVieja`): ninguna consulta
 // nueva. Cada punto lleva su arreglo, a un toque: a dónde ir (`ir`: [pestaña, sub-sección]) o qué hacer (`accion`).
+// Desde el curso de campañas (entrega 8), también el ESTUDIO DE MERCADO, que se revisa una vez al mes
+// (`estudioMercado` de la misma respuesta: cuándo se aprobó y si hay un borrador).
 // ============================================================
 
 export const ESTADOS_SEMAFORO = Object.freeze({
@@ -19,6 +21,12 @@ export const ESTADOS_SEMAFORO = Object.freeze({
 
 /** Cuántos «Me gusta» hacen falta para que el director tenga de dónde aprender el gusto de la agencia. */
 export const MIN_GUSTOS = 3;
+
+/**
+ * Cada cuántos días se revisa el estudio de mercado (curso de campañas, módulo 3: la competencia, las objeciones y lo
+ * que dicen los clientes cambian; se mira al menos una vez al mes).
+ */
+export const DIAS_REVISAR_ESTUDIO = 30;
 
 const lista = (x) => (Array.isArray(x) ? x : []);
 const nombres = (xs, max = 3) => {
@@ -33,7 +41,7 @@ export const kitConMarca = (kit) => Boolean(lista(kit?.paleta).length || kit?.ti
  * Los puntos del semáforo: [{ id, nombre, estado («verde» | «ambar» | «rojo»), texto, arreglo }]. Sin `estudio` (aún no
  * se leyó), lista vacía. Sin `cerebro`, la ficha técnica no sale (no se sabe). Pura.
  */
-export function semaforoDelKit({ estudio = null, cerebro = null } = {}) {
+export function semaforoDelKit({ estudio = null, cerebro = null, ahora = Date.now() } = {}) {
   if (!estudio) return [];
   const kit = estudio.kit ?? {};
   const conFotos = lista(estudio.productos);
@@ -85,11 +93,34 @@ export function semaforoDelKit({ estudio = null, cerebro = null } = {}) {
         : { id: "ficha", nombre: "Ficha técnica del cerebro", estado: "verde", texto: "Al día: la IA la lee en todo lo que escribe." });
   }
 
+  // El estudio de mercado, revisado una vez al mes (sólo si GET /api/estudio lo trae: `estudioMercado`).
+  if (estudio.estudioMercado !== undefined) puntos.push(puntoDelEstudio(estudio.estudioMercado, ahora));
+
   puntos.push(kit.locucion?.voz
     ? { id: "voz", nombre: "Voz de la marca", estado: "verde", texto: "Fijada: la de sus videos." }
     : { id: "voz", nombre: "Voz de la marca", estado: "ambar", texto: "Sin voz fijada: cada video sale con la que se escoja.", arreglo: { etiqueta: "Escoger la voz", ir: ["marca", "kit"] } });
 
   return puntos;
+}
+
+/**
+ * El punto del estudio de mercado: ámbar si no hay uno aprobado o si se aprobó hace más de DIAS_REVISAR_ESTUDIO días,
+ * con su arreglo (Marca → Cerebro, abierto en el estudio). Pura.
+ */
+export function puntoDelEstudio(m, ahora = Date.now()) {
+  const arreglo = (etiqueta) => ({ etiqueta, ir: ["marca", "cerebro"], mercado: "estudio" });
+  const base = { id: "mercado", nombre: "Estudio de mercado" };
+  const t = Date.parse(m?.aprobadoAt ?? "");
+  if (!Number.isFinite(t)) {
+    return m?.conBorrador
+      ? { ...base, estado: "ambar", texto: "Hay un borrador sin aprobar: hasta aprobarlo, la IA no lo usa.", arreglo: arreglo("Revisarlo y aprobarlo") }
+      : { ...base, estado: "ambar", texto: "Sin estudio aprobado: los anuncios y el kit de WhatsApp salen sin las 7 maletas.", arreglo: arreglo("Hacer el estudio") };
+  }
+  const dias = Math.max(0, Math.floor((ahora - t) / 86_400_000));
+  if (dias > DIAS_REVISAR_ESTUDIO) {
+    return { ...base, estado: "ambar", texto: `Aprobado hace ${dias} días: toca revisarlo (la competencia, las objeciones y lo que dicen los clientes cambian).`, arreglo: arreglo("Revisarlo") };
+  }
+  return { ...base, estado: "verde", texto: dias === 0 ? "Aprobado hoy." : `Aprobado hace ${dias === 1 ? "1 día" : `${dias} días`}: se revisa cada mes.` };
 }
 
 /** El resumen: { rojos, ambar, verdes, estado } (el peor de todos). Pura. */

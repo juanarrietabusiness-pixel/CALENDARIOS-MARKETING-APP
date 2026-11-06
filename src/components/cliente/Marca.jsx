@@ -23,6 +23,8 @@ import "./cliente.css";
 //
 // Arriba, el SEMÁFORO del kit (lib/semaforoKit.js): qué le falta para que el diseño salga bien, con el arreglo a un
 // toque. Se calcula con GET /api/estudio (que también usa el kit) y el estado del cerebro: ninguna consulta nueva.
+// Con el curso de campañas suma el estudio de mercado (revisarlo cada mes) y la sub-sección «WhatsApp»: el kit de
+// WhatsApp Business y la voz de sus clientes (negocio/KitWhatsApp.jsx).
 // ============================================================
 
 const FichaCliente = lazy(() => import("../FichaCliente"));
@@ -33,11 +35,14 @@ const PestanaContenido = lazy(() => import("../PestanaContenido"));
 const EditorSemana = lazy(() => import("../calendario/PlanSemanal").then((m) => ({ default: m.EditorSemana })));
 const FechasEspecialesDialog = lazy(() => import("../calendario/fechasEspeciales").then((m) => ({ default: m.FechasEspecialesDialog })));
 const NumerosNegocio = lazy(() => import("../negocio/NumerosNegocio"));
+// El kit de WhatsApp Business y la voz de sus clientes (curso de campañas, entrega 8).
+const KitWhatsApp = lazy(() => import("../negocio/KitWhatsApp"));
 
 const SUBPESTANAS_MARCA = Object.freeze([
   ["ficha", "Ficha", "building"],
   ["kit", "Kit y voz", "palette"],
   ["negocio", "Números del negocio", "calculator"],
+  ["whatsapp", "WhatsApp", "messageCircle"],
   ["cerebro", "Cerebro", "brain"],
   ["plan", "Plan semanal", "grid"],
   ["fechas", "Fechas", "calendar"],
@@ -206,6 +211,7 @@ export default function Marca({ client, seccion = null, pulso = 0, lectura = fal
           {actual === "ficha" && <FichaCliente client={client} onEditar={onEditar} />}
           {actual === "kit" && <KitYVoz client={client} estudio={estudio} lectura={lectura} onCambio={cargar} onError={setError} />}
           {actual === "negocio" && <NumerosNegocio key={client.id} client={client} lectura={lectura} pulso={pulso} />}
+          {actual === "whatsapp" && <KitWhatsApp key={client.id} client={client} lectura={lectura} />}
           {actual === "cerebro" && <Cerebro client={client} abrirMercado={abrirMercado} />}
           {actual === "plan" && <PlanDeLaSemana client={client} lectura={lectura} onGuardarPlan={onGuardarPlan} />}
           {actual === "fechas" && <FechasDelCliente client={client} lectura={lectura} onGuardarFechas={onGuardarFechas} />}

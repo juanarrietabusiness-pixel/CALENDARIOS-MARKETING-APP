@@ -1,0 +1,91 @@
+/* ============================================================
+   Marca → WhatsApp: el kit de WhatsApp Business y la voz de los clientes
+   (KitWhatsApp.jsx, VozDelCliente.jsx). Va con su chunk: el CSS inicial
+   (index.css) está en su tope.
+   ============================================================ */
+
+.kw { display: flex; flex-direction: column; gap: var(--sp-4); }
+.kw h3 { margin: 0 0 var(--sp-1); font-size: var(--fs-lg); }
+.kw h4 { margin: 0; font-size: var(--fs-md); }
+.kw .card { display: flex; flex-direction: column; gap: var(--sp-3); padding: var(--sp-4); }
+
+.kw-cabecera { display: flex; flex-wrap: wrap; gap: var(--sp-3); justify-content: space-between; align-items: flex-start; }
+.kw-cabecera > div:first-child { flex: 1 1 320px; }
+.kw-cabecera .hint { margin: 0; }
+.kw-botones, .kw-acciones { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; }
+.kw-acciones { justify-content: flex-end; }
+
+.kw-estado { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; }
+.kw-estado p { margin: 0; font-size: var(--fs-xs); color: var(--text-muted); }
+
+.kw-pregunta { display: flex; flex-direction: column; gap: var(--sp-2); }
+.kw-avisos { margin: 0; padding-left: calc(var(--sp-4) + var(--sp-2)); display: flex; flex-direction: column; gap: var(--sp-1); }
+.kw-pendientes { font-size: var(--fs-sm); }
+.kw-pendientes > summary { cursor: pointer; min-height: var(--tap-sm); display: flex; align-items: center; font-weight: 600; }
+.kw-pendientes ul { margin: var(--sp-1) 0 0; padding-left: var(--sp-5); display: flex; flex-direction: column; gap: 2px; }
+
+.kw-bloque .hint { margin: 0; }
+.kw-campo { display: flex; flex-direction: column; gap: var(--sp-1); min-width: 0; }
+.kw-campo .label { margin: 0; }
+.kw-fila { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: flex-end; }
+.kw-fila > .kw-campo { flex: 1 1 160px; }
+.kw-fila > .kw-crece { flex: 3 1 240px; }
+.kw-atajo { flex: 0 1 180px !important; }
+.kw-atajo-caja { display: flex; align-items: center; gap: var(--sp-1); }
+.kw-atajo-caja > span { font-weight: 700; color: var(--text-dim); }
+.kw-atajo-caja .input { flex: 1; min-width: 0; }
+
+.kw-lista { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-3); }
+.kw-item {
+  display: flex; flex-direction: column; gap: var(--sp-2);
+  padding: var(--sp-3); border-radius: var(--radius-sm); background: var(--surface-2); border: 1px solid var(--border);
+}
+.kw-item.kw-fila { flex-direction: row; }
+.kw-quitar { align-self: flex-end; }
+
+.kw-sello {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px var(--sp-2); border-radius: var(--radius-pill);
+  font-size: var(--fs-3xs); font-weight: 700; background: var(--surface-3); color: var(--text-dim);
+  margin-left: var(--sp-1);
+}
+.kw-sello[data-tipo="editado"], .kw-sello[data-tipo="nueva"] { background: var(--accent-soft); color: var(--text); }
+.kw-sello[data-tipo="testimonio"] { background: var(--alt-soft, var(--accent-soft)); color: var(--text); }
+
+.kw-guion { border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); }
+.kw-guion > summary {
+  cursor: pointer; list-style: none; min-height: var(--tap);
+  display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+}
+.kw-guion > summary::-webkit-details-marker { display: none; }
+.kw-guion > summary svg { transition: transform .2s; flex: none; }
+.kw-guion[open] > summary svg { transform: rotate(180deg); }
+.kw-guion-cuerpo { display: flex; flex-direction: column; gap: var(--sp-3); padding: 0 var(--sp-3) var(--sp-3); }
+.kw-objeciones { border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-2); }
+.kw-objecion { display: flex; flex-direction: column; gap: var(--sp-2); padding-left: var(--sp-3); border-left: 3px solid var(--border-strong); }
+.kw-objecion > .btn { align-self: flex-start; }
+
+/* La voz de los clientes */
+.kw-resumen { margin: 0; font-size: var(--fs-sm); }
+.kw-propuesta { display: flex; flex-direction: column; gap: var(--sp-3); }
+.kw-propuesta-producto { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: var(--sp-3); margin: 0; display: flex; flex-direction: column; gap: var(--sp-2); }
+.kw-propuesta-producto > legend { font-weight: 700; padding: 0 var(--sp-1); }
+.kw-propuesta-titulo { margin: 0; font-size: var(--fs-2xs); font-weight: 700; color: var(--text-dim); text-transform: uppercase; letter-spacing: .05em; }
+.kw-propuesta-maleta { display: flex; flex-direction: column; gap: var(--sp-1); }
+.kw-casilla { display: flex; gap: var(--sp-2); align-items: flex-start; font-size: var(--fs-sm); min-height: var(--tap-sm); cursor: pointer; }
+.kw-casilla input { margin-top: 3px; width: 18px; height: 18px; flex: none; }
+
+.kw-respuestas { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-2); }
+.kw-respuesta { padding: var(--sp-3); border-radius: var(--radius-sm); background: var(--surface-2); border: 1px solid var(--border); display: flex; flex-direction: column; gap: var(--sp-2); }
+.kw-respuesta > .btn { align-self: flex-end; }
+.kw-respuesta-cabecera { display: flex; flex-wrap: wrap; gap: var(--sp-1) var(--sp-2); align-items: center; }
+.kw-respuesta-cabecera .hint { margin: 0; }
+.kw-respuesta-texto { margin: 0; display: flex; flex-direction: column; gap: var(--sp-1); font-size: var(--fs-sm); }
+.kw-respuesta-texto dt { color: var(--text-dim); font-size: var(--fs-xs); }
+.kw-respuesta-texto dd { margin: 0; }
+
+@media (max-width: 599px) {
+  .kw-item.kw-fila { flex-direction: column; align-items: stretch; }
+  .kw-acciones { justify-content: flex-start; }
+}
