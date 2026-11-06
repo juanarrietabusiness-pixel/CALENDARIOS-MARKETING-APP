@@ -80,4 +80,13 @@ textarea {
 .error { color: var(--r-error); }
 .aviso { color: var(--r-revisar); font-size: 12px; }
 .texto { white-space: pre-line; color: var(--texto-2); }
+/* Los audios y videos: cada uno en su tarjeta, a todo el ancho (también en el teléfono). */
+.lista-medios { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.medio { border: 1px solid var(--borde); border-radius: var(--radio); background: var(--fondo); padding: 8px; display: grid; gap: 6px; min-width: 0; }
+.medio audio { display: block; width: 100%; min-height: 40px; }
+.medio video { display: block; width: 100%; max-height: 520px; background: #000; border-radius: var(--radio-chico); }
+.hueco-medio { min-height: 48px; display: grid; place-items: center; padding: 8px; border-radius: var(--radio-chico); background: var(--fondo-2); color: var(--texto-2); font-size: 12px; text-align: center; }
+.medio.video .hueco-medio { aspect-ratio: 9 / 16; max-height: 320px; }
+.hueco-medio.en_marcha, .hueco-medio.esperando { animation: latir 1.6s ease-in-out infinite; }
+.fallo-medio { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; padding: 8px; border-radius: var(--radio-chico); background: var(--fondo-2); color: var(--texto-2); font-size: 12px; }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; } }

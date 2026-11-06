@@ -8,12 +8,19 @@
 //      segundos por `tools/call` —claude.ai la reenvía al conector— y las piezas aparecen según salen.
 //   4. Lo que toca la persona: «Me gusta» (`me_gusta_pieza`), «Pedir un cambio» y «Crear» escriben en el chat
 //      (`ui/message`: Claude sigue con sus herramientas y su confirmación de costo), «Abrir en el Estudio» (`ui/open-link`).
+//   5. Los AUDIOS y VIDEOS (la muestra de una voz, la locución, la música, el mp4) se reproducen con <audio>/<video> desde
+//      su dirección firmada en el origen del conector (el recurso la declara en su `csp.resourceDomains`). Cada
+//      reproductor se REUTILIZA al repintar: si no, una vuelta o un «Me gusta» cortaría lo que se está oyendo. Si no
+//      carga y su dirección caducó, se pide otra (`vista_medios`); si aun así no, «Abrir» (fuera del iframe).
 //
 // Sin dependencias: el protocolo son cuatro mensajes, y la página va entera dentro del recurso (pagina.generada.js, que
 // sale de aquí con `node scripts/mcp/generar-vista.mjs`). Lo puro está en modelo.js y tiene sus pruebas.
 // ============================================================
 
-import { leerResultado, idsConImagen, proximaVuelta, mensajeDeCambio, mensajeDeCrear, cuentaDeListas, ESTADOS_PIEZA } from "./modelo.js";
+import {
+  leerResultado, idsConImagen, proximaVuelta, mensajeDeCambio, mensajeDeCrear, cuentaDeListas, ESTADOS_PIEZA,
+  conFallo, tocaRenovar, conRenovados, direccionValida, reloj,
+} from "./modelo.js";
 
 const PROTOCOLO = "2026-01-26";
 const PLAZO_MS = 90_000;
@@ -49,6 +56,10 @@ let detenido = false;
 /** La huella de lo último pintado: si una vuelta no trae nada nuevo, no se repinta (ni se pierde el foco). */
 let huella = "";
 const cambios = new Map(); // id de la pieza → { abierto, borrador }
+/** Los reproductores ya creados (`audio:<id>`, `video:<id>`): se reutilizan al repintar para no cortar lo que suena. */
+const reproductores = new Map();
+/** Las direcciones que se están renovando (no se pide dos veces la misma). */
+const renovando = new Set();
 
 window.addEventListener("message", (ev) => {
   if (ev.source !== window.parent) return;
@@ -205,6 +216,43 @@ async function escribirEnElChat(texto) {
   }
 }
 
+async function abrirDireccion(url) {
+  if (!direccionValida(url)) return;
+  try {
+    await pedir("ui/open-link", { url });
+  } catch (e) {
+    estado = `No se pudo abrir (${e.message}). Cópiala: ${url}`;
+    pintar();
+  }
+}
+
+/** Un reproductor no cargó: si su dirección caducó, se pide otra; si no (o ya se pidió), se marca y sale «Abrir». */
+async function alFallarMedio(tipo, id) {
+  const lista = tipo === "video" ? modelo?.videos : modelo?.audios;
+  const m = lista?.find((x) => x.id === id);
+  if (!m) return;
+  if (tocaRenovar(m) && !renovando.has(m.ref)) {
+    renovando.add(m.ref);
+    try {
+      const r = await pedir("tools/call", { name: "vista_medios", arguments: { refs: [m.ref] } });
+      const nuevo = conRenovados(modelo, r);
+      const otra = (tipo === "video" ? nuevo?.videos : nuevo?.audios)?.find((x) => x.id === id);
+      if (otra?.renovado) {
+        modelo = nuevo;
+        reproductores.delete(`${tipo}:${id}`);
+        pintar();
+        return;
+      }
+    } catch {
+      // Sin respuesta: queda marcado y sale «Abrir».
+    } finally {
+      renovando.delete(m.ref);
+    }
+  }
+  modelo = conFallo(modelo, tipo, id);
+  pintar();
+}
+
 async function abrirEstudio() {
   const url = modelo?.cliente?.enlace;
   if (!url) return;
@@ -306,6 +354,63 @@ function tarjeta(p, i) {
       formularioDeCambio(p)));
 }
 
+/** El <audio> o <video> de un medio: el mismo elemento mientras no cambie su dirección. */
+function reproductor(tipo, m) {
+  const clave = `${tipo}:${m.id}`;
+  const previo = reproductores.get(clave);
+  if (previo && previo.dataset.src === m.url) return previo;
+  const titulo = m.titulo || (tipo === "video" ? "el video" : "el audio");
+  const n = document.createElement(tipo);
+  n.controls = true;
+  n.preload = "metadata";
+  if (tipo === "video") {
+    n.playsInline = true;
+    n.setAttribute("playsinline", "");
+    if (m.poster) n.poster = m.poster;
+  }
+  n.dataset.src = m.url;
+  n.setAttribute("aria-label", `${tipo === "video" ? "Ver" : "Escuchar"} «${titulo}»`);
+  n.addEventListener("error", () => { if (reproductores.get(clave) === n) alFallarMedio(tipo, m.id); });
+  n.src = m.url;
+  reproductores.set(clave, n);
+  return n;
+}
+
+function tarjetaDeMedio(tipo, m) {
+  const titulo = m.titulo || (tipo === "video" ? "Video" : "Audio");
+  const datos = [m.voz ? `Voz: ${m.voz}` : "", reloj(m.duracion), m.estado === "lista" ? m.nota ?? "" : ""].filter(Boolean).join(" · ");
+  let cuerpo;
+  if (m.estado !== "lista") {
+    const texto = m.nota || ESTADOS_PIEZA[m.estado] || "";
+    cuerpo = el("div", { class: `hueco-medio ${m.estado}`, role: "img", "aria-label": `${titulo}: ${texto}` }, el("span", { texto }));
+  } else if (!m.url) {
+    cuerpo = el("p", { class: "fallo-medio", texto: "No se puede reproducir aquí: está en la aplicación, en el Estudio del cliente." });
+  } else if (m.fallo) {
+    cuerpo = el("div", { class: "fallo-medio" },
+      el("p", { texto: `No se pudo cargar ${tipo === "video" ? "el video" : "el audio"} aquí.` }),
+      el("button", { type: "button", texto: "Abrir", "aria-label": `Abrir «${titulo}» fuera del chat`, onclick: () => abrirDireccion(m.url) }));
+  } else {
+    cuerpo = reproductor(tipo, m);
+  }
+  return el("li", { class: `medio ${tipo}` },
+    el("p", { class: "nombre", texto: titulo }),
+    datos ? el("p", { class: "nota", texto: datos }) : null,
+    cuerpo);
+}
+
+function medios() {
+  const audios = modelo.audios ?? [];
+  const videos = modelo.videos ?? [];
+  // Lo que ya no se enseña suelta su reproductor (y deja de sonar).
+  const vivos = new Set([...audios.map((m) => `audio:${m.id}`), ...videos.map((m) => `video:${m.id}`)]);
+  for (const [k, n] of reproductores) if (!vivos.has(k)) { n.pause?.(); reproductores.delete(k); }
+  if (!audios.length && !videos.length) return null;
+  return el("section", { class: "medios", "aria-label": videos.length && audios.length ? "Videos y audios" : videos.length ? "Videos" : "Audios" },
+    el("ul", { class: "lista-medios" },
+      videos.map((m) => tarjetaDeMedio("video", m)),
+      audios.map((m) => tarjetaDeMedio("audio", m))));
+}
+
 function grande() {
   const lista = modelo.piezas.filter((p) => p.src);
   const k = lista.findIndex((p) => p.id === ampliada);
@@ -362,9 +467,17 @@ function pintar() {
   const nueva = huellaDe();
   if (nueva === huella) return;
   huella = nueva;
+  // Lo que tiene el foco se recupera tras repintar (el campo de un cambio, con lo que se estaba escribiendo, o el
+  // reproductor que se estaba tocando): se mira ANTES de armar lo nuevo, que se lleva los reproductores consigo.
+  const activo = document.activeElement;
+  const id = activo?.id;
+  const sel = id && "selectionStart" in activo ? [activo.selectionStart, activo.selectionEnd] : null;
+  const medioActivo = [...reproductores.values()].includes(activo) ? activo : null;
   const partes = [cabecera()];
   if (modelo.error) partes.push(el("p", { class: "error", role: "alert", texto: modelo.error }));
   if (modelo.aviso) partes.push(el("p", { class: "aviso", texto: modelo.aviso }));
+  const reproductoresDeMedios = modelo.tipo === "plan" ? null : medios();
+  if (reproductoresDeMedios) partes.push(reproductoresDeMedios);
   if (modelo.tipo === "plan") partes.push(plan());
   else if (ampliada && modelo.piezas.some((p) => p.id === ampliada && p.src)) partes.push(grande());
   else if (modelo.piezas.length) {
@@ -372,6 +485,8 @@ function pintar() {
     const lista = el("ul", { class: `rejilla ${modelo.tipo === "cuadros" ? "una" : ""}`.trim() });
     modelo.piezas.forEach((p, i) => lista.append(tarjeta(p, i)));
     partes.push(lista);
+  } else if (reproductoresDeMedios) {
+    // Sólo audio o video: ya están arriba.
   } else if (modelo.texto) partes.push(el("p", { class: "texto", texto: modelo.texto }));
   else if (modelo.seguir) partes.push(el("p", { class: "sub espera", texto: "Preparando las piezas…" }));
 
@@ -380,15 +495,13 @@ function pintar() {
     detenido && modelo.seguir ? el("button", { type: "button", texto: "Actualizar", onclick: retomar }) : null);
   if (pie.childElementCount) partes.push(pie);
   partes.push(el("p", { class: "estado", role: "status", texto: estado }));
-  // Lo que tiene el foco se recupera tras repintar (el campo de un cambio, con lo que se estaba escribiendo).
-  const activo = document.activeElement;
-  const id = activo?.id;
-  const sel = id && "selectionStart" in activo ? [activo.selectionStart, activo.selectionEnd] : null;
   r.replaceChildren(...partes);
   const otra = id ? document.getElementById(id) : null;
   if (otra) {
     otra.focus();
     if (sel) otra.setSelectionRange(...sel);
+  } else if (medioActivo?.isConnected) {
+    medioActivo.focus({ preventScroll: true });
   }
 }
 

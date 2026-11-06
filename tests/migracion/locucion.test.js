@@ -426,7 +426,11 @@ describe("el asistente y Claude (MCP)", () => {
     expect(await h.generar_locucion({ video_id: v.id, confirmado: "sí" })).toMatch(/^NO SE CREÓ NADA/);
 
     const con = await h.generar_locucion({ video_id: v.id, confirmado: true });
-    expect(con).toMatch(/^Pedido creado: /);
+    expect(con.texto).toMatch(/^Pedido creado: /);
+    // La vista previa del chat de Claude: el hueco de la toma, que se pone al día sola hasta que suena.
+    expect(con.imagenes).toEqual([]);
+    expect(con.vista).toMatchObject({ tipo: "medios", estado: "en_marcha", seguir: { herramienta: "vista_trabajo" } });
+    expect(con.vista.audios[0]).toMatchObject({ estado: "en_marcha", url: null });
     expect(trabajos()).toHaveLength(1);
     expect(trabajos()[0]).toMatchObject({ tipo: "audio", origen: "asistente" });
   });
@@ -438,7 +442,11 @@ describe("el asistente y Claude (MCP)", () => {
     expect(await h.previsualizar_voz({ voz: "hpp4J3VqNfWAUOO0d1Us" })).toMatch(/^NO SE CREÓ NADA/);
     expect(llamadas).toHaveLength(0);
     env.MEDIA.objetos.set("voces/elevenlabs/v3/hpp4J3VqNfWAUOO0d1Us.mp3", { bytes: mp3(1), tipo: "audio/mpeg" });
-    expect(await h.previsualizar_voz({ voz: "hpp4J3VqNfWAUOO0d1Us" })).toMatch(/ya está hecha: se oye en \/api\/videos\/bc\/voces\/muestra\?modelo=v3/);
+    const hecha = await h.previsualizar_voz({ voz: "hpp4J3VqNfWAUOO0d1Us" });
+    expect(hecha.texto).toMatch(/ya está hecha: se oye en \/api\/videos\/bc\/voces\/muestra\?modelo=v3/);
+    // Y su dirección firmada (para oírla fuera de la aplicación), la misma que reproduce la vista previa del chat.
+    expect(hecha.vista.audios[0]).toMatchObject({ estado: "lista", ref: "muestra:v3:hpp4J3VqNfWAUOO0d1Us:", url: expect.stringMatching(/^\/api\/vista-medio\/[^/]+\/hpp4J3VqNfWAUOO0d1Us\.mp3$/) });
+    expect(hecha.texto).toContain(hecha.vista.audios[0].url);
     expect(await h.previsualizar_voz({ voz: "hpp4J3VqNfWAUOO0d1Us", texto: "[cálida] Hola, mamá." })).toMatch(/^NO SE CREÓ NADA.*\(20 caracteres\)/);
     await expect(h.generar_locucion({ video_id: "no-existe", confirmado: true })).rejects.toThrow(/No encontré el video/);
   });

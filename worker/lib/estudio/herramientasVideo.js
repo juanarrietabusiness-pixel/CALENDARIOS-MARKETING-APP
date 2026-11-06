@@ -50,6 +50,7 @@ import { instanteLleno } from "../../../src/lib/revisionEscenas.js";
 import { pedidoConClips, alContenedor, respuestaEnBase64 } from "./cuadros.js";
 import { pedirRender, renderAlDia, ligarAPublicacion } from "./render.js";
 import { vistaDe, piezaDe } from "../mcpVista/modelo.js";
+import { vistaDeVideo, lineasDeMedios } from "./vistaMedios.js";
 
 const clienteParam = { cliente: { type: "string", description: "Nombre del cliente. En el asistente de un cliente se puede omitir: es ese cliente." } };
 const videoParam = { video_id: { type: "string", description: "ID del proyecto de video (de listar_videos o crear_video)." } };
@@ -328,8 +329,12 @@ export function crearHerramientasVideo({ env, acceso, resolverCliente, usuario, 
     async ver_video({ cliente, video_id: id }) {
       const c = await resolverCliente(cliente);
       return conErrores(async () => {
-        const video = deFila(await renderAlDia(acceso, await proyectoDe(acceso, c.id, id)));
-        return textoDelVideo({ ...video, locucion: await locucionAlDia(acceso, video.locucion) });
+        const v = deFila(await renderAlDia(acceso, await proyectoDe(acceso, c.id, id)));
+        const video = { ...v, locucion: await locucionAlDia(acceso, v.locucion) };
+        // La vista previa del chat de Claude reproduce el mp4 y la locución ahí mismo (y se pone al día mientras se
+        // hacen); el texto lleva sus direcciones firmadas. El asistente de la aplicación sólo recibe el texto.
+        const vista = await vistaDeVideo(env, { video, clienteId: c.id, cliente: { id: c.id, nombre: c.name } });
+        return { texto: [textoDelVideo(video), lineasDeMedios(vista)].filter(Boolean).join("\n"), imagenes: [], vista };
       });
     },
 
@@ -401,7 +406,10 @@ export function crearHerramientasVideo({ env, acceso, resolverCliente, usuario, 
           fila = await proyectoDe(acceso, c.id, id);
         }
         const r = await pedirRender(env, acceso, c, fila, { version, usuario, por });
-        return `Render encargado: «${r.video.titulo}» (versión ${r.video.version}) se está renderizando; tarda menos de un minuto. Míralo con ver_video.${fila.post_id ? ` Al terminar, el mp4 se pone en la publicación ${fila.post_id}.` : " No va ligado a ninguna publicación: queda en la galería (ligar_video para ponerlo en una)."}`;
+        const texto = `Render encargado: «${r.video.titulo}» (versión ${r.video.version}) se está renderizando; tarda menos de un minuto. Míralo con ver_video.${fila.post_id ? ` Al terminar, el mp4 se pone en la publicación ${fila.post_id}.` : " No va ligado a ninguna publicación: queda en la galería (ligar_video para ponerlo en una)."}`;
+        // La vista previa del chat de Claude espera el mp4 y lo reproduce ahí mismo cuando sale.
+        const video = { ...r.video, locucion: await locucionAlDia(acceso, r.video.locucion) };
+        return { texto, imagenes: [], vista: await vistaDeVideo(env, { video, clienteId: c.id, cliente: { id: c.id, nombre: c.name } }) };
       });
     },
 

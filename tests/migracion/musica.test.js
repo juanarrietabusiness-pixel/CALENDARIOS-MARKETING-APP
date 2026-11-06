@@ -197,7 +197,10 @@ describe("el asistente y Claude (MCP)", () => {
     expect(sin).toMatch(/confirmado=true/);
     expect(trabajos()).toHaveLength(0);
     expect(await h.generar_musica({ estilo: "pop alegre", confirmado: "sí" })).toMatch(/^NO SE CREÓ NADA/);
-    expect(await h.generar_musica({ estilo: "pop alegre", confirmado: true })).toMatch(/^Pedido creado: /);
+    const con = await h.generar_musica({ estilo: "pop alegre", confirmado: true });
+    expect(con.texto).toMatch(/^Pedido creado: /);
+    expect(con.vista).toMatchObject({ tipo: "medios", estado: "en_marcha", seguir: { herramienta: "vista_trabajo" } });
+    expect(con.vista.titulo).toMatch(/Música/);
     expect(trabajos()[0]).toMatchObject({ tipo: "audio", origen: "asistente", modelo: "suno-v6-kie" });
     await expect(h.generar_musica({ video_id: "no-existe", estilo: "x" })).rejects.toThrow(/No encontré el video/);
   });

@@ -744,6 +744,8 @@ worker/
     mcpVista/             La VISTA PREVIA en el chat de Claude (MCP Apps): modelo.js (qué herramientas la llevan, el
                           `structuredContent`, cómo la página lee un resultado; puro), navegador.js (la página del iframe),
                           estilos.css y pagina.generada.js (GENERADA: `node scripts/mcp/generar-vista.mjs`)
+    medioVista.js         La dirección FIRMADA y de corta vida (12 h) de un audio o video de R2 para esa vista, con el secreto
+                          que se crea solo en R2 (`firmas/vista-medios.key`); qué claves se pueden servir
     competencia.js        `business_discovery` de un competidor (sus últimas publicaciones) y «traer» su archivo del CDN de Meta
                           a la galería («Competencia»), también desde un enlace de Instagram SIN @ (memoria, cuentas fijas,
                           página pública) y la miniatura de un reel con música
@@ -803,6 +805,8 @@ worker/
     estudio/guionVideo.js El contexto común de los guiones de video (`contextoDeGuion`): producto, cerebro, criterio, publicación
     estudio/herramientasReel.js  El video por MCP: crear_reel, estado_reel, continuar_reel, montar_reel, video_listo y
                           extraer_guion_ugc (sólo MCP: desde herramientas.js sería el ciclo de siempre)
+    estudio/vistaMedios.js  Los AUDIOS y VIDEOS de la vista previa del chat de Claude: la muestra, la locución, la música, el mp4
+                          de un video animado y los de un reel, con su dirección firmada; renovar una que caducó
     bandeja/              La Bandeja: webhook.js (la firma del webhook de Meta y qué dice un aviso;
                           puro), almacen.js (de quién es cada aviso y guardarlo fundiendo lo que
                           había), graph.js (suscribir la página, «Actualizar», responder, ocultar,
@@ -841,6 +845,8 @@ worker/
                           reintentar), archivos, papelera y carpetas
     mcp.js                El servidor MCP (/mcp), su OAuth (/oauth/*, /.well-known/*) y
                           el permiso y las conexiones (/api/mcp/*)
+    vistaMedio.js         /api/vista-medio/<testigo>/<nombre>: un audio o video firmado para la vista previa del chat de
+                          Claude, sin sesión y por trozos
     avisos.js             /api/avisos: la bandeja de quien pregunta y marcar leídos
     bandeja.js            /api/bandeja (comentarios y mensajes) y el webhook de Meta
                           (/api/webhooks/meta, sin sesión)
@@ -3851,9 +3857,10 @@ son del servidor.
   pestaña Cerebro para borrarlas. Si vuelve a aparecer «prompt maestro» en un pedido, es una regresión.
 - **La VISTA PREVIA en el chat de Claude (MCP Apps): las piezas se ven DENTRO del chat, en la web y en el teléfono, como
   con Higgsfield** (`worker/lib/mcpVista/`, `worker/lib/estudio/vistaEstudio.js` y `vistaTrabajo.js`; especificación de
-  MCP Apps 2026-01-26). El conector declara `resources` y sirve UN recurso `ui://juancito-ads/vista-1.html` (`resources/list`,
+  MCP Apps 2026-01-26). El conector declara `resources` y sirve UN recurso `ui://juancito-ads/vista-2.html` (`resources/list`,
   `resources/read`, tipo `text/html;profile=mcp-app`); las herramientas que crean o miran piezas (`CON_VISTA`: ver_pieza,
-  estado_trabajo, estado_encargo, crear_en_estudio, corregir_pieza, disenar_piezas, ver_cuadro, ver_escenas) lo nombran en
+  estado_trabajo, estado_encargo, crear_en_estudio, corregir_pieza, disenar_piezas, ver_cuadro, ver_escenas, el reel) y las
+  que SUENAN o se reproducen (previsualizar_voz, generar_locucion, generar_musica, renderizar_video, ver_video) lo nombran en
   `_meta.ui.resourceUri` (y en la clave plana de antes), y claude.ai pinta esa página junto al resultado. Cosas que no se ven:
   · **Las imágenes NO van dos veces:** siguen como bloques de imagen en `content` (las mira Claude) y la vista
   (`structuredContent`, `vistaDe`/`piezaDe`) sólo dice qué pieza es cada una por su índice (`imagen`). **El texto va
@@ -3867,8 +3874,9 @@ son del servidor.
   · **Lo que toca la persona no se salta la confirmación:** «Cambiar» y «Crear» del plan ESCRIBEN en el chat (`ui/message`:
   «En la pieza a2 de …: …», «Sí, créalo (vi el costo: unos …)») y Claude sigue con sus herramientas; «Abrir en el Estudio»
   es `ui/open-link` con la dirección que pone `conEnlace` (rutas/mcp.js) con el origen del conector.
-  · **La página va ENTERA dentro del recurso** (el iframe de claude.ai no deja cargar nada de fuera: `resourceDomains`
-  vacío): navegador.js + modelo.js empaquetados con esbuild y estilos.css, en `pagina.generada.js`. Un test la regenera y
+  · **La página va ENTERA dentro del recurso** (el iframe de claude.ai no deja cargar nada de fuera salvo lo que declara
+  `_meta.ui.csp`: sólo el origen del conector, para los audios y videos; ver abajo): navegador.js + modelo.js empaquetados
+  con esbuild y estilos.css, en `pagina.generada.js`. Un test la regenera y
   compara; si se toca cualquiera de los tres, `node scripts/mcp/generar-vista.mjs`. El protocolo (JSON-RPC por
   `postMessage`: `ui/initialize`, `ui/notifications/tool-result`, `size-changed`…) va escrito a mano, sin el SDK (pesa
   418 kB): se probó contra el `AppBridge` OFICIAL de `@modelcontextprotocol/ext-apps` 2.0.3 en Chromium (el anfitrión que
@@ -3878,8 +3886,41 @@ son del servidor.
   · `herramientas.js` (la comparte el asistente de la aplicación) importa `vistaTrabajo.js` y NO `vistaEstudio.js`:
   éste lee encargos.js, que por fichas.js → mercado.js → herramientasServidor.js vuelve a herramientas.js (el ciclo deja
   `DEFINICIONES_ESTUDIO` sin iniciar). El asistente de la aplicación recibe sólo el texto cuando no hay imágenes.
-  · Los videos (el mp4 del render) aún no se reproducen en la vista: las direcciones de R2 van con sesión y la firmada de
-  Meta no contesta por trozos (el iPhone no la reproduciría). Pendiente.
+  · **Los AUDIOS y VIDEOS se oyen y se ven en la vista** (vista-2; decisión de la agencia: «previsualizar las locuciones
+  casi como las imágenes»). La muestra de una voz, la locución, las dos versiones de la música de Suno, el mp4 de un video
+  animado (y su locución), un video del Estudio y el reel montado van como `audios`/`videos` del `structuredContent`
+  (`medioDe`; worker/lib/estudio/vistaMedios.js) y la página los pinta con `<audio controls>` y `<video controls
+  playsinline>`. No caben en el resultado como una imagen: van por su DIRECCIÓN FIRMADA, que también va en el texto
+  (`lineasDeMedios`) para que Claude se la dé a la persona si su cliente no pinta vistas. El asistente de la aplicación
+  sigue recibiendo sólo el texto (`{ texto, imagenes: [], vista }`). Lo que no se ve:
+  · **La dirección es `/api/vista-medio/<testigo>/<nombre>`** (worker/rutas/vistaMedio.js, ANTES de la sesión: el iframe no
+  la tiene): abre sólo la clave del testigo, sólo audio o video, sólo de `clientes/` o `voces/` (no `voces/pendientes/`), y
+  caduca a las 12 h. Contesta por TROZOS (`Range` → 206, con `rangoServido` como `sirveMedia`: sin eso el iPhone no
+  reproduce). No es la de Meta (`/api/medio-publico/`): ésa necesita `META_APP_SECRET`, que un espacio sin Meta no tiene, y
+  no contestaba por trozos. Se firma con un secreto que SIEMPRE existe porque se crea solo: 32 bytes al azar en R2
+  (`firmas/vista-medios.key`, fuera de `clientes/`: ni /api/media ni esta ruta lo sirven), leído una vez por instancia.
+  · **El recurso declara el origen del conector, y nada más** (`metaDeVista(origen)` en modelo.js: `csp.resourceDomains`
+  = [el origen de la petición a /mcp], `connectDomains` vacío: la página no hace `fetch`). Sin eso el anfitrión pone
+  `media-src 'self' data:` y ningún audio carga (la prueba en Chromium lo comprueba: con la CSP de vista-1 sale «Abrir»).
+  Por eso subió a vista-2: claude.ai puede guardar la de antes.
+  · **`conEnlace` (rutas/mcp.js) pone el origen** en las direcciones (las herramientas las dan relativas: en la aplicación
+  valen tal cual) y en el texto. La página sólo acepta http(s) absolutas (`direccionValida`).
+  · **Un reproductor se REUTILIZA al repintar** (`reproductores` en navegador.js) y una vuelta no le cambia la dirección
+  (`mediosConLosDeAntes`): cada vuelta trae otra firma, y cambiar el `src` cortaba lo que se estaba oyendo.
+  · **Lo que se está haciendo se espera solo**: la locución, la muestra y la música, con `vista_trabajo` (el hueco «Se está
+  generando la voz…» hasta que suena); un video animado, con `vista_video` (sólo de la vista) mientras renderiza o genera su
+  voz; el reel, con `vista_encargo` (`videosDelReel`: el mp4 montado o, si no, el video o los clips).
+  · **Una dirección caducada se renueva**: si el reproductor no carga y su `caduca` pasó (o no se sabe), la página llama
+  `vista_medios` (sólo de la vista) con su `ref` (`archivo:<id>`, por la capa de acceso; o `muestra:<modelo>:<voz>:<huella>`,
+  que tiene que existir) UNA vez; si aun así no carga, «Abrir» (`ui/open-link`) en vez de una caja rota.
+  · **Sin `sandbox` en la ruta** (sí `default-src 'none'; media-src 'self'` y `nosniff`): con `sandbox`, Chromium le da al
+  documento de medios (un mp4 abierto suelto, que es «Abrir») un origen opaco, su <video> pide el archivo con CORS y se
+  queda vacío. Lo cazó la prueba en Chromium, no los tests.
+  · Probado en Chromium con el `AppBridge` oficial de `@modelcontextprotocol/ext-apps` 2.0.3, la página servida desde otro
+  origen con la CSP que arma el anfitrión según la especificación y la RUTA REAL del Worker (empaquetado con esbuild) en
+  un tercer origen: el audio y el video cargan por trozos, repintar no corta lo que suena, la dirección caducada se renueva,
+  «Abrir», tema oscuro y ancho del teléfono. **No se ha probado en claude.ai de verdad hasta que se despliega**, ni con un
+  mp4 de producción en el iPhone.
 - **El DIRECTOR también por MCP: Claude en claude.ai diseña en lote, ve, corrige y pone en el post**
   (`worker/lib/estudio/herramientasDiseno.js`; sólo en el MCP: el asistente de la aplicación tiene las suyas con el mismo
   nombre, en el navegador). `guia_de_diseno` da lo que el chat recibe en su sistema (el manual, la ficha, el kit, el
