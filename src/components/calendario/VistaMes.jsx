@@ -229,7 +229,7 @@ export default function VistaMes({
                 </>
               )}
             </p>
-            {botonProgramar("arriba")}
+            {paso === "ver" && botonProgramar("arriba")}
           </div>
         </div>
 
