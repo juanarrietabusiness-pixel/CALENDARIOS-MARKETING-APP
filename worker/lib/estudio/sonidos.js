@@ -147,7 +147,8 @@ const textoTope = (categoria) => (categoria === "efecto" ? "Un efecto pesa como 
 
 /**
  * Sube una pista a la biblioteca de un cliente (`cliente`) o a la de la agencia (sin cliente). Se reconoce por sus
- * primeros bytes (MP3, WAV o M4A), no por el nombre. `duracion` la mide el navegador (el Worker no decodifica audio).
+ * primeros bytes (MP3, WAV o M4A), no por el nombre. `duracion` la mide el navegador (el Worker no decodifica audio):
+ * puede venir aquí o después, con `cambiarSonido`, medida de su dirección ya subida.
  * La misma pista otra vez devuelve la que había (`repetido`; si estaba en la papelera, vuelve). → { pista, repetido }.
  */
 export async function subirSonido(env, acceso, { cliente = null, archivo, categoria = "musica", nombre = "", duracion = null, usuario = null }) {
@@ -212,6 +213,7 @@ export async function cambiarSonido(acceso, { clienteId = null, id, cambios }) {
     const b = { ...(ajustes.biblioteca && typeof ajustes.biblioteca === "object" ? ajustes.biblioteca : {}) };
     if (c.etiquetas) b.etiquetas = c.etiquetas;
     if ("bpm" in c) b.bpm = c.bpm;
+    if ("duracion" in c) b.duracion = c.duracion;
     const upd = { ajustes: JSON.stringify({ ...ajustes, biblioteca: b }), updated_at: momento };
     if (c.nombre) upd.prompt = c.nombre;
     if (c.favorita !== undefined) {
@@ -233,6 +235,7 @@ export async function cambiarSonido(acceso, { clienteId = null, id, cambios }) {
   if (c.nombre) upd.nombre = c.nombre;
   if (c.etiquetas) upd.etiquetas = JSON.stringify(c.etiquetas);
   if ("bpm" in c) upd.bpm = c.bpm;
+  if ("duracion" in c) upd.duracion = c.duracion;
   if (c.favorita !== undefined) {
     upd.favorita = c.favorita ? 1 : 0;
     if (c.favorita && a.categoria === "musica") {

@@ -173,6 +173,9 @@ describe("la biblioteca de un cliente", () => {
     expect((await r.json()).pista).toMatchObject({ nombre: "Tema de la marca", etiquetas: ["alegre", "acústica"], bpm: 98, favorita: true });
     r = await pedir("/sonidos/bc/suno1", { method: "PATCH", body: { favorita: true } });
     expect((await r.json()).pista.favorita).toBe(true);
+    // Lo que dura lo apunta el navegador después de subirla (medido de su dirección).
+    r = await pedir("/sonidos/bc/sub1", { method: "PATCH", body: { duracion: 31.86 } });
+    expect((await r.json()).pista.duracion).toBe(31.9);
     expect(archivo("sub1").favorito).toBe(0);
     const j = await (await pedir("/sonidos/bc")).json();
     expect(j.musica[0].id).toBe("suno1");

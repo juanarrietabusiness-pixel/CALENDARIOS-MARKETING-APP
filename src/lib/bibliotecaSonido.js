@@ -107,8 +107,8 @@ export function bpmDelTexto(texto) {
 }
 
 /**
- * Lo que se puede cambiar de una pista (nombre, etiquetas, bpm, favorita), limpio; sólo lo que viene. Pura.
- * → { nombre?, etiquetas?, bpm?, favorita? }
+ * Lo que se puede cambiar de una pista (nombre, etiquetas, bpm, duracion, favorita), limpio; sólo lo que viene. Pura.
+ * → { nombre?, etiquetas?, bpm?, duracion?, favorita? }
  */
 export function limpiarCambiosSonido(b) {
   const o = b && typeof b === "object" && !Array.isArray(b) ? b : {};
@@ -119,6 +119,8 @@ export function limpiarCambiosSonido(b) {
   }
   if (o.etiquetas !== undefined) out.etiquetas = limpiarEtiquetas(o.etiquetas);
   if (o.bpm !== undefined) out.bpm = limpiarBpm(o.bpm);
+  // Lo que dura, medido por el navegador DESPUÉS de subirla (de su dirección: un `blob:` lo bloquea la CSP).
+  if (o.duracion !== undefined && limpiarDuracionSonido(o.duracion) !== null) out.duracion = limpiarDuracionSonido(o.duracion);
   if (typeof o.favorita === "boolean") out.favorita = o.favorita;
   return out;
 }

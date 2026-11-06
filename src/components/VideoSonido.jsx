@@ -13,7 +13,7 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 import Icon from "./Icon";
 import { pedir } from "../lib/db";
 import { limpiarSonido, VOLUMEN_MUSICA } from "../lib/sonidoVideo";
-import { duracionDeArchivo } from "../lib/sonidosApi";
+import { conDuracion, avisarSonidos } from "../lib/sonidosApi";
 import GenerarMusica from "./GenerarMusica";
 
 const base = (c, id = "") => `/videos/${encodeURIComponent(c)}${id ? `/${encodeURIComponent(id)}` : ""}`;
@@ -83,9 +83,10 @@ function Sonido({ client, video, onCambio }) {
     try {
       const form = new FormData();
       form.append("archivo", f);
-      const duracion = await duracionDeArchivo(f);
-      if (duracion) form.append("duracion", String(duracion));
       const r = await pedir(`${base(client.id)}/musicas`, { method: "POST", body: form });
+      // Lo que dura (de su dirección ya subida), para la biblioteca; y que la vea quien la tenga abierta.
+      if (r.pista) await conDuracion(client.id, r.pista);
+      avisarSonidos(client.id);
       await cargar();
       setMusicaId(r.musica.id);
       setMsg({ texto: r.repetido ? "Esa música ya estaba en la biblioteca: queda escogida." : "Música subida a la biblioteca del cliente y escogida. Guarda el sonido para usarla." });
