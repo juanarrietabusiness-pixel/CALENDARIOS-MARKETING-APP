@@ -299,7 +299,8 @@ export const COMPONENTES = Object.freeze({
 });
 
 /** Lo que tiene toda capa además de sus propiedades. */
-const COMUNES = new Set(["id", "tipo", "pos", "tam", "entra", "sale", "animacion"]);
+// `pulso` (opcional, sólo si es true): la capa late un 4 % en cada GOLPE de la canción (src/lib/golpes.js).
+const COMUNES = new Set(["id", "tipo", "pos", "tam", "entra", "sale", "animacion", "pulso"]);
 
 // ------------------------------------------------------------
 // Las palabras: lo que se dice y cómo se cuenta
@@ -432,11 +433,12 @@ function validarCapa(capa, donde, nPalabras, errores, avisos, ids) {
     salida: validarProp(E(SALIDAS, "ninguna"), a.salida, `${donde}.animacion.salida`, errores),
     bucle: validarProp(E(BUCLES, "ninguno"), a.bucle, `${donde}.animacion.bucle`, errores),
   };
+  if (capa.pulso !== undefined && typeof capa.pulso !== "boolean") errores.push({ donde: `${donde}.pulso`, mensaje: "Tiene que ser true o false." });
   return {
     id, tipo: capa.tipo, pos: validarPos(capa.pos, `${donde}.pos`, errores), tam: Number.isFinite(tam) ? tam : 0.6,
     entra: validarMomento(capa.entra, `${donde}.entra`, nPalabras, errores) ?? { s: 0 },
     sale: validarMomento(capa.sale, `${donde}.sale`, nPalabras, errores),
-    animacion, ...props,
+    animacion, ...(capa.pulso === true ? { pulso: true } : {}), ...props,
   };
 }
 

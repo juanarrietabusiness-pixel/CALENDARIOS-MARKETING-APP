@@ -106,7 +106,7 @@ export function formatoParaLaIA() {
     "Para qué es cada tipo de escena:",
     ...Object.entries(TIPOS_ESCENA).map(([k, v]) => `  ${k}: ${v}`),
     "",
-    "CAPA: tipo, id (único en la escena), pos, tam, entra, sale (vacío: hasta el final), animacion {entrada: " + ENTRADAS.join("|") + "; salida: " + SALIDAS.join("|") + "; bucle: " + BUCLES.join("|") + "}.",
+    "CAPA: tipo, id (único en la escena), pos, tam, entra, sale (vacío: hasta el final), animacion {entrada: " + ENTRADAS.join("|") + "; salida: " + SALIDAS.join("|") + "; bucle: " + BUCLES.join("|") + "}, pulso (true: en un video con canción, la capa late un 4 % en cada golpe del ritmo; sólo si va).",
     "Posiciones: " + POSICIONES.join(", ") + ". (* = obligatorio)",
     ...componentes,
     "",

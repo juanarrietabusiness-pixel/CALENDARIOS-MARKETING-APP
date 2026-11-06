@@ -104,6 +104,7 @@ Todas llevan:
 | `id` | Único dentro de la escena |
 | `pos`, `tam` | Dónde y de qué ancho (ver reglas) — `centro`, `0.6` |
 | `entra`, `sale` | `{ "palabra": n }` (la n-ésima palabra que se dice en la escena, desde 0) o `{ "s": segundos }` desde que empieza. `sale` vacío = hasta el final |
+| `pulso` | Opcional (sólo `true`): en un video con canción, la capa late un 4 % en cada GOLPE del ritmo (los saca el Container al sincronizar la canción) |
 | `animacion` | `entrada` (aparece, fundido, sube, baja, escala, rebote, escribe, barrido, dibuja, golpe), `salida` (ninguna, fundido, baja, escala), `bucle` (ninguno, flota, pulso, gira, late). `golpe`: seca, entera desde el primer cuadro y de 1,15 a 1 en 0,12 s, sin rebote (la letra que entra cuando se canta) |
 
 Los 17 componentes de la librería v1 y lo propio de cada uno:

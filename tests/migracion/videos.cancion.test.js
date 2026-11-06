@@ -256,6 +256,32 @@ describe("sincronizar la letra", () => {
   });
 });
 
+describe("los golpes de la canción", () => {
+  it("con el Container, la sincronía guarda el BPM y los golpes, van con la locución y al Container; sin él, se avisa", async () => {
+    servicios();
+    // Sin Container (como en local): se sincroniza igual y se dice.
+    const sin = (await (await sincronizar({ confirmado: true })).json()).sincronia;
+    expect(sin.golpes).toBe(0);
+    expect(sin.avisos.join(" ")).toMatch(/Sin los golpes de la canción/);
+
+    // Con Container: POST /golpes con la canción en base64.
+    const pedidos = [];
+    env.VIDEO = {
+      idFromName: (n) => n,
+      get: () => ({ fetch: async (req) => { const b = await req.json(); pedidos.push([new URL(req.url).pathname, b]); return Response.json({ bpm: 120, confianza: 0.9, golpes: [3, 3.5, 4, 999, "x"] }); } }),
+    };
+    // (la misma canción con la misma letra saldría «repetida»: se olvida la de antes)
+    for (const k of [...env.MEDIA.objetos.keys()]) if (k.startsWith("canciones/")) env.MEDIA.objetos.delete(k);
+    const otra = (await (await sincronizar({ confirmado: true })).json()).sincronia;
+    expect(pedidos[0][0]).toBe("/golpes");
+    expect(typeof pedidos[0][1].audio).toBe("string");
+    expect(otra).toMatchObject({ bpm: 120, golpes: 3 });
+    const res = await pedir("/videos/bc/cancion/video", { body: { huella: otra.huella, modo: "karaoke" } });
+    const { video: v } = await res.json();
+    expect(v.locucion).toMatchObject({ bpm: 120, golpes: [3, 3.5, 4] });
+  });
+});
+
 describe("el video con la canción", () => {
   async function sincronizada() {
     servicios();

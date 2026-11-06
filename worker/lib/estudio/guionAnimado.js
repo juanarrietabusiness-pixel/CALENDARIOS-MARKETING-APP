@@ -192,14 +192,14 @@ export async function escribirGuion(env, acceso, cliente, datos = {}) {
  * `sincronia`: la de la canción ({ archivo, nombre, duracion, letra }); `lineas`, `huecos`: los de videoCancion.js.
  * → { guion, avisos, corregido, modelo, aviso }.
  */
-export async function escribirGuionCancion(env, acceso, cliente, { sincronia, lineas, huecos, formato = "9:16", titulo = "", postId = "", indicacion = "", conFondos = false }) {
+export async function escribirGuionCancion(env, acceso, cliente, { sincronia, lineas, huecos, formato = "9:16", titulo = "", postId = "", indicacion = "", conFondos = false, golpes = [], bpm = 0 }) {
   const ctx = await contextoDeGuion(env, acceso, cliente, { postId: String(postId ?? ""), consulta: `${titulo || sincronia.nombre || ""} canción video animado`, presupuesto: 3000 });
   const productos = await catalogoConFotos(acceso, cliente.id);
   const { kit, marcaVideo, imagenes, galeria } = await marcaDelGuion(env, acceso, cliente, { conFondos: conFondos === true });
   const personaje = kit.personajeVideo ?? null;
   const base = {
     marca: cliente.name, titulo, nombre: sincronia.nombre ?? "", duracion: sincronia.duracion, lineas, huecos, formato,
-    contexto: ctx.contexto, productos, personaje, indicacion, marcaVideo, conFondos: conFondos === true, galeria,
+    contexto: ctx.contexto, productos, personaje, indicacion, marcaVideo, conFondos: conFondos === true, galeria, golpes, bpm,
   };
   const cancion = { archivo: sincronia.archivo, duracion: sincronia.duracion, nombre: sincronia.nombre ?? "" };
   const revisar = (texto) => {

@@ -12,6 +12,7 @@ import { formatoParaLaIA } from "./videoFormatoIA.js";
 import { FORMATOS_VIDEO, MIN_SEGUNDOS, MAX_SEGUNDOS } from "./videoEscenas.js";
 import { lineaDeReferenciasVideo } from "./estiloVideo.js";
 import { lineaDeFondos } from "./fondosVideo.js";
+import { golpesEnTramo } from "./golpes.js";
 
 /** Las duraciones que ofrece la pantalla (s) y la que va por defecto. */
 export const DURACIONES_ANIMADO = Object.freeze([15, 20, 30, 45, 60]);
@@ -115,9 +116,15 @@ const mmss = (s) => {
  * La letra por líneas CON sus tiempos para la IA: cada línea con cuándo se canta y cuánto dura, el CORO marcado (las que
  * se repiten) y los HUECOS instrumentales (intro, puente, final) donde van escenas sin letra. Pura.
  */
-export function letraParaLaIA(lineas = [], huecos = []) {
+export function letraParaLaIA(lineas = [], huecos = [], golpes = []) {
+  // Los GOLPES de la canción que caen en cada línea (src/lib/golpes.js), como mucho 8: ahí caen bien los cortes y las
+  // palabras que entran de golpe.
+  const deLinea = (l) => {
+    const g = golpesEnTramo(golpes, l.desde, l.hasta).slice(0, 8);
+    return g.length ? ` · golpes en ${g.map((t) => t.toFixed(2)).join(", ")} s` : "";
+  };
   const filas = [
-    ...lineas.map((l) => ({ desde: l.desde, texto: `[${mmss(l.desde)}–${mmss(l.hasta)}, ${(l.hasta - l.desde).toFixed(1)} s]${l.coro ? " (CORO)" : ""} ${l.texto}` })),
+    ...lineas.map((l) => ({ desde: l.desde, texto: `[${mmss(l.desde)}–${mmss(l.hasta)}, ${(l.hasta - l.desde).toFixed(1)} s]${l.coro ? " (CORO)" : ""} ${l.texto}${deLinea(l)}` })),
     ...huecos.map((h) => ({ desde: h.desde, texto: `[${mmss(h.desde)}–${mmss(h.hasta)}] HUECO instrumental (${h.cual}, ${(h.hasta - h.desde).toFixed(1)} s): una escena SIN habla` })),
   ];
   return filas.sort((a, b) => a.desde - b.desde).map((f) => f.texto).join("\n");
@@ -129,7 +136,7 @@ export function letraParaLaIA(lineas = [], huecos = []) {
  * visual y el texto en pantalla corto. `lineas` y `huecos`: los de videoCancion.js; `errores`/`anterior`: la vuelta de
  * corrección. Pura.
  */
-export function pedidoDeGuionCancion({ marca, titulo = "", nombre = "", duracion, lineas = [], huecos = [], formato = "9:16", contexto = "", productos = "", personaje = null, indicacion = "", errores = [], anterior = "", marcaVideo = "", referencias = 0, conFondos = false, galeria = "" }) {
+export function pedidoDeGuionCancion({ marca, titulo = "", nombre = "", duracion, lineas = [], huecos = [], formato = "9:16", contexto = "", productos = "", personaje = null, indicacion = "", errores = [], anterior = "", marcaVideo = "", referencias = 0, conFondos = false, galeria = "", golpes = [], bpm = 0 }) {
   const f = FORMATOS_VIDEO[formato] ? formato : "9:16";
   const coro = lineas.some((l) => l.coro);
   return [
@@ -156,9 +163,10 @@ export function pedidoDeGuionCancion({ marca, titulo = "", nombre = "", duracion
     conFondos ? `\n${lineaDeFondos({ galeria, cancion: true })}` : "",
     indicacion ? `\nLO QUE PIDE LA AGENCIA (manda): ${String(indicacion).trim().slice(0, 600)}` : "",
     "",
-    `LA CANCIÓN${nombre ? ` «${nombre}»` : ""}: dura ${Number(duracion).toFixed(1)} s. Formato principal: ${f} (formatos: ["${f}"]).${titulo ? ` Título del video: «${titulo}».` : ""}`,
+    `LA CANCIÓN${nombre ? ` «${nombre}»` : ""}: dura ${Number(duracion).toFixed(1)} s${bpm > 0 ? `, a unos ${bpm} BPM` : ""}. Formato principal: ${f} (formatos: ["${f}"]).${titulo ? ` Título del video: «${titulo}».` : ""}`,
+    golpes.length ? "EL RITMO: cada línea dice en qué segundos caen sus GOLPES. Lo que entra de golpe (la palabra clave, un sello, un icono) va anclado a la palabra que suena en un golpe; una capa con «pulso»: true late en cada golpe (el coro, el logo del cierre)." : "",
     "La letra por líneas, con cuándo se canta cada una (y los huecos sin letra):",
-    letraParaLaIA(lineas, huecos),
+    letraParaLaIA(lineas, huecos, golpes),
     "",
     contexto ? `LA MARCA\n${contexto}` : "",
     productos ? `CATÁLOGO (las fotos son el producto REAL; en una capa «imagen» va su ID en «archivo»)\n${productos}` : "",

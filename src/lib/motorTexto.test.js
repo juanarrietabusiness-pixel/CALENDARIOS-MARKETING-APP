@@ -8,6 +8,7 @@ import {
 } from "./motorTexto.js";
 import { revisarEscenas } from "./revisionEscenas.js";
 import { EJEMPLO_GUION } from "./videoFormatoIA.js";
+import { conGolpes } from "./golpes.js";
 
 // ============================================================
 // El texto CON CARÁCTER del video animado: énfasis, mayúsculas, el rol gigante, palabra por palabra, la entrada
@@ -212,5 +213,24 @@ describe("la letra de la casa es la MISMA en la vista previa y en el render", ()
     const v = raiz.dependencies?.["@fontsource/anton"];
     expect(v).toBeTruthy();
     expect(cont.dependencies?.["@fontsource/anton"]).toBe(v);
+  });
+});
+
+describe("el pulso con los golpes de la canción", () => {
+  it("una capa con «pulso» late en cada golpe; sin golpes, o sin pulso, no cambia", () => {
+    const g = conCapa({ tipo: "icono", id: "i", nombre: "estrella", pulso: true, entra: { s: 0 } });
+    expect(g.escenas[0].capas[0].pulso).toBe(true);
+    const escalas = (linea, t) => { const { ctx, log } = lienzo(); dibujarFrame(ctx, { guion: g, linea, t }); return log.filter(([m]) => m === "scale").map((x) => x[1]); };
+    const linea = lineaDeTiempo(g);
+    const conG = conGolpes(linea, [1]);
+    // Justo en el golpe, el icono sale un 4 % más grande que sin golpes (su escala en el reparto, por 1,04).
+    const sin = escalas(linea, 1);
+    const con = escalas(conG, 1);
+    expect(con).not.toEqual(sin);
+    expect(con.some((v) => Math.abs(v - 1.04) < 1e-3 || sin.some((w) => Math.abs(v / w - 1.04) < 1e-3))).toBe(true);
+    expect(escalas(conG, 1.5)).toEqual(escalas(linea, 1.5));
+    const otro = copia(EJEMPLO_GUION);
+    otro.escenas[0].capas[0].pulso = "sí";
+    expect(validarGuion(otro).errores.map((e) => e.donde)).toContain("escenas[0].capas[0].pulso");
   });
 });

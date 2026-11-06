@@ -36,6 +36,7 @@ import { dibujarLista, dibujarBurbuja, dibujarReloj, dibujarAntesDespues, dibuja
 import {
   partirEnfasis, tieneEnfasis, encajarRico, encajarGigante, tiemposDePalabras, impactoDe,
 } from "./motorTexto.js";
+import { pulsoEn } from "./golpes.js";
 
 // La letra de la casa (rol gigante y énfasis sin letra del kit): vive en motorTexto.js; aquí, a mano de quien carga.
 export { FUENTE_CASA, ARCHIVO_FUENTE_CASA, FUENTE_IMPACTO, impactoDe } from "./motorTexto.js";
@@ -1369,7 +1370,8 @@ function dibujarEscena(ctx, escena, momento, t, cGuion, primera = false) {
     ctx.save();
     ctx.globalAlpha *= estado.alfa;
     ctx.translate(s.x + estado.dx, s.y + estado.dy);
-    const escala = estado.escala * s.escala;
+    // `pulso`: late con los golpes de la canción (los trae la línea de tiempo; sin golpes, nada).
+    const escala = estado.escala * s.escala * (capa.pulso ? pulsoEn(c.golpes, t) : 1);
     if (escala !== 1) ctx.scale(escala, escala);
     if (estado.giro && capa.tipo !== "forma") ctx.rotate(estado.giro);
     // Barrido y dibuja: la capa se descubre de izquierda a derecha.
@@ -1549,12 +1551,13 @@ export function usosDeVideo(guion, linea) {
 }
 
 /** Lo que necesitan el reparto y el dibujo de cada capa: medidas, paleta, ritmo, recursos, fuentes, subtítulos. */
-function contextoDe({ guion, formato, paleta, recursos = {}, fuentes = {} }) {
+function contextoDe({ guion, linea = null, formato, paleta, recursos = {}, fuentes = {} }) {
   const f = FORMATOS_VIDEO[formato] ? formato : (guion?.formatos?.[0] ?? "9:16");
   const { ancho, alto } = FORMATOS_VIDEO[f] ?? FORMATOS_VIDEO["9:16"];
   return {
     ancho, alto, lado: Math.min(ancho, alto), formato: f, paleta: paleta ?? paletaDelGuion(guion),
     ritmo: guion?.estilo?.ritmo ?? "medio", recursos, fuentes, subtitulos: guion?.subtitulos, personaje: guion?.estilo?.personaje ?? null,
+    golpes: linea?.golpes ?? null,
     // Lo más alto que puede ser una imagen: el 62 % del área segura; en 16:9 lo visual tiene su columna y llega al 82 %.
     altoUtil: areaSegura(f, ancho, alto).h * (ancho > alto * 1.2 ? 0.82 : 0.62),
   };
@@ -1599,7 +1602,7 @@ export function cajasDeEscena(ctx, { guion, linea, indice = 0, formato, recursos
  * El contexto se escala por fuera: aquí se dibuja en las medidas del formato.
  */
 export function dibujarFrame(ctx, { guion, linea, t = 0, formato, paleta, recursos = {}, fuentes = {} }) {
-  const c = contextoDe({ guion, formato, paleta, recursos, fuentes });
+  const c = contextoDe({ guion, linea, formato, paleta, recursos, fuentes });
   const { ancho, alto } = c;
   const escenas = guion?.escenas ?? [];
   ctx.save();

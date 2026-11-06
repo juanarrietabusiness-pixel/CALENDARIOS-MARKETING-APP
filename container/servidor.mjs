@@ -9,6 +9,7 @@
 //   POST /cuadro    { …, t, ancho?, tipo? }  → la imagen del instante t (JPEG por defecto; X-Escena: su id)
 //   POST /hoja      { …, ancho? }            → una hoja con un cuadro de cada escena en su instante «lleno», numerados
 //   POST /revisar   { …, formatos? }         → JSON { problemas, texto }: la revisión con las fuentes reales
+//   POST /golpes    { audio (base64) }        → JSON { bpm, confianza, golpes, duracion }: el ritmo de una canción
 //   POST /render    { …, audio? (base64), musica? { audio (base64), volumen }, efectos? (bool), efectosPropios? { whoosh?,
 //                   pop? } (base64: los efectos de la biblioteca de sonido, en vez de los sintetizados) }
 //                                           → el MP4 entero (voz con los silencios, -14 LUFS, subtítulos), y en
@@ -46,6 +47,8 @@ import { dibujarTextoPlantilla, dibujarLogo, letraDe } from "../src/lib/acabadoL
 import { encajarEn, reducirEn } from "../src/lib/encajarLienzo.js";
 import { LADO_PUBLICAR } from "../src/lib/prepararRedes.js";
 import { renderizar } from "./render.mjs";
+import { golpesDeCancion } from "./golpes.mjs";
+import { conGolpes, limpiarGolpes } from "../src/lib/golpes.js";
 
 const PUERTO = Number(process.env.PORT || 8080);
 /** Un pedido trae imágenes y fuentes en base64: más que esto no es un video animado. */
@@ -77,7 +80,8 @@ async function preparar(p) {
   if (!v.ok) throw new ErrorPedido(`El guion tiene errores: ${v.errores.slice(0, 3).map((e) => `${e.donde}: ${e.mensaje}`).join("; ")}`);
   const guion = v.guion;
   const formato = FORMATOS_VIDEO[p.formato] ? p.formato : guion.formatos[0];
-  const linea = lineaDeTiempo(guion, Array.isArray(p.palabras) ? p.palabras : null);
+  // Con una canción, sus GOLPES (src/lib/golpes.js): los lee el motor para el `pulso` de una capa.
+  const linea = conGolpes(lineaDeTiempo(guion, Array.isArray(p.palabras) ? p.palabras : null), limpiarGolpes(p.golpes));
   const paleta = paletaDelGuion(guion, Array.isArray(p.paleta) ? p.paleta : []);
   const prep = await prepararRecursos(p);
   return { guion, formato, linea, paleta, ...prep };
@@ -193,6 +197,13 @@ async function atender(ruta, p) {
   if (ruta === "/miniatura") return miniatura(p);
   if (ruta === "/imagen-redes") return imagenRedes(p);
   if (ruta === "/acabado") return acabado(p);
+  // Los golpes de una canción (el BPM y el segundo de cada golpe): ffmpeg la decodifica y src/lib/golpes.js la analiza.
+  if (ruta === "/golpes") {
+    if (typeof p.audio !== "string" || !p.audio) throw new ErrorPedido("Falta el audio.");
+    let r;
+    try { r = await golpesDeCancion(Buffer.from(p.audio, "base64")); } catch (e) { throw new ErrorPedido(e.message, 422); }
+    return { cuerpo: Buffer.from(JSON.stringify(r)), tipo: "application/json", cabeceras: {} };
+  }
   const base = await preparar(p);
   const total = base.linea.total;
   if (ruta === "/cuadro") {
