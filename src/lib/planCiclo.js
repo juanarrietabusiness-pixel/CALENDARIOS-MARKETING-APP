@@ -29,7 +29,7 @@
 import { ETAPAS_CICLO, etapaCiclo, idEtapaCiclo, nombreEtapaCiclo, tipoNegocioDe, destinoNegocioDe } from "./cicloVentas.js";
 import { cicloDe } from "./cicloNegocio.js";
 import { TIPOS_ARTE, tipoArteDe, limpiarTiposArte } from "./tiposArte.js";
-import { maletasQueFaltan } from "./maletas.js";
+import { maletasQueFaltan, avisoDeMaletas } from "./maletas.js";
 import { objetivo as objetivoDelNegocio, limpiarNegocio, numero } from "./numerosNegocio.js";
 import { limpiarManual, nombreConPlantilla } from "./estratega.js";
 import { limpiarReparto, limpiarAnunciosPorConjunto } from "./manualCiclo.js";
@@ -353,7 +353,7 @@ export function planDelCiclo({
   for (const c of campanas) {
     const d = c.presupuesto.en === "conjunto" ? c.presupuesto.porConjunto : c.presupuesto.diario;
     if (d !== null && d < MIN_DIARIO) {
-      avisos.push({ codigo: "presupuesto-bajo", grave: false, campana: c.id, texto: `${c.nombreEtapa}: ${c.presupuesto.en === "conjunto" ? "cada conjunto" : "la campaña"} queda con ${d} al día, por debajo de ${MIN_DIARIO}: Meta casi no la va a mostrar. Junta conjuntos o sube el presupuesto.` });
+      avisos.push({ codigo: "presupuesto-bajo", grave: false, campana: c.id, texto: `${c.nombreEtapa}: ${c.presupuesto.en === "conjunto" ? "cada conjunto" : "la campaña"} queda con ${dinero(d, moneda)} al día, por debajo de ${dinero(MIN_DIARIO, moneda)}: Meta casi no la va a mostrar. Junta conjuntos o sube el presupuesto.` });
     }
   }
   const conv = campanas.find((c) => c.id === "conversion");
@@ -368,8 +368,9 @@ export function planDelCiclo({
   for (const x of maletas) {
     const rojas = x.faltan.filter((f) => f.estado === "rojo");
     const flojas = x.faltan.filter((f) => f.estado !== "rojo");
-    if (rojas.length) avisos.push({ codigo: "maletas", grave: true, productoId: x.productoId, texto: `«${x.producto}»: falta ${lista(rojas.map((f) => f.titulo.toLowerCase()))} en el estudio de mercado. Si falta una maleta, no lances el anuncio.` });
-    else if (flojas.length) avisos.push({ codigo: "maletas-flojas", grave: false, productoId: x.productoId, texto: `«${x.producto}»: conviene concretar ${lista(flojas.map((f) => f.titulo.toLowerCase()))} en el estudio de mercado.` });
+    // La frase del semáforo de las maletas (lib/maletas.js), la misma que en el estudio de mercado.
+    if (rojas.length) avisos.push({ codigo: "maletas", grave: true, productoId: x.productoId, texto: `«${x.producto}» (estudio de mercado): ${avisoDeMaletas(rojas, [])}` });
+    else if (flojas.length) avisos.push({ codigo: "maletas-flojas", grave: false, productoId: x.productoId, texto: `«${x.producto}» (estudio de mercado): ${avisoDeMaletas([], flojas)}` });
   }
   if (!productos.length) avisos.push({ codigo: "sin-catalogo", grave: false, texto: "El cliente no tiene catálogo: sin productos no se puede revisar si están las 7 maletas." });
 

@@ -205,6 +205,7 @@ export function analizarRuta(url = window.location) {
   if (partes[0] === "bandeja") return { vista: "bandeja" };
   if (partes[0] === "biblioteca") return { vista: "biblioteca" };
   if (partes[0] === "campanas") return { vista: "campanas" };
+  if (partes[0] === "plan-campanas") return { vista: "plan-campanas" };
   if (partes[0] === "lo-mejor") return { vista: "lo-mejor" };
 
   if (partes[0] === "cliente" && partes[1]) {
@@ -224,6 +225,7 @@ export function construirRuta({ vista = "panel", cliente = null, calendario = nu
   if (vista === "programacion") return "/produccion";
   if (vista === "bandeja") return "/bandeja";
   if (vista === "campanas") return "/campanas";
+  if (vista === "plan-campanas") return "/plan-campanas";
   if (vista === "auditorias") return "/auditorias";
   if (vista === "biblioteca") return "/biblioteca";
   if (vista === "lo-mejor") return "/lo-mejor";

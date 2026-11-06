@@ -50,3 +50,11 @@ export function limpiarAnunciosPorConjunto(v) {
 export function limpiarManualCiclo(m = {}) {
   return { reparto: limpiarReparto(m?.reparto), anunciosPorConjunto: limpiarAnunciosPorConjunto(m?.anunciosPorConjunto) };
 }
+
+/** Lo que el formulario del Manual no deja guardar del plan: «suma 95: tiene que sumar 100». "" si está bien. Pura. */
+export function errorDelCiclo(m) {
+  const suma = sumaDelReparto(m?.reparto ?? REPARTO_POR_DEFECTO);
+  if (suma !== 100) return `El reparto suma ${suma} %: tiene que sumar 100.`;
+  if (!(entero(m?.reparto?.presentacion ?? REPARTO_POR_DEFECTO.presentacion) > 0)) return "Presentación necesita algo del presupuesto: es la que trae gente nueva.";
+  return "";
+}

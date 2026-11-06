@@ -24,7 +24,7 @@ const SECCIONES = [
   { vista: "programacion", ruta: "/produccion", nombre: "Producción", icono: "clock", fallidas: true },
   { vista: "bandeja", ruta: "/bandeja", nombre: "Bandeja", icono: "inbox", bandeja: true },
   { vista: "resultados", ruta: "/resultados", nombre: "Resultados", icono: "chart" },
-  { vista: "campanas", ruta: "/campanas", nombre: "Anuncios", icono: "megaphone", tambien: ["biblioteca"] },
+  { vista: "campanas", ruta: "/campanas", nombre: "Anuncios", icono: "megaphone", tambien: ["biblioteca", "plan-campanas"] },
   { vista: "auditorias", ruta: "/auditorias", nombre: "Auditorías", icono: "search" },
 ];
 const DEL_ESPACIO = [

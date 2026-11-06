@@ -4,7 +4,7 @@ import {
   conjuntosDeEtapa, repartoDelPlan, plantillaConEtapa, tipoArteDePost, limpiarProgreso, avanceDeGuia, textoDeLaPieza,
   PUBLICOS_CICLO, HOJAS_EXCEL, DIAS_DEL_MES, PCT_TEMPORADA,
 } from "./planCiclo";
-import { limpiarManualCiclo, limpiarReparto, limpiarAnunciosPorConjunto, sumaDelReparto, REPARTO_POR_DEFECTO } from "./manualCiclo";
+import { limpiarManualCiclo, limpiarReparto, limpiarAnunciosPorConjunto, sumaDelReparto, errorDelCiclo, REPARTO_POR_DEFECTO } from "./manualCiclo";
 import { limpiarManual, nombreConPlantilla, NOMENCLATURA_POR_DEFECTO } from "./estratega";
 import { idEtapaCiclo } from "./cicloVentas";
 
@@ -42,6 +42,11 @@ describe("el Manual del plan", () => {
     expect(limpiarReparto({ presentacion: "60", evaluacion: "20", conversion: "10", ascension: "10" })).toEqual(REPARTO_POR_DEFECTO);
     expect(limpiarReparto(null)).toEqual(REPARTO_POR_DEFECTO);
     expect(sumaDelReparto({ presentacion: 50, evaluacion: 20 })).toBe(70);
+    // Lo que el Manual no deja guardar.
+    expect(errorDelCiclo({ reparto: { presentacion: 50, evaluacion: 20, conversion: 10, ascension: 10 } })).toMatch(/suma 90 %/);
+    expect(errorDelCiclo({ reparto: { presentacion: 0, evaluacion: 50, conversion: 25, ascension: 25 } })).toMatch(/Presentación/);
+    expect(errorDelCiclo({ reparto: REPARTO_POR_DEFECTO })).toBe("");
+    expect(errorDelCiclo({})).toBe("");
   });
 
   it("de 4 a 6 anuncios por conjunto, 4 por defecto", () => {
@@ -154,7 +159,7 @@ describe("el plan del ciclo", () => {
     const a = sin.avisos.find((x) => x.codigo === "maletas");
     expect(a).toMatchObject({ grave: true, productoId: "mesa" });
     expect(a.texto).toMatch(/no lances/);
-    expect(a.texto).toMatch(/testimonios y garantía/);
+    expect(a.texto).toMatch(/Faltan los testimonios y la garantía/);
     expect(sin.campanas[0].nombre).toContain("Mesa");
     const con = plan({ calendario: { opciones: { estrategia: { objetivo: "vender", focoId: "sofa" } } } });
     expect(con.avisos.some((x) => x.codigo === "maletas")).toBe(false);
