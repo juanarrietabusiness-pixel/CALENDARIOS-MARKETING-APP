@@ -2,7 +2,8 @@
 // /api/videos/<cliente> — los proyectos de VIDEO ANIMADO de un cliente
 //
 //   GET    /api/videos/<c>                  La lista (sin el guion: puede pesar)
-//   POST   /api/videos/<c>                  { titulo?, guion, calendarId?, postId? }: crear uno (borrador)
+//   POST   /api/videos/<c>                  { titulo?, guion, calendarId?, postId?, estructuraId? }: crear uno (borrador);
+//                                           `estructuraId`, la estructura de guion que siguió (queda en `origen`)
 //   GET    /api/videos/<c>/<id>             Uno entero, con su guion y su línea de tiempo estimada
 //   PUT    /api/videos/<c>/<id>             { guion?, titulo?, version }: guardar; un guion nuevo sube la versión y
 //                                           devuelve el proyecto a borrador (la aprobación era de otro texto)
@@ -34,9 +35,11 @@
 //                                           voz. Va aparte del guion: no sube la versión ni pide otra voz (gratis)
 //   GET    /api/videos/<c>/<id>/versiones   El historial: las versiones de antes del guion
 //   POST   /api/videos/<c>/<id>/versiones   { version, aVersion }: volver a una (crea una versión nueva con su guion)
-//   POST   /api/videos/<c>/escribir         { idea, segundos?, formato?, postId? }: la IA de texto ESCRIBE el guion (formato
-//                                           v1, validado; si sale con errores se le devuelven una vez). No guarda nada:
-//                                           la pantalla lo abre como borrador sin guardar. Texto, sin confirmación
+//   POST   /api/videos/<c>/escribir         { idea, segundos?, formato?, postId?, estructuraId? }: la IA de texto ESCRIBE el
+//                                           guion (formato v1, validado; si sale con errores se le devuelven una vez)
+//                                           siguiendo la ESTRUCTURA de guion escogida (o la que escoja la IA entre las de
+//                                           voz en off: vuelve en `estructura`). No guarda nada: la pantalla lo abre como
+//                                           borrador sin guardar. Texto, sin confirmación
 //   GET    /api/videos/<c>/musicas          Las músicas de fondo del cliente (audio de su galería)
 //   POST   /api/videos/<c>/musicas          Subir una (multipart: archivo; MP3 o WAV, ≤ 15 MB)
 //   POST   /api/videos/<c>/musicas/generar  { estilo, instrumental?, letra?, duracion?, titulo?, evitar?, modelo?, videoId?,
@@ -68,6 +71,7 @@ import { listarVoces, pedirMuestra, pedirLocucion, locucionAlDia, claveDeMuestra
 import { buscarEnBiblioteca, anadirDeLaBiblioteca, previaGratis, ACENTOS_BIBLIOTECA } from "../lib/estudio/elevenlabs.js";
 import { ErrorMotor } from "../lib/estudio/gemini.js";
 import { escribirGuion, ErrorGuion } from "../lib/estudio/guionAnimado.js";
+import { estructuraExistente } from "../lib/estructurasGuion.js";
 import { ErrorIA } from "../lib/cerebro/ia.js";
 import { pedirMusica, ErrorMusica } from "../lib/estudio/musica.js";
 import { pedidoConClips, alContenedor } from "../lib/estudio/cuadros.js";
@@ -166,7 +170,9 @@ async function rutasDelCliente(req, env, { acceso, usuario, partes, metodo }) {
     if (metodo === "GET") return json({ videos: await listarProyectos(acceso, clienteId) });
     if (metodo === "POST") {
       const b = (await cuerpo(req)) ?? {};
-      const r = await crearProyecto(acceso, cliente, { guion: b.guion, titulo: b.titulo, calendarId: b.calendarId, postId: b.postId, usuario });
+      // La estructura de guion que siguió (la devolvió «escribir»): se apunta sólo si existe en el espacio.
+      const estructuraId = await estructuraExistente(acceso, b.estructuraId);
+      const r = await crearProyecto(acceso, cliente, { guion: b.guion, titulo: b.titulo, calendarId: b.calendarId, postId: b.postId, usuario, estructuraId });
       avisar(env, acceso, usuario, req, clienteId, r.video.id);
       return json(r, 201);
     }
@@ -178,9 +184,12 @@ async function rutasDelCliente(req, env, { acceso, usuario, partes, metodo }) {
     if (metodo !== "POST") return error("Método no permitido.", 405);
     const b = (await cuerpo(req)) ?? {};
     try {
-      const r = await escribirGuion(env, acceso, cliente, { idea: b.idea, segundos: b.segundos, formato: b.formato, postId: typeof b.postId === "string" ? b.postId : "" });
+      const r = await escribirGuion(env, acceso, cliente, {
+        idea: b.idea, segundos: b.segundos, formato: b.formato, postId: typeof b.postId === "string" ? b.postId : "",
+        estructuraId: typeof (b.estructuraId ?? b.formulaId) === "string" ? b.estructuraId ?? b.formulaId : "",
+      });
       const publicacion = r.postId ? await publicacionDelCliente(acceso, clienteId, r.postId) : null;
-      return json({ guion: r.guion, avisos: r.avisos, corregido: r.corregido, aviso: r.aviso, publicacion });
+      return json({ guion: r.guion, avisos: r.avisos, corregido: r.corregido, aviso: r.aviso, publicacion, estructura: r.estructura });
     } catch (e) {
       if (e instanceof ErrorGuion || e instanceof ErrorIA) return error(e.message, e.estado ?? 502);
       throw e;

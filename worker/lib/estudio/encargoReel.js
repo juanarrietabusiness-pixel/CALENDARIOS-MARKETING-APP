@@ -62,6 +62,8 @@ export function limpiarGuionReel(r = {}) {
     titulo: texto(r.titulo, 120), hilo: texto(r.hilo, 300), planos: repartirTiempos(planos, segundos), segundos,
     musica: texto(r.musica, 300), locucion: texto(r.locucion, 1200), efectos: texto(r.efectos, 300), descripcion: String(r.descripcion ?? "").trim().slice(0, 1000),
     gancho: texto(r.gancho, 80), llamado: texto(r.llamado, 30),
+    // La estructura de guion de la agencia que siguió la voz (la devolvió el guion): la recuerdan el montaje y el post.
+    ...(/^[\w-]{1,80}$/.test(String(r.estructuraId ?? "")) ? { estructuraId: String(r.estructuraId), estructuraNombre: texto(r.estructuraNombre, 60) } : {}),
   };
 }
 
@@ -227,7 +229,7 @@ async function ponerVideo(ctx, fila, archivo, portadaClave) {
   const puesto = await cambiarPublicacion(env, acceso, {
     clienteId: cliente.id, calendarId: datos.calendarId, postId: datos.postId, por: SISTEMA,
     cambiar: (post) => rellenarVacios(conVideoEnPost(post, medio, (m) => m?.deReel === fila.id), {
-      descripcion: r.descripcion, guion: textoDelGuionReel(r), portada: portadaClave ? `/api/media/${portadaClave}` : "",
+      descripcion: r.descripcion, guion: textoDelGuionReel(r), portada: portadaClave ? `/api/media/${portadaClave}` : "", estructura: r.estructuraId ?? "",
     }).post,
   });
   if (puesto?.postId) await marcarUso(acceso, cliente.id, archivo.id, { calendarId: puesto.calendarId, postId: puesto.postId }).catch(() => null);
@@ -241,7 +243,7 @@ async function rellenarTextos(ctx, portadaClave) {
   await cambiarPublicacion(env, acceso, {
     clienteId: cliente.id, calendarId: datos.calendarId, postId: datos.postId, por: SISTEMA,
     cambiar: (post) => {
-      const x = rellenarVacios(post, { descripcion: r.descripcion, guion: textoDelGuionReel(r), portada: portadaClave ? `/api/media/${portadaClave}` : "" });
+      const x = rellenarVacios(post, { descripcion: r.descripcion, guion: textoDelGuionReel(r), portada: portadaClave ? `/api/media/${portadaClave}` : "", estructura: r.estructuraId ?? "" });
       return x.rellenados.length ? x.post : null;
     },
   }).catch(() => null);

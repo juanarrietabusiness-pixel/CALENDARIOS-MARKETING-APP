@@ -52,6 +52,8 @@ export async function crearMontaje(env, acceso, cliente, { encargo, pasos, datos
   const r = await crearProyecto(acceso, cliente, {
     guion, titulo: encargo.titulo || guion.titulo, calendarId: datos.calendarId ?? null, postId: datos.postId ?? null, usuario,
     origen: { tipo: "reel", encargoId: encargo.id },
+    // La estructura de guion que siguió la voz del reel (la dijo su guion): la recuerda también el montaje.
+    estructuraId: reel.estructuraId ?? "",
   });
   difundir(env, acceso.ownerId, { tipo: "videos", clienteId: cliente.id, id: r.video.id, por });
   // Los textos de la publicación (sólo si están vacíos): el caption, el guion por tramos y la portada.
@@ -61,7 +63,7 @@ export async function crearMontaje(env, acceso, cliente, { encargo, pasos, datos
     puesto = await cambiarPublicacion(env, acceso, {
       clienteId: cliente.id, calendarId: datos.calendarId ?? null, postId: datos.postId, por,
       cambiar: (post) => {
-        const r2 = rellenarVacios(post, { descripcion: reel.descripcion, guion: textoDelGuionReel(reel), portada: portada ? `/api/media/${portada}` : "" });
+        const r2 = rellenarVacios(post, { descripcion: reel.descripcion, guion: textoDelGuionReel(reel), portada: portada ? `/api/media/${portada}` : "", estructura: reel.estructuraId ?? "" });
         return r2.rellenados.length ? r2.post : null;
       },
     }).catch(() => null);

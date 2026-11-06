@@ -8,11 +8,14 @@
 
 const vacio = (v) => !String(v ?? "").trim();
 
-/** Los campos de texto que se rellenan (sólo si están vacíos) y cómo se llaman en la publicación. */
-const CAMPOS = Object.freeze({ descripcion: "descripcion", guion: "guion", portada: "portada", hashtags: "hashtagsFinales" });
+/**
+ * Los campos de texto que se rellenan (sólo si están vacíos) y cómo se llaman en la publicación. `estructura`: el id de
+ * la ESTRUCTURA de guion de la agencia que siguió la voz en off (lib/formulasUgc.js), que la publicación recuerda.
+ */
+const CAMPOS = Object.freeze({ descripcion: "descripcion", guion: "guion", portada: "portada", hashtags: "hashtagsFinales", estructura: "estructuraVoz" });
 
 /**
- * La publicación con `campos` puestos donde está vacía: { descripcion, guion, portada, hashtags }. Una descripción
+ * La publicación con `campos` puestos donde está vacía: { descripcion, guion, portada, hashtags, estructura }. Una descripción
  * vacía que tenía el campo heredado `script` cuenta como escrita. → { post, rellenados: [nombres] }. Pura.
  */
 export function rellenarVacios(post = {}, campos = {}) {
