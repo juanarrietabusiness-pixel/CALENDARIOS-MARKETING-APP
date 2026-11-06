@@ -167,7 +167,9 @@ describe("hacer el render (la alarma del objeto)", () => {
 
     const medios = dias()[0].posts[0].medios;
     expect(medios[0]).toMatchObject({ src: `/api/media/${render.clave}`, tipo: "video", videoAnimado: id, duracion: 13.8 });
-    expect(medios[1].src).toBe("/api/media/clientes/bc/otra.jpg");
+    // La imagen que el reel tenía esperando al video pasa a su PORTADA: un reel es UN video (resultadoEnPost.js).
+    expect(medios).toHaveLength(1);
+    expect(dias()[0].posts[0].portada).toBe("/api/media/clientes/bc/otra.jpg");
   });
 
   it("manda el sonido: los efectos (encendidos por defecto) y la música de la galería con su volumen; sin ella, avisa", async () => {
@@ -231,7 +233,9 @@ describe("hacer el render (la alarma del objeto)", () => {
     expect(segundo).not.toBe(primero);
     const medios = dias()[0].posts[0].medios;
     expect(medios.filter((m) => m.videoAnimado === id).map((m) => m.src)).toEqual([`/api/media/${segundo}`]);
-    expect(medios).toHaveLength(2);
+    // Sólo el video: la imagen que tenía el reel quedó de portada con el primer render.
+    expect(medios).toHaveLength(1);
+    expect(dias()[0].posts[0].portada).toBe("/api/media/clientes/bc/otra.jpg");
   });
 
   it("una publicación ya publicada no se toca: el mp4 queda en la galería y se dice", async () => {

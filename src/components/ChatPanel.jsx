@@ -992,18 +992,20 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
           if (!toolInput.post_id) return { ...entregada, mensaje: dicho };
           if (!post || !calId || !onUpdateCal) return { ...entregada, mensaje: `${dicho} No encontré la publicación ${toolInput.post_id} para ponerla.` };
           const medio = { src: r.archivo.src, tipo: video ? "video" : "imagen", nombre: r.archivo.prompt?.slice(0, 40) || (video ? "video" : "imagen") };
+          // Una imagen para un reel con su video es su PORTADA, no un archivo más (la regla de galeriaPura.js).
+          const dePortada = !video && esReelConVideo(post);
           const updated = {
             ...cal,
             days: cal.days.map((d) => ({
               ...d,
-              posts: (d.posts || []).map((p) => (p.id === toolInput.post_id ? conMedios(p, [...mediosDe(p), medio]) : p)),
+              posts: (d.posts || []).map((p) => (p.id !== toolInput.post_id ? p : dePortada ? conPortada(p, medio.src) : conMedios(p, [...mediosDe(p), medio]))),
             })),
           };
           calRef.current = updated;
           onUpdateCal(calId, updated);
           // Que la papelera del Estudio sepa que una publicación la usa.
           void apuntarUso(client.dbId || client.id, r.archivo.id, { calendarId: cal.dbId || calId, postId: toolInput.post_id }).catch(() => null);
-          return { ...entregada, mensaje: `${dicho} Puesta en la publicación ${toolInput.post_id}.` };
+          return { ...entregada, mensaje: `${dicho} ${dePortada ? `Puesta como PORTADA del reel ${toolInput.post_id} (un reel es un video: la imagen va de portada).` : `Puesta en la publicación ${toolInput.post_id}.`}` };
         } catch (err) {
           return { ok: false, mensaje: err?.message || "El Estudio no pudo crearla." };
         } finally {
