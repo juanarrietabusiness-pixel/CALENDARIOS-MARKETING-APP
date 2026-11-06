@@ -7,7 +7,8 @@
 // letra con la canción (y aísla la voz si la música la tapa) o Gemini la oye. El resultado enseña cada línea con su
 // tiempo, de dónde salió, la coincidencia (con un aviso si es baja) y el AJUSTE FINO (±1,5 s, gratis). Luego «Prueba de
 // sincronía (gratis)» o «Diseñar las escenas con IA»: los dos crean el borrador con la canción como su locución y lo
-// abren. No se genera voz.
+// abren. No se genera voz. Con un ESTILO GUARDADO del cliente (SelectorEstiloVideo, el primero por defecto), los dos
+// salen en su forma; si el estilo lleva imágenes de fondo, la IA las pide sin marcar la casilla.
 // ============================================================
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
@@ -17,6 +18,7 @@ import { subirSonido } from "../lib/sonidosApi";
 import { limpiarLetra, MAX_LETRA, DESPLAZAMIENTO_MAX, MAX_SEGUNDOS_CANCION, MAX_BYTES_CANCION, COINCIDENCIA_MINIMA } from "../lib/videoCancion";
 import { publicacionesParaVideo } from "../lib/renderVideo";
 import { fmtDate } from "../utils";
+import SelectorEstiloVideo from "./SelectorEstiloVideo";
 
 const FORMATOS = [["9:16", "Vertical 9:16"], ["1:1", "Cuadrado 1:1"], ["16:9", "Horizontal 16:9"]];
 const ACEPTA = "audio/mpeg,audio/mp3,audio/wav,audio/x-wav,audio/mp4,audio/x-m4a,.mp3,.wav,.m4a";
@@ -37,6 +39,11 @@ export default function CrearConCancion({ client, publicacion = null, onCreado, 
   const [desplazamiento, setDesplazamiento] = useState(0);
   // «Con imágenes de fondo» al diseñar con IA: un fondo por sección (lo crea el director después, con su costo).
   const [conFondos, setConFondos] = useState(false);
+  // El estilo guardado del cliente (null: aún sin escoger; "": ninguno) y el estilo escogido (su resumen y si lleva fondos).
+  const [estiloId, setEstiloId] = useState(null);
+  const [estilo, setEstilo] = useState(null);
+  const escogerEstilo = useCallback((id, e) => { setEstiloId(id); setEstilo(e); }, []);
+  const fondosDelEstilo = estilo?.fondo?.imagen === true;
   const [ocupado, setOcupado] = useState("");
   const [error, setError] = useState("");
   const [aviso, setAviso] = useState("");
@@ -90,10 +97,11 @@ export default function CrearConCancion({ client, publicacion = null, onCreado, 
       const destino = opciones.find((o) => o.postId === postId);
       const r = await crearVideoConCancion(client.id, {
         huella: sincronia.huella, modo, formato, titulo, postId, calendarId: destino?.calendarId ?? publicacion?.calendarId ?? "", desplazamiento,
-        conFondos: modo === "ia" && conFondos,
+        conFondos: modo === "ia" && conFondos, estiloId: estiloId || "",
       });
       const partes = [
         modo === "ia" ? "Escenas diseñadas por la IA sobre la letra." : "Prueba de sincronía creada: una escena por línea.",
+        r.estilo ? `Con el estilo «${r.estilo.nombre}».` : "",
         r.corregido ? "La IA corrigió su primer intento para que la letra fuera tal cual." : "",
         r.aviso || "",
         r.fondos > 0 ? `Pide ${r.fondos} imagen${r.fondos === 1 ? "" : "es"} de fondo: créalas con el director en «Imágenes de fondo» (se dice el costo antes).` : "",
@@ -157,6 +165,8 @@ export default function CrearConCancion({ client, publicacion = null, onCreado, 
         {publicacion?.postId && !opciones.some((o) => o.postId === publicacion.postId) && <option value={publicacion.postId}>La publicación abierta</option>}
       </select>
 
+      <SelectorEstiloVideo client={client} uso="cancion" value={estiloId} onChange={escogerEstilo} disabled={Boolean(ocupado)} />
+
       {!sincronia && (
         <div className="va-acciones">
           {precio ? (
@@ -203,15 +213,17 @@ export default function CrearConCancion({ client, publicacion = null, onCreado, 
           <input id={`${ids}-ajuste`} type="range" className="va-cancion-ajuste" min={-DESPLAZAMIENTO_MAX} max={DESPLAZAMIENTO_MAX} step={0.05} value={desplazamiento}
             onChange={(e) => setDesplazamiento(Number(e.target.value))} disabled={Boolean(ocupado)} />
           <label className="va-check">
-            <input type="checkbox" checked={conFondos} disabled={Boolean(ocupado)} onChange={(e) => setConFondos(e.target.checked)} />
-            Con imágenes de fondo al diseñar con IA (una por sección —verso, coro, puente— en el estilo del kit; el director las crea después, con su costo)
+            <input type="checkbox" checked={conFondos || fondosDelEstilo} disabled={Boolean(ocupado) || fondosDelEstilo} onChange={(e) => setConFondos(e.target.checked)} />
+            {fondosDelEstilo
+              ? `Con imágenes de fondo (lo pide el estilo: una cada ${estilo.fondo.escenas} escena${estilo.fondo.escenas === 1 ? "" : "s"}; el director las crea después, con su costo)`
+              : "Con imágenes de fondo al diseñar con IA (una por sección —verso, coro, puente— en el estilo del kit; el director las crea después, con su costo)"}
           </label>
           <div className="va-acciones">
             <button type="button" className="btn btn-primary" disabled={Boolean(ocupado)} onClick={() => crear("karaoke")}>
               <Icon name="play" /> {ocupado === "karaoke" ? "Creando…" : "Prueba de sincronía (gratis)"}
             </button>
             <button type="button" className="btn btn-secondary" disabled={Boolean(ocupado)} onClick={() => crear("ia")}>
-              <Icon name="sparkles" /> {ocupado === "ia" ? "Diseñando… (hasta un minuto)" : "Diseñar las escenas con IA"}
+              <Icon name="sparkles" /> {ocupado === "ia" ? "Diseñando… (hasta un minuto)" : estilo ? `Diseñar con el estilo «${estilo.nombre}»` : "Diseñar las escenas con IA"}
             </button>
             <button type="button" className="btn btn-ghost btn-sm" disabled={Boolean(ocupado)} onClick={onCancelar}>Cancelar</button>
           </div>

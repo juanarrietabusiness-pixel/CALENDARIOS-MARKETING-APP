@@ -44,9 +44,18 @@ async function estudioAprobado(acceso, clienteId) {
 /** El kit guardado de un cliente (fila de `clients`). */
 export const kitDe = (cliente) => limpiarKit(leerJSON(cliente?.kit_marca, {}));
 
-/** Guarda el kit. El logo, si viene, tiene que ser una imagen de este cliente que exista. */
-export async function guardarKit(env, acceso, cliente, entrada) {
+/**
+ * Guarda el kit. El logo, si viene, tiene que ser una imagen de este cliente que exista. Los ESTILOS DE VIDEO guardados
+ * (`estilosVideo`) sólo los cambian sus rutas (`conEstilos`, worker/lib/estudio/estilosVideo.js): en lo demás se
+ * conservan los guardados, así el kit abierto en otra pestaña antes de guardar un estilo no se lo lleva al guardarse.
+ */
+export async function guardarKit(env, acceso, cliente, entrada, { conEstilos = false } = {}) {
   const kit = limpiarKit(entrada);
+  if (!conEstilos) {
+    const guardados = kitDe(cliente).estilosVideo;
+    if (guardados?.length) kit.estilosVideo = guardados;
+    else delete kit.estilosVideo;
+  }
   // La voz, sólo una de las fijas de Google (la pantalla no ofrece otras; el servidor no se lo cree).
   if (kit.voz && !Object.hasOwn(VOCES_OMNI, kit.voz)) kit.voz = "";
   // Las referencias de cada tipo las manda el navegador: sólo claves de ESTE cliente (una ajena no llega a un motor).

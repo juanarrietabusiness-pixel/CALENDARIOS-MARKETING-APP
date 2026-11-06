@@ -39,9 +39,16 @@
 //   POST   /api/videos/<c>/<id>/fondos      { confirmado }: crearlas con el DIRECTOR (un encargo del servidor; 9:16, sin
 //                                           texto ni logo). Sin `confirmado`, 409 `confirmar` con el costo (salvo «crear
 //                                           sin preguntar»); al terminar, cada una va a las capas de su `pide`
+//   GET    /api/videos/<c>/estilos          Los ESTILOS DE VIDEO guardados del cliente (con su resumen en frases)
+//   PATCH  /api/videos/<c>/estilos/<estilo> { nombre?, nota?, para? }: cambiarle el nombre, la nota o para qué es
+//   DELETE /api/videos/<c>/estilos/<estilo> Quitarlo (los videos hechos con él no cambian)
+//   POST   /api/videos/<c>/<id>/estilo      { nombre, nota?, para? }: «Guardar como estilo»: las REGLAS del guion guardado
+//                                           (no su letra ni sus imágenes) pasan al kit del cliente (gratis, sin IA)
+//   POST   /api/videos/<c>/<id>/aplicar-estilo { estiloId, version }: imponer un estilo guardado al guion (una versión
+//                                           nueva, en borrador; no cambia lo que se dice ni lo que se lee)
 //   GET    /api/videos/<c>/<id>/versiones   El historial: las versiones de antes del guion
 //   POST   /api/videos/<c>/<id>/versiones   { version, aVersion }: volver a una (crea una versión nueva con su guion)
-//   POST   /api/videos/<c>/escribir         { idea, segundos?, formato?, postId?, estructuraId?, conFondos? }: la IA de texto ESCRIBE el
+//   POST   /api/videos/<c>/escribir         { idea, segundos?, formato?, postId?, estructuraId?, conFondos?, estiloId? }: la IA de texto ESCRIBE el
 //                                           guion (formato v1, validado; si sale con errores se le devuelven una vez)
 //                                           siguiendo la ESTRUCTURA de guion escogida (o la que escoja la IA entre las de
 //                                           voz en off: vuelve en `estructura`). No guarda nada: la pantalla lo abre como
@@ -57,8 +64,9 @@
 //                                           Siempre pide confirmar: sin `confirmado`, 409 con el costo (aproximado). La misma
 //                                           canción con la misma letra otra vez sale gratis (`repetida`). → { sincronia }
 //   POST   /api/videos/<c>/cancion/video    { huella, modo: "karaoke" | "ia", formato?, titulo?, postId?, calendarId?,
-//                                           desplazamiento?, indicacion?, conFondos? }: crea el BORRADOR con la canción como su locución:
-//                                           la prueba de sincronía (gratis) o las escenas diseñadas por la IA (texto)
+//                                           desplazamiento?, indicacion?, conFondos?, estiloId? }: crea el BORRADOR con la canción como su
+//                                           locución: la prueba de sincronía (gratis) o las escenas diseñadas por la IA
+//                                           (texto); con `estiloId`, en la forma de ese estilo guardado
 //   PUT    /api/videos/<c>/<id>/cancion     { desplazamiento }: el ajuste fino de la letra (±1,5 s; gratis, sin versión)
 //   POST   /api/videos/<c>/<id>/cancion     { confirmado }: «Volver a sincronizar» la canción del video (pide confirmar)
 //   GET    /api/videos/<c>/musicas          { musicas, efectos }: la BIBLIOTECA DE SONIDO del cliente y la de la agencia
@@ -110,6 +118,7 @@ import { publicarConMusica } from "../lib/estudio/conMusica.js";
 import { pedirFondos, estadoDeFondos } from "../lib/estudio/fondosVideo.js";
 import { costoDeVoz, fraseDeMuestra, modeloDeVoz, esIdDeVoz } from "../../src/lib/voces.js";
 import { sincronizarCancion, crearVideoConCancion, ajustarCancion, resincronizarVideo, resumenDeSincronia, ErrorCancion } from "../lib/estudio/cancion.js";
+import { estilosDelCliente, estiloDelCliente, guardarEstilo, cambiarEstilo, quitarEstilo, aplicarEstiloAVideo, ErrorEstilo } from "../lib/estudio/estilosVideo.js";
 
 /** Un ErrorCancion como respuesta: su mensaje, su estado y lo que la pantalla necesita (`codigo`, `costo`…). */
 const respuestaDeCancion = (e) => json({ error: e.message, ...e.extra }, e.estado);
@@ -193,6 +202,7 @@ export async function rutasVideos(req, env, ctx) {
     return await rutasDelCliente(req, env, ctx);
   } catch (e) {
     if (e instanceof ErrorVideo) return respuestaDeVideo(e);
+    if (e instanceof ErrorEstilo) return error(e.message, e.estado);
     throw e;
   }
 }
@@ -220,16 +230,18 @@ async function rutasDelCliente(req, env, { acceso, usuario, partes, metodo }) {
   if (id === "escribir" && !accion) {
     if (metodo !== "POST") return error("Método no permitido.", 405);
     const b = (await cuerpo(req)) ?? {};
+    // Un estilo guardado del cliente: la IA escribe con él delante y el código impone su forma.
+    const estilo = typeof b.estiloId === "string" && b.estiloId ? estiloDelCliente(cliente, b.estiloId) : null;
     try {
       const r = await escribirGuion(env, acceso, cliente, {
         idea: b.idea, segundos: b.segundos, formato: b.formato, postId: typeof b.postId === "string" ? b.postId : "",
         estructuraId: typeof (b.estructuraId ?? b.formulaId) === "string" ? b.estructuraId ?? b.formulaId : "",
-        conFondos: b.conFondos === true,
+        conFondos: b.conFondos === true, estilo,
       });
       const publicacion = r.postId ? await publicacionDelCliente(acceso, clienteId, r.postId) : null;
       return json({
         guion: r.guion, avisos: r.avisos, corregido: r.corregido, aviso: r.aviso, publicacion, estructura: r.estructura,
-        referencias: r.referencias ?? 0, fondos: r.fondos ?? 0,
+        referencias: r.referencias ?? 0, fondos: r.fondos ?? 0, ...(estilo ? { estilo: { id: estilo.id, nombre: estilo.nombre } } : {}),
       });
     } catch (e) {
       if (e instanceof ErrorGuion || e instanceof ErrorIA) return error(e.message, e.estado ?? 502);
@@ -238,6 +250,19 @@ async function rutasDelCliente(req, env, { acceso, usuario, partes, metodo }) {
   }
 
   if (id === "voces") return rutasVoces(req, env, { acceso, usuario, cliente, sub: accion, metodo });
+
+  // Los ESTILOS DE VIDEO guardados del cliente (en su kit; gratis, sin IA).
+  if (id === "estilos") {
+    if (!accion && metodo === "GET") return json({ estilos: estilosDelCliente(cliente) });
+    if (accion && (metodo === "PATCH" || metodo === "DELETE")) {
+      const r = metodo === "DELETE"
+        ? await quitarEstilo(env, acceso, cliente, accion)
+        : await (async () => { const b = (await cuerpo(req)) ?? {}; return cambiarEstilo(env, acceso, cliente, accion, { nombre: b.nombre, nota: b.nota, para: b.para }); })();
+      difundir(env, acceso.ownerId, { tipo: "estudio", clientId: cliente.id, por: firma(usuario, req) });
+      return json(r);
+    }
+    return error("Método no permitido.", 405);
+  }
 
   // Las músicas de fondo del cliente y de la AGENCIA (la biblioteca de sonido), con sus efectos: listar y subir (gratis).
   if (id === "musicas" && !accion) {
@@ -321,7 +346,7 @@ async function rutasDelCliente(req, env, { acceso, usuario, partes, metodo }) {
         const r = await crearVideoConCancion(env, acceso, cliente, {
           huella: texto(b.huella), modo: b.modo === "ia" ? "ia" : "karaoke", formato: texto(b.formato) || "9:16", titulo: texto(b.titulo),
           postId: texto(b.postId), calendarId: texto(b.calendarId), desplazamiento: b.desplazamiento, indicacion: texto(b.indicacion),
-          conFondos: b.conFondos === true, usuario,
+          conFondos: b.conFondos === true, estiloId: texto(b.estiloId), usuario,
         });
         avisar(env, acceso, usuario, req, clienteId, r.video.id);
         return json(r, 201);
@@ -407,6 +432,13 @@ async function rutasDelCliente(req, env, { acceso, usuario, partes, metodo }) {
     }
   }
 
+  // «Guardar como estilo»: las reglas del guion guardado pasan al kit del cliente (no toca el video).
+  if (accion === "estilo" && metodo === "POST") {
+    const r = await guardarEstilo(env, acceso, cliente, fila, { nombre: b.nombre, nota: b.nota, para: b.para }, usuario);
+    difundir(env, acceso.ownerId, { tipo: "estudio", clientId: cliente.id, por: firma(usuario, req) });
+    return json(r, 201);
+  }
+
   // A qué publicación va: no toca el guion, así que no pide la versión.
   if (accion === "publicacion" && metodo === "POST") {
     const r = await ligarAPublicacion(env, acceso, cliente, fila, {
@@ -451,6 +483,13 @@ async function rutasDelCliente(req, env, { acceso, usuario, partes, metodo }) {
     const r = await volverAVersion(acceso, cliente, fila, { version: b.version, aVersion: b.aVersion, por: usuario?.nombre ?? null });
     avisar(env, acceso, usuario, req, clienteId, id);
     return json({ video: r.video, avisos: r.avisos });
+  }
+
+  // Imponer un estilo guardado al guion (una versión nueva, en borrador).
+  if (accion === "aplicar-estilo" && metodo === "POST") {
+    const r = await aplicarEstiloAVideo(acceso, cliente, fila, { estiloId: texto(b.estiloId), version: b.version, por: usuario?.nombre ?? null });
+    if (r.cambios) avisar(env, acceso, usuario, req, clienteId, id);
+    return json(r);
   }
 
   if (accion === "aprobar" && metodo === "POST") {

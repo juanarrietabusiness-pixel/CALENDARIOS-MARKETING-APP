@@ -47,8 +47,8 @@ export async function aprobarVideo(clienteId, id, version) {
  * corregido, aviso, publicacion: { calendarId, postId } | null, estructura: { id, nombre } | null }. `estructuraId`: la
  * estructura de guion de la agencia que sigue la voz (vacía: la escoge la IA y vuelve en `estructura`).
  */
-export async function escribirGuionVideo(clienteId, { idea = "", segundos, formato, postId = "", estructuraId = "", conFondos = false } = {}) {
-  return pedir(`${base(clienteId)}/escribir`, json("POST", { idea, segundos, formato, postId, ...(estructuraId ? { estructuraId } : {}), ...(conFondos ? { conFondos: true } : {}) }));
+export async function escribirGuionVideo(clienteId, { idea = "", segundos, formato, postId = "", estructuraId = "", conFondos = false, estiloId = "" } = {}) {
+  return pedir(`${base(clienteId)}/escribir`, json("POST", { idea, segundos, formato, postId, ...(estructuraId ? { estructuraId } : {}), ...(conFondos ? { conFondos: true } : {}), ...(estiloId ? { estiloId } : {}) }));
 }
 
 /** Los fondos por crear del guion guardado: { pendientes, enCurso, costo, texto, modelo }. */

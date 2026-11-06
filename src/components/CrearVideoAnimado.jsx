@@ -8,24 +8,29 @@
 // en off (o la IA escoge); la que siguió vuelve con el guion y el borrador la guarda (`origen.estructuraId`).
 //
 // «Con tu canción» (CrearConCancion.jsx, en su chunk): el video sobre una canción YA GRABADA con su letra sincronizada; la
-// crea el servidor ya guardada (con la canción como su locución) y se abre con `onCreado`.
+// crea el servidor ya guardada (con la canción como su locución) y se abre con `onCreado`. `formaInicial` «cancion» abre
+// directo en ella (la categoría «Video con canción» del calendario y del Estudio).
+//
+// «Estilo del video» (SelectorEstiloVideo): un ESTILO GUARDADO del cliente para voz en off; la IA escribe con él y el
+// servidor impone su forma.
 // ============================================================
 
-import { lazy, Suspense, useId, useMemo, useState } from "react";
+import { lazy, Suspense, useCallback, useId, useMemo, useState } from "react";
 import Icon from "./Icon";
 import { escribirGuionVideo } from "../lib/videosApi";
 import { DURACIONES_ANIMADO, DURACION_ANIMADO_POR_DEFECTO, MAX_IDEA_ANIMADO } from "../lib/guionAnimadoIA";
 import { publicacionesParaVideo } from "../lib/renderVideo";
 import { fmtDate } from "../utils";
 import SelectorEstructura from "./SelectorEstructura";
+import SelectorEstiloVideo from "./SelectorEstiloVideo";
 
 const FORMATOS = [["9:16", "Vertical 9:16"], ["1:1", "Cuadrado 1:1"], ["16:9", "Horizontal 16:9"]];
 const CrearConCancion = lazy(() => import("./CrearConCancion"));
 
-export default function CrearVideoAnimado({ client, publicacion = null, onListo, onPlantilla, onCancelar, onCreado }) {
+export default function CrearVideoAnimado({ client, publicacion = null, onListo, onPlantilla, onCancelar, onCreado, formaInicial = "idea" }) {
   const ids = useId();
   // De qué sale: una idea (la IA escribe la voz en off) o una canción ya grabada.
-  const [forma, setForma] = useState("idea");
+  const [forma, setForma] = useState(formaInicial === "cancion" && onCreado ? "cancion" : "idea");
   const [idea, setIdea] = useState(publicacion?.idea ?? "");
   const [segundos, setSegundos] = useState(DURACION_ANIMADO_POR_DEFECTO);
   const [formato, setFormato] = useState("9:16");
@@ -35,19 +40,24 @@ export default function CrearVideoAnimado({ client, publicacion = null, onListo,
   const [estructuraId, setEstructuraId] = useState("");
   // «Con imágenes de fondo»: la IA pide un fondo por sección; el director los crea después, con su costo.
   const [conFondos, setConFondos] = useState(false);
+  // Un estilo guardado del cliente para voz en off (null: aún sin escoger; "": ninguno).
+  const [estiloId, setEstiloId] = useState(null);
+  const [estilo, setEstilo] = useState(null);
+  const escogerEstilo = useCallback((id, e) => { setEstiloId(id); setEstilo(e); }, []);
+  const fondosDelEstilo = estilo?.fondo?.imagen === true;
   const [ocupado, setOcupado] = useState(false);
   const [error, setError] = useState("");
 
   const escribir = async () => {
     setOcupado(true); setError("");
     try {
-      const r = await escribirGuionVideo(client.id, { idea, segundos, formato, postId, estructuraId, conFondos });
+      const r = await escribirGuionVideo(client.id, { idea, segundos, formato, postId, estructuraId, conFondos, estiloId: estiloId || "" });
       const destino = r.publicacion ?? (postId ? { postId, calendarId: opciones.find((o) => o.postId === postId)?.calendarId ?? publicacion?.calendarId ?? null } : null);
       const sigue = r.estructura ? `Sigue la estructura «${r.estructura.nombre}».` : "";
       const fondos = r.fondos > 0 ? `Pide ${r.fondos} imagen${r.fondos === 1 ? "" : "es"} de fondo: guarda el guion y créalas con el director (se dice el costo antes).` : "";
       onListo(r.guion, {
         publicacion: destino, estructura: r.estructura ?? null,
-        aviso: [r.corregido ? "La IA corrigió su primer intento para que valide." : r.aviso || "", sigue, fondos].filter(Boolean).join(" "),
+        aviso: [r.corregido ? "La IA corrigió su primer intento para que valide." : r.aviso || "", sigue, r.estilo ? `Con el estilo «${r.estilo.nombre}».` : "", fondos].filter(Boolean).join(" "),
       });
     } catch (e) { setError(e.message); } finally { setOcupado(false); }
   };
@@ -97,9 +107,10 @@ export default function CrearVideoAnimado({ client, publicacion = null, onListo,
         ))}
       </fieldset>
       <SelectorEstructura uso="voz" value={estructuraId} onChange={setEstructuraId} disabled={ocupado} sencilla />
+      <SelectorEstiloVideo client={client} uso="voz" value={estiloId} onChange={escogerEstilo} disabled={ocupado} />
       <label className="va-check">
-        <input type="checkbox" checked={conFondos} disabled={ocupado} onChange={(e) => setConFondos(e.target.checked)} />
-        Con imágenes de fondo (una por sección, en el estilo del kit; el director las crea después de guardar, con su costo)
+        <input type="checkbox" checked={conFondos || fondosDelEstilo} disabled={ocupado || fondosDelEstilo} onChange={(e) => setConFondos(e.target.checked)} />
+        {fondosDelEstilo ? "Con imágenes de fondo (lo pide el estilo; el director las crea después de guardar, con su costo)" : "Con imágenes de fondo (una por sección, en el estilo del kit; el director las crea después de guardar, con su costo)"}
       </label>
       <div className="va-acciones">
         <button type="button" className="btn btn-primary" disabled={ocupado || (!idea.trim() && !postId)} onClick={escribir}>

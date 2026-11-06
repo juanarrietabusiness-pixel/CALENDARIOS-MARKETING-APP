@@ -108,6 +108,8 @@ function origenLimpio(origen, estructuraId) {
   // El de una foto con música (lib/conMusica.js) recuerda la foto con que se hizo: si la publicación ya no la lleva al
   // terminar el render, el video no la toca.
   if (o.tipo === "foto" && /^\/api\/media\/clientes\/[^\s]{1,300}$/.test(String(origen.foto ?? "")) && !String(origen.foto).includes("..")) o.foto = String(origen.foto);
+  // El ESTILO GUARDADO con que se hizo (src/lib/estilosVideo.js), si se hizo con uno.
+  if (origen && /^ev-[a-z0-9]{4,24}$/.test(String(origen.estiloId ?? ""))) o.estiloId = String(origen.estiloId);
   return /^[\w-]{1,80}$/.test(String(estructuraId ?? "")) ? { ...o, estructuraId: String(estructuraId) } : o;
 }
 
@@ -115,7 +117,7 @@ function origenLimpio(origen, estructuraId) {
  * Crea un proyecto (borrador). `estructuraId`: la ESTRUCTURA de guion de la agencia que siguió (ya comprobada por quien
  * llama: `estructuraExistente`), que queda en `origen.estructuraId`. → { video, avisos }.
  */
-export async function crearProyecto(acceso, cliente, { guion: entrada, titulo, calendarId = null, postId = null, usuario, origen = null, estructuraId = "", locucion = null }) {
+export async function crearProyecto(acceso, cliente, { guion: entrada, titulo, calendarId = null, postId = null, usuario, origen = null, estructuraId = "", locucion = null, sonido: sonidoPedido = null }) {
   const { guion, avisos } = guionValido(entrada);
   let cal = null;
   if (calendarId) {
@@ -126,7 +128,8 @@ export async function crearProyecto(acceso, cliente, { guion: entrada, titulo, c
     throw new ErrorVideo(`Como mucho ${MAX_PROYECTOS} videos por cliente: borra los que ya no sirvan.`, 409);
   }
   const momento = ahora();
-  const sonido = await sonidoInicial(acceso, cliente.id, guion);
+  // El sonido con que nace: el que pide quien crea (un estilo sin efectos), o el de siempre.
+  const sonido = sonidoPedido ? limpiarSonido(sonidoPedido) : await sonidoInicial(acceso, cliente.id, guion);
   const fila = await acceso.insertar("videos_proyectos", {
     ...(sonido ? { sonido: JSON.stringify(sonido) } : {}),
     id: uuid(), client_id: cliente.id, calendar_id: cal?.id ?? null,

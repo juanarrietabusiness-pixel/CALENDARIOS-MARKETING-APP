@@ -14,6 +14,7 @@ import { miniaturaDe } from "./miniaturas.js";
 import { NULO } from "../acceso.js";
 import { marcaParaElVideo } from "../../../src/lib/estiloVideo.js";
 import { galeriaParaLaIA, erroresDeFondos, fondosPendientes, MAX_GALERIA_FONDOS } from "../../../src/lib/fondosVideo.js";
+import { aplicarEstilo, lineaDeEstilo, TOPE_FONDOS_ESTILO } from "../../../src/lib/estilosVideo.js";
 import { kitDe } from "./kit.js";
 import { contextoDeGuion } from "./guionVideo.js";
 import { leerMercado } from "../mercado.js";
@@ -140,19 +141,26 @@ export async function escribirGuion(env, acceso, cliente, datos = {}) {
   const segundos = duracionAnimado(datos.segundos);
   const contexto = ctx.contexto;
   const productos = await catalogoConFotos(acceso, cliente.id);
-  const conFondos = datos.conFondos === true;
+  // Un ESTILO GUARDADO del cliente (src/lib/estilosVideo.js): la IA escribe el contenido y el código impone la forma.
+  // Con fondos en el estilo, el video los lleva aunque no se marcara «Con imágenes de fondo».
+  const estilo = datos.estilo ?? null;
+  const conFondos = datos.conFondos === true || estilo?.fondo?.imagen === true;
+  const maxFondos = estilo ? TOPE_FONDOS_ESTILO : undefined;
   const { kit, marcaVideo, imagenes, galeria } = await marcaDelGuion(env, acceso, cliente, { conFondos });
   const personaje = kit.personajeVideo ?? null;
 
   const base = {
     marca: cliente.name, idea, publicacion: delPost, segundos, formato: datos.formato, contexto, productos, personaje, criterio: ctx.criterio,
-    estructura: eleccion.texto, marcaVideo, conFondos, galeria,
+    estructura: eleccion.texto, marcaVideo, conFondos, galeria, maxFondos,
+    estiloGuardado: estilo ? lineaDeEstilo(estilo, { escenas: Math.round(segundos / 4) }) : "",
   };
-  // Valida y, con fondos, que no pida más imágenes de la cuenta (eso también se corrige en la segunda vuelta).
-  const comprobar = (guion) => {
-    if (!guion) return { ok: false, errores: [{ donde: "guion", mensaje: "No es un JSON que se pueda leer." }] };
+  // Impone el estilo (si lo hay), valida y, con fondos, que no pida más imágenes de la cuenta (eso también se corrige
+  // en la segunda vuelta).
+  const comprobar = (crudo) => {
+    if (!crudo) return { ok: false, errores: [{ donde: "guion", mensaje: "No es un JSON que se pueda leer." }] };
+    const guion = estilo ? aplicarEstilo(crudo, estilo, { conFondos }).guion : crudo;
     const v = validarGuion(guion);
-    const deFondos = conFondos && v.guion ? erroresDeFondos(v.guion) : [];
+    const deFondos = conFondos && v.guion ? erroresDeFondos(v.guion, maxFondos ? { maxFondos } : {}) : [];
     return deFondos.length ? { ...v, ok: false, errores: [...(v.errores ?? []), ...deFondos] } : v;
   };
   let r = await llamarConReferencias(env, acceso, cliente, { imagenes, texto: (n) => pedidoDeGuionAnimado({ ...base, referencias: n }), salida: 8000, funcion: "guion de video" });
@@ -192,23 +200,29 @@ export async function escribirGuion(env, acceso, cliente, datos = {}) {
  * `sincronia`: la de la canción ({ archivo, nombre, duracion, letra }); `lineas`, `huecos`: los de videoCancion.js.
  * → { guion, avisos, corregido, modelo, aviso }.
  */
-export async function escribirGuionCancion(env, acceso, cliente, { sincronia, lineas, huecos, formato = "9:16", titulo = "", postId = "", indicacion = "", conFondos = false, golpes = [], bpm = 0 }) {
+export async function escribirGuionCancion(env, acceso, cliente, { sincronia, lineas, huecos, formato = "9:16", titulo = "", postId = "", indicacion = "", conFondos = false, golpes = [], bpm = 0, estilo = null }) {
   const ctx = await contextoDeGuion(env, acceso, cliente, { postId: String(postId ?? ""), consulta: `${titulo || sincronia.nombre || ""} canción video animado`, presupuesto: 3000 });
   const productos = await catalogoConFotos(acceso, cliente.id);
-  const { kit, marcaVideo, imagenes, galeria } = await marcaDelGuion(env, acceso, cliente, { conFondos: conFondos === true });
+  // Con un ESTILO GUARDADO que lleva fondos, el video los lleva aunque no se marcara «Con imágenes de fondo».
+  const fondos = conFondos === true || estilo?.fondo?.imagen === true;
+  const maxFondos = estilo ? TOPE_FONDOS_ESTILO : undefined;
+  const { kit, marcaVideo, imagenes, galeria } = await marcaDelGuion(env, acceso, cliente, { conFondos: fondos });
   const personaje = kit.personajeVideo ?? null;
   const base = {
     marca: cliente.name, titulo, nombre: sincronia.nombre ?? "", duracion: sincronia.duracion, lineas, huecos, formato,
-    contexto: ctx.contexto, productos, personaje, indicacion, marcaVideo, conFondos: conFondos === true, galeria, golpes, bpm,
+    contexto: ctx.contexto, productos, personaje, indicacion, marcaVideo, conFondos: fondos, galeria, golpes, bpm, maxFondos,
+    estiloGuardado: estilo ? lineaDeEstilo(estilo, { escenas: lineas.length + huecos.length, cancion: true }) : "",
   };
   const cancion = { archivo: sincronia.archivo, duracion: sincronia.duracion, nombre: sincronia.nombre ?? "" };
   const revisar = (texto) => {
-    const g = leerGuionAnimado(texto);
-    if (!g) return { g: null, v: { ok: false, errores: [{ donde: "guion", mensaje: "No es un JSON que se pueda leer." }] } };
+    const leido = leerGuionAnimado(texto);
+    if (!leido) return { g: null, v: { ok: false, errores: [{ donde: "guion", mensaje: "No es un JSON que se pueda leer." }] } };
+    // El estilo guardado se IMPONE en la forma antes de validar (la letra y lo que se lee no cambian).
+    const g = estilo ? aplicarEstilo(leido, estilo, { conFondos: fondos }).guion : leido;
     const conCancion = conLaCancion(g, cancion);
     const v = validarGuion(conCancion);
     const deLetra = v.guion ? comprobarLetra(v.guion, sincronia.letra) : [];
-    const deFondos = base.conFondos && v.guion ? erroresDeFondos(v.guion) : [];
+    const deFondos = base.conFondos && v.guion ? erroresDeFondos(v.guion, maxFondos ? { maxFondos } : {}) : [];
     const extra = [...deLetra, ...deFondos];
     return { g: conCancion, v: extra.length ? { ...v, ok: false, errores: [...(v.errores ?? []), ...extra] } : v };
   };

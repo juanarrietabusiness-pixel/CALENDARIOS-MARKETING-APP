@@ -30,9 +30,12 @@ export function sincronizarCancion(clienteId, { musicaId, letra, confirmado = fa
   return conConfirmacion(() => pedir(`${base(clienteId)}/cancion`, json("POST", { musicaId, letra, confirmado })));
 }
 
-/** Crea el borrador con la canción: `modo` «karaoke» (gratis) o «ia». → { video, avisos, corregido, aviso }. */
-export async function crearVideoConCancion(clienteId, { huella, modo = "karaoke", formato = "9:16", titulo = "", postId = "", calendarId = "", desplazamiento = 0, indicacion = "", conFondos = false }) {
-  const r = await pedir(`${base(clienteId)}/cancion/video`, json("POST", { huella, modo, formato, titulo, postId, calendarId, desplazamiento, indicacion, ...(conFondos ? { conFondos: true } : {}) }));
+/**
+ * Crea el borrador con la canción: `modo` «karaoke» (gratis) o «ia». `estiloId`: un estilo guardado del cliente (su forma
+ * se impone). → { video, avisos, corregido, aviso, fondos, estilo? }.
+ */
+export async function crearVideoConCancion(clienteId, { huella, modo = "karaoke", formato = "9:16", titulo = "", postId = "", calendarId = "", desplazamiento = 0, indicacion = "", conFondos = false, estiloId = "" }) {
+  const r = await pedir(`${base(clienteId)}/cancion/video`, json("POST", { huella, modo, formato, titulo, postId, calendarId, desplazamiento, indicacion, ...(conFondos ? { conFondos: true } : {}), ...(estiloId ? { estiloId } : {}) }));
   avisar(clienteId, r?.video?.id);
   return r;
 }

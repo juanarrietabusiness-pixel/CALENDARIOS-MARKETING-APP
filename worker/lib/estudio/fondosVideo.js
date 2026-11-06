@@ -24,7 +24,10 @@ import { modeloPorId, modeloPorDefecto, estimar, textoCosto, nombreDelModelo } f
 import { pedidoDePieza } from "../../../src/lib/pieza.js";
 import { ESCENA } from "../../../src/lib/encargos.js";
 import { decidirConfirmacion, textoSinPreguntar } from "../../../src/lib/sinPreguntar.js";
-import { fondosPendientes, conFondosPuestos, encargoDeFondo, MAX_FONDOS } from "../../../src/lib/fondosVideo.js";
+import { fondosPendientes, conFondosPuestos, encargoDeFondo } from "../../../src/lib/fondosVideo.js";
+// El tope de imágenes por encargo es el de un estilo guardado (16): un guion escrito sin estilo pide como mucho 8 (la IA lo
+// corrige), y uno con estilo, una cada N escenas. Antes se cortaba en 8 y un video largo necesitaba dos encargos.
+import { TOPE_FONDOS_ESTILO } from "../../../src/lib/estilosVideo.js";
 
 const leerJSON = (t, d) => { try { return JSON.parse(t) ?? d; } catch { return d; } };
 const activosDe = (env) => Object.fromEntries(Object.entries(estadoMotores(env)).map(([k, v]) => [k, Boolean(v.activo)]));
@@ -50,7 +53,7 @@ export function planDeFondos(env, cliente, guion) {
   const kit = kitDe(cliente);
   const activos = activosDe(env);
   const modelo = modeloDelCliente(activos, kit);
-  const pendientes = fondosPendientes(guion).slice(0, MAX_FONDOS);
+  const pendientes = fondosPendientes(guion).slice(0, TOPE_FONDOS_ESTILO);
   if (!modelo) return { pendientes, pasos: [], costo: 0, modelo: null };
   let costo = 0;
   let usado = modelo;

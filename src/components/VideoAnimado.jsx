@@ -44,6 +44,8 @@ const LocucionVideo = lazy(() => import("./LocucionVideo"));
 const FondosVideo = lazy(() => import("./FondosVideo"));
 // «Guardar como estructura»: la IA saca la estructura de esta voz en off para las de la agencia (sólo al pulsarlo).
 const GuardarEstructura = lazy(() => import("./GuardarEstructura"));
+// «Guardar como estilo» y «Aplicar un estilo guardado» (src/lib/estilosVideo.js): en su chunk, al abrir su sección.
+const GuardarEstiloVideo = lazy(() => import("./GuardarEstiloVideo"));
 
 /** Un guion de arranque: tres escenas que se ven bien con cualquier kit. Se edita antes de guardar. */
 const ARRANQUE = {
@@ -67,7 +69,7 @@ const ARRANQUE = {
 const fmtSeg = (s) => { const m = Math.floor(s / 60); const r = s - m * 60; return `${m}:${r.toFixed(1).padStart(4, "0")}`; };
 const fecha = (iso) => { try { return new Date(iso).toLocaleDateString("es-PA", { day: "numeric", month: "short" }); } catch { return ""; } };
 
-export default function VideoAnimado({ client, estudio, publicacion = null, abrirId = null }) {
+export default function VideoAnimado({ client, estudio, publicacion = null, abrirId = null, inicio = "" }) {
   const ids = useId();
   const kit = useMemo(() => limpiarKit(estudio?.kit), [estudio?.kit]);
   const archivos = useMemo(() => estudio?.archivos ?? [], [estudio?.archivos]);
@@ -79,7 +81,9 @@ export default function VideoAnimado({ client, estudio, publicacion = null, abri
   const [errServidor, setErrServidor] = useState([]);
   const [probar, setProbar] = useState(false);
   // «Video nuevo»: la idea y la IA (o la plantilla). Desde una publicación del calendario arranca abierto.
-  const [creando, setCreando] = useState(Boolean(publicacion?.postId));
+  // «Video con canción» (la categoría del calendario y del Estudio) abre directo «Video nuevo» con la canción.
+  const [creando, setCreando] = useState(Boolean(publicacion?.postId) || inicio === "cancion");
+  const [verEstilo, setVerEstilo] = useState(false);
   const [editarTextos, setEditarTextos] = useState(false);
   const [sacarEstructura, setSacarEstructura] = useState(false);
 
@@ -170,7 +174,7 @@ export default function VideoAnimado({ client, estudio, publicacion = null, abri
         {aviso}
         {creando ? (
           <Suspense fallback={<p className="hint">Cargando…</p>}>
-            <CrearVideoAnimado client={client} publicacion={publicacion} onListo={nuevo} onPlantilla={() => nuevo()} onCancelar={() => setCreando(false)}
+            <CrearVideoAnimado client={client} publicacion={publicacion} formaInicial={inicio} onListo={nuevo} onPlantilla={() => nuevo()} onCancelar={() => setCreando(false)}
               onCreado={(v, aviso) => { setCreando(false); setErrServidor([]); setEditarTextos(false); setAbierto(v); setTexto(JSON.stringify(v.guion, null, 2)); setMsg(aviso ? { texto: aviso } : null); recargarLista(); }} />
           </Suspense>
         ) : (
@@ -282,6 +286,17 @@ export default function VideoAnimado({ client, estudio, publicacion = null, abri
             </Suspense>
           )}
           {sucio && <p className="hint">Hay cambios sin guardar.</p>}
+          {!abierto.nuevo && validacion.ok && (
+            <details className="va-probar" onToggle={(e) => setVerEstilo(e.currentTarget.open)}>
+              <summary>Estilo del video (guardarlo o aplicar uno)</summary>
+              {verEstilo && (
+                <Suspense fallback={<p className="hint">Cargando…</p>}>
+                  <GuardarEstiloVideo client={client} video={abierto} sucio={sucio} onAviso={(texto) => setMsg({ texto })}
+                    onCambio={(v) => { setAbierto(v); setTexto(JSON.stringify(v.guion, null, 2)); }} />
+                </Suspense>
+              )}
+            </details>
+          )}
           {!abierto.nuevo && (
             <Suspense fallback={null}>
               <FondosVideo client={client} video={abierto} sucio={sucio} onCambio={(v) => { setAbierto(v); setTexto(JSON.stringify(v.guion, null, 2)); }} />

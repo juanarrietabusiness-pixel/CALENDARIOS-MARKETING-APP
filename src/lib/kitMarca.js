@@ -39,6 +39,7 @@ import { limpiarAprendido, lineasAprendidas } from "./aprendizajeVisual.js";
 import { posicionDelKit } from "./logoEncima.js";
 import { limpiarTiposArte } from "./tiposArte.js";
 import { limpiarCanciones } from "./cancionesInstagram.js";
+import { limpiarEstilosVideo } from "./estilosVideo.js";
 
 /** Los presets, uno por tipo de contenido (los ids de `PILARES`, en pilares.js). `base`: la plantilla sin escribir. */
 export const TIPOS_PRESET = Object.freeze({
@@ -287,6 +288,9 @@ export function limpiarKit(guardado) {
     // un video animado (src/lib/estiloVideo.js) como estilo OBLIGATORIO. Sólo si los hay: un kit de antes no cambia.
     ...(limpiarEstiloVideo(g.estiloVideo) ? { estiloVideo: limpiarEstiloVideo(g.estiloVideo) } : {}),
     ...(limpiarRefsVideo(g.referenciasVideo).length ? { referenciasVideo: limpiarRefsVideo(g.referenciasVideo) } : {}),
+    // Los ESTILOS DE VIDEO guardados de un video que salió bien (src/lib/estilosVideo.js): sus reglas, para que el
+    // siguiente salga igual. Sólo los cambian sus rutas (el PUT del kit los conserva). Sólo si los hay.
+    ...(limpiarEstilosVideo(g.estilosVideo).length ? { estilosVideo: limpiarEstilosVideo(g.estilosVideo) } : {}),
     ...(g.preparadoAt ? { preparadoAt: String(g.preparadoAt) } : {}),
   };
 }
@@ -747,7 +751,7 @@ export function fundirKit(guardado, propuesto, ahora = new Date().toISOString())
     aprendido: antes.aprendido, referencias: antes.referencias, modelos: antes.modelos, reglas: antes.reglas,
     logoModo: antes.logoModo, logoPosicion: antes.logoPosicion, fuente: antes.fuente, voz: antes.voz, locucion: antes.locucion, musica: antes.musica, ...(antes.personajeVideo ? { personajeVideo: antes.personajeVideo } : {}), plantillas: antes.plantillas, tiposArte: antes.tiposArte,
     // El estilo del video y sus referencias los escribe la agencia: la IA del kit no los toca.
-    estiloVideo: antes.estiloVideo, referenciasVideo: antes.referenciasVideo, preparadoAt: ahora,
+    estiloVideo: antes.estiloVideo, referenciasVideo: antes.referenciasVideo, estilosVideo: antes.estilosVideo, preparadoAt: ahora,
   });
 }
 
