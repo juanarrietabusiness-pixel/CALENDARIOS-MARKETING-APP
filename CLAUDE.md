@@ -363,6 +363,7 @@ src/
                           REAL del producto (y si es de otra marca), el producto que nombra la idea (puro)
     galeriaPura.js        Lo PURO de la galería que necesitan la pantalla y el Worker: fotos de un producto, piezas de un
                           carrusel en orden, poner piezas en un post, igualar el texto (lib/estudio.js lo re-exporta)
+                          y la regla de la PORTADA de un reel al poner piezas (`postConPiezas` con `como`)
     estudio.js            Cliente de /api/estudio y lo puro de la pantalla: filtros (también «Usadas / Sin usar»),
                           trabajos en curso, carruseles y reels agrupados en una tarjeta (`agruparGaleria`),
                           de una publicación al Estudio y del Estudio a una publicación
@@ -562,6 +563,7 @@ src/
                           en la publicación» y «Mandar el carrusel a la papelera» (lazy)
     FuenteDeMarca.jsx     La fuente de la marca en el kit: subir el archivo, dibujar la muestra, guardar las dos
     GaleriaSelector.jsx   «De la galería» del panel de una publicación: imágenes sueltas o un carrusel entero, en orden (lazy)
+                          y, con `una`, UNA imagen: la portada de un reel («Portada del video» → «De la galería»)
     SelectorModelo.jsx    «Con qué modelo (sólo esta vez)»: visor, post; marca los que no hacen la proporción; y el filtro
                           «Modelo» de la galería (`FiltroDeModelo`)
     IdeasDeFormato.jsx    «Dame ideas» en el paso 1 del carrusel y del reel IA
@@ -595,6 +597,7 @@ src/
     DisenoDirector.jsx    «¿Qué quieres crear?» de Crear (era la pestaña Diseño): el asistente incrustado como director creativo, con atajos (lazy)
     PlanDePiezas.jsx      El plan de una tanda del director: las fichas, el costo, «Crear» y cada pieza según sale
     PonerEnPublicacion.jsx  «Poner en una publicación…» del visor, del carrusel y de la galería con varias escogidas (lazy)
+                          y «Como portada del video» cuando va UNA imagen a un reel con su video
     GuardarPlantilla.jsx  «Guardar como plantilla» del visor: la IA lee su sistema de diseño y la pieza pasa al kit (lazy)
     calendario/OpcionesCrearAqui.jsx  Tipo, estilo, modelo y plantilla de «Crear la imagen aquí» (lazy)
     Cerebro.jsx           Marca → Cerebro (era la pestaña Cerebro): las notas de un cliente, ficha desactualizada, datos que no cuadran, añadir
@@ -3497,6 +3500,35 @@ son del servidor.
   `cover_url` de Instagram y `poster` de la página de aprobación) y como
   milisegundo (`portadaMs`: `thumb_offset` de Instagram si no hay imagen). A
   TikTok no va: PostPeer no recibe portada.
+- **Una imagen en un reel es su PORTADA, no un archivo más** (`postConPiezas` en src/lib/galeriaPura.js; `esReelConVideo`,
+  `conPortada`, `imagenDelReelAPortada` y `portadaPorConvertir` en src/lib/publicacion.js). Claude diseñó seis portadas 9:16
+  y las puso con `poner_en_publicacion`: cada reel quedó con `medios: [video, imagen]` y `portada: null`, salió sin portada
+  y uno como un carrusel. Un reel de Instagram es UN video. Cosas que no se ven:
+  · **La regla es UNA** (`postConPiezas`, con `como`), y la usan el chat (`poner_en_publicacion` y lo que pone
+  `disenar_piezas`/`generar_imagen` con `post_id`), el MCP, «Poner en una publicación…» del Estudio (POST
+  /api/estudio/<c>/poner con `como`) y lo que el servidor pone solo (`ponerResultados` de encargos.js). «Sale como reel con
+  su video» = formato reel con un video, o un post con UN solo video (Instagram lo publica como reel); un carrusel, una
+  historia o un directo, no. A uno así, UNA imagen va a `portada` (sin `portadaMs` ni encuadre), en «añadir» y en
+  «reemplazar» (no le quita el video); varias son un error que lo dice (`REEL_SIN_IMAGENES`) y la publicación no cambia (en
+  lo que se pone solo, el aviso queda en `puestos`). `como: "portada"` lo pide explícito (una imagen; si el post no la lleva,
+  error); `como: "medio"` es lo que escogió una persona (un carrusel mixto en un post con un video), pero un formato «reel»
+  nunca se queda con su video y una imagen al lado.
+  · **Una historia NO lleva portada** (la API no la admite en las historias): una imagen en una historia con video sale como
+  otra historia, como siempre.
+  · **El video que llega DESPUÉS** (`conVideoEnPost` en resultadoEnPost.js: el reel del encargo, el render): si el reel
+  tenía UNA imagen esperando y no tenía portada, pasa a su portada (la de Claude gana al primer fotograma).
+  · **La red de seguridad**: `revisarPublicacion` da ERROR (también en el panel, y por eso no se programa ni sale de la
+  cola) si un reel que va a Instagram tiene imágenes además de su video: con una, el arreglo «Usar la imagen como portada»
+  (`portada-reel`); con varias, «Publicarlo como carrusel». TikTok, Facebook y YouTube siguen con su aviso de que publican
+  sólo el video. Mejor que no salga a que salga mal.
+  · **La portada va en JPEG a Instagram** (`cover_url` no lee otra; las piezas del Estudio son PNG o WEBP):
+  `portadaPorConvertir` la pide en `prepararParaRedes` (navegador, al programar) y en `normalizacionesDe`/`conNormalizadas`
+  (el Container, «Programar al aprobar»); `conPreparadas` y `prepararYGuardar` la escriben (y la cuentan en su huella). Sin
+  Container ni pantalla, una portada PNG sigue saliendo como antes (es un aviso, no un error): no se ha probado qué hace
+  Meta con ella.
+  · **«De la galería» en «Portada del video»** abre `GaleriaSelector` con `una` y pasa el archivo a `onPortada(cambios,
+  { archivo })` para apuntar su uso (en «Subir», al guardar). «Corregir» una portada desde el chat la cambia en su sitio.
+  **Nada de esto se ha probado contra Meta real**: los tests usan la cola de siempre con un `fetch` de mentira.
 - **El calendario es UNO por cliente; el mes, un cajón que no se ve.**
   Las publicaciones siguen guardadas por meses (`calendars`, una fila por
   cliente y mes) porque cada guardado reescribe la fila entera, dos

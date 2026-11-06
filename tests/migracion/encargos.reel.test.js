@@ -241,6 +241,25 @@ describe("lo que pide Claude con su post_id se pone solo en la publicación", ()
     const usos = JSON.parse(db.sqlite.prepare("select usado_en from estudio_archivos where id = ?").get(fin.pasos[0].finales[0]).usado_en);
     expect(usos[0]).toMatchObject({ postId: "p1" });
   });
+  it("la pieza de un REEL que ya tiene su video va a su PORTADA (no como una imagen más); dos a un reel, no se ponen", async () => {
+    const VIDEO = { src: "/api/media/clientes/c1/posts/v.mp4", tipo: "video", nombre: "v.mp4" };
+    db.sqlite.prepare("update calendars set days = ? where id = 'cal1'").run(JSON.stringify([{ date: "2026-11-20", posts: [{ ...POSTS[0], medios: [VIDEO] }] }]));
+    const { encargo: e } = await (await pedir("/estudio/c1/encargos", { method: "POST", body: { tipo: "lote", mejorar: false, poner: true, pasos: [paso("a")] } })).json();
+    await bombearHastaElFinal();
+    const fin = (await encargo(e.id)).encargo;
+    expect(fin.puestos).toEqual([{ postId: "p1", archivos: [fin.pasos[0].finales[0]] }]);
+    const post = dias()[0].posts[0];
+    expect(post.medios).toEqual([VIDEO]);
+    expect(post.portada).toMatch(/^\/api\/media\/clientes\/c1\//);
+    expect(post.portadaMs).toBeNull();
+    // Dos piezas para el mismo reel: un reel no lleva imágenes; se dice y la publicación no cambia.
+    const { encargo: e2 } = await (await pedir("/estudio/c1/encargos", { method: "POST", body: { tipo: "lote", mejorar: false, poner: true, pasos: [paso("b"), paso("c")] } })).json();
+    await bombearHastaElFinal();
+    const fin2 = (await encargo(e2.id)).encargo;
+    expect(fin2.puestos).toEqual([{ postId: "p1", aviso: expect.stringMatching(/No se puso: Un reel es UN video/) }]);
+    expect(dias()[0].posts[0]).toMatchObject({ medios: [VIDEO], portada: post.portada });
+  });
+
   it("sin `poner` (el lote de la pantalla, que escoge entre versiones) no toca la publicación", async () => {
     const { encargo: e } = await (await pedir("/estudio/c1/encargos", { method: "POST", body: { tipo: "lote", mejorar: false, pasos: [paso("a")] } })).json();
     await bombearHastaElFinal();

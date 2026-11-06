@@ -5,7 +5,8 @@
 // El navegador lo hace al programar (`prepararParaRedes` en medios.js, con el lienzo); aquí está la misma regla dicha
 // como pasos, para que el servidor la ejecute igual:
 //   1. NORMALIZAR (`normalizacionesDe`): las imágenes de Instagram y Facebook en JPEG (a como mucho `LADO_PUBLICAR`) y
-//      con sus medidas; las fotos de TikTok, medidas (sin medidas no se puede comprobar su proporción).
+//      con sus medidas; la PORTADA del reel que va a Instagram, en JPEG (`cover_url` no lee otra cosa); las fotos de
+//      TikTok, medidas (sin medidas no se puede comprobar su proporción).
 //      `conNormalizadas` pone lo nuevo en la publicación y mueve las copias adaptadas a la ruta nueva.
 //   2. ADAPTAR (`adaptacionesDe`): la copia 4:5 o 9:16 de lo que no cabe en su destino de Meta (con el ajuste de la
 //      publicación: difuminado, color o recorte; la de IA no se pide sola) y la copia 1080p de las fotos de TikTok.
@@ -14,7 +15,7 @@
 
 import {
   mediosDe, historiasDe, fotosTikTok, piezasDe, publicacionDeVariante, objetivoDe, necesitaAjuste, medidasAjuste,
-  claveAdaptado, renombrarAdaptados, esDeMeta, esJPEG, queHacerConLaEncajada, LADO_PUBLICAR,
+  claveAdaptado, renombrarAdaptados, esDeMeta, esJPEG, queHacerConLaEncajada, portadaPorConvertir, LADO_PUBLICAR,
 } from "./publicacion.js";
 
 // El lado más largo al publicar vive en publicacion.js (va en la carga inicial con medios.js).
@@ -46,12 +47,16 @@ export function normalizacionesDe(post, redes = []) {
   };
   if (meta) for (const m of [...mediosDe(post), ...historiasDe(post)]) ver(m, true);
   if (redes.includes("tiktok")) for (const m of fotosTikTok(post)) ver(m, false);
+  // La PORTADA del reel: Instagram la lee (`cover_url`) sólo en JPEG. Se convierte; medirla no hace falta.
+  const portada = portadaPorConvertir(post, redes);
+  if (portada && !lista.has(portada)) lista.set(portada, { src: portada, nombre: "portada", convertir: true });
+  else if (portada) lista.set(portada, { ...lista.get(portada), convertir: true });
   return [...lista.values()];
 }
 
 /**
- * La publicación con lo normalizado (`mapa`: src de antes → { src, nombre?, ancho, alto }): en sus medios, en su historia
- * y en `image`; las copias adaptadas que colgaban de la ruta de antes, en la nueva. Pura.
+ * La publicación con lo normalizado (`mapa`: src de antes → { src, nombre?, ancho, alto }): en sus medios, en su historia,
+ * en `image` y en su `portada`; las copias adaptadas que colgaban de la ruta de antes, en la nueva. Pura.
  */
 export function conNormalizadas(post, mapa) {
   if (!mapa?.size) return post;
@@ -62,6 +67,7 @@ export function conNormalizadas(post, mapa) {
   const medios = mediosDe(post).map(cambiar);
   const nuevo = { ...post, medios, image: medios.find((m) => m.tipo !== "video")?.src ?? null };
   if (historiasDe(post).length) nuevo.historias = historiasDe(post).map(cambiar);
+  if (typeof post.portada === "string" && mapa.has(post.portada)) nuevo.portada = mapa.get(post.portada).src;
   const rutas = new Map([...mapa].filter(([antes, n]) => n.src !== antes).map(([antes, n]) => [antes, n.src]));
   if (rutas.size && post.adaptados) nuevo.adaptados = renombrarAdaptados(post.adaptados, rutas);
   return nuevo;

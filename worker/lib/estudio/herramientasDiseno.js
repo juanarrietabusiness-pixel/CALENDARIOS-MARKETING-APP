@@ -220,7 +220,7 @@ export const DEFINICIONES_DISENO_MCP = Object.freeze([
               idea: { type: "string", description: "Sin ficha: qué comunica la pieza (la diseña el director de la agencia)." },
               texto: { type: "string", description: "Sin ficha: el texto EXACTO que va en la pieza (titular y apoyo, una línea cada uno)." },
               formato: { type: "string", enum: ["vertical", "story", "square", "horizontal"], description: "vertical 4:5 (feed, por defecto), story 9:16, square 1:1, horizontal 16:9." },
-              post_id: { type: "string", description: "La publicación del calendario a la que va (de ver_calendario): al terminar se pone SOLA en ella." },
+              post_id: { type: "string", description: "La publicación del calendario a la que va (de ver_calendario): al terminar se pone SOLA en ella. Si es un REEL que ya tiene su video, la pieza (una, story 9:16) se pone como su PORTADA, no como una imagen más." },
               estilo: { type: "string", enum: ["anuncio", "beneficios", "servicios", "educativo", "diferenciador", "maletas", "humano"], description: "El tipo de contenido (opcional)." },
               plantilla_id: { type: "string", description: "El id de una plantilla del kit a seguir (opcional)." },
               productos: { type: "array", items: { type: "string" }, maxItems: 6, description: "Ids del catálogo de lo que sale en ESTA pieza; manda sobre los de la tanda." },
@@ -257,7 +257,7 @@ export const DEFINICIONES_DISENO_MCP = Object.freeze([
   },
   {
     name: "poner_en_publicacion",
-    description: "Pone piezas que YA están en la galería en una publicación del calendario (de cualquier mes), listas para revisar y programar: un carrusel entero en su orden (carrusel_id) o imágenes sueltas en el orden que pases (archivo_ids). NO crea nada ni cuesta nada: nunca vuelvas a diseñar algo que ya existe para ponerlo. Con dos imágenes o más, el post pasa a carrusel.",
+    description: "Pone piezas que YA están en la galería en una publicación del calendario (de cualquier mes), listas para revisar y programar: un carrusel entero en su orden (carrusel_id) o imágenes sueltas en el orden que pases (archivo_ids). NO crea nada ni cuesta nada: nunca vuelvas a diseñar algo que ya existe para ponerlo. Con dos imágenes o más, el post pasa a carrusel. Una PORTADA de reel va con como: \"portada\" (UNA imagen 9:16): un reel es UN video y nunca lleva imágenes, así que una imagen puesta en un reel que ya tiene su video va sola de portada, y varias se rechazan.",
     inputSchema: {
       type: "object",
       properties: {
@@ -265,6 +265,7 @@ export const DEFINICIONES_DISENO_MCP = Object.freeze([
         carrusel_id: { type: "string", description: "El carrusel_id que dio disenar_piezas (o el ID de cualquiera de sus láminas): van todas, en orden." },
         archivo_ids: { type: "array", items: { type: "string" }, maxItems: 10, description: "IDs de imágenes de la galería, en el orden en que van." },
         modo: { type: "string", enum: ["reemplazar", "anadir"], description: "Si ya tiene archivos: reemplazar (lo de antes sigue en la galería) o añadir al final." },
+        como: { type: "string", enum: ["portada", "medio"], description: "«portada»: la imagen (una) es la PORTADA del video del reel (su cover en Instagram), no un archivo más. «medio»: entre los archivos aunque el post tenga un video (para un carrusel mixto; en un reel no se puede). Sin esto, la regla de arriba." },
       },
       required: ["post_id"],
     },
@@ -469,7 +470,7 @@ export function crearHerramientasDiseno({ env, acceso, resolverCliente, usuario,
       }
     },
 
-    async poner_en_publicacion({ post_id: postId, carrusel_id: carruselId = "", archivo_ids: archivoIds = [], modo = "reemplazar" }) {
+    async poner_en_publicacion({ post_id: postId, carrusel_id: carruselId = "", archivo_ids: archivoIds = [], modo = "reemplazar", como = "" }) {
       const { cal, days, dia, indice, post } = await buscarPublicacion(String(postId ?? ""));
       const c = await acceso.leerUno("clients", { id: cal.client_id });
       if (!c) throw new ErrorDiseno("No encontré el cliente de esa publicación.");
@@ -492,12 +493,17 @@ export function crearHerramientasDiseno({ env, acceso, resolverCliente, usuario,
           piezas.push(archivoPublico(f));
         }
       }
-      const r = postConPiezas(post, piezas, modo === "anadir" ? "anadir" : "reemplazar");
+      // La portada de un reel no es una imagen más (galeriaPura.js): con `como: "portada"`, o sola si el reel ya tiene su video.
+      const r = postConPiezas(post, piezas, modo === "anadir" ? "anadir" : "reemplazar", { como: ["portada", "medio"].includes(como) ? como : "" });
+      if (r.error) throw new ErrorDiseno(r.error);
       // Si el post RECIBE su primera imagen, su historia encajada (9:16), como hace el panel: en el Container.
-      r.post = await conHistoriaEncajada(env, { antes: post, despues: r.post, clienteId: c.id, colorMarca: c.primary_color });
+      if (!r.portada) r.post = await conHistoriaEncajada(env, { antes: post, despues: r.post, clienteId: c.id, colorMarca: c.primary_color });
       dia.posts[indice] = r.post;
       await guardarDias(cal, days);
       for (const a of piezas) await marcarUso(acceso, c.id, a.id, { calendarId: cal.id, postId: post.id }).catch(() => {});
+      if (r.portada) {
+        return `Puesta como PORTADA del reel ${post.id} del ${dia.date} (sale como su cover en Instagram; el video no cambia${post.portada ? "; sustituye a la portada que tenía" : ""}). Queda lista para revisar y programar.`;
+      }
       const n = r.post.medios?.length ?? 0;
       return `Puesto en la publicación ${post.id} del ${dia.date}: ${n} archivo${n === 1 ? "" : "s"}${r.post.format === "carrusel" ? " (carrusel)" : ""}${r.post.encajadaDe && r.post.encajadaDe !== post.encajadaDe ? ", con su historia 9:16 (sale también como historia)" : ""}, ${modo === "anadir" ? "añadido a lo que tenía" : "en lugar de lo que tenía (lo de antes sigue en la galería)"}. Queda lista para revisar y programar.`;
     },

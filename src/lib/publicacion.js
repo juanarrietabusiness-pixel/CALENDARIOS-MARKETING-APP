@@ -409,6 +409,62 @@ export function destinoInstagram(post) {
   return medios[0]?.tipo === "video" ? "reel" : "imagen";
 }
 
+// ------------------------------------------------------------
+// La PORTADA de un reel: una imagen en un reel no es un medio más
+// ------------------------------------------------------------
+//
+// Un reel de Instagram es UN video: nunca lleva imágenes. La imagen que se le pone a un reel que ya tiene su video es
+// su portada (`portada`, que va como `cover_url`). Claude puso portadas 9:16 en seis reels con `poner_en_publicacion` y
+// quedaron como `medios: [video, imagen]` con `portada: null`: salieron sin portada, y uno como un carrusel. La regla
+// para PONER piezas vive en galeriaPura.js (`postConPiezas`); aquí, lo que la sostiene y la red de seguridad
+// (`revisarPublicacion` con su arreglo «Usar la imagen como portada»). Una historia NO lleva portada (la API no la
+// admite en las historias): una imagen en una historia con video sale como otra historia.
+
+/**
+ * ¿Sale como REEL y ya tiene su video? Un reel explícito con video, o una publicación con UN solo video (Instagram la
+ * publica como reel). Un carrusel, una historia o un directo no. Pura.
+ */
+export function esReelConVideo(post) {
+  if (["carrusel", "historia", "live"].includes(post?.format)) return false;
+  const medios = mediosDe(post);
+  if (!medios.some((m) => m.tipo === "video")) return false;
+  return post?.format === "reel" || medios.length === 1;
+}
+
+/**
+ * La publicación con `src` de PORTADA (sin fotograma elegido ni encuadre: la imagen manda) y sin esa imagen entre sus
+ * medios, si estaba. Trabaja sobre `post.medios` tal cual, para no perder las marcas del video (`videoAnimado`,
+ * `deReel`). Pura.
+ */
+export function conPortada(post, src) {
+  const crudos = Array.isArray(post?.medios) && post.medios.length ? post.medios.filter((m) => m?.src) : mediosDe(post);
+  const medios = crudos.filter((m) => m.src !== src);
+  const base = medios.length === crudos.length ? post : conMedios(post, medios);
+  return { ...base, portada: src, portadaMs: null, portadaEncuadre: 0 };
+}
+
+/**
+ * La imagen suelta de un REEL (formato reel con su video y UNA imagen entre los medios) pasada a su portada → la
+ * publicación nueva, o la misma si no toca (ninguna imagen, varias, o sin video). Pura.
+ */
+export function imagenDelReelAPortada(post) {
+  if (post?.format !== "reel") return post;
+  const medios = mediosDe(post);
+  const imagenes = medios.filter((m) => m.tipo === "imagen");
+  if (imagenes.length !== 1 || !medios.some((m) => m.tipo === "video")) return post;
+  return conPortada(post, imagenes[0].src);
+}
+
+/**
+ * La portada que hay que pasar a JPEG antes de que salga en Instagram (`cover_url` sólo lee JPEG; las piezas del
+ * Estudio suelen ser PNG o WEBP) → su src, o null si no hay, ya es JPEG, no va a Instagram o no sale como reel. Pura.
+ */
+export function portadaPorConvertir(post, redes = []) {
+  const p = typeof post?.portada === "string" ? post.portada : "";
+  if (!p || !redes.includes("instagram") || esJPEG(p) || esVideo(p)) return null;
+  return destinoInstagram(post) === "reel" ? p : null;
+}
+
 /**
  * Lo que impide publicar (errores) y lo que conviene saber (avisos),
  * para cada red elegida. Sin errores, se puede programar.
@@ -426,6 +482,19 @@ export function revisarPublicacion(post, redes = post?.redes ?? ["instagram"], {
   if (post?.format === "live") {
     errores.push("Un directo no se puede publicar por API: queda sólo como planificación.");
     return { errores, avisos, arreglos };
+  }
+
+  // Un reel es UN video: en Instagram la imagen que lleva junto a su video no sale y la portada se pierde (o, con el
+  // formato cambiado, lo convierte en un carrusel roto). Una sola es casi siempre su PORTADA; varias, las láminas de un
+  // carrusel. Es un ERROR también en el panel: con el arreglo a un toque, mejor que no salga a que salga mal. (TikTok,
+  // Facebook y YouTube ya avisan de que sólo publican el video.)
+  if (redes.includes("instagram") && post?.format === "reel" && videos.length) {
+    const imagenes = medios.filter((m) => m.tipo === "imagen");
+    if (imagenes.length === 1) {
+      con(errores, "Un reel no lleva imágenes: ¿es la portada?", { codigo: "portada-reel", etiqueta: "Usar la imagen como portada" });
+    } else if (imagenes.length > 1) {
+      con(errores, `Un reel no lleva imágenes y éste tiene ${imagenes.length}: quítalas (la portada va en «Portada» del video) o publícalo como carrusel.`, { codigo: "formato:carrusel", etiqueta: "Publicarlo como carrusel" });
+    }
   }
 
   if (redes.includes("instagram")) {
@@ -467,6 +536,7 @@ export function revisarPublicacion(post, redes = post?.redes ?? ["instagram"], {
     if (deIG.some((m) => m.tipo === "imagen" && !esJPEG(m.src))) {
       avisos.push("Instagram sólo acepta JPEG: las imágenes en otro formato se convierten al programar.");
     }
+    if (portadaPorConvertir(post, ["instagram"])) avisos.push("Instagram sólo lee la portada en JPEG: se convierte al programar.");
     const colab = colaboradoresDe(post);
     if (colab.length > MAX_COLABORADORES) {
       con(errores, `Instagram admite hasta ${MAX_COLABORADORES} colaboradores y hay ${colab.length}.`, { codigo: "recortar-colaboradores", etiqueta: `Dejar los ${MAX_COLABORADORES} primeros` });
@@ -572,6 +642,8 @@ export function aplicarArreglo(post, codigo) {
     case "quitar-colaboradores": return { ...post, colaboradores: [] };
     case "quitar-red": return { ...post, redes: redes.filter((r) => r !== valor) };
     case "sin-historia": return { ...post, historiaTambien: false };
+    // La imagen suelta de un reel, de entre sus medios a su portada (la regla de `imagenDelReelAPortada`).
+    case "portada-reel": return imagenDelReelAPortada(post);
     default: return post;
   }
 }

@@ -54,7 +54,7 @@ export async function prepararParaAprobar({ lista, clienteDb, colorMarca, avisar
  * publicaciones cuyos archivos siguen siendo los mismos que se prepararon. Pura.
  */
 export function conPreparadas(cal, antes, cambiadas) {
-  const huella = (p) => JSON.stringify([p?.medios ?? null, p?.image ?? null, p?.historias ?? null]);
+  const huella = (p) => JSON.stringify([p?.medios ?? null, p?.image ?? null, p?.historias ?? null, p?.portada ?? null]);
   const original = new Map();
   for (const d of antes?.days ?? []) for (const p of d.posts ?? []) original.set(p.id, huella(p));
   let n = 0;
@@ -64,7 +64,8 @@ export function conPreparadas(cal, antes, cambiadas) {
       const nueva = cambiadas.get(p.id);
       if (!nueva || original.get(p.id) !== huella(p)) return p;
       n++;
-      return { ...p, medios: nueva.medios, image: nueva.image, historias: nueva.historias, adaptados: nueva.adaptados };
+      // La portada del reel también: al programar se pasa a JPEG (Instagram no lee otra en `cover_url`).
+      return { ...p, medios: nueva.medios, image: nueva.image, historias: nueva.historias, adaptados: nueva.adaptados, ...(nueva.portada !== p.portada ? { portada: nueva.portada } : {}) };
     }),
   }));
   return { cal: { ...cal, days }, n };

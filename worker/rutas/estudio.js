@@ -266,7 +266,7 @@ export async function rutasEstudio(req, env, { acceso, usuario, partes, metodo }
       try {
         return json(await ponerPiezasEnPost(env, acceso, cliente, {
           postId: datos.postId, calendarId: datos.calendarId ?? null, carpetaId: datos.carpetaId ?? "",
-          archivoIds: datos.archivoIds ?? [], modo: datos.modo,
+          archivoIds: datos.archivoIds ?? [], modo: datos.modo, como: typeof datos.como === "string" ? datos.como : "",
         }));
       } catch (e) {
         if (e instanceof ErrorPoner) return fallo(e);

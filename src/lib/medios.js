@@ -10,7 +10,7 @@ import { compressImage } from "../utils";
 import { encajarEn, cubrirEn } from "./encajarLienzo.js";
 import {
   mediosDe, fotosTikTok, historiasDe, piezasDe, publicacionDeVariante, objetivoDe, necesitaAjuste, claveAdaptado, medidasAjuste, proporcionParaIA,
-  esDeMeta, renombrarAdaptados, LADO_PUBLICAR,
+  esDeMeta, renombrarAdaptados, portadaPorConvertir, LADO_PUBLICAR,
 } from "./publicacion";
 
 /** Una imagen del banco, reducida y en base64 para mandarla al modelo. */
@@ -328,7 +328,8 @@ export async function medirVideos(medios) {
 /**
  * Todo lo que necesita una publicación para salir en esas redes, hecho en
  * el navegador (el Worker no puede tocar imágenes):
- *   1. Imágenes del post y de su historia en JPEG y con sus medidas.
+ *   1. Imágenes del post y de su historia en JPEG y con sus medidas; la
+ *      portada del reel que va a Instagram, en JPEG.
  *   2. Copias adaptadas (`adaptados`) de las que no caben en su destino:
  *      4:5 para el feed de Instagram, 9:16 para las historias. El original
  *      no se toca; sólo cambia lo que sale en esa red.
@@ -365,6 +366,12 @@ export async function prepararParaRedes(post, redes, { subir, colorMarca } = {})
     if (r2.cambio) { apuntar(antes2, r2.medios); nuevo = { ...nuevo, historias: r2.medios }; cambio = true; }
   }
   if (rutas.size && nuevo.adaptados) nuevo = { ...nuevo, adaptados: renombrarAdaptados(nuevo.adaptados, rutas) };
+  // La PORTADA del reel: Instagram la lee (`cover_url`) sólo en JPEG, y las piezas del Estudio suelen ser PNG o WEBP.
+  const portada = portadaPorConvertir(nuevo, redes);
+  if (portada) {
+    const r = await prepararMediosParaMeta([{ src: portada, tipo: "imagen", nombre: "portada.png" }], subir);
+    if (r.medios[0]?.src && r.medios[0].src !== portada) { nuevo = { ...nuevo, portada: r.medios[0].src }; cambio = true; }
+  }
 
   const modo = nuevo.ajusteIG || "difuminado";
   const adaptados = { ...(nuevo.adaptados ?? {}) };
