@@ -11,6 +11,8 @@
 //     siempre por la capa de acceso —el espacio de la sesión—.
 //   · ver_resultados: cómo le fue en redes (las fotos diarias de
 //     métricas), con las MISMAS cuentas que la pestaña Resultados.
+//   · revisar_campanas: la revisión 3Q de los anuncios que corren en el Ads
+//     Manager (worker/lib/revision3q.js), la misma de Resultados → Anuncios.
 //   · buscar_cerebro y leer_nota_cerebro: las notas del cerebro del cliente
 //     (su ficha, sus documentos, lo que se le ha ido añadiendo). Las cortas
 //     llegan enteras; de las largas, sus pasajes, y la nota completa se pide
@@ -138,6 +140,11 @@ export const DEFINICIONES_DE_LECTURA = Object.freeze([
         dias: { type: "integer", description: "Días hacia atrás (7 a 90). Por defecto, 30." },
       },
     },
+  },
+  {
+    name: "revisar_campanas",
+    description: "La revisión 3Q de los anuncios que corren en el Ads Manager de un cliente: su número mágico (lo que aguanta cada conversación o compra), lo real en 30, 14 y 7 días, y cada campaña activa con su etapa (presentación, evaluación, conversión, ascensión o temporada) y qué hacer con cada conjunto y anuncio (qué pasó, por qué y qué cambiar). Sólo lee de Meta: no cambia nada ni gasta. Úsala si preguntan cómo van los anuncios o qué pausar o mejorar.",
+    input_schema: { type: "object", properties: { ...clienteOpcional } },
   },
 ]);
 
@@ -337,6 +344,16 @@ export function crearEjecutor({ env, acceso, clienteActual = null, estudio = nul
     return lineas.join("\n");
   };
 
+  // La revisión 3Q de las campañas: sólo lee de Meta. Se importa en el momento: worker/lib/revision3q.js llega a
+  // negocio.js y a anuncios.js, y este archivo lo importa mercado.js (el ciclo de siempre).
+  acciones.revisar_campanas = async ({ cliente }) => {
+    const c = await resolverCliente(cliente);
+    const { revisionDelCliente } = await import("./revision3q.js");
+    const { textoDeRevision } = await import("../../src/lib/tresQ.js");
+    // Sin cuenta publicitaria, sin permisos o si Meta dice que no, el error vuelve como resultado con su motivo.
+    return textoDeRevision(await revisionDelCliente(env, acceso, c.id));
+  };
+
   if (estudio) Object.assign(acciones, crearHerramientasEstudio({ env, acceso, resolverCliente, ...estudio }));
   // Las recetas (el mismo «/receta» que llega de claude.ai): sólo leen, así que no necesitan a quien firma.
   Object.assign(acciones, crearHerramientasRecetas({ env, acceso, buscarPublicacion: (id) => buscarEn(acceso, id) }));
@@ -391,6 +408,7 @@ export function describirUso(nombre, entrada = {}) {
     case "buscar_cerebro": return `Buscó en el cerebro${entrada.cliente ? ` de ${entrada.cliente}` : ""}: «${entrada.consulta ?? ""}»`;
     case "leer_nota_cerebro": return `Leyó la nota «${entrada.nota ?? ""}» del cerebro${entrada.cliente ? ` de ${entrada.cliente}` : ""}`;
     case "ver_resultados": return `Consultó los resultados${entrada.cliente ? ` de ${entrada.cliente}` : ""}`;
+    case "revisar_campanas": return `Revisó las campañas del Ads Manager${entrada.cliente ? ` de ${entrada.cliente}` : ""}`;
     case "ver_estudio": return `Miró el Estudio${entrada.cliente ? ` de ${entrada.cliente}` : ""}`;
     case "crear_en_estudio": return `Pidió al Estudio ${entrada.tipo === "video" ? "un video" : "una imagen"}: «${String(entrada.prompt ?? "").slice(0, 80)}»`;
     case "estado_trabajo": return "Miró cómo va un pedido del Estudio";

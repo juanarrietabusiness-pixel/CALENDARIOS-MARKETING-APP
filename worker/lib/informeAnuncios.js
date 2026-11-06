@@ -28,7 +28,8 @@
 
 import { crearAcceso, clientesSinInformeAnuncios } from "./acceso.js";
 import { difundir } from "./vivo.js";
-import { graph } from "./meta.js";
+import { graph, ErrorMeta } from "./meta.js";
+import { agenciaDelMes, CAMPOS_NUEVOS_3Q } from "./revision3q.js";
 import { ahora, uuid } from "./ids.js";
 import { fechaEnZona } from "../../src/lib/agenda.js";
 import { rangoInsights, modificadorInsights, CAMPOS_INSIGHTS } from "../../src/lib/anuncios.js";
@@ -81,19 +82,37 @@ async function anunciosDelMes(env, token, cuenta, rango) {
   return (r?.data ?? []).map((x) => ({ ...x, insights: x.insights?.data?.[0] ?? null })).filter((x) => x.insights);
 }
 
-/** Lo que se lee de Meta para el informe de `mes`, ya convertido en cifras. */
-export async function datosDelMes(env, token, cuenta, mes, desdeApp = []) {
+/**
+ * El total y el día a día del mes, con los campos del curso en el total (clics únicos, su CTR y su costo: la vista de
+ * la agencia los usa). Si Meta rechaza alguno (#100), otra vez con los de siempre: el informe del cliente no depende de
+ * ellos.
+ */
+async function estadisticasDelMes(env, token, cuenta, rango) {
+  try {
+    return await estadisticasCuenta(env, token, cuenta, rango, { camposTotal: `${CAMPOS_INSIGHTS},${CAMPOS_NUEVOS_3Q.slice(0, 3).join(",")}` });
+  } catch (e) {
+    if (!(e instanceof ErrorMeta) || e.codigo !== 100) throw e;
+    return estadisticasCuenta(env, token, cuenta, rango);
+  }
+}
+
+/**
+ * Lo que se lee de Meta para el informe de `mes`, ya convertido en cifras. `extra` (si llega) recibe el total del mes
+ * tal cual (`extra.total`): de ahí sale lo que sólo ve la agencia, que no va en las cifras (las ve el cliente).
+ */
+export async function datosDelMes(env, token, cuenta, mes, desdeApp = [], extra = null) {
   const { desde, hasta } = limitesDelMes(mes);
   const previo = limitesDelMes(mesPrevio(mes));
   const rango = rangoInsights({ desde, hasta });
   const rangoAntes = rangoInsights(previo);
   const [{ total, dias }, anteriorBruto, campanas, campanasAnterior, anuncios] = await Promise.all([
-    estadisticasCuenta(env, token, cuenta, rango),
+    estadisticasDelMes(env, token, cuenta, rango),
     graph(env, token, `/${cuenta.externo_id}/insights`, { params: { fields: CAMPOS_INSIGHTS, ...rangoAntes } }),
     listarCampanas(env, token, cuenta, rango),
     listarCampanas(env, token, cuenta, rangoAntes),
     anunciosDelMes(env, token, cuenta, rango),
   ]);
+  if (extra) extra.total = total;
   const cifras = cifrasInformeAnuncios({
     mes, desde, hasta, cuenta: { nombre: cuenta.nombre, moneda: cuenta.moneda },
     total, anterior: anteriorBruto?.data?.[0] ?? null, campanas, campanasAnterior, dias, anuncios, desdeApp,
@@ -167,7 +186,11 @@ export async function generarInformeAnuncios(env, acceso, { clientId, mes, usuar
     if (conexion.faltan.includes("ads_read")) throw new ErrorAnuncios("Falta el permiso de anuncios de Meta (ads_read): concédelo en Anuncios.", 409);
     const token = await conexion.token();
     const registros = await acceso.leer("campanas_anuncios", { client_id: clientId });
-    const cifras = await datosDelMes(env, token, cuenta, mes, registros.map((r) => r.campana_id));
+    const leido = {};
+    const cifras = await datosDelMes(env, token, cuenta, mes, registros.map((r) => r.campana_id), leido);
+    // Lo que ve SÓLO la agencia (el % de mensajes, el CTR único y el número mágico frente al costo real): va aparte de
+    // las cifras, y el enlace del cliente no lo lleva (informeAnunciosPorTestigo sólo da cifras y análisis).
+    const agencia = await agenciaDelMes(acceso, clientId, leido.total).catch((e) => { console.warn("informe de anuncios, agencia:", e?.message); return null; });
 
     // El análisis es de la IA y no puede tumbar las cifras: sin él, el informe sale igual y la agencia lo sabe.
     const avisos = [];
@@ -188,7 +211,7 @@ export async function generarInformeAnuncios(env, acceso, { clientId, mes, usuar
     } else {
       avisos.push("La cuenta no gastó nada este mes.");
     }
-    const contenido = { cifras, analisis, modelo, costoEnAnalisis: costo, ...(avisos.length ? { avisos } : {}) };
+    const contenido = { cifras, analisis, modelo, costoEnAnalisis: costo, ...(agencia ? { agencia } : {}), ...(avisos.length ? { avisos } : {}) };
     const fila = { ...base, estado: "listo", contenido: JSON.stringify(contenido), error: null, updated_at: "" };
     await acceso.guardar("informes_anuncios", fila);
     difundir(env, acceso.ownerId, { tipo: "anuncios", clientId, informe: mes, estado: "listo", por: FIRMA });

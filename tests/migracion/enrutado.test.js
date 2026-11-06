@@ -1374,6 +1374,25 @@ describe("anuncios de Meta (/api/anuncios)", () => {
     expect((await p.json()).error).toMatch(/llave de IA/);
   });
 
+  it("la revisión 3Q llega a su rama: la del cliente pide cuenta (409, no 404), la etapa y Mi día no", async () => {
+    // La lógica entera, contra una D1 de verdad, está en revision3q.test.js.
+    const env = await entorno();
+    const r = await worker.fetch(conSesion("/api/anuncios/clientes/cliente-1/revision"), env);
+    expect(r.status).toBe(409);
+    expect((await r.json()).error).toMatch(/cuenta publicitaria/);
+    expect((await worker.fetch(conSesion("/api/anuncios/clientes/cliente-de-otro/revision"), env)).status).toBe(404);
+    // El diagnóstico de antes es la misma revisión: también llega.
+    expect((await worker.fetch(conSesion("/api/anuncios/clientes/cliente-1/diagnostico", { method: "POST", body: "{}", headers: { "Content-Type": "application/json" } }), env)).status).toBe(409);
+    const etapa = await worker.fetch(conSesion("/api/anuncios/clientes/cliente-1/etapas", {
+      method: "PUT", body: JSON.stringify({ campanaId: "no-es-un-id", etapa: "conversion" }), headers: { "Content-Type": "application/json" },
+    }), env);
+    expect(etapa.status).toBe(400);
+    const pendientes = await worker.fetch(conSesion("/api/anuncios/revision/pendientes"), env);
+    expect(pendientes.status).toBe(200);
+    expect(await pendientes.json()).toMatchObject({ pendientes: [] });
+    expect((await worker.fetch(new Request("https://calendarios.test/api/anuncios/revision/pendientes"), env)).status).toBe(401);
+  });
+
   it("una ruta que no existe es 404, y sin sesión 401", async () => {
     const env = await entorno();
     expect((await worker.fetch(conSesion("/api/anuncios/no-existe"), env)).status).toBe(404);

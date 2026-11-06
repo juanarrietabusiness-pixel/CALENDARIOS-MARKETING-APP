@@ -4,6 +4,7 @@ import {
   NOMENCLATURA_POR_DEFECTO, TASA_CIERRE_POR_DEFECTO,
 } from "./estratega.js";
 import { validarBorrador, normalizarBorrador } from "./anuncios.js";
+import { UMBRALES_3Q } from "./umbrales3q.js";
 
 const PLAN = {
   resumen: "Ventas del sofá cama por WhatsApp.",
@@ -65,7 +66,7 @@ describe("el manual y los nombres", () => {
 
   it("el manual limpio, con lo de siempre donde no dice nada", () => {
     const m = limpiarManual({ reglas: "  Siempre a WhatsApp.  ", nomenclatura: { campana: "{cliente} - {mes}" }, tasaCierre: 500 });
-    expect(m).toEqual({ tasaCierreV: 2, reglas: "Siempre a WhatsApp.", nomenclatura: { ...NOMENCLATURA_POR_DEFECTO, campana: "{cliente} - {mes}" }, tasaCierre: TASA_CIERRE_POR_DEFECTO, video: "", diseno: "", disenoTipos: {} });
+    expect(m).toEqual({ tasaCierreV: 2, reglas: "Siempre a WhatsApp.", nomenclatura: { ...NOMENCLATURA_POR_DEFECTO, campana: "{cliente} - {mes}" }, tasaCierre: TASA_CIERRE_POR_DEFECTO, video: "", diseno: "", disenoTipos: {}, umbrales3q: UMBRALES_3Q });
     expect(limpiarManual(null).reglas).toBe("");
   });
 

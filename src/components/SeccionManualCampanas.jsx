@@ -4,6 +4,7 @@ import { leerManual, guardarManual } from "../lib/anunciosApi";
 import { editaLaAgencia } from "../lib/sesionActual";
 import { MANUAL_VIDEO_BASE, MAX_MANUAL_VIDEO } from "../lib/directorVideo";
 import { MANUAL_DISENO_BASE, MAX_MANUAL_DISENO, DISENO_POR_TIPO, MAX_DISENO_TIPO } from "../lib/director";
+import { CAMPOS_UMBRALES_3Q, UMBRALES_3Q } from "../lib/umbrales3q";
 
 // ============================================================
 // Ajustes → Manual de campañas de la agencia
@@ -79,6 +80,22 @@ export default function SeccionManualCampanas({ pulso = 0 }) {
               onChange={(e) => poner({ tasaCierre: e.target.value })} />
             <p className="hint" style={{ margin: 0 }}>Con esto y el margen sale el costo máximo que aguanta cada conversación. Se cambia en cada plan si un cliente es distinto.</p>
           </div>
+          <details className="field">
+            <summary className="label">La revisión 3Q de las campañas: cuándo avisa cada métrica</summary>
+            <p className="hint" style={{ margin: 0 }}>
+              Lo que mira Resultados → Anuncios en lo que corre en el Ads Manager: por debajo (o por encima) de esto, la métrica
+              avisa y dice qué cambiar. Lo vacío vale el de partida (el que se ve de ejemplo).
+            </p>
+            {CAMPOS_UMBRALES_3Q.map((c) => (
+              <div key={c.id} className="field">
+                <label className="label" htmlFor={`${ids}-u-${c.id}`}>{c.nombre} ({c.unidad})</label>
+                <input id={`${ids}-u-${c.id}`} className="input" type="number" inputMode="decimal" min={c.min} max={c.max} step="any" style={{ maxWidth: 140 }}
+                  value={m.umbrales3q?.[c.id] ?? ""} placeholder={String(UMBRALES_3Q[c.id])} readOnly={!puede} aria-describedby={`${ids}-u-${c.id}-ayuda`}
+                  onChange={(e) => poner({ umbrales3q: { ...(m.umbrales3q ?? {}), [c.id]: e.target.value } })} />
+                <p id={`${ids}-u-${c.id}-ayuda`} className="hint" style={{ margin: 0 }}>{c.ayuda}</p>
+              </div>
+            ))}
+          </details>
           <div className="field">
             <label className="label" htmlFor={`${ids}-video`}>Criterio comercial de los videos</label>
             <textarea id={`${ids}-video`} className="textarea" rows={8} maxLength={MAX_MANUAL_VIDEO} value={m.video ?? ""} readOnly={!puede}
