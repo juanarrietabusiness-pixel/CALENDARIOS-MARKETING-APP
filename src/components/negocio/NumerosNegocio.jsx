@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import Icon from "../Icon";
 import { TIPOS_NEGOCIO, DESTINOS_NEGOCIO, CUENTA_NEGOCIO } from "../../lib/cicloVentas";
 import {
@@ -8,6 +8,9 @@ import {
 } from "../../lib/numerosNegocio";
 import { leerNegocio, guardarNegocio, proponerNegocio } from "../../lib/negocioApi";
 import "./NumerosNegocio.css";
+
+// «Tus ventas de la semana» (entrega 4): en su chunk, dentro de esta pantalla.
+const VentasSemana = lazy(() => import("./VentasSemana"));
 
 // ============================================================
 // Marca → «Números del negocio» de un cliente (curso de campañas, entrega 3)
@@ -209,6 +212,15 @@ export default function NumerosNegocio({ client, lectura = false, pulso = 0 }) {
     const entradas = Object.fromEntries(defSim.campos.map((c) => [c, numero(simTextos[modoSim]?.[c] ?? prellenado.valores[c])]));
     return escenarios(modoSim, entradas);
   }, [defSim, modoSim, simTextos, prellenado]);
+
+  // La tasa medida por el enlace de ventas (VentasSemana la da en fracción; aquí va en %). null = todavía no hay datos
+  // suficientes: se queda la escrita o la de por defecto.
+  const alMedir = useCallback((tasa, medida) => {
+    if (!(tasa > 0)) return;
+    const m = { tasa: tasa * 100, ventas: medida?.ventas, conversaciones: medida?.conversaciones };
+    setDatos((d) => (d ? { ...d, medida: m } : d));
+    setForm((g) => (g ? formDe(conTasaMedida(negocioDe(g), m)) : g));
+  }, []);
 
   if (!form) {
     return (
@@ -484,15 +496,11 @@ export default function NumerosNegocio({ client, lectura = false, pulso = 0 }) {
         </div>
       </section>
 
-      {/*
-        AQUÍ: VentasSemana — «Tus ventas de la semana» y la tasa de cierre MEDIDA (entrega 4, components/negocio/VentasSemana.jsx).
-        Se monta en este sitio, entre los números y las calculadoras, en su propio chunk:
-          const VentasSemana = lazy(() => import("./VentasSemana"));
-          <Suspense fallback={null}><VentasSemana clientId={client.id} cliente={client} lectura={lectura} /></Suspense>
-        La tasa medida entra en las cuentas por `conTasaMedida(negocio, medida)` (src/lib/numerosNegocio.js): el GET de
-        /negocio ya devuelve `medida` (null hasta la entrega 4) y `cargar()` la aplica al abrir. Si VentasSemana la
-        calcula en la pantalla, que la pase con una prop (`onTasaMedida`) y aquí se aplica igual sobre el formulario.
-      */}
+      {/* «Tus ventas de la semana»: lo que apunta el cliente por su enlace. Con eso sale la tasa de cierre MEDIDA, que
+          manda sobre la escrita (`conTasaMedida`): entra en el formulario y se guarda con «Guardar». */}
+      <Suspense fallback={null}>
+        <VentasSemana clientId={client.id} cliente={client} lectura={lectura} onTasaMedida={alMedir} />
+      </Suspense>
 
       {/* ---- Cuánto invertir ---- */}
       <section className="card" aria-labelledby={`${ids}-objetivo`}>

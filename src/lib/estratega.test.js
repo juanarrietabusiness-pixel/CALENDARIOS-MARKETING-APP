@@ -65,8 +65,16 @@ describe("el manual y los nombres", () => {
 
   it("el manual limpio, con lo de siempre donde no dice nada", () => {
     const m = limpiarManual({ reglas: "  Siempre a WhatsApp.  ", nomenclatura: { campana: "{cliente} - {mes}" }, tasaCierre: 500 });
-    expect(m).toEqual({ reglas: "Siempre a WhatsApp.", nomenclatura: { ...NOMENCLATURA_POR_DEFECTO, campana: "{cliente} - {mes}" }, tasaCierre: TASA_CIERRE_POR_DEFECTO, video: "", diseno: "", disenoTipos: {} });
+    expect(m).toEqual({ tasaCierreV: 2, reglas: "Siempre a WhatsApp.", nomenclatura: { ...NOMENCLATURA_POR_DEFECTO, campana: "{cliente} - {mes}" }, tasaCierre: TASA_CIERRE_POR_DEFECTO, video: "", diseno: "", disenoTipos: {} });
     expect(limpiarManual(null).reglas).toBe("");
+  });
+
+  it("un 20 guardado antes del curso era el valor de partida: se lee como el de ahora; uno escogido después, no", () => {
+    expect(limpiarManual({ tasaCierre: 20 }).tasaCierre).toBe(TASA_CIERRE_POR_DEFECTO);
+    expect(limpiarManual({ tasaCierre: 20, tasaCierreV: 2 }).tasaCierre).toBe(20);
+    expect(limpiarManual({ tasaCierre: 12 }).tasaCierre).toBe(12);
+    // Lo que se guarda limpio lleva la marca: al releerlo, el 20 escogido se queda.
+    expect(limpiarManual(limpiarManual({ tasaCierre: 20, tasaCierreV: 2 })).tasaCierre).toBe(20);
   });
 });
 

@@ -67,8 +67,12 @@ const redondeo = (n) => Math.round(n * 100) / 100;
 /** El manual guardado, limpio: { reglas, nomenclatura, tasaCierre }. Pura. */
 export function limpiarManual(m = {}) {
   const n = m?.nomenclatura ?? {};
-  const tasa = num(m?.tasaCierre);
+  // Antes del curso (5 %), el manual guardaba SIEMPRE la tasa de entonces, 20, aunque nadie la escogiera: un 20 sin la
+  // marca `tasaCierreV` es ese valor de partida y se lee como el de ahora. Lo que se guarda desde aquí lleva la marca.
+  const vieja = num(m?.tasaCierre) === 20 && m?.tasaCierreV !== 2;
+  const tasa = vieja ? 0 : num(m?.tasaCierre);
   return {
+    tasaCierreV: 2,
     reglas: largo(m?.reglas, MAX_MANUAL),
     nomenclatura: Object.fromEntries(Object.entries(NOMENCLATURA_POR_DEFECTO).map(([k, def]) => [k, corto(n[k], 160) || def])),
     tasaCierre: tasa > 0 && tasa <= 100 ? tasa : TASA_CIERRE_POR_DEFECTO,
