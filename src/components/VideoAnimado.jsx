@@ -39,6 +39,8 @@ const VideoSonido = lazy(() => import("./VideoSonido"));
 const CrearVideoAnimado = lazy(() => import("./CrearVideoAnimado"));
 const EditorEscenas = lazy(() => import("./EditorEscenas"));
 const LocucionVideo = lazy(() => import("./LocucionVideo"));
+// Las imágenes de fondo por sección que pidió la IA («Con imágenes de fondo»): las crea el director (con su costo).
+const FondosVideo = lazy(() => import("./FondosVideo"));
 // «Guardar como estructura»: la IA saca la estructura de esta voz en off para las de la agencia (sólo al pulsarlo).
 const GuardarEstructura = lazy(() => import("./GuardarEstructura"));
 
@@ -279,6 +281,11 @@ export default function VideoAnimado({ client, estudio, publicacion = null, abri
             </Suspense>
           )}
           {sucio && <p className="hint">Hay cambios sin guardar.</p>}
+          {!abierto.nuevo && (
+            <Suspense fallback={null}>
+              <FondosVideo client={client} video={abierto} sucio={sucio} onCambio={(v) => { setAbierto(v); setTexto(JSON.stringify(v.guion, null, 2)); }} />
+            </Suspense>
+          )}
           {!abierto.nuevo && <Suspense fallback={null}><LocucionVideo client={client} video={abierto} sucio={sucio} onCambio={setAbierto} /></Suspense>}
           {!abierto.nuevo && <RenderVideo client={client} video={abierto} sucio={sucio} onCambio={setAbierto} />}
           {!abierto.nuevo && (

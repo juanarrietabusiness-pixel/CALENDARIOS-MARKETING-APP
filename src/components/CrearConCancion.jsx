@@ -35,6 +35,8 @@ export default function CrearConCancion({ client, publicacion = null, onCreado, 
   const [precio, setPrecio] = useState(null);
   const [sincronia, setSincronia] = useState(null);
   const [desplazamiento, setDesplazamiento] = useState(0);
+  // «Con imágenes de fondo» al diseñar con IA: un fondo por sección (lo crea el director después, con su costo).
+  const [conFondos, setConFondos] = useState(false);
   const [ocupado, setOcupado] = useState("");
   const [error, setError] = useState("");
   const [aviso, setAviso] = useState("");
@@ -88,11 +90,13 @@ export default function CrearConCancion({ client, publicacion = null, onCreado, 
       const destino = opciones.find((o) => o.postId === postId);
       const r = await crearVideoConCancion(client.id, {
         huella: sincronia.huella, modo, formato, titulo, postId, calendarId: destino?.calendarId ?? publicacion?.calendarId ?? "", desplazamiento,
+        conFondos: modo === "ia" && conFondos,
       });
       const partes = [
         modo === "ia" ? "Escenas diseñadas por la IA sobre la letra." : "Prueba de sincronía creada: una escena por línea.",
         r.corregido ? "La IA corrigió su primer intento para que la letra fuera tal cual." : "",
         r.aviso || "",
+        r.fondos > 0 ? `Pide ${r.fondos} imagen${r.fondos === 1 ? "" : "es"} de fondo: créalas con el director en «Imágenes de fondo» (se dice el costo antes).` : "",
         "Revísala en la vista previa (suena con la canción) y apruébala: la canción ya es su locución.",
       ];
       onCreado(r.video, partes.filter(Boolean).join(" "));
@@ -198,6 +202,10 @@ export default function CrearConCancion({ client, publicacion = null, onCreado, 
           </label>
           <input id={`${ids}-ajuste`} type="range" className="va-cancion-ajuste" min={-DESPLAZAMIENTO_MAX} max={DESPLAZAMIENTO_MAX} step={0.05} value={desplazamiento}
             onChange={(e) => setDesplazamiento(Number(e.target.value))} disabled={Boolean(ocupado)} />
+          <label className="va-check">
+            <input type="checkbox" checked={conFondos} disabled={Boolean(ocupado)} onChange={(e) => setConFondos(e.target.checked)} />
+            Con imágenes de fondo al diseñar con IA (una por sección —verso, coro, puente— en el estilo del kit; el director las crea después, con su costo)
+          </label>
           <div className="va-acciones">
             <button type="button" className="btn btn-primary" disabled={Boolean(ocupado)} onClick={() => crear("karaoke")}>
               <Icon name="play" /> {ocupado === "karaoke" ? "Creando…" : "Prueba de sincronía (gratis)"}
