@@ -8,7 +8,12 @@
 // confirmación, como «Dame ideas».
 // ============================================================
 
-import { llamarIA } from "../cerebro/ia.js";
+import { llamarIA, ErrorIA } from "../cerebro/ia.js";
+import { RechazoAnthropic } from "../anthropic.js";
+import { miniaturaDe } from "./miniaturas.js";
+import { NULO } from "../acceso.js";
+import { marcaParaElVideo } from "../../../src/lib/estiloVideo.js";
+import { galeriaParaLaIA, erroresDeFondos, fondosPendientes, MAX_GALERIA_FONDOS } from "../../../src/lib/fondosVideo.js";
 import { kitDe } from "./kit.js";
 import { contextoDeGuion } from "./guionVideo.js";
 import { leerMercado } from "../mercado.js";
@@ -43,6 +48,66 @@ async function catalogoConFotos(acceso, clienteId) {
   }
 }
 
+/**
+ * Las imágenes de referencia del ESTILO del video (`kit.referenciasVideo`, de la galería de ESTE cliente): copias
+ * reducidas (512 px), como las que mira el director. Ver una referencia es un extra: lo que no se puede leer, no va.
+ */
+export async function referenciasDelVideo(env, kit) {
+  const imagenes = [];
+  for (const clave of (kit?.referenciasVideo ?? []).slice(0, 6)) {
+    const v = await miniaturaDe(env, clave, { lado: 512 }).catch(() => null);
+    if (v && /^image\/(jpeg|png|webp)$/.test(v.mime)) imagenes.push({ type: "image", source: { type: "base64", media_type: v.mime, data: v.datos } });
+  }
+  return imagenes;
+}
+
+/** ¿El rechazo es del modelo que no acepta imágenes? (un 4xx que no es la llave, el saldo ni la saturación). */
+const rechazaImagenes = (e) => {
+  const c = e instanceof ErrorIA ? e.cause : e;
+  return c instanceof RechazoAnthropic && c.estado >= 400 && c.estado < 500 && ![401, 402, 403, 429].includes(c.estado);
+};
+
+/**
+ * Llama a la IA con las referencias del estilo DELANTE del pedido (`texto(n)` lo escribe sabiendo cuántas van). Si el
+ * modelo del hueco no las acepta, sigue SIN ellas y lo dice (`avisoRefs`). → lo de `llamarIA` y `refs` (las que fueron).
+ */
+async function llamarConReferencias(env, acceso, cliente, { imagenes, texto, salida, funcion }) {
+  if (imagenes.length) {
+    try {
+      const r = await llamarIA(env, acceso, cliente, { prompt: [...imagenes, { type: "text", text: texto(imagenes.length) }], salida, funcion });
+      return { ...r, refs: imagenes.length };
+    } catch (e) {
+      if (!rechazaImagenes(e)) throw e;
+      const r = await llamarIA(env, acceso, cliente, { prompt: texto(0), salida, funcion });
+      return { ...r, refs: 0, avisoRefs: "El modelo de los guiones no recibió las imágenes de referencia del estilo del video: escribió sin ellas." };
+    }
+  }
+  return { ...(await llamarIA(env, acceso, cliente, { prompt: texto(0), salida, funcion })), refs: 0 };
+}
+
+/** Lo que el kit le dice al guion: el bloque de la marca para el video y sus referencias de estilo (como imágenes). */
+async function marcaDelGuion(env, acceso, cliente, { conFondos = false } = {}) {
+  const kit = kitDe(cliente);
+  const [imagenes, galeria] = await Promise.all([
+    referenciasDelVideo(env, kit),
+    conFondos ? galeriaDeFondos(acceso, cliente.id) : "",
+  ]);
+  return { kit, marcaVideo: marcaParaElVideo(kit), imagenes, galeria };
+}
+
+/** Las imágenes que el cliente ya tiene en su galería (para usarlas de fondo sin pagar otra): las últimas, sin la papelera. */
+async function galeriaDeFondos(acceso, clienteId) {
+  try {
+    const filas = await acceso.leer("estudio_archivos", { client_id: clienteId, tipo: "imagen", borrado_at: NULO }, "created_at desc", MAX_GALERIA_FONDOS);
+    return galeriaParaLaIA(filas.map((f) => ({ id: f.id, prompt: f.prompt, ancho: f.ancho, alto: f.alto, subido: Boolean(f.subido) })));
+  } catch {
+    return "";
+  }
+}
+
+/** Un aviso hecho de varios (los que haya). */
+const juntar = (...a) => a.filter(Boolean).join(" ") || null;
+
 /** El nombre de la estructura que dice la IA (campo «estructura» de su JSON) sale del guion: no es del formato. */
 function sinEstructura(g) {
   if (!g || typeof g !== "object" || !("estructura" in g)) return { guion: g, nombre: "" };
@@ -75,33 +140,47 @@ export async function escribirGuion(env, acceso, cliente, datos = {}) {
   const segundos = duracionAnimado(datos.segundos);
   const contexto = ctx.contexto;
   const productos = await catalogoConFotos(acceso, cliente.id);
-  const personaje = kitDe(cliente).personajeVideo ?? null;
+  const conFondos = datos.conFondos === true;
+  const { kit, marcaVideo, imagenes, galeria } = await marcaDelGuion(env, acceso, cliente, { conFondos });
+  const personaje = kit.personajeVideo ?? null;
 
-  const base = { marca: cliente.name, idea, publicacion: delPost, segundos, formato: datos.formato, contexto, productos, personaje, criterio: ctx.criterio, estructura: eleccion.texto };
-  let r = await llamarIA(env, acceso, cliente, { prompt: pedidoDeGuionAnimado(base), salida: 8000, funcion: "guion de video" });
+  const base = {
+    marca: cliente.name, idea, publicacion: delPost, segundos, formato: datos.formato, contexto, productos, personaje, criterio: ctx.criterio,
+    estructura: eleccion.texto, marcaVideo, conFondos, galeria,
+  };
+  // Valida y, con fondos, que no pida más imágenes de la cuenta (eso también se corrige en la segunda vuelta).
+  const comprobar = (guion) => {
+    if (!guion) return { ok: false, errores: [{ donde: "guion", mensaje: "No es un JSON que se pueda leer." }] };
+    const v = validarGuion(guion);
+    const deFondos = conFondos && v.guion ? erroresDeFondos(v.guion) : [];
+    return deFondos.length ? { ...v, ok: false, errores: [...(v.errores ?? []), ...deFondos] } : v;
+  };
+  let r = await llamarConReferencias(env, acceso, cliente, { imagenes, texto: (n) => pedidoDeGuionAnimado({ ...base, referencias: n }), salida: 8000, funcion: "guion de video" });
+  const refs = r.refs;
+  const avisoRefs = r.avisoRefs ?? null;
   let leido = sinEstructura(leerGuionAnimado(r.texto));
   let nombre = leido.nombre;
   let g = leido.guion;
-  let v = g ? validarGuion(g) : { ok: false, errores: [{ donde: "guion", mensaje: "No es un JSON que se pueda leer." }] };
+  let v = comprobar(g);
   let corregido = false;
   if (!v.ok) {
     // Una sola vuelta con sus errores: la segunda casi siempre los arregla y el costo tiene techo.
     corregido = true;
-    r = await llamarIA(env, acceso, cliente, {
-      prompt: pedidoDeGuionAnimado({ ...base, errores: v.errores, anterior: g ? JSON.stringify(g) : r.texto }), salida: 8000, funcion: "guion de video",
+    r = await llamarConReferencias(env, acceso, cliente, {
+      imagenes: imagenes.slice(0, refs), texto: (n) => pedidoDeGuionAnimado({ ...base, referencias: n, errores: v.errores, anterior: g ? JSON.stringify(g) : r.texto }), salida: 8000, funcion: "guion de video",
     });
     leido = sinEstructura(leerGuionAnimado(r.texto));
     nombre = leido.nombre || nombre;
     g = leido.guion;
-    v = g ? validarGuion(g) : v;
+    v = g ? comprobar(g) : v;
   }
   if (!v.ok) {
     const lista = (v.errores ?? []).slice(0, 4).map((e) => `${e.donde}: ${e.mensaje}`).join("; ");
     throw new ErrorGuion(`La IA no escribió un guion válido ni al corregirlo${lista ? ` (${lista})` : ""}. Prueba con otra idea o más detalle.`, 502);
   }
   return {
-    guion: v.guion, avisos: v.avisos, corregido, modelo: r.modelo, aviso: r.aviso ?? null, postId: post ? String(datos.postId) : null,
-    estructura: usadaEn(eleccion, nombre),
+    guion: v.guion, avisos: v.avisos, corregido, modelo: r.modelo, aviso: juntar(r.aviso, avisoRefs), postId: post ? String(datos.postId) : null,
+    estructura: usadaEn(eleccion, nombre), referencias: refs, fondos: fondosPendientes(v.guion).length,
   };
 }
 
@@ -113,13 +192,14 @@ export async function escribirGuion(env, acceso, cliente, datos = {}) {
  * `sincronia`: la de la canción ({ archivo, nombre, duracion, letra }); `lineas`, `huecos`: los de videoCancion.js.
  * → { guion, avisos, corregido, modelo, aviso }.
  */
-export async function escribirGuionCancion(env, acceso, cliente, { sincronia, lineas, huecos, formato = "9:16", titulo = "", postId = "", indicacion = "" }) {
+export async function escribirGuionCancion(env, acceso, cliente, { sincronia, lineas, huecos, formato = "9:16", titulo = "", postId = "", indicacion = "", conFondos = false }) {
   const ctx = await contextoDeGuion(env, acceso, cliente, { postId: String(postId ?? ""), consulta: `${titulo || sincronia.nombre || ""} canción video animado`, presupuesto: 3000 });
   const productos = await catalogoConFotos(acceso, cliente.id);
-  const personaje = kitDe(cliente).personajeVideo ?? null;
+  const { kit, marcaVideo, imagenes, galeria } = await marcaDelGuion(env, acceso, cliente, { conFondos: conFondos === true });
+  const personaje = kit.personajeVideo ?? null;
   const base = {
     marca: cliente.name, titulo, nombre: sincronia.nombre ?? "", duracion: sincronia.duracion, lineas, huecos, formato,
-    contexto: ctx.contexto, productos, personaje, indicacion,
+    contexto: ctx.contexto, productos, personaje, indicacion, marcaVideo, conFondos: conFondos === true, galeria,
   };
   const cancion = { archivo: sincronia.archivo, duracion: sincronia.duracion, nombre: sincronia.nombre ?? "" };
   const revisar = (texto) => {
@@ -128,15 +208,19 @@ export async function escribirGuionCancion(env, acceso, cliente, { sincronia, li
     const conCancion = conLaCancion(g, cancion);
     const v = validarGuion(conCancion);
     const deLetra = v.guion ? comprobarLetra(v.guion, sincronia.letra) : [];
-    return { g: conCancion, v: deLetra.length ? { ...v, ok: false, errores: [...(v.errores ?? []), ...deLetra] } : v };
+    const deFondos = base.conFondos && v.guion ? erroresDeFondos(v.guion) : [];
+    const extra = [...deLetra, ...deFondos];
+    return { g: conCancion, v: extra.length ? { ...v, ok: false, errores: [...(v.errores ?? []), ...extra] } : v };
   };
-  let r = await llamarIA(env, acceso, cliente, { prompt: pedidoDeGuionCancion(base), salida: 12000, funcion: "guion de video" });
+  let r = await llamarConReferencias(env, acceso, cliente, { imagenes, texto: (n) => pedidoDeGuionCancion({ ...base, referencias: n }), salida: 12000, funcion: "guion de video" });
+  const refs = r.refs;
+  const avisoRefs = r.avisoRefs ?? null;
   let { g, v } = revisar(r.texto);
   let corregido = false;
   if (!v.ok) {
     corregido = true;
-    r = await llamarIA(env, acceso, cliente, {
-      prompt: pedidoDeGuionCancion({ ...base, errores: v.errores, anterior: g ? JSON.stringify(g) : r.texto }), salida: 12000, funcion: "guion de video",
+    r = await llamarConReferencias(env, acceso, cliente, {
+      imagenes: imagenes.slice(0, refs), texto: (n) => pedidoDeGuionCancion({ ...base, referencias: n, errores: v.errores, anterior: g ? JSON.stringify(g) : r.texto }), salida: 12000, funcion: "guion de video",
     });
     ({ g, v } = revisar(r.texto));
   }
@@ -144,5 +228,5 @@ export async function escribirGuionCancion(env, acceso, cliente, { sincronia, li
     const lista = (v.errores ?? []).slice(0, 4).map((e) => `${e.donde}: ${e.mensaje}`).join("; ");
     throw new ErrorGuion(`La IA no diseñó un guion válido con la letra tal cual ni al corregirlo${lista ? ` (${lista})` : ""}. Prueba con la prueba de sincronía (gratis) y edítala.`, 502);
   }
-  return { guion: v.guion, avisos: v.avisos, corregido, modelo: r.modelo, aviso: r.aviso ?? null };
+  return { guion: v.guion, avisos: v.avisos, corregido, modelo: r.modelo, aviso: juntar(r.aviso, avisoRefs), referencias: refs, fondos: fondosPendientes(v.guion).length };
 }

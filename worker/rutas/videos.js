@@ -34,9 +34,14 @@
 //   PUT    /api/videos/<c>/<id>/sonido      { efectos, musica: { archivoId, volumen } | null, efectosPropios?: { transicion,
 //                                           sello } (ids de efectos de la biblioteca) }: lo que suena debajo de la voz. Va
 //                                           aparte del guion: no sube la versión ni pide otra voz (gratis)
+//   GET    /api/videos/<c>/<id>/fondos      Las IMÁGENES DE FONDO por crear del guion guardado: cuántas, su costo y si ya se
+//                                           están creando
+//   POST   /api/videos/<c>/<id>/fondos      { confirmado }: crearlas con el DIRECTOR (un encargo del servidor; 9:16, sin
+//                                           texto ni logo). Sin `confirmado`, 409 `confirmar` con el costo (salvo «crear
+//                                           sin preguntar»); al terminar, cada una va a las capas de su `pide`
 //   GET    /api/videos/<c>/<id>/versiones   El historial: las versiones de antes del guion
 //   POST   /api/videos/<c>/<id>/versiones   { version, aVersion }: volver a una (crea una versión nueva con su guion)
-//   POST   /api/videos/<c>/escribir         { idea, segundos?, formato?, postId?, estructuraId? }: la IA de texto ESCRIBE el
+//   POST   /api/videos/<c>/escribir         { idea, segundos?, formato?, postId?, estructuraId?, conFondos? }: la IA de texto ESCRIBE el
 //                                           guion (formato v1, validado; si sale con errores se le devuelven una vez)
 //                                           siguiendo la ESTRUCTURA de guion escogida (o la que escoja la IA entre las de
 //                                           voz en off: vuelve en `estructura`). No guarda nada: la pantalla lo abre como
@@ -52,7 +57,7 @@
 //                                           Siempre pide confirmar: sin `confirmado`, 409 con el costo (aproximado). La misma
 //                                           canción con la misma letra otra vez sale gratis (`repetida`). → { sincronia }
 //   POST   /api/videos/<c>/cancion/video    { huella, modo: "karaoke" | "ia", formato?, titulo?, postId?, calendarId?,
-//                                           desplazamiento?, indicacion? }: crea el BORRADOR con la canción como su locución:
+//                                           desplazamiento?, indicacion?, conFondos? }: crea el BORRADOR con la canción como su locución:
 //                                           la prueba de sincronía (gratis) o las escenas diseñadas por la IA (texto)
 //   PUT    /api/videos/<c>/<id>/cancion     { desplazamiento }: el ajuste fino de la letra (±1,5 s; gratis, sin versión)
 //   POST   /api/videos/<c>/<id>/cancion     { confirmado }: «Volver a sincronizar» la canción del video (pide confirmar)
@@ -102,6 +107,7 @@ import { proponerMusica, musicaALaMarca, resumenDelAnalisis, ErrorDirectorMusica
 import { pedidoConClips, alContenedor } from "../lib/estudio/cuadros.js";
 import { pedirRender, renderAlDia, ligarAPublicacion } from "../lib/estudio/render.js";
 import { publicarConMusica } from "../lib/estudio/conMusica.js";
+import { pedirFondos, estadoDeFondos } from "../lib/estudio/fondosVideo.js";
 import { costoDeVoz, fraseDeMuestra, modeloDeVoz, esIdDeVoz } from "../../src/lib/voces.js";
 import { sincronizarCancion, crearVideoConCancion, ajustarCancion, resincronizarVideo, resumenDeSincronia, ErrorCancion } from "../lib/estudio/cancion.js";
 
@@ -218,9 +224,13 @@ async function rutasDelCliente(req, env, { acceso, usuario, partes, metodo }) {
       const r = await escribirGuion(env, acceso, cliente, {
         idea: b.idea, segundos: b.segundos, formato: b.formato, postId: typeof b.postId === "string" ? b.postId : "",
         estructuraId: typeof (b.estructuraId ?? b.formulaId) === "string" ? b.estructuraId ?? b.formulaId : "",
+        conFondos: b.conFondos === true,
       });
       const publicacion = r.postId ? await publicacionDelCliente(acceso, clienteId, r.postId) : null;
-      return json({ guion: r.guion, avisos: r.avisos, corregido: r.corregido, aviso: r.aviso, publicacion, estructura: r.estructura });
+      return json({
+        guion: r.guion, avisos: r.avisos, corregido: r.corregido, aviso: r.aviso, publicacion, estructura: r.estructura,
+        referencias: r.referencias ?? 0, fondos: r.fondos ?? 0,
+      });
     } catch (e) {
       if (e instanceof ErrorGuion || e instanceof ErrorIA) return error(e.message, e.estado ?? 502);
       throw e;
@@ -310,7 +320,8 @@ async function rutasDelCliente(req, env, { acceso, usuario, partes, metodo }) {
       if (accion === "video") {
         const r = await crearVideoConCancion(env, acceso, cliente, {
           huella: texto(b.huella), modo: b.modo === "ia" ? "ia" : "karaoke", formato: texto(b.formato) || "9:16", titulo: texto(b.titulo),
-          postId: texto(b.postId), calendarId: texto(b.calendarId), desplazamiento: b.desplazamiento, indicacion: texto(b.indicacion), usuario,
+          postId: texto(b.postId), calendarId: texto(b.calendarId), desplazamiento: b.desplazamiento, indicacion: texto(b.indicacion),
+          conFondos: b.conFondos === true, usuario,
         });
         avisar(env, acceso, usuario, req, clienteId, r.video.id);
         return json(r, 201);
@@ -364,6 +375,15 @@ async function rutasDelCliente(req, env, { acceso, usuario, partes, metodo }) {
       if (e instanceof ErrorDirectorMusical) return error(e.message, e.estado);
       throw e;
     }
+  }
+
+  // Las IMÁGENES DE FONDO por sección (los fondos por crear del guion GUARDADO): cuántas faltan y crearlas con el director
+  // (un encargo del servidor; siempre con su costo dicho antes). No pide la versión: al terminar se ponen sobre la de ahora.
+  if (accion === "fondos" && metodo === "GET") return json(await estadoDeFondos(env, acceso, cliente, fila));
+  if (accion === "fondos" && metodo === "POST") {
+    const bf = (await cuerpo(req)) ?? {};
+    const r = await pedirFondos(env, acceso, cliente, fila, { confirmado: bf.confirmado === true, usuario });
+    return json(r, 202);
   }
 
   const b = (await cuerpo(req)) ?? {};

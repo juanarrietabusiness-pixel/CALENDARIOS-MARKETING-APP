@@ -27,6 +27,7 @@ import { tipoPorBytes } from "./archivos.js";
 import { sonidoParaVideo, claveDeSonido } from "./sonidos.js";
 import { alineacionForzada, aislarVoz } from "./elevenlabs.js";
 import { escribirGuionCancion, ErrorGuion } from "./guionAnimado.js";
+import { fondosPendientes } from "../../../src/lib/fondosVideo.js";
 import { crearProyecto, publicacionDelCliente, deFila, ErrorVideo } from "../videosProyectos.js";
 import { ErrorIA } from "../cerebro/ia.js";
 import { palabrasDe, MIN_SEGUNDOS, MAX_SEGUNDOS_CANCION } from "../../../src/lib/videoEscenas.js";
@@ -237,7 +238,7 @@ export function locucionDeSincronia(s, guion, version, { desplazamiento = 0 } = 
  * diseñadas por la IA (`modo` «ia», texto). `huella`: la de `sincronizarCancion` (se lee de R2, no del navegador).
  * → { video, avisos, corregido, aviso }.
  */
-export async function crearVideoConCancion(env, acceso, cliente, { huella, modo = "karaoke", formato = "9:16", titulo = "", postId = "", calendarId = "", desplazamiento = 0, indicacion = "", usuario = null }) {
+export async function crearVideoConCancion(env, acceso, cliente, { huella, modo = "karaoke", formato = "9:16", titulo = "", postId = "", calendarId = "", desplazamiento = 0, indicacion = "", conFondos = false, usuario = null }) {
   const s = await leerSincronia(env, acceso.ownerId, cliente.id, String(huella ?? ""));
   if (!s) throw new ErrorCancion("No encuentro esa sincronización de la letra: vuelve a sincronizarla.", 404);
   // La canción tiene que seguir en la biblioteca (si se quitó, el render no tendría audio).
@@ -257,7 +258,8 @@ export async function crearVideoConCancion(env, acceso, cliente, { huella, modo 
   let aviso = null;
   if (modo === "ia") {
     try {
-      const r = await escribirGuionCancion(env, acceso, cliente, { sincronia: s, lineas, huecos, formato, titulo, postId: liga?.postId ?? "", indicacion });
+      // «Con imágenes de fondo»: la IA pone un fondo por crear por sección (src/lib/fondosVideo.js); se crean después.
+      const r = await escribirGuionCancion(env, acceso, cliente, { sincronia: s, lineas, huecos, formato, titulo, postId: liga?.postId ?? "", indicacion, conFondos: conFondos === true });
       ({ guion, avisos, corregido, aviso } = r);
     } catch (e) {
       if (e instanceof ErrorGuion || e instanceof ErrorIA) throw new ErrorCancion(e.message, e.estado ?? 502);
@@ -270,7 +272,7 @@ export async function crearVideoConCancion(env, acceso, cliente, { huella, modo 
     guion, titulo: titulo || guion.titulo, calendarId: liga?.calendarId ?? null, postId: liga?.postId ?? null, usuario,
     origen: { tipo: "cancion" }, locucion: locucionDeSincronia(s, guion, 1, { desplazamiento: d }),
   });
-  return { video: r.video, avisos: [...avisos, ...r.avisos], corregido, aviso };
+  return { video: r.video, avisos: [...avisos, ...r.avisos], corregido, aviso, fondos: fondosPendientes(guion).length };
 }
 
 /** El ajuste fino de la canción de un video (±1,5 s): se aplica al leer, sin pagar otra vez ni subir la versión. → { video }. */

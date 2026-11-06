@@ -187,6 +187,8 @@ export function encargoPublico(f, { conPedidos = false } = {}) {
     ...(f.tipo === "reel" ? { reel: reelPublico(leerJSON(f.datos, {})) } : {}),
     // Lo que quedó puesto solo en las publicaciones (las piezas que pidió Claude con su post_id).
     ...(leerJSON(f.datos, {}).puestos ? { puestos: leerJSON(f.datos, {}).puestos } : {}),
+    // Los fondos de un video animado: de qué video y cuántos quedaron puestos en su guion.
+    ...(leerJSON(f.datos, {}).fondosVideo ? { fondosVideo: { videoId: leerJSON(f.datos, {}).fondosVideo.videoId, puestos: leerJSON(f.datos, {}).fondosPuestos ?? null } } : {}),
   };
 }
 
@@ -220,6 +222,8 @@ export async function crearEncargo(env, acceso, cliente, cuerpo = {}, { usuario 
     // inspiración): crudas, como las pide `fichasDeDiseno`; nunca van al motor de imagen.
     especiales: (Array.isArray(cuerpo.especiales) ? cuerpo.especiales : []).filter((e) => limpiarEspeciales([e]).bloques.length)
       .slice(0, 2).map((e) => ({ papel: e.papel, media_type: e.media_type, data: e.data })),
+    // Las IMÁGENES DE FONDO de un video animado (fondosVideo.js): al cerrarse, cada una va a las capas de su `pide`.
+    ...(objeto(cuerpo.fondosVideo, 8000) ? { fondosVideo: objeto(cuerpo.fondosVideo, 8000) } : {}),
   };
   let pasos;
   if (tipo === "reel") {
@@ -325,6 +329,16 @@ export async function avanzarEncargo(env, acceso, id) {
   // Las piezas que pidió Claude con su post_id se ponen solas en su publicación, una vez, al terminar.
   if (estado === "hecho" && datos.poner && fila.tipo !== "reel" && !datos.puestos) {
     try { datos.puestos = await ponerResultados(env, acceso, fila, pasos, datos); } catch (e) { console.error("encargo: poner en la publicación", e); datos.puestos = []; }
+  }
+  // Los fondos de un video animado se ponen solos en su guion al cerrarse (en el momento: fondosVideo.js lee este archivo).
+  if (estado === "hecho" && datos.fondosVideo && !datos.fondosPuestos) {
+    try {
+      const { ponerFondosEnVideo } = await import("./fondosVideo.js");
+      datos.fondosPuestos = await ponerFondosEnVideo(env, acceso, fila, pasos, datos);
+    } catch (e) {
+      console.error("encargo: poner los fondos en el video", e);
+      datos.fondosPuestos = { n: 0, aviso: "No se pudieron poner en el video: quedaron en la galería." };
+    }
   }
   const cambios = {
     bloqueado_hasta: "", updated_at: ahora(), pasos: JSON.stringify(pasos), datos: JSON.stringify(datos),
