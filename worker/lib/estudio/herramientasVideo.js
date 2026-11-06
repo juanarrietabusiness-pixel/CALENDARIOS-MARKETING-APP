@@ -500,6 +500,7 @@ export function crearHerramientasVideo({ env, acceso, resolverCliente, usuario, 
             "Marcada para publicarla A MANO con la música de Instagram (el carrusel no se convierte: la API no deja poner su música).",
             r.cancion ? `Canción sugerida: «${textoDeCancion(r.cancion)}» (de la lista de ${c.name}; no repite la última usada).`
               : r.sinLista ? `${c.name} no tiene lista de canciones de Instagram: la agencia la escribe en Marca → Kit y voz.` : "",
+            r.sacadas ? "Estaba programada: se sacó de la cola para que no salga sola sin la música." : "",
             `A su hora (y 10 min antes) llega el aviso a la campana con la pantalla del teléfono: ${r.enlace} (las imágenes en orden para compartir a Instagram, el texto para copiar y la canción).`,
           ].filter(Boolean).join(" ");
         }

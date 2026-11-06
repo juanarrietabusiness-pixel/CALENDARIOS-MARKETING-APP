@@ -22,6 +22,7 @@ import { musicasDe } from "./galeria.js";
 import { kitDe } from "./kit.js";
 import { claveDelCliente } from "./archivos.js";
 import { cambiarPublicacion } from "./ponerEnPost.js";
+import { cancelarPendientes } from "../publicador.js";
 import {
   guionDeFoto, puedeConMusica, fotoDe, duracionDeFoto, movimientoDeFoto, esCarruselParaMusica, ORIGEN_FOTO, FRASE_COSTO, musicaPorDefecto,
   cancionSugerida, ultimaCancionUsada, cancionParaGuardar, textoDeCancion,
@@ -168,7 +169,9 @@ export async function aManoConMusica(env, acceso, cliente, { postId, calendarId 
     }),
   });
   if (r?.aviso) throw new ErrorVideo(r.aviso, 409);
-  return { post: r.post, cancion, sinLista: !canciones.length, enlace: `/a-mano/${encodeURIComponent(calId)}/${encodeURIComponent(post.id)}` };
+  // Lo que ya estaba en la cola saldría solo, SIN la música: se saca (como «La publico yo» de «¿Cuándo sale?»).
+  const sacadas = await cancelarPendientes(acceso, calId, post.id, "Pasó a publicarse a mano con la música de Instagram.").catch(() => 0);
+  return { post: r.post, cancion, sacadas, sinLista: !canciones.length, enlace: `/a-mano/${encodeURIComponent(calId)}/${encodeURIComponent(post.id)}` };
 }
 
 /**

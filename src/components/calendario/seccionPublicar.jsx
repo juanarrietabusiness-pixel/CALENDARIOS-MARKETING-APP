@@ -662,7 +662,8 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
 
         {clientId && ofreceMusica(post) && (
           <Suspense fallback={null}>
-            <ConMusica post={post} setForm={setForm} client={client} clientId={clientId} cal={cal} onError={onError} enlaceAMano={enlaceAMano} onIrA={onIrA} />
+            <ConMusica post={post} setForm={setForm} client={client} clientId={clientId} cal={cal} onError={onError} enlaceAMano={enlaceAMano} onIrA={onIrA}
+              filas={publicacion?.filas ?? []} onCancelar={publicacion?.onCancelar ?? null} />
           </Suspense>
         )}
 

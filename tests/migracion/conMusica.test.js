@@ -199,7 +199,12 @@ describe("la herramienta del asistente y de Claude", () => {
   });
 
   it("un carrusel: a mano con la música de Instagram y la canción sugerida, sin repetir la última usada", async () => {
+    // Estaba programado: saldría solo sin la música, así que se saca de la cola.
+    db.sqlite.prepare("insert into publicaciones_programadas (id, owner_id, client_id, calendar_id, post_id, red, programada_para, estado) values (?,?,?,?,?,?,?,?)")
+      .run("q1", JEFE, "bc", "cal1", "car", "instagram", "2026-11-20T23:00:00.000Z", "programada");
     const r = await herramientas().llamar("publicar_con_musica", { cliente: "Cliente Uno", publicacion_id: "car" });
+    expect(db.sqlite.prepare("select estado from publicaciones_programadas where id = 'q1'").get().estado).toBe("cancelada");
+    expect(r.content[0].text).toMatch(/se sacó de la cola/);
     expect(r.content[0].text).toMatch(/A MANO/);
     expect(r.content[0].text).toMatch(/Calm Down — Rema/);
     expect(r.content[0].text).toMatch(/\/a-mano\/cal1\/car/);

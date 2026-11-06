@@ -236,15 +236,16 @@ function ReelPendiente({ post, setForm, clientId }) {
 }
 
 /** Un carrusel A MANO con la música de Instagram: la marca «La publico yo» y la canción sugerida. */
-function CarruselConMusica({ post, setForm, client, kit, enlaceAMano, onIrA }) {
+function CarruselConMusica({ post, setForm, client, kit, enlaceAMano, onIrA, filas = [], onCancelar = null }) {
   const ids = useId();
   const [copiado, setCopiado] = useState(false);
+  const [aviso, setAviso] = useState("");
   const canciones = useMemo(() => limpiarCanciones(kit.musica?.cancionesInstagram), [kit]);
   const ultima = useMemo(() => ultimaCancionUsada(client, post.id), [client, post.id]);
   const marcado = Boolean(post.asistida && post.conMusicaInstagram);
   const cancion = cancionSugerida(canciones, { ultima, actual: post.cancionInstagram });
 
-  const marcar = () => {
+  const marcar = async () => {
     const c = cancionSugerida(canciones, { ultima, actual: post.cancionInstagram });
     const ahora = new Date().toISOString();
     setForm((p) => ({
@@ -252,6 +253,16 @@ function CarruselConMusica({ post, setForm, client, kit, enlaceAMano, onIrA }) {
       notaAsistida: String(p.notaAsistida ?? "").trim() || `Música de Instagram${c ? `: «${textoDeCancion(c)}»` : ""}`,
       ...(c && !p.cancionInstagram?.nombre ? { cancionInstagram: cancionParaGuardar(c, ahora) } : {}),
     }));
+    // Lo que ya estaba en la cola saldría solo, SIN la música: se saca (como «La publico yo» de «¿Cuándo sale?»).
+    const programadas = filas.filter((f) => f.postId === post.id && f.estado === "programada");
+    if (!programadas.length) { setAviso(""); return; }
+    if (!onCancelar) { setAviso("Estaba programada: en Publicar, «Guardar para publicar a mano» la saca de la cola."); return; }
+    try {
+      for (const f of programadas) await onCancelar(f.id);
+      setAviso("Estaba programada: se sacó de la cola para que no salga sola sin la música.");
+    } catch (e) {
+      setAviso(`No se pudo sacar de la cola: ${e.message}. Hazlo en Publicar.`);
+    }
   };
   const otra = () => {
     const c = cancionSugerida(canciones, { ultima, actual: post.cancionInstagram, otra: true });
@@ -307,6 +318,7 @@ function CarruselConMusica({ post, setForm, client, kit, enlaceAMano, onIrA }) {
           </div>
         </>
       )}
+      <div role="status" aria-live="polite">{aviso && <p className="hint" style={{ margin: 0 }}>{aviso}</p>}</div>
     </section>
   );
 }
@@ -314,11 +326,13 @@ function CarruselConMusica({ post, setForm, client, kit, enlaceAMano, onIrA }) {
 /**
  * @param compacto  en la pestaña Publicar: sólo el estado (y seguir) del reel que se está haciendo.
  */
-export default function ConMusica({ post, setForm, client, clientId, cal = null, onError, enlaceAMano = null, onIrA = null, compacto = false }) {
+export default function ConMusica({ post, setForm, client, clientId, cal = null, onError, enlaceAMano = null, onIrA = null, compacto = false, filas = [], onCancelar = null }) {
   const kit = useMemo(() => leerKit(client?.kitMarca), [client?.kitMarca]);
   if (!clientId || !post) return null;
   if (compacto) return post.conMusicaPendiente?.videoId ? <ReelPendiente post={post} setForm={setForm} clientId={clientId} /> : null;
-  if (esCarruselParaMusica(post)) return <CarruselConMusica post={post} setForm={setForm} client={client} kit={kit} enlaceAMano={enlaceAMano} onIrA={onIrA} />;
+  if (esCarruselParaMusica(post)) {
+    return <CarruselConMusica post={post} setForm={setForm} client={client} kit={kit} enlaceAMano={enlaceAMano} onIrA={onIrA} filas={filas} onCancelar={onCancelar} />;
+  }
   if (!puedeConMusica(post).ok) return null;
   return <ReelConMusica post={post} setForm={setForm} client={client} clientId={clientId} cal={cal} onError={onError} kit={kit} />;
 }
