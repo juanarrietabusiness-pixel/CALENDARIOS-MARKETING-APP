@@ -38,6 +38,7 @@ import { limpiarDias } from "../../src/lib/semanaTareas.js";
 import { limpiarPlanSemanal } from "../../src/lib/planSemanal.js";
 import { limpiarPlanCliente } from "../../src/lib/plantillasPlan.js";
 import { limpiarRitmo } from "../../src/lib/pilares.js";
+import { TOPE_MAXIMO_SIN_PREGUNTAR } from "../../src/lib/sinPreguntar.js";
 
 /**
  * Lo que va después de responder (avisos, historial): con el `waitUntil`
@@ -188,7 +189,7 @@ export async function rutasDatos(req, env, ctx) {
         if (!(datos.purga_tareas in MODOS_PURGA)) return error("Modo de borrado inválido");
         cambios.purga_tareas = datos.purga_tareas;
       }
-      const CAMPOS_ADMIN = ["ia_modelo", "ia_razonamiento", "ia_razonamiento_chat", "ia_modelos", "presupuesto_usd", "al_limite"];
+      const CAMPOS_ADMIN = ["ia_modelo", "ia_razonamiento", "ia_razonamiento_chat", "ia_modelos", "presupuesto_usd", "al_limite", "sin_preguntar_usd"];
       if (CAMPOS_ADMIN.some((c) => c in datos)) {
         if (ctx.usuario?.rol !== "admin") return error("Sólo el administrador cambia la configuración de la IA", 403);
         if ("ia_razonamiento_chat" in datos) {
@@ -221,6 +222,13 @@ export async function rutasDatos(req, env, ctx) {
         if ("al_limite" in datos) {
           if (!ACCIONES_LIMITE.includes(datos.al_limite)) return error("Acción al límite inválida");
           cambios.al_limite = datos.al_limite;
+        }
+        // «Crear imágenes sin preguntar»: el tope por pedido; null, false o 0 lo apaga (src/lib/sinPreguntar.js).
+        if ("sin_preguntar_usd" in datos) {
+          const v = datos.sin_preguntar_usd;
+          const n = v === null || v === false ? 0 : Number(v);
+          if (!Number.isFinite(n) || n < 0 || n > TOPE_MAXIMO_SIN_PREGUNTAR) return error("Tope para crear sin preguntar inválido");
+          cambios.sin_preguntar_usd = n > 0 ? Math.round(n * 100) / 100 : null;
         }
         // El modelo general: uno de Anthropic va a su columna; uno de Meta, a `ia_modelos.general` (la columna tiene un
         // CHECK que sólo admite Anthropic). Escoger uno quita el otro, así no quedan dos «generales».

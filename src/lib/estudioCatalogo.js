@@ -20,12 +20,13 @@
 // ============================================================
 
 import MODELOS_HIGGSFIELD from "./estudioHiggsfield.json";
+import { CONFIRMAR_DESDE } from "./sinPreguntar.js";
 
 /** De cuándo son los precios de abajo (AAAA-MM-DD). */
 export const PRECIOS_AL = "2026-09-30";
 
-/** Desde este costo el pedido pide una segunda confirmación. */
-export const CONFIRMAR_DESDE = 0.5;
+/** Desde este costo el pedido pide una segunda confirmación (salvo «sin preguntar»: ver src/lib/sinPreguntar.js). */
+export { CONFIRMAR_DESDE };
 
 /** Imágenes por pedido, como máximo. */
 export const MAX_POR_PEDIDO = 8;
@@ -726,6 +727,21 @@ export function modeloQueRespeta(modelo, activos = {}, proporcion = "", referenc
   return relevoPara(activos, proporcion, Math.min(referencias, modelo.referencias ?? 0)) ?? modelo;
 }
 
+/**
+ * ¿Es un modelo que la APLICACIÓN escoge sola para este cliente, y no una elección de una persona o del asistente? El
+ * fijado de su kit (o, sin él, el predeterminado), el fijado para sus historias y los relevos de proporción (cambiar al
+ * que hace la proporción no es escoger). Con ellos vale «crear sin preguntar» (src/lib/sinPreguntar.js); con otro, se
+ * pregunta. `fijados`: `kit.modelos`. Pura.
+ */
+export function esModeloDelCliente(id, activos = {}, fijados = {}) {
+  const propio = (f) => {
+    const m = f ? modeloPorId(f) : null;
+    return m && m.tipo === "imagen" && (m.motor === "prueba" || activos[m.motor]) ? m : null;
+  };
+  const base = propio(fijados?.imagen) ?? modeloPorDefecto(activos, "imagen");
+  return new Set([base?.id, propio(fijados?.historias)?.id, ...RELEVO_PROPORCION].filter(Boolean)).has(String(id ?? ""));
+}
+
 /** El primero de RELEVO_PROPORCION con llave que haga `proporcion` con `referencias` imágenes de apoyo, o null. Pura. */
 export function relevoPara(activos = {}, proporcion = "", referencias = 1) {
   for (const id of RELEVO_PROPORCION) {
@@ -860,7 +876,7 @@ export function textoCosto(dolares) {
   return `≈ ${n.replace(".", ",")} $`;
 }
 
-/** ¿Este costo pide una segunda confirmación? */
+/** ¿Este costo pide una segunda confirmación? (Sin mirar el ajuste «sin preguntar»: eso es `decidirConfirmacion`.) */
 export const pideConfirmar = (dolares) => Number(dolares) >= CONFIRMAR_DESDE;
 
 /**

@@ -58,6 +58,8 @@ export const CONFIG_IA_POR_DEFECTO = Object.freeze({
   ia_modelos: {},
   presupuesto_usd: 30,
   al_limite: "avisar",
+  // «Crear imágenes sin preguntar»: el tope por pedido (0 = apagado; src/lib/sinPreguntar.js).
+  sin_preguntar_usd: 0,
 });
 
 /** Qué pasa al llegar al presupuesto del mes. */
