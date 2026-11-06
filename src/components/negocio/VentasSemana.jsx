@@ -36,7 +36,8 @@ function EditorSemana({ semana, moneda, hoy, lectura, onGuardar, onBorrar, onCer
   const [confirmarBorrar, setConfirmarBorrar] = useState(false);
   const base = useId();
   const primero = useRef(null);
-  useEffect(() => { primero.current?.focus({ preventScroll: true }); }, []);
+  // Va debajo de la tabla: en el teléfono, ocho tarjetas más abajo. Enfocarlo lo trae a la vista.
+  useEffect(() => { primero.current?.focus(); }, []);
 
   const leido = leerMonto(monto);
   const vistaMonto = leido != null && !Number.isNaN(leido) && String(leido) !== monto.trim() ? `Se guarda como ${dinero(leido, moneda)}.` : "";
@@ -331,8 +332,10 @@ export default function VentasSemana({ clientId, cliente = null, lectura = false
                 <td className="vs-num" data-etiqueta="Conversaciones">{s.conversaciones ?? "—"}</td>
                 <td className="vs-num" data-etiqueta="Pauta">{s.gasto != null ? dinero(s.gasto, moneda) : "—"}</td>
                 <td data-etiqueta="Apuntó">
-                  {quien(s)}
-                  {s.nota && <span className="vs-nota" title={s.nota}>{s.nota}</span>}
+                  <span className="vs-quien">
+                    {quien(s)}
+                    {s.nota && <span className="vs-nota" title={s.nota}>{s.nota}</span>}
+                  </span>
                 </td>
                 <td className="vs-acciones">
                   {!lectura && (

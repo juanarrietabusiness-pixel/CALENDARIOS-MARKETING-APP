@@ -43,7 +43,8 @@
   .vs-tabla td[data-etiqueta] { display: flex; justify-content: space-between; gap: var(--sp-2); text-align: left !important; }
   .vs-tabla td[data-etiqueta]::before { content: attr(data-etiqueta); color: var(--text-dim); font-size: var(--fs-3xs); font-weight: 700; }
   .vs-acciones { text-align: left; padding-top: var(--sp-2) !important; }
-  .vs-nota { max-width: 60%; }
+  .vs-quien { text-align: right; min-width: 0; }
+  .vs-nota { max-width: 100%; }
 }
 
 .vs-editor {

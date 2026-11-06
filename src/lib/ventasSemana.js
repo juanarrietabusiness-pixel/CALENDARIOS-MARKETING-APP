@@ -93,14 +93,15 @@ export function etiquetaSemana(lunes) {
   return `del ${dia(lunes)} al ${dia(fin)} de ${mes(fin)}`;
 }
 
-/** «Esta semana», «La semana pasada», «Hace 2 semanas»… o la etiqueta si es más vieja. Pura. */
+/** «Esta semana», «La semana pasada», «Hace 2 semanas»… o «Semana del …» si es más vieja de 8. Pura. */
 export function nombreSemana(lunes, hoy) {
   const actual = lunesDe(hoy);
   if (!esFecha(lunes) || !actual) return "";
   const atras = Math.round(diasEntre(lunes, actual) / 7);
   if (atras === 0) return "Esta semana";
   if (atras === 1) return "La semana pasada";
-  if (atras > 1 && atras < 5) return `Hace ${atras} semanas`;
+  // Hasta 8 atrás (las que ve la agencia); más viejas, por sus fechas.
+  if (atras > 1 && atras <= 8) return `Hace ${atras} semanas`;
   return `Semana ${etiquetaSemana(lunes)}`;
 }
 
