@@ -168,8 +168,10 @@ export const planPublico = (f) => f && ({
 });
 
 export async function listarPlanes(acceso, clienteId = null) {
-  const filas = await acceso.leer("planes_campana", clienteId ? { client_id: clienteId } : {}, "updated_at desc", MAX_PLANES);
-  return filas.map(planPublico);
+  // Los del plan de campañas (`datos.tipo = "ciclo"`, worker/lib/planCampanas.js) viven en la misma tabla y no son planes
+  // del estratega: no se enseñan aquí.
+  const filas = await acceso.leer("planes_campana", clienteId ? { client_id: clienteId } : {}, "updated_at desc", MAX_PLANES * 2);
+  return filas.map(planPublico).filter((p) => p.datos?.tipo !== "ciclo").slice(0, MAX_PLANES);
 }
 
 export async function guardarPlan(acceso, { id = null, clienteId = null, nombre = "", datos = {} }, usuario) {

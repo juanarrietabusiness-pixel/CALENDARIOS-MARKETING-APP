@@ -26,6 +26,7 @@ import {
   pedidoDeFichas, leerFichas, limpiarPiezaEncargo, MAX_FICHAS, correccionesRecientes, plantillaParaTipo, PAPELES_ESPECIALES, MAX_SOBRE_LA_MARCA,
 } from "../../../src/lib/director.js";
 import { ErrorEstudio } from "./trabajos.js";
+import { preferenciasDelCliente } from "../enPauta.js";
 
 const leerJSON = (t, d) => { try { return JSON.parse(t) ?? d; } catch { return d; } };
 const CONSULTA_VISUAL = "identidad visual paleta colores tipografía estilo fotografía composición logo evitar";
@@ -144,15 +145,21 @@ export async function fichasDeDiseno(env, acceso, cliente, { piezas = [], concep
   const { bloques: deEspeciales, papeles } = limpiarEspeciales(especiales);
   const imagenes = [...deEspeciales, ...limpiarVistas(vistas)];
   const total = Math.max(serie, encargo.length);
+  // Lo que ya se probó en pauta con esta marca (worker/lib/enPauta.js): una lectura, sólo si alguna pieza va a pauta, y
+  // sólo para ésas. Un anuncio del lote cuenta como pieza que va a pauta.
+  const aPauta = (p) => Boolean(p?.pauta) || p?.formato === "anuncio";
+  const aprendido = lista.some(aPauta) ? (await preferenciasDelCliente(acceso, cliente.id))?.linea ?? "" : "";
 
   const disenar = async (pieza, { concepto: c, previas: antes }) => {
-    const lineas = lineasDe(lista[encargo.indexOf(pieza)]);
+    const original = lista[encargo.indexOf(pieza)];
+    const lineas = lineasDe(original);
     const r = await llamarIA(env, acceso, cliente, {
       prompt: conVistas(imagenes, pedidoDeFichas({ conLogo: Boolean(kit?.logo),
         cliente: cliente.name, rubro: cliente.industry ?? "", piezas: [pieza], serie: total,
         marca: kitVacio(kit) ? "" : bloqueDeMarca(kit), tiposArte: kit.tiposArte, guia: ctx.guia, sobreLaMarca: ctx.sobreLaMarca, catalogo: ctx.catalogo,
         plantillas: kit.plantillas, manual: ctx.manual, concepto: c, productos: lineas.join("\n"),
         correcciones: ctx.correcciones, vistas: imagenes.length - deEspeciales.length, especiales: papeles, previas: antes,
+        aprendido: aPauta(original) ? aprendido : "",
       })),
       salida: 2_400,
       funcion: "director de arte",

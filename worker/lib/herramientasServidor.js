@@ -36,6 +36,7 @@
 
 import { fechaEnZona, sumarDias } from "../../src/lib/agenda.js";
 import { vaAPauta, describirPauta, limpiarAnuncio } from "../../src/lib/pauta.js";
+import { limpiarEnPauta, lineaEnPauta, clavePublicacion } from "../../src/lib/enPauta.js";
 import { buscar as buscarCerebro, leerNota } from "./cerebro/cerebro.js";
 import { pack } from "./cerebro/memoria.js";
 import { lineaDeIdea, ideaDeFila as publicaIdea } from "../../src/lib/bancoIdeas.js";
@@ -73,7 +74,8 @@ export const DEFINICIONES_DE_LECTURA = Object.freeze([
     name: "ver_calendario",
     description:
       "Devuelve las publicaciones de un calendario de un cliente: fecha, ID, formato, categoría, hora, estado, idea, " +
-      "descripción y guion. Úsala para consultar otro mes u otro cliente.",
+      "descripción y guion, y si están EN PAUTA de verdad en su Ads Manager (etapa y costo por resultado, de la última " +
+      "revisión de campañas). Úsala para consultar otro mes u otro cliente.",
     input_schema: {
       type: "object",
       properties: {
@@ -155,8 +157,20 @@ export const DEFINICIONES_DE_LECTURA = Object.freeze([
   },
   {
     name: "revisar_campanas",
-    description: "La revisión 3Q de los anuncios que corren en el Ads Manager de un cliente: su número mágico (lo que aguanta cada conversación o compra), lo real en 30, 14 y 7 días, y cada campaña activa con su etapa (presentación, evaluación, conversión, ascensión o temporada) y qué hacer con cada conjunto y anuncio (qué pasó, por qué y qué cambiar). Sólo lee de Meta: no cambia nada ni gasta. Úsala si preguntan cómo van los anuncios o qué pausar o mejorar.",
+    description: "La revisión 3Q de los anuncios que corren en el Ads Manager de un cliente: su número mágico (lo que aguanta cada conversación o compra), lo real en 30, 14 y 7 días, y cada campaña activa con su etapa (presentación, evaluación, conversión, ascensión o temporada) y qué hacer con cada conjunto y anuncio (qué pasó, por qué y qué cambiar), y qué publicación del calendario es cada anuncio (o si es un anuncio nuevo, subido aparte). Sólo lee de Meta: no cambia nada ni gasta. Úsala si preguntan cómo van los anuncios, qué pausar o mejorar, o qué publicación está en pauta.",
     input_schema: { type: "object", properties: { ...clienteOpcional } },
+  },
+  {
+    name: "plan_de_campanas",
+    description: "El PLAN DE CAMPAÑAS de un cliente para un mes, como se monta en el Ads Manager: las campañas del ciclo de ventas " +
+      "(presentación y evaluación en una cuenta nueva; las cuatro con historial; y la de temporada si el mes trae oferta o fecha " +
+      "comercial), el presupuesto de cada una (de los números del negocio y el reparto del Manual), sus conjuntos con los públicos " +
+      "y las exclusiones, cuántos anuncios y qué pieza del calendario va en cada uno, y los avisos (maletas que faltan, sin números, " +
+      "piezas repetidas para Meta). Sólo lectura: la aplicación no crea campañas; las monta la agencia en el Ads Manager con su guía.",
+    input_schema: {
+      type: "object",
+      properties: { ...clienteOpcional, mes: { type: "string", description: "AAAA-MM. Si se omite, el de este mes." } },
+    },
   },
 ]);
 
@@ -218,11 +232,17 @@ export function crearEjecutor({ env, acceso, clienteActual = null, estudio = nul
       }
       const dias = JSON_SEGURO(cal.days, []) ?? [];
       const recorta = (t, n) => (t && t.length > n ? `${t.slice(0, n)}…` : t || "");
+      // Lo que corre de verdad en su Ads Manager (worker/lib/enPauta.js, lo de la última revisión 3Q): sólo D1.
+      const pauta = limpiarEnPauta((await acceso.leerColumnas("anuncios_clientes", ["en_pauta"], { client_id: c.id }, "created_at asc", 1).catch(() => []))[0]?.en_pauta);
+      const enPautaDe = (p) => {
+        const e = pauta.publicaciones[clavePublicacion(cal.id, p.id)];
+        return e ? ` · ${e.activo ? "EN PAUTA" : "YA NO ESTÁ EN PAUTA"} (${lineaEnPauta(e, pauta.moneda)}${pauta.leidoAt ? `; leído del Ads Manager el ${String(pauta.leidoAt).slice(0, 10)}` : ""})` : "";
+      };
       const lineas = [];
       for (const d of dias) {
         for (const p of d.posts ?? []) {
           lineas.push([
-            `${d.date} · ID ${p.id} · ${p.format}${p.category ? ` · ${p.category}` : ""}${p.publishTime ? ` · ${p.publishTime}` : ""} · ${p.status ?? "pending"}${vaAPauta(p) ? ` · VA A PAUTA (${describirPauta(p.pauta)}; su descripción ES el texto del anuncio${limpiarAnuncio(p.anuncio)?.textos.length ? `, con ${limpiarAnuncio(p.anuncio).textos.length} textos de anuncio aparte` : ", sin sus textos de anuncio aparte"})` : ""}`,
+            `${d.date} · ID ${p.id} · ${p.format}${p.category ? ` · ${p.category}` : ""}${p.publishTime ? ` · ${p.publishTime}` : ""} · ${p.status ?? "pending"}${vaAPauta(p) ? ` · VA A PAUTA (${describirPauta(p.pauta)}; su descripción ES el texto del anuncio${limpiarAnuncio(p.anuncio)?.textos.length ? `, con ${limpiarAnuncio(p.anuncio).textos.length} textos de anuncio aparte` : ", sin sus textos de anuncio aparte"})` : ""}${enPautaDe(p)}`,
             p.idea ? `  Idea: ${recorta(p.idea, 300)}` : "",
             (p.descripcion || p.script) ? `  Descripción: ${recorta(p.descripcion || p.script, 600)}` : "",
             p.guion ? `  Guion: ${recorta(p.guion, 600)}` : "",
@@ -375,6 +395,13 @@ export function crearEjecutor({ env, acceso, clienteActual = null, estudio = nul
     return textoDeRevision(await revisionDelCliente(env, acceso, c.id));
   };
 
+  acciones.plan_de_campanas = async ({ cliente, mes }) => {
+    const c = await resolverCliente(cliente);
+    // En el momento: planCampanas.js llega a mercado.js, que importa este archivo (sería el ciclo de siempre).
+    const { planDeCampanasEnTexto } = await import("./planCampanas.js");
+    return planDeCampanasEnTexto(env, acceso, c, mes);
+  };
+
   if (estudio) Object.assign(acciones, crearHerramientasEstudio({ env, acceso, resolverCliente, ...estudio }));
   // Las recetas (el mismo «/receta» que llega de claude.ai): sólo leen, así que no necesitan a quien firma.
   Object.assign(acciones, crearHerramientasRecetas({ env, acceso, buscarPublicacion: (id) => buscarEn(acceso, id) }));
@@ -431,6 +458,7 @@ export function describirUso(nombre, entrada = {}) {
     case "ver_resultados": return `Consultó los resultados${entrada.cliente ? ` de ${entrada.cliente}` : ""}`;
     case "kit_whatsapp": return `Leyó el kit de WhatsApp${entrada.cliente ? ` de ${entrada.cliente}` : ""}`;
     case "revisar_campanas": return `Revisó las campañas del Ads Manager${entrada.cliente ? ` de ${entrada.cliente}` : ""}`;
+    case "plan_de_campanas": return `Leyó el plan de campañas${entrada.cliente ? ` de ${entrada.cliente}` : ""}${entrada.mes ? ` (${entrada.mes})` : ""}`;
     case "ver_estudio": return `Miró el Estudio${entrada.cliente ? ` de ${entrada.cliente}` : ""}`;
     case "crear_en_estudio": return `Pidió al Estudio ${entrada.tipo === "video" ? "un video" : "una imagen"}: «${String(entrada.prompt ?? "").slice(0, 80)}»`;
     case "estado_trabajo": return "Miró cómo va un pedido del Estudio";

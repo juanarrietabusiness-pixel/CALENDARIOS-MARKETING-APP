@@ -9,7 +9,7 @@
 // cerebro para escribir (nunca lo interno).
 //
 // Cuatro modos, el mismo camino:
-//   · niveles  { productoId?, cuantas: { nivel: n } }
+//   · niveles  { productoId?, cuantas: { nivel: n }, pauta? } (pauta: { etapa } del plan de campañas: cada pieza va a pauta)
 //   · matriz   { productoId?, deseos: [..], perfiles: [..], niveles: [..] } (los del estudio aprobado)
 //   · tipos    { tipos: { educativo: 3, … } }
 //   · mes      { mes: "AAAA-MM", dias: [0–6], omitir?: ["AAAA-MM-DD"] } (omitir: los días que ya tienen publicación)
@@ -35,7 +35,9 @@
 // LO QUE VA A PAUTA (lib/pauta.js): una casilla con `pauta` (modos «plan», «campos» y «publicacion») lleva su etapa y su caption se
 // escribe como ANUNCIO, con el tipo de negocio y el destino del cliente (sus números del negocio, worker/lib/negocio.js:
 // una lectura, sólo si alguna va a pauta); en «campos», además, el campo «anuncio» (los textos aparte) cuando se pide,
-// y en «plan» y «publicacion» lo trae cada una que va a pauta. 3 hashtags como mucho.
+// y en «plan» y «publicacion» lo trae cada una que va a pauta. 3 hashtags como mucho. Y lo que se aprendió de sus
+// anuncios (worker/lib/enPauta.js, `preferenciasDelCliente`: qué tipo de arte, nivel y composición salen más baratos),
+// en una línea y sólo si hay muestra: otra lectura, sólo si alguna va a pauta.
 //
 // No pide nada al motor de imagen: eso lo hace la pantalla, pieza a pieza,
 // después de que una persona revisa las ideas y ve el costo.
@@ -45,6 +47,7 @@ import { llamarIA } from "../cerebro/ia.js";
 import { pedidoDeCampos, leerCampos, pideCampo, FORMATOS_CAMPOS, ORDEN_CAMPOS, MAX_ESCRITO, MAX_PUBLICACIONES_CAMPOS } from "../../../src/lib/camposTexto.js";
 import { limpiarPauta, bloqueDeAnuncio, lineaDePauta, anunciosDeRespuesta, recortarHashtags } from "../../../src/lib/pauta.js";
 import { leerNegocio } from "../negocio.js";
+import { preferenciasDelCliente } from "../enPauta.js";
 import { estrategiaDelCalendario } from "../../../src/lib/estrategiaMes.js";
 import { duracionUgc } from "../../../src/lib/ugc.js";
 import { aprenderComposiciones } from "../../../src/lib/loteAnuncios.js";
@@ -330,6 +333,8 @@ export async function produccionDeLote(env, acceso, cliente, datos = {}) {
         .map((p) => ({ ...p, tipo: p.pilar }));
     } else {
       celdas = celdasPorNiveles(limpiarCuantas(datos.cuantas));
+      // «Producir los anuncios que faltan» del plan de campañas: todas van a pauta en esa etapa, cada una con su nivel.
+      if (limpiarPauta(datos.pauta)) celdas = celdas.map((c) => ({ ...c, pauta: limpiarPauta({ ...datos.pauta, nivel: c.nivel }) }));
     }
     // Con un producto escogido, también las piezas frías saben de qué producto es el problema (aunque no salga).
     if (producto) celdas = celdas.map((c) => ({ ...c, productoId: producto.id }));
@@ -400,13 +405,14 @@ export async function produccionDeLote(env, acceso, cliente, datos = {}) {
   // Lo que va a pauta: el tipo de negocio y el destino del cliente (sus números del negocio), una lectura y sólo si hace
   // falta. Si falla, la regla va sin ellos (con WhatsApp de destino, el de casi toda la agencia).
   let negocio = null;
+  let aprendido = null;
   const enPauta = plan.filter((r) => r.pauta);
   if (enPauta.length) {
-    negocio = await leerNegocio(acceso, cliente.id).catch(() => null);
+    [negocio, aprendido] = await Promise.all([leerNegocio(acceso, cliente.id).catch(() => null), preferenciasDelCliente(acceso, cliente.id)]);
     plan = plan.map((r) => (r.pauta ? { ...r, lineaPauta: lineaDePauta(r.pauta, r) } : r));
   }
   const bloquePauta = (opciones) => (enPauta.length
-    ? bloqueDeAnuncio({ tipo: negocio?.tipo ?? "", destino: negocio?.destino ?? "", etapas: enPauta.map((r) => r.pauta.etapa), ...opciones })
+    ? [bloqueDeAnuncio({ tipo: negocio?.tipo ?? "", destino: negocio?.destino ?? "", etapas: enPauta.map((r) => r.pauta.etapa), ...opciones }), aprendido?.linea ?? ""].filter(Boolean).join("\n")
     : "");
 
   if (modo === "campos") {

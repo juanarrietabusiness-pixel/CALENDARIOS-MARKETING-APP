@@ -85,6 +85,8 @@ export function encargoDeIdea(idea, { modo = "ia", formato = "post", piezaDe = (
     composicion: composicionDe(idea?.composicion)?.linea ?? "", fecha: idea?.fecha ?? "",
     indicacion: [indicacion, idea?.pide].map((t) => String(t ?? "").trim()).filter(Boolean).join(". "),
     ...(idea?.plantilla ? { plantilla: idea.plantilla } : {}),
+    // Va a pauta: el director lee lo que ya se probó en anuncios con esta marca (worker/lib/estudio/fichas.js).
+    ...(idea?.pauta ? { pauta: true } : {}),
   };
 }
 

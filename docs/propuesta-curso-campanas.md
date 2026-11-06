@@ -286,8 +286,10 @@ Cada una es un pull request que pasa `verificar`, se une a `main` y se despliega
 | 7 | **Cerrar el ciclo** | Qué publicación es cada anuncio, «En pauta» en la publicación, aprender qué tipo de arte rinde, sugerir qué pautar (D) | M |
 | 8 | **WhatsApp e investigación** | El kit de WhatsApp Business (bienvenida, respuestas con las objeciones, etiquetas, guion), la voz del cliente y la revisión mensual del estudio (E) | M |
 
-**Estado:** entregas 1 (la base del curso), 3 (números del negocio) y 4 (el enlace de ventas) desplegadas en el
-primer pull request; 2 (lo que va a pauta), 5 (la revisión 3Q) y 8 (WhatsApp e investigación), en el segundo. Lo que cada una dejó fuera, en su sitio de CLAUDE.md.
+**Estado:** las ocho, hechas. Entregas 1 (la base del curso), 3 (números del negocio) y 4 (el enlace de ventas) en el
+primer pull request; 2 (lo que va a pauta), 5 (la revisión 3Q) y 8 (WhatsApp e investigación), en el segundo; 6 (el plan
+de campañas) y 7 (cerrar el ciclo), en el tercero. Lo que cada una dejó fuera, en su sitio de CLAUDE.md. Nada se ha
+probado contra Meta ni contra la IA reales: §5.6 dice cómo se prueba.
 
 Las entregas 1 y 2 no dependen de Meta: se notan desde el mes siguiente. La 3 y la 4 dan el número mágico de cada
 cliente. La 5 empieza a vigilar lo que ya corre en el Ads Manager. La 6 junta todo en la campaña completa.

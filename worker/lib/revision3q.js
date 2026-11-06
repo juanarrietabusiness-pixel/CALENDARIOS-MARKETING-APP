@@ -20,9 +20,14 @@
 // piden y, si Meta rechaza alguno (#100), se repite sin ellos y se dice (`leidoCon`); las reproducciones de 3 s van en
 // `actions` (`video_view`) y llegan siempre.
 //
-// EL CRON (una vez al día por cliente, al final de la cadena y sólo si la vuelta no hizo otra cosa): tres llamadas
-// (las campañas con lo de ayer, los anuncios rechazados y lo de 7 días por campaña) y a la campana sólo lo GRAVE que
-// no se avisó ayer. Se apunta en `anuncios_clientes.alertas` también si falló: si no, el cron lo miraría cada minuto.
+// EL CRON (una vez al día por cliente, al final de la cadena y sólo si la vuelta no hizo otra cosa): cinco llamadas
+// (las campañas con lo de ayer, los anuncios encendidos con su creativo, lo de 7 días por campaña y lo de cada anuncio
+// en 7 y 30 días, para «En pauta») y a la campana sólo lo GRAVE que no se avisó ayer. Se apunta en `anuncios_clientes.alertas` también si falló: si no, el cron lo miraría cada minuto.
+//
+// QUÉ PUBLICACIÓN ES CADA ANUNCIO (entrega 7, worker/lib/enPauta.js): la lista de anuncios encendidos trae en la MISMA
+// llamada el creativo con los ids de la publicación que usa, y cada lectura (también la del cron, con dos llamadas más:
+// lo de cada anuncio en 7 y 30 días) pone al día `anuncios_clientes.en_pauta` en la misma sentencia que `revisada_at`
+// o `alertas`. Si Meta no deja leer el creativo, lo guardado no se toca.
 //
 // Nada de esto se ha probado contra Meta: los tests (tests/migracion/revision3q.test.js) usan un `fetch` de mentira.
 // ============================================================
@@ -35,6 +40,8 @@ import { ErrorAnuncios, conexionMeta, clienteYCuenta, mensajeAnuncios } from "./
 import { crearAcceso, clientesPorAlertar, NO_NULO } from "./acceso.js";
 import { avisar } from "./equipo.js";
 import { llamarIA } from "./cerebro/ia.js";
+import { anunciosEncendidos, anunciosDeRevision, anunciosDelCron, ponerAlDia, conPublicaciones } from "./enPauta.js";
+import { creativoDe } from "../../src/lib/enPauta.js";
 import { fechaEnZona, sumarDias, diasEntre } from "../../src/lib/agenda.js";
 import { deMenores } from "../../src/lib/anuncios.js";
 import { limpiarManual } from "../../src/lib/estratega.js";
@@ -108,7 +115,6 @@ export function numerosDe(negocioGuardado, { tasaDefecto, gasto = 0 } = {}) {
 const ENCENDIDO = JSON.stringify(["ACTIVE", "PENDING_REVIEW", "DISAPPROVED", "PREAPPROVED", "IN_PROCESS", "WITH_ISSUES", "PENDING_BILLING_INFO"]);
 const CAMPOS_CAMPANA = "id,name,status,effective_status,objective,daily_budget,lifetime_budget,created_time,updated_time";
 const CAMPOS_CONJUNTO = "id,name,campaign_id,status,effective_status,daily_budget,lifetime_budget,optimization_goal,created_time,updated_time";
-const CAMPOS_ANUNCIO = "id,name,campaign_id,adset_id,status,effective_status,created_time,updated_time,creative{thumbnail_url,title}";
 
 /** Los de siempre (como el diagnóstico de antes), los nuevos del curso y los rankings (sólo por anuncio). */
 const BASICOS = ["spend", "impressions", "reach", "frequency", "cpm", "cpc", "ctr", "clicks", "actions"];
@@ -155,9 +161,9 @@ async function insightsDe(env, token, act, nivel, ventana, estado) {
 }
 
 /**
- * Lo que necesita la revisión de una cuenta: lo encendido (campañas, conjuntos y anuncios) y sus cifras por nivel en
- * 30, 14 y 7 días. 12 llamadas (más una por escalón si Meta rechaza un campo). → { campanas, conjuntos, anuncios,
- * filas: { campaign: { 30, 14, 7 }, adset, ad }, leidoCon, recortado }
+ * Lo que necesita la revisión de una cuenta: lo encendido (campañas, conjuntos y anuncios, éstos con su creativo) y sus
+ * cifras por nivel en 30, 14 y 7 días. 12 llamadas (más una por escalón si Meta rechaza un campo). → { campanas,
+ * conjuntos, anuncios, filas: { campaign: { 30, 14, 7 }, adset, ad }, leidoCon, creativo, recortado }
  */
 export async function leerCuenta(env, token, cuenta) {
   const act = cuenta.externo_id;
@@ -167,14 +173,15 @@ export async function leerCuenta(env, token, cuenta) {
     const [de14, de7] = await Promise.all([14, 7].map((w) => insightsDe(env, token, act, nivel, w, estado)));
     return { 30: de30, 14: de14, 7: de7 };
   };
-  const [campanas, conjuntos, anuncios, fc, fs, fa] = await Promise.all([
+  const [campanas, conjuntos, { anuncios, creativo }, fc, fs, fa] = await Promise.all([
     listaEncendida(env, token, `/${act}/campaigns`, CAMPOS_CAMPANA),
     listaEncendida(env, token, `/${act}/adsets`, CAMPOS_CONJUNTO, "learning_stage_info"),
-    listaEncendida(env, token, `/${act}/ads`, CAMPOS_ANUNCIO),
+    // Con el creativo: qué publicación usa cada anuncio (worker/lib/enPauta.js), en la misma llamada.
+    anunciosEncendidos(env, token, act, { filtro: ENCENDIDO }),
     porNivel("campaign"), porNivel("adset"), porNivel("ad"),
   ]);
   const leidoCon = estado.campaign === 1 || estado.adset === 1 || estado.ad === 2 ? "basico" : estado.ad === 1 ? "sin-rankings" : "completo";
-  return { campanas, conjuntos, anuncios, filas: { campaign: fc, adset: fs, ad: fa }, leidoCon, recortado: Boolean(estado.recortado) };
+  return { campanas, conjuntos, anuncios, filas: { campaign: fc, adset: fs, ad: fa }, leidoCon, creativo, recortado: Boolean(estado.recortado) };
 }
 
 const encendido = (x) => String(x?.status ?? "").toUpperCase() === "ACTIVE";
@@ -210,7 +217,7 @@ export function campanasParaRevisar(meta, cuenta, etapas = {}) {
         return {
           id: String(a.id), nombre: a.name ?? "", conjuntoId: String(a.adset_id ?? ""), estado: a.effective_status ?? a.status ?? "", status: a.status ?? "",
           creada: a.created_time ?? "", actualizada: a.updated_time ?? "",
-          titulo: a.creative?.title ?? "", miniatura: miniatura(a.creative?.thumbnail_url),
+          titulo: a.creative?.title ?? "", miniatura: miniatura(a.creative?.thumbnail_url), creativo: creativoDe(a.creative),
           rankings: rankingsDe(i[7] ?? i[30]), i,
         };
       }),
@@ -267,10 +274,12 @@ export async function revisionDelCliente(env, acceso, clientId, { marcar = false
     etapas: ETAPAS_REVISION,
     revisadaAntes: fila?.revisada_at ?? null,
     leidoCon: meta.leidoCon,
+    leidoCreativo: meta.creativo,
     recortado: meta.recortado,
     avisoLectura: meta.leidoCon === "basico"
       ? "Meta no dio las métricas nuevas (clics únicos, tiempo de reproducción): la Q2 va con las de siempre."
       : meta.leidoCon === "sin-rankings" ? "Meta no dio los rankings de calidad de los anuncios." : "",
+    avisoCreativo: meta.creativo === "sin-dato" ? "Meta no dijo qué publicación usa cada anuncio: «En pauta» sigue con lo de la última lectura." : "",
     // Lo de antes (el diagnóstico): lo aceptable y de dónde salió.
     costoMax: escrito || numero.aceptable?.valor || 0,
     origenCosto: escrito ? "escrito" : numero.aceptable ? "numero-magico" : "promedio",
@@ -286,7 +295,19 @@ export async function revisionDelCliente(env, acceso, clientId, { marcar = false
       salida.avisoIA = e.message;
     }
   }
-  if (marcar) await escribirFila(acceso, cliente.id, fila, { revisada_at: ahora() });
+  // Qué publicación del calendario es cada anuncio (worker/lib/enPauta.js). Es un extra: si falla, la revisión sigue.
+  let pauta = null;
+  try {
+    pauta = await ponerAlDia(acceso, cliente.id, {
+      anuncios: anunciosDeRevision(salida), previo: fila?.en_pauta, creativo: meta.creativo, cuenta: cuenta.externo_id, moneda: cuenta.moneda,
+      referencia: numero.objetivo ?? numero.equilibrio ?? null, hoy,
+    });
+    conPublicaciones(salida, pauta.porAnuncio);
+  } catch (e) {
+    console.error("revisión 3Q: qué publicación es cada anuncio", cliente.id, e);
+  }
+  const aEscribir = { ...(pauta?.cambios ?? {}), ...(marcar ? { revisada_at: ahora() } : {}) };
+  if (Object.keys(aEscribir).length) await escribirFila(acceso, cliente.id, fila, aEscribir);
   return salida;
 }
 
@@ -376,13 +397,14 @@ async function destinatarios(acceso, clientId) {
 }
 
 /**
- * Lo grave de UN cliente: tres lecturas de Meta (las campañas con lo de ayer, los anuncios rechazados y lo de 7 días
- * por campaña), lo nuevo a la campana y el apunte en `alertas`. → cuántos avisos.
+ * Lo grave de UN cliente: cinco lecturas de Meta (las campañas con lo de ayer, los anuncios encendidos con su creativo,
+ * lo de 7 días por campaña y lo de cada anuncio en 7 y 30 días), lo nuevo a la campana y el apunte en `alertas` (y,
+ * en la misma sentencia, «En pauta»: worker/lib/enPauta.js). → cuántos avisos.
  */
 export async function alertasDelCliente(env, acceso, clientId, { hoy = fechaEnZona(new Date()) } = {}) {
   const fila = await filaDelCliente(acceso, clientId);
   const previas = leerJSON(fila?.alertas, {});
-  const apuntar = (datos) => escribirFila(acceso, clientId, fila, { alertas: JSON.stringify({ fecha: hoy, ...datos }) });
+  const apuntar = (datos, extra = {}) => escribirFila(acceso, clientId, fila, { alertas: JSON.stringify({ fecha: hoy, ...datos }), ...extra });
   try {
     const { cliente, cuenta } = await clienteYCuenta(acceso, clientId);
     const conexion = await conexionMeta(env, acceso);
@@ -392,16 +414,34 @@ export async function alertasDelCliente(env, acceso, clientId, { hoy = fechaEnZo
     }
     const token = await conexion.token();
     const act = cuenta.externo_id;
-    const [campanas, anuncios, semana, manual] = await Promise.all([
+    // Lo de cada anuncio en 7 y 30 días sólo lo necesita «En pauta» (worker/lib/enPauta.js): si falla, lo grave sigue.
+    const deAnuncios = (preset) => graph(env, token, `/${act}/insights`, {
+      params: { level: "ad", date_preset: preset, fields: "ad_id,adset_id,campaign_id,spend,impressions,reach,clicks,actions,action_values", limit: 500 },
+    });
+    const [campanas, { anuncios, creativo }, semana, manual, [de7, de30]] = await Promise.all([
       graph(env, token, `/${act}/campaigns`, { params: { fields: "id,name,status,effective_status,objective,created_time,insights.date_preset(yesterday){spend}", limit: 200, effective_status: ENCENDIDO } }),
-      graph(env, token, `/${act}/ads`, { params: { fields: "id,name,campaign_id,adset_id,status,effective_status", limit: 200, effective_status: JSON.stringify(["DISAPPROVED", "WITH_ISSUES"]) } }),
+      // Todos los encendidos con su creativo (los rechazados los escoge `alertasGraves`): la misma lista que la revisión.
+      anunciosEncendidos(env, token, act, { filtro: ENCENDIDO }),
       graph(env, token, `/${act}/insights`, { params: { level: "campaign", date_preset: "last_7d", fields: "campaign_id,campaign_name,spend,actions", limit: 500 } }),
       manualDe(acceso),
+      Promise.allSettled([deAnuncios("last_7d"), deAnuncios("last_30d")]),
     ]);
     const { destino, numero } = numerosDe(leerJSON(fila?.negocio, {}), { tasaDefecto: manual.tasaCierre });
+    let pauta = null;
+    if (de7.status === "fulfilled" && de30.status === "fulfilled") {
+      try {
+        const lista = anunciosDelCron({
+          campanas: campanas?.data ?? [], anuncios, filas7: de7.value?.data ?? [], filas30: de30.value?.data ?? [],
+          etapas: limpiarEtapas(leerJSON(fila?.etapas, {})), destino, cuenta: act,
+        });
+        pauta = await ponerAlDia(acceso, clientId, { anuncios: lista, previo: fila?.en_pauta, creativo, cuenta: act, moneda: cuenta.moneda, referencia: numero.objetivo ?? numero.equilibrio ?? null, hoy });
+      } catch (e) {
+        console.error("revisión 3Q, cron: qué publicación es cada anuncio", clientId, e);
+      }
+    }
     const graves = alertasGraves({
       campanas: (campanas?.data ?? []).map((c) => ({ ...c, ayer: c.insights?.data?.[0]?.spend ?? 0 })),
-      anuncios: anuncios?.data ?? [],
+      anuncios,
       semana: semana?.data ?? [],
       numero: numero.objetivo ?? numero.equilibrio ?? 0,
       destino, hoy, nombre: cliente.name ?? "", moneda: cuenta.moneda, umbrales: manual.umbrales3q,
@@ -415,7 +455,7 @@ export async function alertasDelCliente(env, acceso, clientId, { hoy = fechaEnZo
       const enlace = `/cliente/${encodeURIComponent(clientId)}/resultados/anuncios`;
       for (const g of nuevas.slice(0, 5)) avisados += await avisar(env, acceso, { para, tipo: "campanas", texto: g.texto, enlace, por: FIRMA });
     }
-    await apuntar({ claves: graves.map((g) => g.clave).slice(0, 100), avisos: nuevas.length });
+    await apuntar({ claves: graves.map((g) => g.clave).slice(0, 100), avisos: nuevas.length }, pauta?.cambios ?? {});
     return avisados;
   } catch (e) {
     if (!(e instanceof ErrorAnuncios || e instanceof ErrorMeta)) console.error("revisión 3Q, cron:", clientId, e);

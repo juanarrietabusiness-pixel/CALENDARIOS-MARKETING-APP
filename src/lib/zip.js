@@ -40,14 +40,18 @@ function fechaDos(d = new Date()) {
 
 /**
  * `archivos`: [{ nombre, datos: Uint8Array }] → los bytes del ZIP. Los nombres repetidos se numeran («2-…»): un ZIP
- * con dos entradas iguales lo abre cada programa a su manera.
+ * con dos entradas iguales lo abre cada programa a su manera. Con `rutas`, las barras se quedan («xl/workbook.xml»: un
+ * XLSX es un ZIP con carpetas; lib/xlsx.js), sin «..» ni barra delante.
  */
-export function crearZip(archivos, { fecha = new Date() } = {}) {
+export function crearZip(archivos, { fecha = new Date(), rutas = false } = {}) {
   const cod = new TextEncoder();
   const { hora, dia } = fechaDos(fecha);
   const vistos = new Set();
   const entradas = archivos.map((a, i) => {
-    let nombre = String(a.nombre || `archivo-${i + 1}`).replace(/[\\/]+/g, "-");
+    const crudo = String(a.nombre || `archivo-${i + 1}`);
+    let nombre = rutas
+      ? crudo.replace(/\\+/g, "/").split("/").filter((x) => x && x !== "." && x !== "..").join("/")
+      : crudo.replace(/[\\/]+/g, "-");
     if (vistos.has(nombre)) nombre = `${i + 1}-${nombre}`;
     vistos.add(nombre);
     const datos = a.datos instanceof Uint8Array ? a.datos : new Uint8Array(a.datos);

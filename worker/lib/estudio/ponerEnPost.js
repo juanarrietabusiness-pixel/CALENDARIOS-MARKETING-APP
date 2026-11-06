@@ -19,9 +19,10 @@ export const SISTEMA_POST = { userId: "sistema", nombre: "Estudio", color: "", t
 /**
  * Aplica `cambiar(post) → post nuevo | null` (o su promesa; null: no se toca) a la publicación `postId` del cliente (en `calendarId`,
  * o en el mes en que esté). → { calendarId, postId, post } si quedó escrita, o { aviso } si no se pudo (no está, ya se
- * publicó, el calendario se estaba guardando a la vez).
+ * publicó, el calendario se estaba guardando a la vez). `publicadas`: también una ya publicada (lo que no cambia lo que
+ * salió, como «Va a pauta» de lo orgánico que rindió: worker/lib/enPauta.js).
  */
-export async function cambiarPublicacion(env, acceso, { clienteId, calendarId = null, postId, cambiar, por = SISTEMA_POST }) {
+export async function cambiarPublicacion(env, acceso, { clienteId, calendarId = null, postId, cambiar, por = SISTEMA_POST, publicadas = false }) {
   if (!postId) return { aviso: "Sin publicación." };
   let calId = calendarId;
   if (!calId) calId = (await publicacionDelCliente(acceso, clienteId, String(postId)))?.calendarId ?? null;
@@ -33,7 +34,7 @@ export async function cambiarPublicacion(env, acceso, { clienteId, calendarId = 
     if (!cal || !dia) return { aviso: "La publicación ya no está en su calendario: quedó en la galería." };
     const i = dia.posts.findIndex((p) => p?.id === postId);
     const post = dia.posts[i];
-    if (post.status === "published") return { aviso: "La publicación ya salió: quedó en la galería, sin tocarla." };
+    if (post.status === "published" && !publicadas) return { aviso: "La publicación ya salió: quedó en la galería, sin tocarla." };
     const nuevo = await cambiar(post);
     if (!nuevo) return { calendarId: cal.id, postId, post, sinCambios: true };
     dia.posts[i] = nuevo;
