@@ -162,9 +162,10 @@ src/
     ugc.js                UGC · guion para grabar: tramos «[0–3 s] VOZ: «…» | SE VE: … | TEXTO: …», duración (15–60 s, 2,5
                           palabras/s), ganchos, copiar voz y tomas; transcribir un video y adaptarlo; la «Voz UGC» de cada
                           cliente; «Guiones para grabar» (los UGC sin video y el mensaje de la sesión) (puro; también el Worker)
-    formulasUgc.js        Las fórmulas UGC de la agencia: limpiar, repartir en otra duración, la línea para la IA, que la IA
-                          escoja y diga cuál, sacarla de un video transcrito (puro; también el Worker)
-    formulasUgcApi.js     Cliente de /api/formulas-ugc
+    formulasUgc.js        Las ESTRUCTURAS DE GUION de la agencia (antes «fórmulas UGC»): para qué sirve cada una (`para`: UGC y/o
+                          voz en off), limpiar, repartir en cualquier duración, la línea para la IA, que la IA escoja y diga
+                          cuál, sacarla de un video transcrito o de una voz en off que salió bien (puro; también el Worker)
+    formulasUgcApi.js     Cliente de /api/formulas-ugc (= /api/estructuras-guion; también «proponer» desde una voz en off)
     videoCorto.js         Guiones de video de 8 s (Veo por fal) o 10 s (Omni): gancho, beneficio y cierre; el pedido
                           al modelo sin texto largo ni logo (puro; también lo importa el Worker)
     videoProducto.js      La receta «Video del producto» (10–15 s): tramos, el guion con la voz en español, las escenas del
@@ -480,7 +481,7 @@ src/
     cliente/Marca.jsx     La pestaña Marca: semáforo del kit, ficha, kit y voz, cerebro, plan semanal, fechas y Drive (lazy)
     cliente/SemaforoKit.jsx  El semáforo del kit en pantalla (plegado; «Subir el logo» ahí mismo) y su aviso corto
     cliente/cliente.css   Los estilos de esas tres pestañas, de las sub-pestañas y del semáforo (van con sus chunks)
-    SeccionComoTrabajamos.jsx  Ajustes → «Cómo trabajamos»: recetas, fórmulas UGC, plantillas de plan y manuales
+    SeccionComoTrabajamos.jsx  Ajustes → «Cómo trabajamos»: recetas, estructuras de guion (UGC y voz en off), plantillas de plan y manuales
     Drive.css / FichaCliente.css / PestanaContenido.css  Estilos que salieron de index.css (el CSS inicial estaba en su tope)
     Presencia.jsx         Avatares, estado de la conexión, «X está editando»
     SelectorFecha.jsx     Calendario del mes para escoger una fecha (portal)
@@ -570,7 +571,11 @@ src/
     BibliotecaVoces.jsx   «Buscar voces en español»: la biblioteca de ElevenLabs (gratis), escuchar y «Añadir a mis voces»
     VideoAnimado.jsx      «Animado con código»: los videos animados del cliente, el guion (errores con su sitio), la vista
                           previa en el lienzo y «Aprobar el guion» (lazy; dentro de FlujoReel)
-    CrearVideoAnimado.jsx «Video nuevo»: idea o publicación, duración y formato → la IA escribe el guion (lazy)
+    CrearVideoAnimado.jsx «Video nuevo»: idea o publicación, duración, formato y la estructura de guion → la IA escribe el guion (lazy)
+    SelectorEstructura.jsx  «Estructura del guion» al escribir una voz en off (Video nuevo, el reel por planos): la IA escoge o una
+                          de las de la agencia; «Ver las estructuras» (en el reel, lazy: el Estudio precarga el reel)
+    GuardarEstructura.jsx «Guardar como estructura» de una voz en off (video animado o reel): la IA la abstrae y se abre en el
+                          editor de las estructuras con «Voz en off» marcado (lazy)
     EditorEscenas.jsx     «Editar los textos»: lo que se dice, lo que se lee, tipo, pausa, orden de las escenas (lazy)
     LocucionVideo.jsx     «La voz» del video en su pantalla: ver el costo y generarla (lazy)
     RenderVideo.jsx       «Renderizar a mp4»: pedirlo, esperarlo (relee cada 4 s), verlo, descargarlo y a qué publicación va
@@ -614,8 +619,9 @@ src/
     calendario/navegadorMes.jsx ‹ Octubre 2026 › Hoy: recorrer el calendario siempre activo
     calendario/GuionUgc.jsx  El guion de un UGC en el panel: columnas, duración, ganchos, copiar, «Extraer guion de un video»
     calendario/ExtraerUgc.jsx  «Extraer guion y adaptar»: el video (de la publicación, la galería o subido), producto,
-                          duración; el original transcrito y el adaptado → la publicación o el banco; «Guardar como fórmula» (lazy)
-    calendario/FormulasUgc.jsx  Las fórmulas UGC de la agencia: la lista, corregir, quitar, escribir una (lazy)
+                          duración; el original transcrito y el adaptado → la publicación o el banco; «Guardar como estructura» (lazy)
+    calendario/FormulasUgc.jsx  «Estructuras de guion de la agencia» (antes fórmulas UGC): la lista con su filtro UGC / Voz en off,
+                          corregir, quitar, escribir una escogiendo para qué sirve (lazy)
     calendario/GuionesParaGrabar.jsx  «Guiones para grabar»: los UGC del mes sin video, escoger y ordenar, copiar o compartir
                           todo en un mensaje; pasan a «En producción» (lazy)
     calendario/tipoContenido.jsx  «Tipo de contenido» del panel: tipo, producto, nivel, perfil y deseo
@@ -784,6 +790,8 @@ worker/
                           web, el cerebro (notas cortas enteras), calendarios, tareas, ideas
     equipo.js             Avisos (guardar y anunciar), historial y asignaciones
     ids.js                UUID, testigos, huellas
+    estructurasGuion.js   Las estructuras de guion del espacio para quien escribe en el Worker: leerlas por `para`, qué va al
+                          pedido de una voz en off (la escogida o la lista para que la IA escoja) y cuál siguió
   videosProyectos.js    Los proyectos de video animado: crear, guardar, editar UNA escena y aprobar (la ruta y las
                           herramientas van por aquí)
     estudio/reelDelMes.js  Los reels de un mes (el asistente del mes): el costo sin crear nada y, con el sí, el encargo de cada uno
@@ -839,7 +847,8 @@ worker/
     anuncios.js           /api/anuncios: cuentas, campañas, estadísticas, crear, activar (admin + confirmado)
     plantillas.js         /api/plantillas-plan: listar, guardar (cambiar una de arranque o crear) y borrar/restaurar
     recetas.js            /api/recetas: listar, guardar (cambiar una de la casa o crear), borrar/restaurar y el handoff
-    formulasUgc.js        /api/formulas-ugc: las fórmulas UGC de la agencia (listar, guardar, corregir, quitar, proponer)
+    formulasUgc.js        /api/formulas-ugc (y /api/estructuras-guion, la misma): las estructuras de guion de la agencia (listar
+                          con `?para=`, guardar, corregir, quitar, proponer desde un video transcrito o desde una voz en off)
     inspiracion.js        /api/inspiracion/<cliente>: el feed, actualizar, traer un archivo, el resumen
     loMejor.js            /api/lo-mejor: la ventana, clasificar, recrear (409 «confirmar» con el costo), traer, «Crear con Claude»,
                           el tope de créditos, releer los anuncios y el proxy de los videos del CDN de Meta
@@ -1941,6 +1950,41 @@ son del servidor.
   · **Un diálogo que cambia de vista se queda con el foco** (efecto en `FormulasUgc`): al guardar, el botón pulsado
   desaparece y el foco caía al `<body>`; Escape y Tab dejaban de funcionar (los escucha el nodo del diálogo). Lo cazó
   Chromium, no los tests.
+- **Las fórmulas UGC son ahora ESTRUCTURAS DE GUION, para UGC y para VOZ EN OFF** (decisión de la agencia: «sólo puedo
+  guardar estilos de guiones por cliente»; `src/lib/formulasUgc.js`, `worker/lib/estructurasGuion.js`,
+  `SelectorEstructura.jsx`, `GuardarEstructura.jsx`; sin migración). Cosas que no se ven:
+  · **`para` va dentro de `datos`** (`["ugc"]`, `["voz"]` o las dos; `paraDe`). Una de antes, sin `para`, vale para las
+  DOS (decisión: la forma gancho → problema → demostración → llamado sirve igual a una locución, y así la voz en off no
+  arranca vacía). La tabla, la ruta y `post.formulaUgc` conservan su nombre; `/api/estructuras-guion` es la MISMA ruta
+  (worker/index.js las manda a las dos a `rutasFormulasUgc`). En la pantalla se llaman «Estructuras de guion» y dicen «de la
+  agencia, para todos los clientes», con su filtro UGC / Voz en off (Ajustes → Cómo trabajamos).
+  · **El tono del cliente se SUMA, no se sustituye**: la «Voz UGC» del cerebro y el estilo de la locución de su ficha
+  siguen; la estructura es la forma.
+  · **La voz en off la sigue**: «Video nuevo» del video animado (`POST /api/videos/<c>/escribir` con `estructuraId`) y el
+  reel por planos (`POST …/reel/guion`, `guionDeReel`). Escogida, va su línea (`lineaDeFormula(…, { uso: "voz" })`)
+  repartida en la duración del video (`tramosEnDuracion` acepta ya cualquiera de 3 a 600 s; a medios segundos si los
+  tramos no caben a uno por segundo). Sin escoger, la lista de las de voz (`bloqueDeFormulas(…, { uso: "voz", campo:
+  "estructura" })`) y la IA dice cuál en el campo «estructura» de su JSON, que se SACA antes de validar el guion del video
+  animado (si no, `validarGuion` lo quitaría con un aviso) y se vuelve id (`usadaEn`). Una escogida que ya no existe es un
+  400 sin llamar a la IA (el selector la vuelve a «La IA escoge» en cuanto ve que no está).
+  · **Lo escrito recuerda cuál**: el proyecto del video animado en `origen.estructuraId` (`crearProyecto`; la ruta la
+  comprueba con `estructuraExistente`: lo que llega no se cree), el guion del reel en `estructuraId`/`estructuraNombre`
+  (`limpiarGuionReel` los conserva: viajan al encargo y al montaje) y la publicación en `post.estructuraVoz`, sólo si no
+  tenía otra (`rellenarVacios` con `estructura`, al poner el mp4 del render o el video del reel; también lo que crea «Lo
+  mejor» por el camino «animado»).
+  · **El motor de ideas sólo ofrece las de UGC a un guion UGC** (`bloqueDeFormulas(…, { uso: "ugc" })` en lote.js); la
+  escogida a mano en la publicación se busca entre todas: la escogió una persona.
+  · **«Guardar como estructura»** (VideoAnimado y el paso «Planos» del reel; sólo quien cambia lo de la agencia):
+  `tramosDeEscenas` (con `lineaDeTiempo`: los tiempos de la voz si ya la tiene) o `tramosDeReel` → `POST
+  /api/formulas-ugc/proponer` con `voz` (`pedidoDeEstructuraVoz`, función «fórmula UGC», no guarda) → el editor con «Voz en
+  off» marcado. Las etiquetas de emoción de v3 («[feliz]») se quitan antes.
+  · **Claude**: `ver_estructuras` (para=voz|ugc y segundos; sin cliente: está en la lista de mcp.js que no lo exige) y
+  `estructura_id` en `crear_video` (la apunta) y `crear_reel` (la sigue al escribir el guion, o la apunta en un guion dado).
+  `formato_video` la nombra al final.
+  · **El selector del reel es LAZY dentro de FlujoReel**: el Estudio precarga el reel, y un import fijo sumaba sus archivos
+  (el selector y su cliente de la API) a la lista de precarga del chunk del Estudio, que está en su tope. Por lo mismo el
+  selector no lleva hoja de estilos propia (estilos en línea con los tokens).
+  · **Nada de esto se ha probado contra Anthropic real**: tests/migracion/estructurasGuion.test.js usa un `fetch` de mentira.
 - **«Me gusta» (la estrella de antes, `favorito`) y la papelera enseñan al kit** (`src/lib/aprendizajeVisual.js`,
   `worker/lib/estudio/aprender.js`, `POST /api/estudio/<c>/kit/aprender`, en Cerebro → Lo que aprende → «Lo visual»).
   La IA MIRA las imágenes (hasta 8 que gustan y 4 descartadas, función «aprendizaje visual») y PROPONE reglas; nada
