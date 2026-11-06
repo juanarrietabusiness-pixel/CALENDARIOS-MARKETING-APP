@@ -678,8 +678,11 @@ export async function rutasDatos(req, env, ctx) {
     // de ahora (si no, todo archivo puesto después de su «sí» saldría como «cambiaste los archivos después de que el
     // cliente la aprobara»). NO programa nada: queda «por programar», como cualquier pieza aprobada.
     if (sub === "aprobaciones" && subId && metodo === "PATCH") {
+      // En una constante: tests/despliegue/tiempo-real.test.js toma cada «tipo» con un texto literal de este archivo por
+      // un evento de tiempo real, y la respuesta y la fila no lo son.
+      const PIEZA = "pieza";
       const { tipo } = (await cuerpo(req)) ?? {};
-      if (tipo !== "pieza") return error("Sólo se puede contar como pieza aprobada.");
+      if (tipo !== PIEZA) return error("Sólo se puede contar como pieza aprobada.");
       const cal = await acceso.leerUno("calendars", { id });
       if (!cal) return noEncontrado("Calendario");
       const post = publicacionDelCalendario(cal, subId);
@@ -689,7 +692,7 @@ export async function rutasDatos(req, env, ctx) {
       if (motivo) return error(motivo, 409);
       const huella = huellaPieza(post);
       const t = ahora();
-      const n = await acceso.actualizar("approvals", { calendar_id: id, post_id: subId }, { tipo: "pieza", huella, updated_at: t });
+      const n = await acceso.actualizar("approvals", { calendar_id: id, post_id: subId }, { tipo: PIEZA, huella, updated_at: t });
       if (!n) return noEncontrado("Aprobación");
       difundir(env, acceso.ownerId, { tipo: "aprobacion", calId: id, postId: subId, estado: "aprobado", motivo: "pieza", por: firma(ctx.usuario, req) });
       // Quién lo decidió, en el historial de la publicación. Nunca tumba la respuesta.
@@ -697,7 +700,7 @@ export async function rutasDatos(req, env, ctx) {
         id: uuid(), calendar_id: id, post_id: subId, user_id: ctx.usuario?.id ?? "", nombre: ctx.usuario?.nombre ?? "",
         accion: "Contó como aprobada la pieza: el cliente la vio así.", created_at: t,
       }));
-      return json({ tipo: "pieza", huella, updated_at: t });
+      return json({ tipo: PIEZA, huella, updated_at: t });
     }
   }
 
