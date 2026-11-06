@@ -77,3 +77,8 @@
 /* El diálogo de Anuncios → Campañas. */
 .r3q-dialogo { max-width: 980px; }
 .r3q-dialogo .sheet-body { display: flex; flex-direction: column; gap: var(--sp-3); }
+
+/* Qué publicación del calendario es cada anuncio (entrega 7). */
+.r3q-publicacion { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); padding: var(--sp-2); background: var(--surface-3); border-radius: var(--radius-sm); }
+.r3q-publicacion-texto { flex: 1 1 180px; min-width: 0; display: flex; flex-direction: column; font-size: var(--fs-xs); overflow-wrap: anywhere; }
+.r3q-publicacion-sin { margin: 0; }

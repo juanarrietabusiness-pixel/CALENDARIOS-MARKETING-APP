@@ -409,7 +409,7 @@ function lineaDeEncargo(p) {
  * (paleta, estilo, reglas); `guia`: la identidad visual del cerebro; `plantillas`: las del kit; `concepto`: el de la
  * tanda si ya lo hay. Pura.
  */
-export function pedidoDeFichas({ cliente = "la marca", rubro = "", piezas = [], marca = "", conLogo = true, guia = "", plantillas = [], manual = null, concepto = "", productos = "", catalogo = "", sobreLaMarca = "", correcciones = [], vistas = 0, especiales = [], previas = [], serie = 0, tiposArte = [] }) {
+export function pedidoDeFichas({ cliente = "la marca", rubro = "", piezas = [], marca = "", conLogo = true, guia = "", plantillas = [], manual = null, concepto = "", productos = "", catalogo = "", sobreLaMarca = "", correcciones = [], vistas = 0, especiales = [], previas = [], serie = 0, tiposArte = [], aprendido = "" }) {
   const lista = piezas.slice(0, MAX_FICHAS).map(limpiarPiezaEncargo);
   const enSerie = lista.length > 1 || serie > 1;
   return [
@@ -432,6 +432,8 @@ export function pedidoDeFichas({ cliente = "la marca", rubro = "", piezas = [], 
     plantillas.length ? `\nPLANTILLAS DE ESTE CLIENTE (diseños que ya funcionaron; si una encaja, síguela y di su id en «plantilla»; la que «ES LA DE» un tipo se usa en las piezas de ese tipo salvo que la pieza diga otra):\n${plantillas.map(lineaDePlantilla).join("\n")}` : "",
     // Los tipos de arte de la marca (curso de campañas, `kit.tiposArte`): van aunque el kit no esté preparado.
     lineaDeTiposArte(tiposArte) ? `\n${lineaDeTiposArte(tiposArte)}` : "",
+    // Lo que ya se probó en pauta con esta marca (src/lib/aprenderAnuncios.js): sólo en las piezas que van a pauta.
+    aprendido ? `\nESTA PIEZA VA A PAUTA. ${corto(aprendido, 900)}` : "",
     bloqueDeDisenoPorTipo(lista.map((p) => p.tipo), manual) ? `\n${bloqueDeDisenoPorTipo(lista.map((p) => p.tipo), manual)}` : "",
     lineaDeCorrecciones(correcciones),
     concepto ? `\nCONCEPTO DE LA TANDA (síguelo): ${corto(concepto, 600)}` : "",

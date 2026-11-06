@@ -1,0 +1,20 @@
+/* ============================================================
+   «Para pautar» (Resultados → Anuncios, debajo de la revisión 3Q). Va con su chunk (lazy): el CSS inicial está en su tope.
+   ============================================================ */
+
+.pp { display: flex; flex-direction: column; gap: var(--sp-2); }
+.pp-lista { list-style: none; margin: var(--sp-1) 0 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-2); }
+.pp-item { padding: var(--sp-3); background: var(--surface-2); border-left: 3px solid var(--success); border-radius: var(--radius-sm); display: flex; flex-direction: column; gap: var(--sp-2); min-width: 0; }
+.pp-cabeza { display: flex; gap: var(--sp-3); align-items: flex-start; min-width: 0; }
+.pp-mini { width: 64px; height: 80px; object-fit: cover; border-radius: var(--radius-sm); flex-shrink: 0; background: var(--surface-3); }
+.pp-mini-vacia { display: flex; align-items: center; justify-content: center; color: var(--text-dim); }
+.pp-texto { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.pp-meta { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-1); font-size: var(--fs-2xs); color: var(--text-dim); }
+.pp-titulo { margin: 0; font-size: var(--fs-sm); overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.pp-frase { margin: 0; font-size: var(--fs-sm); color: var(--success); }
+.pp-cifras { margin: 0; }
+.pp-problemas ul { margin: var(--sp-1) 0 0; padding-left: var(--sp-4); font-size: var(--fs-xs); display: flex; flex-direction: column; gap: 2px; }
+.pp-botones { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
+.pp-etapa { width: auto; max-width: 200px; min-height: var(--tap-sm); }
+.pp-marcada { display: inline-flex; align-items: center; gap: var(--sp-1); }
+.pp-subtitulo { display: flex; align-items: center; gap: var(--sp-2); font-size: var(--fs-sm); margin: var(--sp-3) 0 0; }

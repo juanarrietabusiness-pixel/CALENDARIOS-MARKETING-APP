@@ -20,7 +20,7 @@ import { ACCION_MENSAJE } from "../../src/lib/anuncios.js";
 //   2. Abrirla la marca como revisada (quien sólo mira, no) y Mi día deja de pedirla; la etapa escogida a mano se
 //      guarda sin pisar los números del negocio.
 //   3. El cron: un cliente por vuelta, desde las 7:00, una vez al día; a la campana sólo lo grave y sólo lo nuevo; si
-//      falla, se apunta igual (si no, lo miraría cada minuto). Tres llamadas a Meta.
+//      falla, se apunta igual (si no, lo miraría cada minuto). Cinco llamadas a Meta (dos son de «En pauta»).
 //   4. El asistente y Claude (MCP) leen lo mismo, sin gastar.
 //
 // Ninguna petición sale a Internet: el `fetch` falso revienta con cualquier host que no sea Meta o Anthropic.
@@ -296,7 +296,7 @@ describe("el cron: lo grave de cada día", () => {
   const alertas = () => JSON.parse(db.sqlite.prepare("select alertas from anuncios_clientes where client_id = 'c1'").get().alertas);
   const a = (iso) => new Date(iso);
 
-  it("antes de las 7:00 de Panamá no mira nada; después, un cliente, con tres llamadas, y avisa lo grave", async () => {
+  it("antes de las 7:00 de Panamá no mira nada; después, un cliente, con cinco llamadas, y avisa lo grave", async () => {
     await conNumeros();
     llamadas.length = 0;
     expect(await revision3qPendiente(env, a("2026-11-06T11:00:00.000Z"))).toBe(0); // 6:00 en Panamá
@@ -304,7 +304,9 @@ describe("el cron: lo grave de cada día", () => {
     gastoAyer = 0;
     estadoAnuncio = "DISAPPROVED";
     expect(await revision3qPendiente(env, a("2026-11-06T14:00:00.000Z"))).toBe(1); // 9:00
-    expect(llamadas).toHaveLength(3);
+    // Las campañas, los anuncios encendidos (con su creativo), lo de 7 días por campaña y, para «En pauta» (entrega 7),
+    // lo de cada anuncio en 7 y 30 días.
+    expect(llamadas).toHaveLength(5);
     const lista = avisos();
     // No gastó ayer y un anuncio rechazado (la campaña 700 gasta y tiene conversaciones; nadie con el doble sin una).
     expect([...new Set(lista.map((x) => x.texto))]).toEqual([

@@ -36,6 +36,7 @@
 
 import { fechaEnZona, sumarDias } from "../../src/lib/agenda.js";
 import { vaAPauta, describirPauta, limpiarAnuncio } from "../../src/lib/pauta.js";
+import { limpiarEnPauta, lineaEnPauta, clavePublicacion } from "../../src/lib/enPauta.js";
 import { buscar as buscarCerebro, leerNota } from "./cerebro/cerebro.js";
 import { pack } from "./cerebro/memoria.js";
 import { lineaDeIdea, ideaDeFila as publicaIdea } from "../../src/lib/bancoIdeas.js";
@@ -73,7 +74,8 @@ export const DEFINICIONES_DE_LECTURA = Object.freeze([
     name: "ver_calendario",
     description:
       "Devuelve las publicaciones de un calendario de un cliente: fecha, ID, formato, categoría, hora, estado, idea, " +
-      "descripción y guion. Úsala para consultar otro mes u otro cliente.",
+      "descripción y guion, y si están EN PAUTA de verdad en su Ads Manager (etapa y costo por resultado, de la última " +
+      "revisión de campañas). Úsala para consultar otro mes u otro cliente.",
     input_schema: {
       type: "object",
       properties: {
@@ -155,7 +157,7 @@ export const DEFINICIONES_DE_LECTURA = Object.freeze([
   },
   {
     name: "revisar_campanas",
-    description: "La revisión 3Q de los anuncios que corren en el Ads Manager de un cliente: su número mágico (lo que aguanta cada conversación o compra), lo real en 30, 14 y 7 días, y cada campaña activa con su etapa (presentación, evaluación, conversión, ascensión o temporada) y qué hacer con cada conjunto y anuncio (qué pasó, por qué y qué cambiar). Sólo lee de Meta: no cambia nada ni gasta. Úsala si preguntan cómo van los anuncios o qué pausar o mejorar.",
+    description: "La revisión 3Q de los anuncios que corren en el Ads Manager de un cliente: su número mágico (lo que aguanta cada conversación o compra), lo real en 30, 14 y 7 días, y cada campaña activa con su etapa (presentación, evaluación, conversión, ascensión o temporada) y qué hacer con cada conjunto y anuncio (qué pasó, por qué y qué cambiar), y qué publicación del calendario es cada anuncio (o si es un anuncio nuevo, subido aparte). Sólo lee de Meta: no cambia nada ni gasta. Úsala si preguntan cómo van los anuncios, qué pausar o mejorar, o qué publicación está en pauta.",
     input_schema: { type: "object", properties: { ...clienteOpcional } },
   },
   {
@@ -230,11 +232,17 @@ export function crearEjecutor({ env, acceso, clienteActual = null, estudio = nul
       }
       const dias = JSON_SEGURO(cal.days, []) ?? [];
       const recorta = (t, n) => (t && t.length > n ? `${t.slice(0, n)}…` : t || "");
+      // Lo que corre de verdad en su Ads Manager (worker/lib/enPauta.js, lo de la última revisión 3Q): sólo D1.
+      const pauta = limpiarEnPauta((await acceso.leerColumnas("anuncios_clientes", ["en_pauta"], { client_id: c.id }, "created_at asc", 1).catch(() => []))[0]?.en_pauta);
+      const enPautaDe = (p) => {
+        const e = pauta.publicaciones[clavePublicacion(cal.id, p.id)];
+        return e ? ` · ${e.activo ? "EN PAUTA" : "YA NO ESTÁ EN PAUTA"} (${lineaEnPauta(e, pauta.moneda)}${pauta.leidoAt ? `; leído del Ads Manager el ${String(pauta.leidoAt).slice(0, 10)}` : ""})` : "";
+      };
       const lineas = [];
       for (const d of dias) {
         for (const p of d.posts ?? []) {
           lineas.push([
-            `${d.date} · ID ${p.id} · ${p.format}${p.category ? ` · ${p.category}` : ""}${p.publishTime ? ` · ${p.publishTime}` : ""} · ${p.status ?? "pending"}${vaAPauta(p) ? ` · VA A PAUTA (${describirPauta(p.pauta)}; su descripción ES el texto del anuncio${limpiarAnuncio(p.anuncio)?.textos.length ? `, con ${limpiarAnuncio(p.anuncio).textos.length} textos de anuncio aparte` : ", sin sus textos de anuncio aparte"})` : ""}`,
+            `${d.date} · ID ${p.id} · ${p.format}${p.category ? ` · ${p.category}` : ""}${p.publishTime ? ` · ${p.publishTime}` : ""} · ${p.status ?? "pending"}${vaAPauta(p) ? ` · VA A PAUTA (${describirPauta(p.pauta)}; su descripción ES el texto del anuncio${limpiarAnuncio(p.anuncio)?.textos.length ? `, con ${limpiarAnuncio(p.anuncio).textos.length} textos de anuncio aparte` : ", sin sus textos de anuncio aparte"})` : ""}${enPautaDe(p)}`,
             p.idea ? `  Idea: ${recorta(p.idea, 300)}` : "",
             (p.descripcion || p.script) ? `  Descripción: ${recorta(p.descripcion || p.script, 600)}` : "",
             p.guion ? `  Guion: ${recorta(p.guion, 600)}` : "",

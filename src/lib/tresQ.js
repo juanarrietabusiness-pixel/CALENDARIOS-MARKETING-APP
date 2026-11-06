@@ -860,6 +860,9 @@ export function textoDeRevision(r, { max = 7000 } = {}) {
       lineas.push(`  - ${nivel} «${y.nombre}»: ${y.veredicto.nombre} — ${y.veredicto.motivo}${mal.length ? ` Q2: ${mal.map((m) => lineaQ2(m, moneda)).join("; ")}` : ""}`);
       for (const a of y.veredicto.acciones ?? []) if (a.texto) lineas.push(`    Q3 · ${a.titulo}: ${a.texto}`);
     }
+    // Qué publicación del calendario es cada anuncio (worker/lib/enPauta.js la pone en `publicacionTexto`).
+    const pubs = (c.anuncios ?? []).filter((a) => a.publicacionTexto);
+    if (pubs.length) lineas.push(`  Qué publicación es cada anuncio: ${pubs.map((a) => `«${a.nombre}»: ${String(a.publicacionTexto).replace(/\.$/, "")}`).join("; ")}.`);
   }
   return lineas.filter((l) => l !== "").join("\n").slice(0, max);
 }

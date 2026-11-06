@@ -1,7 +1,8 @@
 import "./Revision3Q.css";
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useId, useRef, useState } from "react";
 import Icon from "../Icon";
 import { revisionCampanas, guardarEtapaCampana } from "../../lib/revision3qApi";
+import { olvidarEnPauta } from "../../lib/enPautaApi";
 import { ventasDelCliente } from "../../lib/ventasApi";
 import * as api from "../../lib/anunciosApi";
 import { formatoMoneda } from "../../lib/anuncios";
@@ -22,7 +23,13 @@ import { pct as pctFraccion, textoSinMedir } from "../../lib/ventasSemana";
 // «Subir un 20 %» (el administrador, confirmando). Lo creativo lleva a producir: «Mejorar los ganchos» y «Anuncios
 // nuevos» abren el lote de anuncios del Estudio con el nivel de su etapa y lo que se pide; lo demás, al Ads Manager.
 // Al cliente no se le enseña nada de esto.
+//
+// Cerrar el ciclo (entrega 7, worker/lib/enPauta.js): cada anuncio dice qué publicación del calendario es (o que es un
+// anuncio nuevo, subido aparte), y debajo va «Para pautar» (ParaPautar.jsx, en su chunk): lo orgánico que rindió y no
+// se ha pautado, y lo que se aprende de lo que ya corrió.
 // ============================================================
+
+const ParaPautar = lazy(() => import("./ParaPautar"));
 
 const NIVEL = { campana: "Campaña", conjunto: "Conjunto", anuncio: "Anuncio" };
 const coma = (n) => String(n).replace(".", ",");
@@ -135,6 +142,27 @@ function Acciones({ x, nivel, campana, ctx }) {
   );
 }
 
+/** Qué publicación del calendario es un anuncio (o por qué no tiene ninguna), con «Abrir la publicación». */
+export function PublicacionDelAnuncio({ x, ctx }) {
+  if (x.publicacion) {
+    const p = x.publicacion.post;
+    return (
+      <div className="r3q-publicacion">
+        {p?.miniatura ? <img src={p.miniatura} alt="" loading="lazy" className="r3q-mini" /> : <Icon name="file" size={20} />}
+        <span className="r3q-publicacion-texto">
+          <span className="r3q-nivel">Publicación del calendario</span>
+          <span>{p?.fecha ? new Date(`${p.fecha}T12:00:00Z`).toLocaleDateString("es-PA", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" }) : ""}{p?.titulo ? ` · «${p.titulo}»` : ""}</span>
+        </span>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={() => ctx.abrirPublicacion(x.publicacion)}>
+          <Icon name="calendar" size={14} /> Abrir la publicación
+        </button>
+      </div>
+    );
+  }
+  if (x.sinPublicacion) return <p className="hint r3q-publicacion-sin">{x.sinPublicacion.texto}</p>;
+  return null;
+}
+
 /** Un conjunto o un anuncio, con su veredicto y lo que se hace. */
 function Elemento({ x, nivel, campana, ctx }) {
   const v = x.veredicto;
@@ -150,6 +178,7 @@ function Elemento({ x, nivel, campana, ctx }) {
         </div>
         <Veredicto v={v} />
       </div>
+      {nivel === "anuncio" && <PublicacionDelAnuncio x={x} ctx={ctx} />}
       {!v.heredado && <p className="r3q-motivo">{v.motivo}</p>}
       {!v.heredado && c7 && (
         <p className="hint r3q-cifras">
@@ -333,6 +362,8 @@ export default function Revision3Q({ client, esAdmin = false, soloLectura = fals
     setFallo(null);
     try {
       setD(await revisionCampanas(clientId, { conIA: ia }));
+      // La lectura puso al día qué está en pauta (el panel de cada publicación lo relee).
+      olvidarEnPauta(clientId);
       setHechos({});
       if (ia) window.dispatchEvent(new Event("ia:gasto"));
     } catch (e) {
@@ -354,10 +385,12 @@ export default function Revision3Q({ client, esAdmin = false, soloLectura = fals
   const ir = (ruta) => { onIr?.(); navegar(ruta); };
   const irANegocio = (e) => { e?.preventDefault?.(); ir(construirRuta({ cliente: slug, pestana: "marca", seccion: "negocio" })); };
   const irAlManual = (e) => { e?.preventDefault?.(); ir("/ajustes"); };
+  // Por su id en crudo (también resuelve): App abre la publicación con `?publicacion=`.
+  const abrirPublicacion = ({ calendarId, postId }) => ir(`/cliente/${encodeURIComponent(slug)}/${encodeURIComponent(calendarId)}?publicacion=${encodeURIComponent(postId)}`);
   const devolverFoco = () => raiz.current?.focus({ preventScroll: true });
 
   const ctx = {
-    moneda: d?.cuenta?.moneda ?? "USD", esAdmin, soloLectura, trabajando, hechos, confirmar, etapas: d?.etapas ?? [],
+    moneda: d?.cuenta?.moneda ?? "USD", esAdmin, soloLectura, trabajando, hechos, confirmar, etapas: d?.etapas ?? [], abrirPublicacion,
     onApagar: async (x) => {
       setTrabajando(x.id);
       try {
@@ -437,6 +470,7 @@ export default function Revision3Q({ client, esAdmin = false, soloLectura = fals
       {d && (
         <>
           {d.avisoLectura && <p className="hint">{d.avisoLectura}</p>}
+          {d.avisoCreativo && <p className="hint">{d.avisoCreativo}</p>}
           {d.explicacion && <p className="r3q-explicacion">{d.explicacion}</p>}
           {d.avisoIA && <p className="hint">Sin explicación de la IA: {d.avisoIA}</p>}
           <div className="r3q-arriba">
@@ -460,6 +494,12 @@ export default function Revision3Q({ client, esAdmin = false, soloLectura = fals
             {Object.entries(VEREDICTOS).filter(([id]) => d.resumen.porVeredicto?.[id]).map(([id, x]) => `${x.nombre}: ${d.resumen.porVeredicto[id]}`).join(" · ")}
           </p>
         </>
+      )}
+      {/* Lo orgánico que rindió y no se ha pautado: no necesita cuenta publicitaria (sólo D1). */}
+      {(d || fallo) && (
+        <Suspense fallback={null}>
+          <ParaPautar client={client} soloLectura={soloLectura} onAbrir={abrirPublicacion} />
+        </Suspense>
       )}
     </div>
   );
