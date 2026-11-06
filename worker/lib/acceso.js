@@ -143,6 +143,8 @@ export const TABLAS_CON_DUENO = Object.freeze([
   // Las historias automáticas: el interruptor de cada cliente y la historia hecha de cada publicación (worker/lib/historiasAuto.js).
   "historias_auto",
   "historias_auto_piezas",
+  // El aviso a la hora de lo que se publica a mano (worker/lib/avisosAMano.js): una fila por publicación «La publico yo».
+  "avisos_a_mano",
   // Del equipo. Tienen dueño como las demás: la lista de miembros de un
   // espacio es un dato del espacio, y pedirla sin acotar devolvería la
   // plantilla de otra agencia. Quien resuelve «este usuario, ¿de qué
@@ -182,6 +184,7 @@ export const TABLAS_CON_CLIENTE = Object.freeze([
   "cuentas_anuncios", "campanas_anuncios", "historial_anuncios",
   "planes_campana", "informes_anuncios", "anuncios_clientes", "ventas_semana",
   "historias_auto", "historias_auto_piezas",
+  "avisos_a_mano",
   "handoffs",
   "lo_mejor_anuncios",
   "tendencias_palabras", "tendencias_videos",
@@ -631,6 +634,25 @@ export async function clientesConHistoriasPendientes(db, hasta, limite = 50) {
       `select client_id, owner_id, hora, ultima_fecha from historias_auto
         where activa = 1 and (ultima_fecha is null or ultima_fecha < ?)
         order by coalesce(ultima_fecha, '') asc
+        limit ?`,
+    )
+    .bind(hasta, limite)
+    .all();
+  return results ?? [];
+}
+
+/**
+ * Los avisos «a mano» que tocan (worker/lib/avisosAMano.js), de TODOS los espacios: los que aún no avisaron de la hora y
+ * cuyo momento llega antes de `hasta` (ahora + 10 min). Ids, dueño y momentos, como `colaPendiente`: lo demás (la
+ * publicación, el cliente) se lee después con la capa de ese espacio, y sólo si de verdad hay que avisar. Es UNA consulta
+ * por el índice (hora_at, para): sin nada que avisar, es lo único que cuesta en la vuelta del cron.
+ */
+export async function avisosAManoPendientes(db, hasta, limite = 5) {
+  const { results } = await db
+    .prepare(
+      `select id, owner_id, client_id, calendar_id, post_id, para, previo_at, hora_at from avisos_a_mano
+        where hora_at is null and para <= ?
+        order by para asc
         limit ?`,
     )
     .bind(hasta, limite)

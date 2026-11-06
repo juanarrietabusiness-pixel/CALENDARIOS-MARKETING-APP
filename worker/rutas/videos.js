@@ -41,6 +41,11 @@
 //                                           siguiendo la ESTRUCTURA de guion escogida (o la que escoja la IA entre las de
 //                                           voz en off: vuelve en `estructura`). No guarda nada: la pantalla lo abre como
 //                                           borrador sin guardar. Texto, sin confirmación
+//   POST   /api/videos/<c>/con-musica       { postId, calendarId?, musicaId?, segundos?, movimiento?, logo? }: «Publicar con
+//                                           música»: el post de UNA foto pasa a un video animado de una escena (la foto a
+//                                           sangre con su movimiento y la música en su sonido), aprobado y renderizándose;
+//                                           al terminar la publicación es un reel con la foto de portada. No gasta IA
+//                                           (worker/lib/estudio/conMusica.js). 503 sin Container, 409 `sin_musica`
 //   GET    /api/videos/<c>/musicas          { musicas, efectos }: la BIBLIOTECA DE SONIDO del cliente y la de la agencia
 //                                           (`de: "agencia"`), la música de la marca primero (worker/lib/estudio/sonidos.js)
 //   POST   /api/videos/<c>/musicas          Subir una (multipart: archivo, duracion?; MP3, WAV o M4A, ≤ 15 MB)
@@ -86,6 +91,7 @@ import { pedirMusica, ErrorMusica } from "../lib/estudio/musica.js";
 import { proponerMusica, musicaALaMarca, resumenDelAnalisis, ErrorDirectorMusical } from "../lib/estudio/directorMusical.js";
 import { pedidoConClips, alContenedor } from "../lib/estudio/cuadros.js";
 import { pedirRender, renderAlDia, ligarAPublicacion } from "../lib/estudio/render.js";
+import { publicarConMusica } from "../lib/estudio/conMusica.js";
 import { costoDeVoz, fraseDeMuestra, modeloDeVoz, esIdDeVoz } from "../../src/lib/voces.js";
 
 /** Un ErrorVoz como respuesta: su mensaje, su estado y lo que la pantalla necesita (`codigo`, `costo`…). */
@@ -226,6 +232,19 @@ async function rutasDelCliente(req, env, { acceso, usuario, partes, metodo }) {
       }
     }
     return error("Método no permitido.", 405);
+  }
+
+  // «Publicar con música»: la foto de un post → un reel con su música (crea, aprueba y renderiza; no gasta IA).
+  if (id === "con-musica" && !accion) {
+    if (metodo !== "POST") return error("Método no permitido.", 405);
+    const b = (await cuerpo(req)) ?? {};
+    const r = await publicarConMusica(env, acceso, cliente, {
+      postId: typeof b.postId === "string" ? b.postId : "", calendarId: typeof b.calendarId === "string" ? b.calendarId : null,
+      musicaId: typeof b.musicaId === "string" ? b.musicaId : "", segundos: b.segundos, movimiento: b.movimiento,
+      logo: typeof b.logo === "boolean" ? b.logo : undefined, usuario, por: firma(usuario, req),
+    });
+    avisar(env, acceso, usuario, req, clienteId, r.video.id);
+    return json(r, 202);
   }
 
   // «Me gusta esta»: una música generada pasa a referencia de la música de la marca (en el kit guardado).

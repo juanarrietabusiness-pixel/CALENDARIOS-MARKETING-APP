@@ -132,7 +132,10 @@ export async function audioDelVideo(carpeta, { audio, linea, total, salida, guio
   await writeFile(pista, pcm);
   const leer = ["-f", "s16le", "-ar", muestreo, "-ac", "2", "-i", pista];
   const codificar = ["-c:a", "aac", "-b:a", `${RENDER.kbpsAudio}k`, "-ar", muestreo, salida];
-  if (!toma.length && !conClips) {
+  // Sin voz ni clips que suenen, el audio se codifica tal cual (silencio o sólo efectos)… salvo que lleve MÚSICA: una
+  // foto con música (src/lib/conMusica.js) es sólo la música, que sin voz que la mida queda muy baja; se normaliza a
+  // -14 LUFS como una locución.
+  if (!toma.length && !conClips && !musica?.audio?.length) {
     const r = await ffmpeg([...leer, ...codificar]).fin;
     if (r.codigo !== 0) throw falla("No se pudo armar el audio", r);
     return null;

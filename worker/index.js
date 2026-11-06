@@ -74,6 +74,7 @@ import { rutasMCP, rutasMCPPublicas } from "./rutas/mcp.js";
 import { informePendiente } from "./lib/informes.js";
 import { informeAnunciosPendiente } from "./lib/informeAnuncios.js";
 import { historiasAutomaticasPendiente } from "./lib/historiasAuto.js";
+import { avisosAManoPendiente } from "./lib/avisosAMano.js";
 import { encargosDelCron } from "./lib/estudio/bomba.js";
 import { encargosPorTerminar } from "./lib/estudio/encargos.js";
 import { rutasBandeja, rutaWebhookMeta } from "./rutas/bandeja.js";
@@ -571,6 +572,10 @@ export default {
       // sin nada que hacer es UNA consulta). Antes del Estudio: con el Estudio ocupado horas, no saldría ninguna.
       const historias = await historiasAutomaticasPendiente(env, cuando).catch((e) => { console.error("cron historias:", e); return 1; });
       if (historias) return;
+      // El aviso a la hora de lo que se publica A MANO (10 min antes y a la hora): sin nada que avisar es UNA consulta.
+      // Antes del Estudio por lo mismo que las historias: un «es la hora» que llega una hora tarde no sirve.
+      const aMano = await avisosAManoPendiente(env, cuando).catch((e) => { console.error("cron avisos a mano:", e); return 1; });
+      if (aMano) return;
       // El Estudio: lo que nadie está mirando (cerró la pestaña).
       const estudio = await avanzarPendientes(env, cuando).catch((e) => { console.error("cron estudio:", e); return 1; });
       if (estudio) return;

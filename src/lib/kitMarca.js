@@ -38,6 +38,7 @@ import { SIN_TEXTO_VIDEO } from "./videoLimpio.js";
 import { limpiarAprendido, lineasAprendidas } from "./aprendizajeVisual.js";
 import { posicionDelKit } from "./logoEncima.js";
 import { limpiarTiposArte } from "./tiposArte.js";
+import { limpiarCanciones } from "./cancionesInstagram.js";
 
 /** Los presets, uno por tipo de contenido (los ids de `PILARES`, en pilares.js). `base`: la plantilla sin escribir. */
 export const TIPOS_PRESET = Object.freeze({
@@ -182,7 +183,10 @@ export function limpiarMusicaDeMarca(m) {
     }))
     .filter((r) => r.estilo && !vistos.has(r.estilo.toLowerCase()) && vistos.add(r.estilo.toLowerCase()))
     .slice(0, MAX_REFS_MUSICA);
-  return { estilo: corto(o.estilo, 400), evitar: corto(o.evitar, 200), referencias };
+  // Las canciones de INSTAGRAM que le van al cliente (nombre y artista, las escribe la agencia): la que se sugiere al
+  // publicar a mano un carrusel con su música (src/lib/conMusica.js). Sin lista, no va.
+  const canciones = limpiarCanciones(o.cancionesInstagram);
+  return { estilo: corto(o.estilo, 400), evitar: corto(o.evitar, 200), referencias, ...(canciones.length ? { cancionesInstagram: canciones } : {}) };
 }
 
 /** Lo guardado, limpio: lo que no se entiende se descarta. Pura. */

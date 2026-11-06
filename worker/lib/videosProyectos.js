@@ -97,9 +97,12 @@ export async function publicacionDelCliente(acceso, clienteId, postId) {
   return null;
 }
 
-/** Lo que se guarda en `origen`: el reel del que sale ({ tipo, encargoId }) y la estructura de guion que siguió. */
+/** Lo que se guarda en `origen`: el reel del que sale ({ tipo, encargoId }), la foto de una foto con música y la estructura de guion que siguió. */
 function origenLimpio(origen, estructuraId) {
   const o = origen && typeof origen === "object" && !Array.isArray(origen) ? { tipo: String(origen.tipo ?? "").slice(0, 20), encargoId: String(origen.encargoId ?? "").slice(0, 80) } : {};
+  // El de una foto con música (lib/conMusica.js) recuerda la foto con que se hizo: si la publicación ya no la lleva al
+  // terminar el render, el video no la toca.
+  if (o.tipo === "foto" && /^\/api\/media\/clientes\/[^\s]{1,300}$/.test(String(origen.foto ?? "")) && !String(origen.foto).includes("..")) o.foto = String(origen.foto);
   return /^[\w-]{1,80}$/.test(String(estructuraId ?? "")) ? { ...o, estructuraId: String(estructuraId) } : o;
 }
 

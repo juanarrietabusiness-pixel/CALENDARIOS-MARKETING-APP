@@ -31,6 +31,7 @@ import { claveDeSonido } from "./sonidos.js";
 import { MAX_BYTES_SONIDO } from "../../../src/lib/bibliotecaSonido.js";
 import { dbDeVolumenGuion } from "../../../src/lib/musica.js";
 import { avisarRender } from "../equipo.js";
+import { esVideoDeFoto, postConMusica } from "../../../src/lib/conMusica.js";
 
 const leerJSON = (t, d) => { try { return typeof t === "string" ? JSON.parse(t) : (t ?? d); } catch { return d; } };
 const SISTEMA = { userId: "sistema", nombre: "Render", color: "", tab: null };
@@ -101,9 +102,13 @@ export async function ponerEnPublicacion(env, acceso, fila, medio, { rellenar = 
   if (!fila.calendar_id || !fila.post_id) return null;
   const origen = leerJSON(fila.origen, {});
   const esSuyo = (m) => m?.videoAnimado === fila.id || (origen.encargoId && m?.deReel === origen.encargoId);
+  // Una FOTO CON MÚSICA (lib/conMusica.js): la publicación pasa a reel con el mp4 de único medio y la foto de portada, y
+  // apunta lo de antes para «Volver a la foto». Si la foto ya no es la misma (se cambió mientras se hacía), no se toca.
+  const deFoto = esVideoDeFoto(origen);
   const r = await cambiarPublicacion(env, acceso, {
     clienteId: fila.client_id, calendarId: fila.calendar_id, postId: fila.post_id, por: SISTEMA,
     cambiar: (post) => {
+      if (deFoto) return postConMusica(post, medio, { videoId: fila.id, foto: origen.foto ?? "", ahora: ahora() });
       const con = conVideoEnPost(post, medio, esSuyo);
       // La estructura de guion que siguió la voz: la publicación la recuerda (si no tenía otra).
       const campos = { ...(rellenar ?? {}), ...(origen.estructuraId ? { estructura: origen.estructuraId } : {}) };
@@ -116,6 +121,7 @@ export async function ponerEnPublicacion(env, acceso, fila, medio, { rellenar = 
     if (/a la vez/.test(r.aviso)) return { aviso: "El calendario se estaba guardando a la vez: el video quedó en la galería; ponlo desde ahí." };
     return { aviso: "La publicación ligada ya no está en su calendario: el video quedó en la galería." };
   }
+  if (deFoto && r?.sinCambios) return { aviso: "La foto de la publicación cambió mientras se hacía el video: quedó en la galería, sin tocarla." };
   return { calendarId: r.calendarId, postId: fila.post_id };
 }
 

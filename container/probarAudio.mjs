@@ -64,8 +64,10 @@ async function caso(titulo, audio, silencios, total, { callado = null, suena = n
     const m = await audioDelVideo(carpeta, { audio, linea: linea ?? { silencios }, total, salida, guion, efectos, musica, efectosPropios });
     const dur = duracion(salida);
     if (!(Math.abs(dur - total) < 0.06)) throw new Error(`el audio dura ${dur} s, no ${total}`);
-    if (audio && !(Math.abs((m?.lufs ?? NaN) - RENDER.lufs) <= 1)) throw new Error(`quedó en ${m?.lufs} LUFS`);
-    if (audio && !(m?.pico <= RENDER.pico + 0.5)) throw new Error(`el pico quedó en ${m?.pico} dB`);
+    // Con voz, o con sólo música (una foto con música): normalizado a -14 LUFS y sin pasarse de pico.
+    const normalizado = audio || musica;
+    if (normalizado && !(Math.abs((m?.lufs ?? NaN) - RENDER.lufs) <= 1)) throw new Error(`quedó en ${m?.lufs} LUFS`);
+    if (normalizado && !(m?.pico <= RENDER.pico + 0.5)) throw new Error(`el pico quedó en ${m?.pico} dB`);
     // La pausa está donde tiene que estar: callada en su sitio y con voz justo antes (sin contar lo que AAC emborrona).
     if (callado && nivel(salida, ...callado) > 0.003) throw new Error(`entre ${callado.join(" y ")} s debería haber silencio`);
     if (suena && nivel(salida, ...suena) < 0.02) throw new Error(`entre ${suena.join(" y ")} s debería sonar la voz`);
@@ -116,6 +118,9 @@ try {
   await caso("Con un efecto subido que no se puede leer (va el sintetizado)", vozEjemplo, l.silencios, l.total, {
     guion: g, linea: l, efectos: true, efectosPropios: { pop: Buffer.from("no es un audio") },
   });
+  // Una foto con música (src/lib/conMusica.js): sin voz, la escena entera es un silencio insertado y debajo sólo la
+  // música, repetida; tiene que oírse a -14 LUFS (sin voz que la mida quedaba muy baja) y sonar en medio.
+  await caso("Sólo música, sin voz (una foto con música)", null, [{ en: 0, dur: 10 }], 10, { musica: { audio: tema, volumen: 0 }, suena: [4, 6] });
 } finally {
   await rm(carpeta, { recursive: true, force: true });
 }

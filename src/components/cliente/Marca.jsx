@@ -34,6 +34,8 @@ const VozDeMarca = lazy(() => import("../VozDeMarca"));
 const MusicaDeMarca = lazy(() => import("../MusicaDeMarca"));
 // La biblioteca de sonido del cliente: su música (Suno, subidas) y sus efectos, con «Usar de la agencia».
 const BibliotecaSonido = lazy(() => import("../BibliotecaSonido"));
+// Las canciones de Instagram que le van (para lo que se publica a mano con su música: src/lib/cancionesInstagram.js).
+const CancionesInstagram = lazy(() => import("../CancionesInstagram"));
 const Cerebro = lazy(() => import("../Cerebro"));
 const PestanaContenido = lazy(() => import("../PestanaContenido"));
 const EditorSemana = lazy(() => import("../calendario/PlanSemanal").then((m) => ({ default: m.EditorSemana })));
@@ -70,6 +72,9 @@ function KitYVoz({ client, estudio, lectura, onCambio, onError }) {
       </section>
       <section className="card" aria-label="Música de la marca">
         <MusicaDeMarca kit={estudio.kit} lectura={lectura} onGuardar={guardar} />
+      </section>
+      <section className="card" aria-label="Canciones de Instagram">
+        <CancionesInstagram kit={estudio.kit} lectura={lectura} onGuardar={guardar} />
       </section>
       <EstudioKit
         client={client}
