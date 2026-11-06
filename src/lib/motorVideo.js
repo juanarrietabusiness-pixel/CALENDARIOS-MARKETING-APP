@@ -640,7 +640,7 @@ export function partirEquilibrado(ctx, texto, ancho, n) {
 export const TIPO_POR_ROL = Object.freeze({
   titular: { tam: 0.105, peso: 800, lineas: 3, fuente: "titular", alto: 1.08 },
   // El cartel tipográfico (motorTexto.js): cada línea a todo el ancho; `tam` es lo más grande de una línea.
-  gigante: { tam: 0.36, peso: 900, lineas: 8, fuente: "impacto", alto: 0.94, mayusculas: true },
+  gigante: { tam: 0.36, peso: 900, lineas: 8, fuente: "impacto", alto: 1.04, mayusculas: true },
   apoyo: { tam: 0.06, peso: 500, lineas: 4, fuente: "cuerpo", alto: 1.25 },
   dato: { tam: 0.16, peso: 900, lineas: 2, fuente: "titular", alto: 1.0 },
   etiqueta: { tam: 0.042, peso: 700, lineas: 2, fuente: "cuerpo", alto: 1.2, mayusculas: true },

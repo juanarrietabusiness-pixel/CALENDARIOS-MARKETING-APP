@@ -43,7 +43,8 @@ export const impactoDe = (familiaKit = "") => (familiaKit
 /** Lo que crece una palabra con énfasis respecto a las de su línea. */
 export const ESCALA_ENFASIS = 1.22;
 /** El rol gigante: lo más grande que sale una línea (fracción del lado corto: una palabra corta sola no se desborda). */
-export const GIGANTE = Object.freeze({ maxTam: 0.36, alto: 0.94, corta: 3, larga: 8, letras: 12 });
+// `alto` 1,04: apretado, pero sin que la tilde de una mayúscula («MÁS») se meta en la línea de arriba (con 0,94 se metía).
+export const GIGANTE = Object.freeze({ maxTam: 0.36, alto: 1.04, corta: 3, larga: 8, letras: 12 });
 
 const ENFASIS = /\*([^*\n]+)\*/g;
 /** ¿Lleva algo entre asteriscos? Pura. */

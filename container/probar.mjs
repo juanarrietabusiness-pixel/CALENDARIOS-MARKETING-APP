@@ -138,6 +138,16 @@ const texto = Buffer.from(v.bytes).toString("latin1");
 if (!texto.includes("avc1") || !texto.includes("mp4a")) falla("/render: al mp4 le falta la pista de video o la de audio");
 console.log(`✓ /render (${(v.bytes.length / 1048576).toFixed(1)} MB, ${cuadros} cuadros, ${lufs} LUFS desde ${v.cabeceras.get("x-lufs-antes")}, ${v.cabeceras.get("x-ms")} ms)`);
 
+// El texto con carácter: un titular GIGANTE con énfasis (la letra de la casa, Anton) y un fondo por crear se dibujan.
+const gigante = JSON.parse(JSON.stringify(EJEMPLO_GUION));
+gigante.escenas[0].capas = [
+  { tipo: "imagen", id: "fondo", encuadre: "completo", pide: "Un grabado antiguo", oscurecer: 0.4 },
+  { tipo: "texto", id: "t", texto: "Las manos *más bellas* de la historia", rol: "gigante", porPalabra: true, animacion: { entrada: "golpe" } },
+];
+const cg = await post("/cuadro", { guion: gigante, t: 2 });
+if (cg.estado !== 200 || !medidasJpeg(cg.bytes)) falla(`/cuadro con un titular gigante devolvió ${cg.estado}: ${new TextDecoder().decode(cg.bytes).slice(0, 200)}`);
+console.log("✓ /cuadro con el texto gigante (Anton) y un fondo por crear");
+
 const roto = await post("/cuadro", { guion: { version: 1, escenas: [{ id: "x", tipo: "inventado", habla: "hola" }] } });
 if (roto.estado !== 400) falla(`un guion roto debería ser 400, fue ${roto.estado}`);
 console.log("✓ un guion roto es 400");
