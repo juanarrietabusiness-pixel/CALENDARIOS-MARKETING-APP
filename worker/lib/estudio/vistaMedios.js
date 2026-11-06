@@ -24,6 +24,7 @@ import { claveDelCliente } from "./archivos.js";
 import { deFila } from "../videosProyectos.js";
 import { modeloDeVoz } from "../../../src/lib/voces.js";
 import { NOMBRE_ESTADO_VIDEO } from "../../../src/lib/videoEscenas.js";
+import { esCancion } from "../../../src/lib/videoCancion.js";
 
 const leerJSON = (t, def) => { try { return typeof t === "string" ? JSON.parse(t) : (t ?? def); } catch { return def; } };
 export const esAudio = (f) => String(f?.mime ?? "").startsWith("audio/");
@@ -149,7 +150,14 @@ export async function vistaDeVideo(env, { video, clienteId, cliente = null }) {
   } else if (video.estado === "renderizando" || r.estado === "en_curso") {
     videos.push(medioDe({ id: `render-${video.id}`, titulo, estado: "en_marcha", nota: "Renderizándose a mp4: menos de un minuto." }));
   }
-  if (loc.estado === "lista" && loc.clave) {
+  if (esCancion(loc) && loc.estado === "lista" && loc.clave) {
+    // La CANCIÓN del video (de la biblioteca del cliente o de la agencia): por su clave, que la puso el servidor.
+    const d = await firmada(env, loc.clave);
+    audios.push(medioDe({
+      id: `cancion-${video.id}`, url: d?.url ?? "", caduca: d?.caduca ?? null, titulo: `La canción «${loc.nombre ?? "del video"}»`, duracion: loc.duracion,
+      nota: loc.revisar ? "Ojo: la letra no se encontró bien en la canción; revisa la vista previa." : "Es el audio del video: no se genera voz.",
+    }));
+  } else if (loc.estado === "lista" && loc.clave) {
     audios.push(await medioDeArchivo(env, { id: loc.archivoId || `voz-${video.id}`, clave: loc.clave, client_id: clienteId, mime: loc.mime || "audio/mpeg" }, {
       titulo: "La locución", voz: loc.voz?.nombre ?? "", duracion: loc.duracion,
       nota: loc.desfasada ? "Es de una versión anterior del guion." : loc.revisar ? "Ojo: no se oyó todo el guion tal cual; escúchala." : "",

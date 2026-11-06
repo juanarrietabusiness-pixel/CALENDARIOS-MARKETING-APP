@@ -11,8 +11,10 @@
 // guardados en R2 la primera vez (`firmas/vista-medios.key`, fuera de `clientes/`: ni /api/media ni esta ruta lo
 // sirven), leído una vez por instancia del Worker. Quien pudiera leer R2 ya tendría los archivos: no abre nada más.
 //
-// Sólo se firma (y se sirve) lo que cuelga de `clientes/<cliente>/` o de `voces/` (las muestras de una voz, de toda la
-// agencia; no las tomas a medio entregar de `voces/pendientes/`), sin `..`. La ruta, además, sólo sirve audio y video.
+// Sólo se firma (y se sirve) lo que cuelga de `clientes/<cliente>/`, de `voces/` (las muestras de una voz, de toda la
+// agencia; no las tomas a medio entregar de `voces/pendientes/`) o de la MÚSICA de la biblioteca de la agencia
+// (`biblioteca/<espacio>/musica/`: la canción de un «video con tu canción»), sin `..`. La ruta, además, sólo sirve audio
+// y video.
 // ============================================================
 
 import { firmarCon, leerFirmado, aBase64Url } from "./firmas.js";
@@ -35,6 +37,7 @@ export function claveServible(clave) {
   const c = String(clave ?? "");
   if (!c || c.length > 400 || c.includes("..") || c.includes("\\") || c.includes("//") || [...c].some((x) => x.charCodeAt(0) < 32)) return false;
   if (/^clientes\/[^/]+\/.+/.test(c)) return true;
+  if (/^biblioteca\/[^/]+\/musica\/.+/.test(c)) return true;
   return /^voces\/(?!pendientes\/).+/.test(c);
 }
 

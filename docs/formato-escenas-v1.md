@@ -64,7 +64,10 @@ Container (fase 2) lo consume **tal cual**. Se guarda en `videos_proyectos.guion
 | `subtitulos` | `activo`, `pos` (abajo/centro/arriba), `maxPalabras` (1–4), `maxCaracteres` (10–30), `acento` | `true`, `abajo`, `4`, `23`, `acento` |
 | `musica` | `{ estilo, instrumental, clave, volumen 0–1, bajarConVoz }` o `null`. `estilo` (≤ 300) dice QUÉ música lleva, con género y subgénero, instrumentos, BPM y atmósfera («indie folk acústico, ukelele y palmas, 100 BPM, cálido»): es la pista del director musical, que escucha el video y la música de la marca antes de pedirla a Suno (`generar_musica`). `clave` es un archivo de la galería; la música escogida en «Sonido» del video manda sobre ella | `null` |
 
-Duración total: **de 5 s a 150 s**.
+Duración total: **de 5 s a 150 s** (con una canción, lo que dura ella, hasta 180 s; ver «Modo canción», al final).
+
+`cancion` (opcional, no se escribe si no está): `{ archivo, duracion, nombre? }` — la canción ya grabada de un «video con
+tu canción». La pone la aplicación (`video_con_cancion`); no se escribe a mano.
 
 ### `estilo`
 
@@ -329,3 +332,20 @@ Una sola toma con `textoDeLocucion(guion)`: ElevenLabs v3 por Kie.ai (con las
 `coincidencia` por debajo de 0,85 la voz no dijo lo que dice el guion y queda
 `revisar`. Si el guion cambió mientras se generaba, va `desfasada: true` y el
 proyecto no pasa a «Con voz».
+
+## Modo canción («Video con tu canción»)
+
+Con `cancion: { archivo, duracion }` en la raíz, el audio del video es una canción YA GRABADA (voz e instrumental
+mezclados) y el `habla` de las escenas es su **letra tal cual y en orden**. No se genera voz. Lo que cambia:
+
+- **Nada se inserta en el audio**: ni `pausa` (se ignora, con aviso), ni el alargue hasta 0,6 s, ni el tramo de un clip.
+  Estirar una escena desincronizaría la música.
+- **El video dura lo que la canción** (hasta 180 s y 80 escenas): su final instrumental se ve.
+- **Una escena con `habla` vacío** (intro, puente, final) ocupa el hueco entre la última palabra cantada de la anterior y
+  la primera de la siguiente; varias seguidas se lo reparten. La primera escena empieza en 0.
+- **Una escena más corta que 0,6 s se avisa** (`lineaDeTiempo(...).avisos`), no se estira.
+
+La locución del proyecto lleva `origen: "cancion"` y la letra sincronizada (`oidas`, una por palabra de la letra, con su
+`fuente`: ElevenLabs, ElevenLabs con la voz aislada, Gemini o estimado). Las `palabras` del guion se sacan de ahí gratis
+(`palabrasDeLaCancion`, src/lib/videoCancion.js) con el ajuste fino (`desplazamiento`, ±1,5 s), y la canción sigue valiendo
+mientras el guion diga la letra (≥ 85 % de coincidencia).

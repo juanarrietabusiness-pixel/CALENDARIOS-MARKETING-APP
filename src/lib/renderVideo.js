@@ -14,6 +14,7 @@
 // ============================================================
 
 import { tieneHabla } from "./videoEscenas.js";
+import { esCancion, estadoDeCancion } from "./videoCancion.js";
 
 /** Lo fijo del render. -14 LUFS integrados, el pico verdadero a -1,5 dB y el rango que admite la voz hablada. */
 export const RENDER = Object.freeze({ fps: 30, lufs: -14, pico: -1.5, rango: 11, muestreo: 48000, kbpsAudio: 192, crf: 20 });
@@ -137,6 +138,11 @@ export function puedeRenderizar(p) {
   if (p?.estado === "renderizando") return { ok: false, motivo: "Ya se está renderizando." };
   if (p?.estado === "borrador" || !Number.isInteger(p?.version) || p.version !== p?.aprobada_version) {
     return { ok: false, motivo: "Primero aprueba el guion." };
+  }
+  // Un video con CANCIÓN (src/lib/videoCancion.js): vale para cualquier versión mientras el guion diga la letra.
+  if (esCancion(l)) {
+    const c = p?.guion ? estadoDeCancion(p.guion, l) : { ok: l.estado === "lista" && Boolean(l.clave), motivo: "Primero sincroniza la canción." };
+    return c.ok ? { ok: true, motivo: "", cancion: true } : { ok: false, motivo: c.motivo };
   }
   // Un montaje de clips que no dice nada en ninguna escena no tiene locución que generar: sale con el sonido de los clips.
   if (p?.guion && !tieneHabla(p.guion)) return { ok: true, motivo: "", sinVoz: true };

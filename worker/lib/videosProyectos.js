@@ -21,6 +21,7 @@
 import { uuid, ahora } from "./ids.js";
 import { validarGuion, lineaDeTiempo, estadoTrasEditar, NOMBRE_ESTADO_VIDEO } from "../../src/lib/videoEscenas.js";
 import { textoParaVoz } from "../../src/lib/voces.js";
+import { esCancion, conPalabrasDeCancion, estadoDeCancion } from "../../src/lib/videoCancion.js";
 import { limpiarSonido, SITIOS_EFECTO } from "../../src/lib/sonidoVideo.js";
 import { sonidoParaVideo, musicaDeLaMarca } from "./estudio/sonidos.js";
 
@@ -45,8 +46,9 @@ const limpiarTitulo = (t) => String(t ?? "").replace(/\s+/g, " ").trim().slice(0
 /** La fila como la ven la pantalla y las herramientas: el guion y la locución como objetos, y la duración estimada. */
 export function deFila(f) {
   const guion = leerJSON(f.guion, {});
-  const locucion = leerJSON(f.locucion, {});
   const v = validarGuion(guion);
+  // Con una CANCIÓN, las palabras se sacan del guion de AHORA contra la letra sincronizada (gratis, con su ajuste fino).
+  const locucion = conPalabrasDeCancion(v.guion ?? guion, leerJSON(f.locucion, {}));
   return {
     id: f.id, titulo: f.titulo, estado: f.estado, version: f.version, aprobadaVersion: f.aprobada_version ?? null,
     calendarId: f.calendar_id ?? null, postId: f.post_id ?? null, nota: f.nota ?? "",
@@ -97,7 +99,10 @@ export async function publicacionDelCliente(acceso, clienteId, postId) {
   return null;
 }
 
-/** Lo que se guarda en `origen`: el reel del que sale ({ tipo, encargoId }), la foto de una foto con música y la estructura de guion que siguió. */
+/**
+ * Lo que se guarda en `origen`: el reel del que sale ({ tipo, encargoId }), la foto de una foto con música, una canción
+ * ({ tipo: "cancion" }) y la estructura de guion que siguió.
+ */
 function origenLimpio(origen, estructuraId) {
   const o = origen && typeof origen === "object" && !Array.isArray(origen) ? { tipo: String(origen.tipo ?? "").slice(0, 20), encargoId: String(origen.encargoId ?? "").slice(0, 80) } : {};
   // El de una foto con música (lib/conMusica.js) recuerda la foto con que se hizo: si la publicación ya no la lleva al
@@ -110,7 +115,7 @@ function origenLimpio(origen, estructuraId) {
  * Crea un proyecto (borrador). `estructuraId`: la ESTRUCTURA de guion de la agencia que siguió (ya comprobada por quien
  * llama: `estructuraExistente`), que queda en `origen.estructuraId`. → { video, avisos }.
  */
-export async function crearProyecto(acceso, cliente, { guion: entrada, titulo, calendarId = null, postId = null, usuario, origen = null, estructuraId = "" }) {
+export async function crearProyecto(acceso, cliente, { guion: entrada, titulo, calendarId = null, postId = null, usuario, origen = null, estructuraId = "", locucion = null }) {
   const { guion, avisos } = guionValido(entrada);
   let cal = null;
   if (calendarId) {
@@ -128,7 +133,8 @@ export async function crearProyecto(acceso, cliente, { guion: entrada, titulo, c
     post_id: cal && ID_VIDEO.test(String(postId ?? "")) ? String(postId) : null,
     titulo: limpiarTitulo(titulo ?? guion.titulo) || "Video sin título",
     // Los valores por defecto van escritos: `insertar` devuelve lo que se le dio, no la fila releída.
-    estado: "borrador", version: 1, locucion: "{}", render: "{}", nota: "",
+    // `locucion`: sólo la pone el servidor (la CANCIÓN sincronizada de «Video con tu canción»); lo de fuera no se cree.
+    estado: "borrador", version: 1, locucion: locucion ? JSON.stringify(locucion) : "{}", render: "{}", nota: "",
     // De dónde sale (el montaje de un reel) y con qué estructura de guion. Sólo lo pone el servidor: lo que llega de
     // fuera no se cree (la estructura, quien llama la comprobó en el espacio).
     origen: JSON.stringify(origenLimpio(origen, estructuraId)),
@@ -143,7 +149,8 @@ export async function crearProyecto(acceso, cliente, { guion: entrada, titulo, c
  * Sin favorita, nada (el de siempre: efectos encendidos y sin música). Nunca tumba la creación. → el sonido o null.
  */
 async function sonidoInicial(acceso, clienteId, guion) {
-  if (guion?.musica?.clave) return null;
+  // Un video con CANCIÓN no lleva música de fondo: la canción ya lo es.
+  if (guion?.musica?.clave || guion?.cancion) return null;
   if ((guion?.escenas ?? []).some((e) => (e.capas ?? []).some((c) => c.tipo === "video" && c.sonido))) return null;
   const m = await musicaDeLaMarca(acceso, clienteId).catch(() => null);
   if (!m) return null;
@@ -363,13 +370,15 @@ export async function aprobarProyecto(acceso, cliente, fila, { version, usuario 
   if (!v.ok) throw new ErrorVideo("El guion tiene errores: corrígelos antes de aprobarlo.", 400, { errores: v.errores });
   const momento = ahora();
   const cambios = { estado: "aprobado", aprobada_version: fila.version, aprobado_por: usuario?.id ?? null, aprobado_at: momento, updated_at: momento };
-  // Lo que se dice no cambió: la locución de antes sirve para esta versión (no se paga otra).
-  const sigue = await vozQueSigueValiendo(acceso, cliente.id, fila, v.guion).catch(() => false);
+  // Lo que se dice no cambió: la locución de antes sirve para esta versión (no se paga otra). Con una CANCIÓN, sirve
+  // mientras el guion diga su letra (las palabras se recalculan gratis).
+  const l = leerJSON(fila.locucion, {});
+  const sigue = esCancion(l) ? estadoDeCancion(v.guion, l).ok : await vozQueSigueValiendo(acceso, cliente.id, fila, v.guion).catch(() => false);
   if (sigue) {
-    const l = leerJSON(fila.locucion, {});
-    Object.assign(cambios, { estado: "con_voz", locucion: JSON.stringify({ ...l, version: fila.version, desfasada: false, deVersion: l.deVersion ?? l.version }) });
+    const nueva = esCancion(l) ? conPalabrasDeCancion(v.guion, l) : l;
+    Object.assign(cambios, { estado: "con_voz", locucion: JSON.stringify({ ...nueva, version: fila.version, desfasada: false, deVersion: l.deVersion ?? l.version }) });
   }
   const n = await acceso.actualizar("videos_proyectos", { id: fila.id, client_id: cliente.id, version: fila.version }, cambios);
   if (!n) throw new ErrorVideo("Otra persona cambió este video mientras lo aprobabas. Vuelve a abrirlo.", 409);
-  return { video: deFila({ ...fila, ...cambios }), vozReutilizada: sigue };
+  return { video: deFila({ ...fila, ...cambios }), vozReutilizada: sigue, ...(esCancion(l) ? { cancion: sigue } : {}) };
 }

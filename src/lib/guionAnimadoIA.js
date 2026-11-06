@@ -94,3 +94,64 @@ export function leerGuionAnimado(texto) {
     return null;
   }
 }
+
+// ------------------------------------------------------------
+// «Video con tu canción»: las escenas diseñadas sobre la LETRA de una canción ya grabada (src/lib/videoCancion.js)
+// ------------------------------------------------------------
+
+const mmss = (s) => {
+  const n = Math.max(0, Number(s) || 0);
+  return `${Math.floor(n / 60)}:${(n % 60).toFixed(1).padStart(4, "0")}`;
+};
+
+/**
+ * La letra por líneas CON sus tiempos para la IA: cada línea con cuándo se canta y cuánto dura, el CORO marcado (las que
+ * se repiten) y los HUECOS instrumentales (intro, puente, final) donde van escenas sin letra. Pura.
+ */
+export function letraParaLaIA(lineas = [], huecos = []) {
+  const filas = [
+    ...lineas.map((l) => ({ desde: l.desde, texto: `[${mmss(l.desde)}–${mmss(l.hasta)}, ${(l.hasta - l.desde).toFixed(1)} s]${l.coro ? " (CORO)" : ""} ${l.texto}` })),
+    ...huecos.map((h) => ({ desde: h.desde, texto: `[${mmss(h.desde)}–${mmss(h.hasta)}] HUECO instrumental (${h.cual}, ${(h.hasta - h.desde).toFixed(1)} s): una escena SIN habla` })),
+  ];
+  return filas.sort((a, b) => a.desde - b.desde).map((f) => f.texto).join("\n");
+}
+
+/**
+ * El pedido a la IA para DISEÑAR las escenas de un video con canción. La `habla` es la letra TAL CUAL y en orden (lo
+ * comprueba `comprobarLetra` en el servidor), sin `pausa`, con escenas sin habla en los huecos, el coro con más fuerza
+ * visual y el texto en pantalla corto. `lineas` y `huecos`: los de videoCancion.js; `errores`/`anterior`: la vuelta de
+ * corrección. Pura.
+ */
+export function pedidoDeGuionCancion({ marca, titulo = "", nombre = "", duracion, lineas = [], huecos = [], formato = "9:16", contexto = "", productos = "", personaje = null, indicacion = "", errores = [], anterior = "" }) {
+  const f = FORMATOS_VIDEO[formato] ? formato : "9:16";
+  const coro = lineas.some((l) => l.coro);
+  return [
+    `Eres el director de arte de videos animados de la agencia Juancito Ads. Diseña las ESCENAS de UN video animado para una CANCIÓN YA GRABADA de ${marca}: el audio es la canción (voz e instrumental), no se genera voz.`,
+    "",
+    formatoParaLaIA(),
+    "",
+    "MODO CANCIÓN (manda sobre lo de arriba)",
+    "· El «habla» de las escenas es la LETRA TAL CUAL y EN ORDEN: ni una palabra cambiada, añadida ni quitada (tampoco [emociones]). Pártela por líneas o frases: una escena por línea, o dos líneas cortas juntas. Toda la letra va, de principio a fin.",
+    "· Sin «pausa»: nada se inserta en el audio. Donde la lista dice HUECO va una escena con «habla» vacío (intro, puente, final): dura su hueco. La primera escena empieza en el segundo 0.",
+    "· Cada escena dura lo que su parte de la canción: no hagas escenas de menos de un segundo (junta líneas cortas).",
+    coro ? "· El CORO (las líneas marcadas, que se repiten) con más fuerza visual: sello, cifra, icono, anillo o el personaje, y un fondo que destaque; que se reconozca cada vez que vuelve." : "",
+    "· El texto en pantalla, CORTO: las palabras clave de la línea (no la línea entera si es larga); los subtítulos ya ponen la letra palabra por palabra. Las capas entran ancladas a la palabra que nombran ({\"palabra\": n}).",
+    "· La última escena (o el final instrumental) lleva el logo. Sin llamado inventado: si la letra no lo dice, sólo la marca.",
+    "· No escribas «cancion» ni «musica»: los pone la aplicación.",
+    personaje ? `· La marca tiene PERSONAJE${personaje.nombre ? ` («${personaje.nombre}»)` : ""}: úsalo en el coro o en los huecos (variante, pose y expresión según la letra). Su aspecto lo pone el kit.` : "",
+    "· Sin paleta propia: los colores salen del kit por sus tokens.",
+    indicacion ? `\nLO QUE PIDE LA AGENCIA (manda): ${String(indicacion).trim().slice(0, 600)}` : "",
+    "",
+    `LA CANCIÓN${nombre ? ` «${nombre}»` : ""}: dura ${Number(duracion).toFixed(1)} s. Formato principal: ${f} (formatos: ["${f}"]).${titulo ? ` Título del video: «${titulo}».` : ""}`,
+    "La letra por líneas, con cuándo se canta cada una (y los huecos sin letra):",
+    letraParaLaIA(lineas, huecos),
+    "",
+    contexto ? `LA MARCA\n${contexto}` : "",
+    productos ? `CATÁLOGO (las fotos son el producto REAL; en una capa «imagen» va su ID en «archivo»)\n${productos}` : "",
+    "",
+    errores.length
+      ? `TU GUION ANTERIOR TENÍA ESTOS ERRORES (corrígelos y devuelve el guion ENTERO otra vez):\n${errores.slice(0, 20).map((e) => `· ${e.donde || "guion"}: ${e.mensaje}`).join("\n")}\n\nEl anterior:\n${String(anterior).slice(0, 14000)}`
+      : "",
+    "Devuelve SÓLO el JSON del guion, sin explicaciones ni ```.",
+  ].join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}

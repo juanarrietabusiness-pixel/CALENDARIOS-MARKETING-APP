@@ -247,6 +247,75 @@ export async function anadirDeLaBiblioteca(env, { publico, voz, nombre }) {
   return String(j?.voice_id ?? voz);
 }
 
+// ------------------------------------------------------------
+// «Video con tu canción»: alinear la letra con la canción y aislar la voz (worker/lib/estudio/cancion.js)
+// ------------------------------------------------------------
+
+/** Lo que tarda como mucho alinear o aislar una canción de 3 minutos. */
+const PLAZO_CANCION_MS = 120_000;
+/** Lo más que pesa la voz aislada que devuelve (una canción de 3 minutos en MP3 son unos 4 MB). */
+const TOPE_AISLADA = 40 * 1024 * 1024;
+
+/** Un pedido multipart (el audio y su texto): sin `Content-Type`, que lo pone el `FormData` con su frontera. */
+async function llamarConArchivo(env, ruta, form) {
+  let res;
+  try {
+    res = await fetch(`${BASE}${ruta}`, { method: "POST", headers: { "xi-api-key": env.ELEVENLABS_API_KEY }, body: form, signal: AbortSignal.timeout(PLAZO_CANCION_MS) });
+  } catch {
+    throw new ErrorMotor("No se pudo contactar con ElevenLabs.", 502, { reintentable: true });
+  }
+  if (!res.ok) {
+    const texto = await res.text().catch(() => "");
+    let j = null;
+    try { j = JSON.parse(texto); } catch { /* no es JSON */ }
+    throw errorDeElevenLabs(res.status, motivoDeElevenLabs(j, texto));
+  }
+  return res;
+}
+
+/** Los créditos que dice la respuesta que costó (en la cabecera o en el cuerpo), o null si no los dice. Pura. */
+export function creditosDeRespuesta(cabeceras, cuerpo = null) {
+  const leer = (k) => { const v = cabeceras?.get?.(k); return v === null || v === undefined || v === "" ? NaN : Number(v); };
+  for (const n of [leer("character-cost"), leer("x-character-count"), Number(cuerpo?.credits), Number(cuerpo?.credit_cost), Number(cuerpo?.character_cost)]) {
+    if (Number.isFinite(n) && n >= 0) return n;
+  }
+  return null;
+}
+
+/**
+ * ALINEACIÓN FORZADA (Forced Alignment): la letra contra el audio de la canción.
+ *   POST https://api.elevenlabs.io/v1/forced-alignment  multipart: file (el audio), text (la letra)
+ *   → { characters: [{ text, start, end }], words: [{ text, start, end, loss }], loss }
+ * Se devuelve TAL CUAL (lo lee con tolerancia `leerAlineacion`, src/lib/videoCancion.js) con los créditos si los dice.
+ * → { datos, creditos }.
+ */
+export async function alineacionForzada(env, { bytes, mime = "audio/mpeg", texto }) {
+  const form = new FormData();
+  form.append("file", new Blob([bytes], { type: mime }), `cancion.${mime === "audio/wav" ? "wav" : mime === "audio/mp4" ? "m4a" : "mp3"}`);
+  form.append("text", String(texto ?? ""));
+  const res = await llamarConArchivo(env, "/v1/forced-alignment", form);
+  const datos = await res.json().catch(() => null);
+  if (!datos || typeof datos !== "object") throw new ErrorMotor("ElevenLabs no devolvió la alineación de la letra.", 502);
+  return { datos, creditos: creditosDeRespuesta(res.headers, datos) };
+}
+
+/**
+ * AISLAR LA VOZ (Voice Isolator): la canción sin la música, para alinear mejor la letra cuando la mezcla la tapa.
+ *   POST https://api.elevenlabs.io/v1/audio-isolation  multipart: audio → el audio (MP3)
+ * → { bytes, mime, creditos }.
+ */
+export async function aislarVoz(env, { bytes, mime = "audio/mpeg" }) {
+  const form = new FormData();
+  form.append("audio", new Blob([bytes], { type: mime }), `cancion.${mime === "audio/wav" ? "wav" : mime === "audio/mp4" ? "m4a" : "mp3"}`);
+  const res = await llamarConArchivo(env, "/v1/audio-isolation", form);
+  const salida = new Uint8Array(await res.arrayBuffer());
+  if (!salida.byteLength) throw new ErrorMotor("ElevenLabs devolvió la voz aislada vacía.", 502);
+  if (salida.byteLength > TOPE_AISLADA) throw new ErrorMotor("La voz aislada que devolvió ElevenLabs pesa demasiado.", 502);
+  const tipo = tipoPorBytes(salida);
+  if (!tipo?.startsWith("audio/")) throw new ErrorMotor("Lo que devolvió ElevenLabs al aislar la voz no es un audio.", 502);
+  return { bytes: salida, mime: tipo, creditos: creditosDeRespuesta(res.headers) };
+}
+
 /** Lo más que pesa la muestra gratis de una voz (unos segundos de MP3). */
 const TOPE_PREVIA = 3 * 1024 * 1024;
 

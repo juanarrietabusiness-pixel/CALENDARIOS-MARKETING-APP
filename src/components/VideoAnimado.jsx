@@ -11,6 +11,10 @@
 // Con locución, la VOZ suena con la animación: el reloj es el del audio mientras se habla (si el audio se atasca
 // cargando, la animación lo espera) y el del navegador en los silencios que el render inserta (`tramoDeAudio`), así
 // la vista previa suena como sonará el mp4. Los subtítulos los dibuja el motor con los mismos tiempos.
+//
+// Con una CANCIÓN («Video con tu canción», src/lib/videoCancion.js) la locución ES la canción: sus palabras se sacan del
+// guion que se está mirando contra la letra sincronizada (con el ajuste fino), no hay silencios y el reloj del audio
+// manda de principio a fin (la intro antes de la primera palabra y el final instrumental suenan y se ven).
 // ============================================================
 
 import { lazy, Suspense, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
@@ -23,6 +27,7 @@ import { textoDeSubtitulo } from "../lib/subtitulos";
 import { listarVideos, leerVideo, crearVideo, guardarVideo, aprobarVideo, borrarVideo } from "../lib/videosApi";
 import { limpiarKit } from "../lib/kitMarca";
 import { conPersonajeDelKit } from "../lib/personajeVideo";
+import { palabrasParaLinea, esCancion } from "../lib/videoCancion";
 import { editaLaAgencia } from "../lib/sesionActual";
 import RenderVideo from "./RenderVideo";
 import "./VideoAnimado.css";
@@ -137,9 +142,11 @@ export default function VideoAnimado({ client, estudio, publicacion = null, abri
     try {
       const v = await aprobarVideo(client.id, abierto.id, abierto.version);
       setAbierto(v);
-      setMsg({ texto: v.vozReutilizada
-        ? "Guion aprobado. Lo que se dice no cambió: la voz que ya tenía sirve (no hace falta pagar otra). Ya se puede renderizar."
-        : "Guion aprobado. El siguiente paso es la voz: «Generar la voz» te dice el costo antes de pagarla." });
+      setMsg({ texto: esCancion(v.locucion)
+        ? (v.vozReutilizada ? "Guion aprobado con la canción como su audio: ya se puede renderizar." : "Guion aprobado, pero lo que dice ya no coincide con la letra de la canción: corrígelo (la letra va tal cual en lo que se dice).")
+        : v.vozReutilizada
+          ? "Guion aprobado. Lo que se dice no cambió: la voz que ya tenía sirve (no hace falta pagar otra). Ya se puede renderizar."
+          : "Guion aprobado. El siguiente paso es la voz: «Generar la voz» te dice el costo antes de pagarla." });
       recargarLista();
     } catch (e) { setMsg({ error: true, texto: e.message }); } finally { setOcupado(""); }
   };
@@ -160,7 +167,8 @@ export default function VideoAnimado({ client, estudio, publicacion = null, abri
         {aviso}
         {creando ? (
           <Suspense fallback={<p className="hint">Cargando…</p>}>
-            <CrearVideoAnimado client={client} publicacion={publicacion} onListo={nuevo} onPlantilla={() => nuevo()} onCancelar={() => setCreando(false)} />
+            <CrearVideoAnimado client={client} publicacion={publicacion} onListo={nuevo} onPlantilla={() => nuevo()} onCancelar={() => setCreando(false)}
+              onCreado={(v, aviso) => { setCreando(false); setErrServidor([]); setEditarTextos(false); setAbierto(v); setTexto(JSON.stringify(v.guion, null, 2)); setMsg(aviso ? { texto: aviso } : null); recargarLista(); }} />
           </Suspense>
         ) : (
           <div className="va-barra">
@@ -221,7 +229,7 @@ export default function VideoAnimado({ client, estudio, publicacion = null, abri
           )}
           {validacion.guion?.escenas?.length > 0 && (editarTextos
             ? <Suspense fallback={<p className="hint">Cargando…</p>}><EditorEscenas guion={validacion.guion} onCambiar={(g) => setTexto(JSON.stringify(g, null, 2))} /></Suspense>
-            : <Escenas guion={validacion.guion} palabras={abierto.locucion?.estado === "lista" ? abierto.locucion.palabras ?? null : null} />)}
+            : <Escenas guion={validacion.guion} palabras={palabrasParaLinea(validacion.guion, abierto.locucion)} />)}
 
           {errores.length > 0 && (
             <div className="va-errores" role="alert">
@@ -266,7 +274,7 @@ export default function VideoAnimado({ client, estudio, publicacion = null, abri
           </div>
           {sacarEstructura && (
             <Suspense fallback={<p className="hint">Cargando…</p>}>
-              <GuardarEstructura client={client} guion={validacion.guion} palabras={abierto.locucion?.estado === "lista" ? abierto.locucion.palabras ?? null : null}
+              <GuardarEstructura client={client} guion={validacion.guion} palabras={palabrasParaLinea(validacion.guion, abierto.locucion)}
                 onCerrar={() => setSacarEstructura(false)} onAviso={(texto) => setMsg({ texto })} />
             </Suspense>
           )}
@@ -303,6 +311,12 @@ function Escenas({ guion, palabras }) {
         ))}
       </ol>
       {pendientes.length > 0 && <p className="hint">Se ven como marcador hasta que el motor los dibuje: {pendientes.join(", ")}.</p>}
+      {/* Con una canción, una escena muy corta no se estira (desincronizaría la música): se avisa. */}
+      {linea.avisos?.length > 0 && (
+        <ul className="va-avisos-cancion">
+          {linea.avisos.map((a) => <li key={a.donde} className="hint">Escena {a.escena}: {a.mensaje}</li>)}
+        </ul>
+      )}
     </div>
   );
 }
@@ -343,7 +357,9 @@ function VistaPrevia({ guion, locucion, kit, archivos }) {
   const audio = useRef(null);
   const [sonido, setSonido] = useState(true);
   const [falloVoz, setFalloVoz] = useState(false);
-  const palabras = locucion?.estado === "lista" ? locucion.palabras ?? null : null;
+  // Con una canción, las palabras del guion que se está mirando contra su letra (con el ajuste fino); si no, las de la voz.
+  const palabras = useMemo(() => palabrasParaLinea(guion, locucion), [guion, locucion]);
+  const cancion = esCancion(locucion);
   const [formato, setFormato] = useState(guion.formatos[0]);
   const [t, setT] = useState(0);
   const [reproduciendo, setReproduciendo] = useState(false);
@@ -387,10 +403,10 @@ function VistaPrevia({ guion, locucion, kit, archivos }) {
   const conVoz = Boolean(palabras && locucion?.clave && !linea.estimado);
   const voz = conVoz && sonido && !falloVoz;
   const mudas = useMemo(() => {
-    if (!conVoz) return [];
+    if (!conVoz || cancion) return [];
     const dichas = linea.escenas.flatMap((e) => e.palabras.map((p) => p.texto));
     return palabrasMudas(palabras).map((i) => textoDeSubtitulo(dichas[i] ?? "")).filter(Boolean);
-  }, [conVoz, palabras, linea]);
+  }, [conVoz, cancion, palabras, linea]);
   const tAhora = useRef(t);
   tAhora.current = t;
   const repintar = useRef(() => {});
@@ -476,10 +492,10 @@ function VistaPrevia({ guion, locucion, kit, archivos }) {
       <div className="va-formatos" role="group" aria-label="Formato de la vista previa">
         {guion.formatos.length > 1 && guion.formatos.map((x) => <button key={x} type="button" className="filter-chip" aria-pressed={x === f} onClick={() => setFormato(x)}>{x}</button>)}
         <button type="button" className="filter-chip" aria-pressed={zonas} onClick={() => setZonas((z) => !z)}>Zonas seguras</button>
-        {conVoz && <button type="button" className="filter-chip" aria-pressed={sonido} onClick={() => { setSonido((v) => !v); audio.current?.pause(); setReproduciendo(false); }}>Voz</button>}
+        {conVoz && <button type="button" className="filter-chip" aria-pressed={sonido} onClick={() => { setSonido((v) => !v); audio.current?.pause(); setReproduciendo(false); }}>{cancion ? "Canción" : "Voz"}</button>}
       </div>
-      {conVoz && <audio ref={audio} src={`/api/media/${locucion.clave}`} preload="auto" onError={() => setFalloVoz(true)} />}
-      {conVoz && falloVoz && <p className="va-msg va-error" role="alert">No se pudo cargar el audio de la locución: la vista previa sigue sin sonido.</p>}
+      {conVoz && <audio ref={audio} src={locucion.src || `/api/media/${locucion.clave}`} preload="auto" onError={() => setFalloVoz(true)} />}
+      {conVoz && falloVoz && <p className="va-msg va-error" role="alert">No se pudo cargar el audio de {cancion ? "la canción" : "la locución"}: la vista previa sigue sin sonido.</p>}
       <div className={`va-marco va-marco-${f.replace(":", "x")}`}>
         <canvas ref={lienzo} className="va-lienzo" role="img"
           aria-label={`Vista previa, escena ${k + 1} de ${guion.escenas.length}: ${guion.escenas[k]?.pantalla || guion.escenas[k]?.habla || ""}`} />
@@ -502,9 +518,11 @@ function VistaPrevia({ guion, locucion, kit, archivos }) {
         </p>
       )}
       <p className="hint">
-        {linea.estimado
-          ? "Tiempos estimados (2,5 palabras por segundo): con la locución se cuadran a la voz real."
-          : `Con la voz de la locución (${locucion?.voz?.nombre ?? "la voz"}): las escenas y los subtítulos van con sus palabras.`}
+        {cancion && !linea.estimado
+          ? `Con la canción «${locucion?.nombre ?? ""}»: la letra va sincronizada palabra por palabra (sin silencios: el video dura lo que la canción).`
+          : linea.estimado
+            ? (cancion ? "Tiempos estimados: lo que dice el guion no cuadra con la letra sincronizada." : "Tiempos estimados (2,5 palabras por segundo): con la locución se cuadran a la voz real.")
+            : `Con la voz de la locución (${locucion?.voz?.nombre ?? "la voz"}): las escenas y los subtítulos van con sus palabras.`}
         {prep.faltan.length > 0 && ` ${prep.faltan.length === 1 ? "Una imagen no está" : `${prep.faltan.length} imágenes no están`} en la galería: sale su marcador.`}
       </p>
       <section className="va-revision" aria-labelledby={`${ids}-rev`}>

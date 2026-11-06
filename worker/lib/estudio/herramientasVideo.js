@@ -23,6 +23,10 @@
 //   · versiones_video  el historial del guion; volver_a_version vuelve a una (versión nueva, en borrador)
 //   · publicar_con_musica  «con música»: un post de UNA foto → un reel con su música (crea, aprueba y renderiza; no gasta
 //                      IA); un carrusel → a mano con la música de Instagram y la canción sugerida (worker/lib/estudio/conMusica.js)
+//   · video_con_cancion «VIDEO CON TU CANCIÓN»: sincroniza la letra con una canción ya grabada (siempre pide confirmar el
+//                      costo) y crea el borrador con ella de locución: la prueba de sincronía o las escenas de la IA
+//                      (worker/lib/estudio/cancion.js, importado en el momento: lee guionAnimado.js → mercado.js, que
+//                      cerraría el ciclo con herramientas.js)
 //
 // Las tres de mirar devuelven { texto, imagenes } (no un texto): el MCP las manda como bloques de imagen y el
 // asistente como imagen en su tool_result. No gastan IA: es cómputo del Container.
@@ -51,6 +55,8 @@ import { locucionAlDia } from "./locucion.js";
 import { lineaDeTiempo, NOMBRE_ESTADO_VIDEO, NOMBRE_TIPO_ESCENA, puedeGenerarVoz, sinEtiquetas, palabrasMudas, palabrasDe, textoDeLocucion, tieneHabla } from "../../../src/lib/videoEscenas.js";
 import { formatoParaLaIA } from "../../../src/lib/videoFormatoIA.js";
 import { textoDeSubtitulo } from "../../../src/lib/subtitulos.js";
+import { esCancion, estadoDeCancion, FUENTES_CANCION, DESPLAZAMIENTO_MAX } from "../../../src/lib/videoCancion.js";
+import { textoCosto } from "../../../src/lib/estudioCatalogo.js";
 import { instanteLleno } from "../../../src/lib/revisionEscenas.js";
 import { pedidoConClips, alContenedor, respuestaEnBase64 } from "./cuadros.js";
 import { pedirRender, renderAlDia, ligarAPublicacion } from "./render.js";
@@ -258,6 +264,26 @@ export const DEFINICIONES_VIDEO = Object.freeze([
     },
   },
   {
+    name: "video_con_cancion",
+    description: `«VIDEO CON TU CANCIÓN»: un video animado (sobre todo un reel 9:16) sobre una CANCIÓN YA GRABADA —voz e instrumental mezclados, el FRAGMENTO del reel ya recortado, hasta 3 minutos— que está en la biblioteca de sonido del cliente o de la agencia (musica_id, de musicas). La LETRA va EXACTA, tal cual se canta en ese fragmento (las repeticiones escritas enteras, sin «x2»). NO se genera voz: la canción es el audio del video. Primero se SINCRONIZA la letra con la canción (ElevenLabs la alinea y, si la música la tapa, aísla la voz y la alinea otra vez; sin su llave, Gemini la oye): cuesta unos céntimos (aproximado) y SIEMPRE pide confirmar: sin confirmado=true devuelve el costo y NO SE CREA NADA (la misma canción con la misma letra otra vez sale gratis). Con el sí, crea el BORRADOR con la canción como su locución: la prueba de sincronía (disenar=false, gratis: una escena por línea con la letra de titular, el karaoke) o las escenas diseñadas por la IA (disenar=true, texto: el coro con más fuerza, la letra tal cual). desplazamiento (±${DESPLAZAMIENTO_MAX} s) mueve toda la letra si va adelantada (+) o atrasada (−). Después, como siempre: ver_video o ver_escenas, aprobar_video (con el sí de la persona: queda con la canción como locución) y renderizar_video.`,
+    input_schema: {
+      type: "object",
+      properties: {
+        ...clienteParam,
+        musica_id: { type: "string", description: "El id de la canción en la biblioteca de sonido (de musicas: del cliente o de la agencia)." },
+        letra: { type: "string", description: "La letra EXACTA de lo que se canta en el fragmento, con un renglón por línea (≤ 6.000 caracteres)." },
+        formato: { type: "string", enum: ["9:16", "1:1", "16:9"], description: "9:16 por defecto (reel)." },
+        publicacion_id: { type: "string", description: "Opcional: la publicación del calendario a la que va (de ver_calendario); el mp4 se pondrá en ella." },
+        titulo: { type: "string", description: "Nombre del video (si se omite, el de la canción)." },
+        disenar: { type: "boolean", description: "true: la IA diseña las escenas sobre la letra (texto). false (por defecto): la prueba de sincronía, gratis." },
+        indicacion: { type: "string", description: "Sólo con disenar: lo que pide la agencia del diseño (≤ 600)." },
+        desplazamiento: { type: "number", description: `El ajuste fino de la letra, de −${DESPLAZAMIENTO_MAX} a ${DESPLAZAMIENTO_MAX} s (0 por defecto).` },
+        confirmado: { type: "boolean", description: "SÓLO true si la persona dijo que sí al costo de sincronizar que dio la llamada anterior." },
+      },
+      required: ["musica_id", "letra"],
+    },
+  },
+  {
     name: "ligar_video",
     description: "Liga el video animado a una publicación del calendario del cliente (de ver_calendario), o lo desliga con publicacion_id vacío. Si el mp4 ya está renderizado, se pone en esa publicación YA (primero en sus medios, o en el sitio del mp4 anterior de este video); si no, se pondrá al terminar el render. Desligar no quita el mp4 del post de antes. No gasta nada.",
     input_schema: {
@@ -269,7 +295,7 @@ export const DEFINICIONES_VIDEO = Object.freeze([
 ]);
 
 /** Las que escriben (en el MCP van como escritura; las demás, de sólo lectura). */
-export const ESCRIBEN_VIDEO = Object.freeze(["publicar_con_musica", "crear_video", "guardar_video", "editar_escena", "aprobar_video", "renderizar_video", "ligar_video", "sonido_video", "volver_a_version", "personaje_video"]);
+export const ESCRIBEN_VIDEO = Object.freeze(["video_con_cancion", "publicar_con_musica", "crear_video", "guardar_video", "editar_escena", "aprobar_video", "renderizar_video", "ligar_video", "sonido_video", "volver_a_version", "personaje_video"]);
 
 /** Lo que falta para el siguiente paso, en una frase para el modelo. Pura. */
 /** ¿La locución es de la versión aprobada? (un video «aprobado» con voz de esa versión ya no la necesita otra vez). */
@@ -278,6 +304,14 @@ const vozDeEstaVersion = (video) => video.locucion?.estado === "lista" && !video
 
 export function siguientePaso(video) {
   if (!video.valido) return "Corregir los errores del guion (abajo) con guardar_video o editar_escena.";
+  // Con una CANCIÓN no hay voz que generar: vale mientras el guion diga su letra.
+  if (esCancion(video.locucion) && ["borrador", "aprobado"].includes(video.estado)) {
+    const c = estadoDeCancion(video.guion, video.locucion);
+    if (!c.ok) return `${c.motivo} (editar_escena con la letra tal cual en el «habla»; NUNCA generar_locucion: la canción es el audio).`;
+    return video.estado === "borrador"
+      ? "Que la persona revise el guion y lo apruebe (aprobar_video con esta versión, sólo con su sí): la canción ya es su locución, no se genera voz."
+      : "Tiene la canción de locución: revisar_video y, si está bien, renderizar_video.";
+  }
   switch (video.estado) {
     case "borrador": return "Que la persona revise el guion y lo apruebe (aprobar_video con esta versión, sólo con su sí).";
     case "aprobado":
@@ -306,7 +340,9 @@ function mudasDe(video) {
 function textoDelVideo(video, { conGuion = true } = {}) {
   const linea = video.guion?.escenas?.length ? lineaDeTiempo(video.guion, video.locucion?.palabras ?? null) : null;
   const loc = video.locucion ?? {};
-  const voz = loc.estado === "lista"
+  const voz = esCancion(loc) && loc.estado === "lista"
+    ? `Con CANCIÓN (no se genera voz): «${loc.nombre ?? "la canción"}», ${Number(loc.duracion ?? 0).toFixed(1)} s, letra sincronizada por ${FUENTES_CANCION[loc.fuente] ?? loc.fuente} (${Math.round(Number(loc.coincidencia ?? 0) * 100)} %)${loc.desplazamiento ? `, ajuste fino ${loc.desplazamiento > 0 ? "+" : ""}${loc.desplazamiento} s` : ""}${loc.revisar ? " · OJO: la letra no se encontró bien en la canción: revisa la vista previa" : ""}${linea?.avisos?.length ? ` · ${linea.avisos.length} escena(s) muy corta(s): ${linea.avisos.map((a) => a.escena).join(", ")}` : ""}.`
+    : loc.estado === "lista"
     ? `Locución lista: ${loc.voz?.nombre ?? "?"} (${loc.modelo ?? "?"}), ${Number(loc.duracion ?? 0).toFixed(1)} s, tiempos ${loc.fuente === "motor" ? "del motor" : loc.fuente === "verificado" ? "verificados al oírla" : "estimados"}${loc.revisar ? " · OJO: no se oyó todo el guion tal cual" : ""}${mudasDe(video)}${loc.desfasada ? " · es de una versión anterior del guion" : ""}.`
     : loc.estado === "generando" ? `La voz se está generando (pedido ${loc.trabajoId}).`
       : loc.estado === "fallida" ? `La voz falló: ${loc.error ?? "sin motivo"}.` : "Sin locución todavía.";
@@ -355,6 +391,42 @@ export function crearHerramientasVideo({ env, acceso, resolverCliente, usuario, 
   };
 
   return {
+    async video_con_cancion({ cliente, musica_id: musicaId = "", letra = "", formato = "9:16", publicacion_id: postId = "", titulo = "", disenar = false, indicacion = "", desplazamiento = 0, confirmado }) {
+      const c = await resolverCliente(cliente);
+      // En el momento: cancion.js lee guionAnimado.js → mercado.js, que estático cerraría el ciclo con herramientas.js.
+      const { sincronizarCancion, crearVideoConCancion, resumenDeSincronia, ErrorCancion } = await import("./cancion.js");
+      return conErrores(async () => {
+        try {
+          const s = await sincronizarCancion(env, acceso, c, { musicaId: String(musicaId), letra: String(letra), confirmado: confirmado === true, usuario });
+          const r = await crearVideoConCancion(env, acceso, c, {
+            huella: s.huella, modo: disenar === true ? "ia" : "karaoke", formato, titulo: String(titulo ?? ""), postId: String(postId ?? ""),
+            desplazamiento, indicacion: String(indicacion ?? ""), usuario,
+          });
+          avisar(c.id, r.video.id);
+          const res = resumenDeSincronia(s, { desplazamiento });
+          const video = { ...r.video, locucion: await locucionAlDia(acceso, r.video.locucion) };
+          const texto = [
+            `Creado el video «${r.video.titulo}» (ID ${r.video.id}), versión 1, en borrador, con la canción «${res.nombre}» (${Number(res.duracion).toFixed(1)} s) como su audio: no se genera voz.`,
+            `Letra sincronizada por ${res.nombreFuente}: ${Math.round(res.coincidencia * 100)} % encontrada${s.repetida ? " (ya estaba sincronizada: no costó nada)" : `; costó ${textoCosto(s.costo ?? 0)} (aproximado)`}.`,
+            res.revisar ? "OJO: la letra no se encontró bien en la canción. Revisa la vista previa; si todo va adelantado o atrasado, desplazamiento (±1,5 s)." : "",
+            ...(res.avisos ?? []),
+            r.aviso ? r.aviso : "",
+            disenar === true ? `Escenas diseñadas por la IA sobre la letra${r.corregido ? " (corrigió su primer intento)" : ""}.` : "Es la PRUEBA DE SINCRONÍA (karaoke, gratis): una escena por línea con la letra de titular. Para un diseño con más fuerza: disenar=true.",
+            `Líneas (con su segundo): ${res.lineas.slice(0, 14).map((l) => `[${l.desde.toFixed(1)}] ${l.texto}`).join(" · ")}${res.lineas.length > 14 ? " · …" : ""}`,
+            "Siguiente: ver_video o ver_escenas para revisarlo; aprobar_video SÓLO con el sí de la persona (la canción ya es su locución) y renderizar_video.",
+            textoDelVideo(video, { conGuion: false }),
+          ].filter(Boolean).join("\n");
+          return { texto, imagenes: [], vista: await vistaDeVideo(env, { video, clienteId: c.id, cliente: { id: c.id, nombre: c.name } }) };
+        } catch (e) {
+          if (!(e instanceof ErrorCancion)) throw e;
+          if (e.extra?.codigo === "confirmar") {
+            return `NO SE CREÓ NADA. ${e.message.replace(/ Confírmalo para hacerlo\.$/, "")} Díselo al usuario con esa cifra y pregúntale si lo hago. Sólo si responde que sí, vuelve a llamar con los MISMOS datos y confirmado=true.`;
+          }
+          throw new Fallo(e.message);
+        }
+      });
+    },
+
     async formato_video() {
       return `${formatoParaLaIA()}\n\nLa FORMA de la voz en off (el orden de los momentos) puede seguir una estructura de guion de la agencia: ver_estructuras con para=voz, y su ID en crear_video (estructura_id).`;
     },
