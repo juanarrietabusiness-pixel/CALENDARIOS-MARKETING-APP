@@ -29,7 +29,7 @@
 import { uuid } from "../ids.js";
 import { difundir } from "../vivo.js";
 import { despertar } from "../despertar.js";
-import { bloqueoPorPresupuesto, registrarConsumoFijo } from "../configIA.js";
+import { bloqueoPorPresupuesto, registrarConsumoFijo, topeSinPreguntar } from "../configIA.js";
 import { MOTORES } from "./motores.js";
 import { esEdicion } from "./meta.js";
 import { ErrorMotor, aBase64 } from "./gemini.js";
@@ -42,7 +42,9 @@ import { modeloDelEstudio as modeloDeVozDelEstudio } from "../../../src/lib/voce
 import { modeloDelEstudio as modeloDeMusicaDelEstudio } from "../../../src/lib/musica.js";
 import {
   modeloPorId, MODELOS_RETIRADOS, retirado, validarPedido, pideConfirmar, textoCosto, estaVivo, MEDIDAS, proporcionDe, estimar, enCola,
+  esModeloDelCliente,
 } from "../../../src/lib/estudioCatalogo.js";
+import { decidirConfirmacion, textoDelMotivo } from "../../../src/lib/sinPreguntar.js";
 import { clavesDeLaMarca } from "../../../src/lib/kitMarca.js";
 import { fotosDelCatalogo } from "../../../src/lib/estudioMercado.js";
 
@@ -167,11 +169,20 @@ export async function crearTrabajo(env, acceso, cliente, datos, { usuario = null
   }
   if (faltaron.length) guardados.faltaron = faltaron;
 
+  // La segunda confirmación (desde 0,50 $), salvo que el espacio tenga fijado «crear imágenes sin preguntar» y sea una
+  // IMAGEN con el modelo del cliente dentro del tope (src/lib/sinPreguntar.js). El ajuste sólo se lee si haría falta.
   if (pideConfirmar(costoEstimado) && !datos.confirmado) {
-    throw new ErrorEstudio(
-      `Este pedido cuesta ${textoCosto(costoEstimado)}. Confírmalo para seguir.`,
-      409, { codigo: "confirmar", costo: costoEstimado },
-    );
+    const tope = modelo.tipo === "imagen" ? await topeSinPreguntar(acceso) : 0;
+    const activos = Object.fromEntries(Object.entries(MOTORES).map(([k, m]) => [k, Boolean(m.activo?.(env))]));
+    const otroMotor = modelo.tipo === "imagen" && !esModeloDelCliente(modelo.id, activos, leerJSON(cliente?.kit_marca, {})?.modelos ?? {});
+    const d = decidirConfirmacion({ tope, costo: costoEstimado, tipo: modelo.tipo, otroMotor });
+    if (d.preguntar) {
+      throw new ErrorEstudio(
+        [`Este pedido cuesta ${textoCosto(costoEstimado)}. Confírmalo para seguir.`, textoDelMotivo({ ...d, tope }),
+          d.motivo === "otro_motor" ? `${modelo.nombre} no es el modelo de este cliente: con «crear sin preguntar» fijado, otro motor se confirma.` : ""].filter(Boolean).join(" "),
+        409, { codigo: "confirmar", costo: costoEstimado, motivo: d.motivo },
+      );
+    }
   }
   if (costoEstimado > 0) {
     const bloqueo = await bloqueoPorPresupuesto(acceso);

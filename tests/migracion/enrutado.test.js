@@ -477,10 +477,10 @@ describe("tareas terminadas, responsables y ajustes", () => {
 
   it("sin ajustes guardados, las terminadas no se borran solas", async () => {
     const res = await worker.fetch(pedirJSON("/api/ajustes", "GET"), await entorno());
-    // Y la IA en sus valores por defecto: Sonnet 5 con razonamiento alto.
+    // Y la IA en sus valores por defecto: Sonnet 5 con razonamiento alto, y las imágenes preguntando (sin_preguntar 0).
     expect(await res.json()).toEqual({
       purga_tareas: "nunca", ia_modelo: "sonnet", ia_razonamiento: "alto",
-      ia_razonamiento_chat: null, ia_modelos: {}, presupuesto_usd: 30, al_limite: "avisar", meta: false,
+      ia_razonamiento_chat: null, ia_modelos: {}, presupuesto_usd: 30, al_limite: "avisar", sin_preguntar_usd: 0, meta: false,
     });
   });
 

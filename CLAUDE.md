@@ -140,6 +140,11 @@ src/
     estudioCatalogo.js    El Estudio: modelos (Google, fal.ai, Higgsfield), ajustes, costo estimado,
                           validar un pedido, ordenar/filtrar la lista, papelera (puro; también lo
                           importa el Worker)
+    sinPreguntar.js       «Crear imágenes sin preguntar»: CONFIRMAR_DESDE (0,50 $), el tope del espacio, ¿se pregunta este
+                          pedido? (sólo imágenes, con el modelo del cliente, dentro del tope; otro motor sugerido se
+                          pregunta) y sus frases (puro; también el Worker)
+    sinPreguntarApi.js    El tope del espacio desde la pantalla (recordado un minuto), el «¿Sigo?» con el ajuste delante y
+                          «No volver a preguntar» (lo enciende el administrador)
     estudioHiggsfield.json  Los modelos de Higgsfield (también los que siguen un video), GENERADOS de su esquema: no se edita a mano
                           (`node scripts/estudio/generar-higgsfield.mjs`)
     estudioMercado.js     El estudio de mercado: catálogo (productos y precios), lo general (perfiles, deseos de
@@ -488,6 +493,7 @@ src/
     Presencia.jsx         Avatares, estado de la conexión, «X está editando»
     SelectorFecha.jsx     Calendario del mes para escoger una fecha (portal)
     SeccionIA.jsx         Ajustes → IA: modelo, nivel al escribir, nivel del asistente
+    SinPreguntarAjuste.jsx  Ajustes → IA → «Crear imágenes sin preguntar»: la casilla y el tope por pedido (sólo el administrador)
     SeccionPresupuesto.jsx  Ajustes → presupuesto, qué pasa al llegar, consumo por día/cliente
     SeccionDrive.jsx      Ajustes → Integraciones: conectar Google Drive
     SeccionMeta.jsx       Ajustes → Integraciones: conectar Meta y asignar cuentas
@@ -865,7 +871,7 @@ container/                El Container del video animado (Node + @napi-rs/canvas
                           /render (render.mjs) con el MISMO motor de src/lib; los clips de video (clips.mjs, PUT /clip/<id>);
                           probar.mjs, probarAudio.mjs y probarClips.mjs son sus pruebas (job «contenedor»)
 migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales, 0033 kit de marca, 0034 estudio de mercado, 0035 ritmo de contenido, 0036 inventario, 0037 plantillas de plan, 0038 campañas con varios conjuntos y anuncios, 0039 estratega, 0040 historial de anuncios, 0041 informe de anuncios, 0042 galería agrupada y repetidos, 0043 conversaciones del asistente, 0044 banco de ideas único, 0045 fórmulas UGC, 0046 inspiración, 0047 conversaciones de diseño, 0048 historias automáticas, 0049 encargos del Estudio: lote y carrusel, 0050 historias apartadas, 0051 notas fijas de los días, 0052 programar al aprobar por cliente, 0053 qué se le cambió a una nota, 0054 qué redes entran en el informe, 0055 hasta 5 historias automáticas al día, 0056 los días fijos de cada empresa, 0057 la lista aplicada de una auditoría, 0058 la caché de Scrape Creators, 0059 proyectos de video animado, 0060 sonido e historial de los videos, 0061 recetas y «Crear con Claude», 0062 «Lo mejor del momento»)
-migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales, 0033 kit de marca, 0034 estudio de mercado, 0035 ritmo de contenido, 0036 inventario, 0037 plantillas de plan, 0038 campañas con varios conjuntos y anuncios, 0039 estratega, 0040 historial de anuncios, 0041 informe de anuncios, 0042 galería agrupada y repetidos, 0043 conversaciones del asistente, 0044 banco de ideas único, 0045 fórmulas UGC, 0046 inspiración, 0047 conversaciones de diseño, 0048 historias automáticas, 0049 encargos del Estudio: lote y carrusel, 0050 historias apartadas, 0051 notas fijas de los días, 0052 programar al aprobar por cliente, 0053 qué se le cambió a una nota, 0054 qué redes entran en el informe, 0055 hasta 5 historias automáticas al día, 0056 los días fijos de cada empresa, 0057 la lista aplicada de una auditoría, 0058 la caché de Scrape Creators, 0059 proyectos de video animado, 0060 sonido e historial de los videos, 0061 recetas y «Crear con Claude», 0063 de dónde sale un video animado, 0066 el plan semanal único, 0068 TikTok y tendencias por Scrape Creators, 0069 números del negocio, 0070 las ventas de la semana, 0071 la revisión 3Q, 0072 WhatsApp y la voz del cliente, 0073 qué publicación es cada anuncio)
+migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales, 0033 kit de marca, 0034 estudio de mercado, 0035 ritmo de contenido, 0036 inventario, 0037 plantillas de plan, 0038 campañas con varios conjuntos y anuncios, 0039 estratega, 0040 historial de anuncios, 0041 informe de anuncios, 0042 galería agrupada y repetidos, 0043 conversaciones del asistente, 0044 banco de ideas único, 0045 fórmulas UGC, 0046 inspiración, 0047 conversaciones de diseño, 0048 historias automáticas, 0049 encargos del Estudio: lote y carrusel, 0050 historias apartadas, 0051 notas fijas de los días, 0052 programar al aprobar por cliente, 0053 qué se le cambió a una nota, 0054 qué redes entran en el informe, 0055 hasta 5 historias automáticas al día, 0056 los días fijos de cada empresa, 0057 la lista aplicada de una auditoría, 0058 la caché de Scrape Creators, 0059 proyectos de video animado, 0060 sonido e historial de los videos, 0061 recetas y «Crear con Claude», 0063 de dónde sale un video animado, 0066 el plan semanal único, 0068 TikTok y tendencias por Scrape Creators, 0069 números del negocio, 0070 las ventas de la semana, 0071 la revisión 3Q, 0072 WhatsApp y la voz del cliente, 0073 qué publicación es cada anuncio, 0074 crear imágenes sin preguntar)
 scripts/migracion/        Volcado desde Supabase, conversión e importación
 tests/
   utils/                  Lector de wrangler.jsonc y _headers, fallos e informe
@@ -1540,7 +1546,8 @@ son del servidor.
 - **El asistente crea imágenes y videos POR EL ESTUDIO y los entrega en el chat** (`generar_imagen` con `tipo`, `estilo`,
   `confirmado`; `src/lib/piezaChat.js`). Con un cliente abierto va por el camino de UNA pieza (kit, logo, fotos del
   producto que nombra, modelo fijado) y el navegador espera el trabajo; desde 0,50 $ devuelve «NO SE CREÓ NADA» con la
-  cifra y sólo con el «sí» se repite. Sin cliente, la imagen de Gemini de siempre. El video llega como `[[video: clave]]`.
+  cifra y sólo con el «sí» se repite (salvo «crear imágenes sin preguntar» del espacio: ver «La confirmación de 0,50 $ se
+  puede fijar»). Sin cliente, la imagen de Gemini de siempre. El video llega como `[[video: clave]]`.
 - **Lo que no es prosa en el chat viaja DENTRO del texto, como marca.**
   `chat_messages.content` es texto, así que las piezas copiables
   (`[[pieza: …]]`), las imágenes generadas (`[[imagen: clave | formato]]`)
@@ -1679,8 +1686,9 @@ son del servidor.
   aproximado» en la pantalla). Un modelo con tarifa por tokens conocida (`PRECIOS_GEMINI`)
   cuenta tokens; el resto, el precio del catálogo. Desde `CONFIRMAR_DESDE` (0,50 $) el
   SERVIDOR exige `confirmado: true` (409 `confirmar`), no sólo la pantalla: un asistente o
-  Claude por MCP tampoco se salta el segundo toque. Con el presupuesto agotado y «detener»
-  se rechaza antes de crear, y otra vez antes de cada imagen.
+  Claude por MCP tampoco se salta el segundo toque (una IMAGEN con el modelo del cliente dentro del tope de «crear sin
+  preguntar», si el espacio lo fijó, no lo pide: ver «La confirmación de 0,50 $ se puede fijar»). Con el presupuesto
+  agotado y «detener» se rechaza antes de crear, y otra vez antes de cada imagen.
   · **`/api/generar-imagen` sigue con su contrato** (`{ clave, mimeType }`) pero llama a la
   misma `llamarGemini()` y apunta la imagen en la galería (`origen: "app"`). De esas la
   papelera quita la FILA y nunca el objeto de R2: lo puede estar usando una publicación
@@ -2046,7 +2054,8 @@ son del servidor.
 - **«Crear la imagen aquí», «Corregir esta» y «¿Qué quieres?» en la pestaña Subir** (`crearImagenDelPost` en
   lib/otraVersion.js; seccionPublicar.jsx). Un post o una historia SIN archivos se crea ahí, sin abrir el Estudio: el
   pedido listo (o la publicación mejorada una vez, que se queda en el post), el modelo fijado del cliente, su kit, las
-  fotos de su producto, su tipo, el control y el logo; confirma desde 0,50 $ como «Otra versión» y «Deshacer» la quita.
+  fotos de su producto, su tipo, el control y el logo; confirma desde 0,50 $ como «Otra versión» (salvo dentro del tope de
+  «crear sin preguntar») y «Deshacer» la quita.
   «Crear con IA» sigue para revisarlo antes. «¿Qué quieres?» (opcional, no se guarda) lo suman «Crear la imagen aquí»,
   «Otra versión» y «Recrear con mi marca» (`lineaDeIndicacion`: también a la IA que escribe la escena nueva);
   «Corregir esta» lo NECESITA y EDITA la misma imagen (`rehacerConComentario`, como «Rehacer con lo que pidió el
@@ -3926,7 +3935,8 @@ son del servidor.
   nombre, en el navegador). `guia_de_diseno` da lo que el chat recibe en su sistema (el manual, la ficha, el kit, el
   catálogo, lo que la agencia corrige; `instruccionDeDiseno(manual, { canal: "mcp" })`, con la confirmación por TEXTO) y,
   como imágenes, sus plantillas y sus «Me gusta». `disenar_piezas`: cada pieza con la ficha de Claude o sólo con su idea
-  (la diseña el director de la agencia, `fichasDeDiseno`); la primera llamada devuelve el plan con su costo y NO crea nada,
+  (la diseña el director de la agencia, `fichasDeDiseno`); la primera llamada devuelve el plan con su costo y NO crea nada
+  (salvo con «crear sin preguntar» fijado y dentro de su tope: entonces crea a la primera y lo dice),
   y sólo `confirmado: true` crea un ENCARGO del servidor (encargos.js: trabajo, proporción, control y una corrección). Un
   carrusel, en orden y en su carpeta de tipo carrusel (con tema y sin fichas, `propuesta`). Cada pieza se arma con el
   MISMO `apoyosDePieza` + `pedidoDePieza` que la pantalla, con la escena en «{{ESCENA}}»: por eso `pieza.js` importa de
@@ -3939,7 +3949,8 @@ son del servidor.
   ficha, sus herramientas y lo que exige su kit (o que NO tiene kit: lo dice y ofrece prepararlo) —`instruccionDeDiseno`,
   `resumenDelKit` en worker/rutas/chat.js—. Cosas que no se ven:
   · **`disenar_piezas` (1–12 fichas) espera un BOTÓN**: la herramienta enseña el plan con su costo y su promesa no se
-  resuelve hasta «Crear» o «Cambiar algo» (como `guardar_en_cerebro`). El botón es la confirmación del costo, como en el
+  resuelve hasta «Crear» o «Cambiar algo» (como `guardar_en_cerebro`); con «crear sin preguntar» fijado y dentro del tope,
+  la tarjeta llega ya creando, sin botón. El botón es la confirmación del costo, como en el
   lote; «Con qué modelo» escoge entre el del cliente y otra opción (`MODELOS_FINALES`). NO son «borrador» y «final»
   (decisión de la agencia: lo de Muse casi siempre ES la pieza que se usa); el asistente no ofrece `version_final` por
   su cuenta, sólo si la persona pide otro modelo. Se crea de 3 en 3 (`crearPlan`) con el control
@@ -4155,7 +4166,7 @@ son del servidor.
   («asistente», «claude») llega a cada trabajo (`datos.origen` en encargos.js). encargos.js y vistaEstudio.js se importan
   en el momento (`import()`): estáticos cerrarían el ciclo con herramientasServidor.js. Un video, sin cambios.
   · **Las historias con IA enseñan el costo y piden el sí** (`costoDeHistorias`, `modelosParaHistorias` → `costos`; el
-  botón dice «· unos X $» y un segundo toque las crea) y van en UN encargo de tres piezas. «¿Qué quieres?» del post les
+  botón dice «· unos X $» y un segundo toque las crea, salvo dentro del tope de «crear sin preguntar») y van en UN encargo de tres piezas. «¿Qué quieres?» del post les
   llega, y también al diálogo «Crear con IA» (que entonces no usa el pedido listo) y al director del carrusel
   (`indicacion` en `pedidoDeCarrusel`). «Crear con IA» lleva los productos secundarios (`inicial.post.productoIds`) y la
   plantilla que escoge el director va al motor (compositor, «Crear la imagen aquí», «Otra versión», «Recrear»).
@@ -5330,6 +5341,35 @@ son del servidor.
   lectura.
   · **Nada se ha probado contra Meta real.** Lo primero con una cuenta: abrir la revisión y mirar en `en_pauta` qué ids trajo
   cada creativo.
+- **La confirmación de 0,50 $ se puede fijar: «Crear imágenes sin preguntar»** (decisión de la agencia: «que no me
+  pregunten cada vez»; `ajustes_espacio.sin_preguntar_usd`, 0074; la regla, `decidirConfirmacion` en
+  `src/lib/sinPreguntar.js`, la misma en el Worker y en la pantalla; Ajustes → IA, `SinPreguntarAjuste.jsx`). Nulo o 0 =
+  apagado, como siempre. Encendido es un TOPE por pedido: una IMAGEN (pieza suelta, tanda del director, carrusel, las
+  historias, otra versión, corregir, recrear, el lote) con el modelo del cliente que no pase del tope se crea sin el
+  segundo «sí». Cosas que no se ven:
+  · **El SERVIDOR decide, no la pantalla** (Claude por MCP no pasa por ella): `crearTrabajo` (el 409 `confirmar` lleva
+  ahora `motivo`: «tope», «otro_motor»…), `crear_en_estudio` (`imagenPorEncargo`) y `disenar_piezas` por MCP leen el
+  ajuste con `topeSinPreguntar` (una lectura, y sólo cuando el pedido preguntaría) y, si crean sin preguntar, la respuesta
+  lo dice (`textoSinPreguntar`: «Se creó sin preguntar: la agencia lo tiene fijado en Ajustes → IA…»). La primera llamada
+  de `disenar_piezas` por MCP ya crea; un carrusel con tema se compara con lo MÁS que puede costar (8 láminas).
+  · **«El modelo del cliente»** es el fijado de su kit (`kit.modelos.imagen`) o, sin él, el predeterminado, más su relevo
+  automático de proporción (cambiar al que hace la proporción no es escoger). En `crearTrabajo` lo dice
+  `esModeloDelCliente` (estudioCatalogo.js: también el fijado para las historias y los de `RELEVO_PROPORCION`). En las
+  herramientas, «otro motor» es sólo el que pidió el ASISTENTE (`modelo` distinto del del cliente): con el ajuste
+  encendido se pregunta SIEMPRE, aunque sea barato, con «El asistente sugiere usar X en vez de Y (porque …)»
+  (`textoSugerencia`, el porqué en `motivo_modelo`, que aceptan `disenar_piezas` —chat y MCP—, `generar_imagen` y
+  `crear_en_estudio`). Si la persona se queda con el suyo, el asistente repite SIN modelo y sale directo. Con el ajuste
+  apagado, otro motor barato sale como siempre (lo decide el costo). Lo que escoge una PERSONA para esta vez («Con qué
+  modelo», el compositor) no es «otro motor»: ya lo decidió ella.
+  · **Video, voz y música preguntan siempre** (`tipo` distinto de «imagen» no entra; locucion.js y musica.js ni miran el
+  ajuste, y un test lo vigila). El presupuesto del mes («detener») se mira después, como siempre: sin presupuesto no se crea.
+  · **En la pantalla**: el «¿Sigo?» del panel (`sigue` en otraVersion.js), el segundo toque de las historias, «Diseñar las
+  aprobadas» (un video entre las piezas pregunta), «Carrusel con IA» y el compositor (GET /api/estudio trae `sinPreguntar`)
+  leen el tope con `src/lib/sinPreguntarApi.js`, recordado UN minuto (si no se puede leer, se pregunta). En el chat, la
+  tarjeta del plan (`PlanDePiezas`) llega ya «creando» sin botón; si pregunta, la casilla «No volver a preguntar» la ve
+  sólo el administrador (`fijarSinPreguntar`: el doble del pedido redondeado, o 3 $) y a los demás se les dice dónde.
+  Encenderlo o cambiarlo lo hace PUT /api/ajustes, sólo el administrador (403 a los demás), con el mismo CHECK que la base
+  (0 a 1000). Las «Recrear para…» de «Lo mejor» siguen preguntando: crean además una publicación en un día.
 
 ## Documentos relacionados
 

@@ -784,70 +784,101 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
     const ctxBase = await mod.leerContexto(client);
     const ctx = ctxBase;
     setProgreso("");
+    // Otro motor que SUGIERE el asistente (con su porqué): la tarjeta lo pregunta y la persona acepta o se queda con el suyo.
+    let sugerido = null;
+    try { sugerido = mod.modeloSugerido(ctx, entrada.modelo); } catch (e) { return { ok: false, mensaje: e.message }; }
     const borrador = mod.planDePiezas(ctx, piezas, { calidad: "borrador" });
     const conModelo = borrador.find((p) => p.modelo);
     if (!conModelo) return { ok: false, mensaje: borrador[0]?.error || "No hay ningún modelo de imagen con llave." };
     const fin = mod.modeloFinal(ctx.activos);
-    const finalPlan = fin && fin.id !== conModelo.modelo.id ? mod.planDePiezas(ctx, piezas, { calidad: "final" }).find((p) => p.modelo) : null;
+    const sugeridoPlan = sugerido ? mod.planDePiezas(ctx, piezas, { calidad: "sugerido", modelo: sugerido }).find((p) => p.modelo) : null;
+    const finalPlan = fin && fin.id !== conModelo.modelo.id && fin.id !== sugeridoPlan?.modelo.id ? mod.planDePiezas(ctx, piezas, { calidad: "final" }).find((p) => p.modelo) : null;
+    const { decidir } = await import("../lib/sinPreguntarApi");
+    const { textoSugerencia, textoSinPreguntar } = await import("../lib/sinPreguntar");
+    const sugerencia = sugeridoPlan ? textoSugerencia({ sugerido: sugeridoPlan.modelo.nombre, fijo: conModelo.modelo.nombre, motivo: entrada.motivo_modelo }) : "";
     const calidades = {
       borrador: { nombre: conModelo.modelo.nombre, costo: conModelo.costo },
+      ...(sugeridoPlan ? { sugerido: { nombre: sugeridoPlan.modelo.nombre, costo: sugeridoPlan.costo, texto: sugerencia } } : {}),
       ...(finalPlan ? { final: { nombre: finalPlan.modelo.nombre, costo: finalPlan.costo } } : {}),
     };
+    // ¿La tarjeta espera el botón? Sin «crear sin preguntar» fijado en el espacio, siempre (como antes). Con él, sólo si
+    // la tanda pasa del tope o el asistente sugiere otro motor: si no, se crea directo y la tarjeta enseña cómo salen.
+    const decision = await decidir({ costo: mod.costoDelPlan(borrador), tipo: "imagen", otroMotor: Boolean(sugeridoPlan), siempre: true });
     return new Promise((resolve) => {
+      const piezasDirectas = borrador.map((p) => ({ n: p.n, titulo: p.titulo, ficha: p.ficha }));
+      const crear = async (editadas, calidad, modoLogo, { fijar = false } = {}) => {
+        // «No volver a preguntar» (sólo el administrador): enciende el ajuste del espacio con un tope razonable.
+        if (fijar) {
+          try {
+            const { fijarSinPreguntar } = await import("../lib/sinPreguntarApi");
+            const { textoEncendido } = await import("../lib/sinPreguntar");
+            const costoTanda = (calidades[calidad]?.costo ?? calidades.borrador.costo) * editadas.length;
+            const tope = await fijarSinPreguntar(costoTanda);
+            setPlanDiseno((pl) => pl && { ...pl, aviso: textoEncendido(tope) });
+          } catch (e) {
+            setPlanDiseno((pl) => pl && { ...pl, aviso: `No se pudo fijar: ${e.message}` });
+          }
+        }
+        // Las fichas corregidas en la tarjeta mandan; las quitadas no van. El logo, como se escogió para esta tanda.
+        const entradaFinal = editadas.map((e) => ({ ...piezas[e.n - 1], titulo: e.titulo, ficha: e.ficha }));
+        const ctx = mod.conModoDeLogo(ctxBase, modoLogo);
+        const plan = mod.planDePiezas(ctx, entradaFinal, { calidad, modelo: sugerido });
+        setPlanDiseno((pl) => pl && { ...pl, piezas: plan.map((p) => ({ n: p.n, titulo: p.titulo, ficha: p.ficha })), estado: "creando", avance: {} });
+        const cal = calRef.current;
+        const resultados = await mod.crearPlan(ctx, plan, {
+          calendarId: cal ? cal.dbId || calId : null,
+          carrusel: entrada.carrusel === true ? String(entrada.concepto || plan[0]?.titulo || "Carrusel") : "",
+          alAvanzar: (n, est) => setPlanDiseno((pl) => pl && { ...pl, avance: { ...pl.avance, [n]: est } }),
+        });
+        setPlanDiseno((pl) => pl && { ...pl, estado: "hecho" });
+        const lineas = [];
+        const imagenes = [];
+        const paraElModelo = [];
+        for (const r of resultados) {
+          const p = plan[r.n - 1];
+          if (!r.archivo) { lineas.push(`${r.n}. «${p.titulo}»: NO salió (${r.error}).`); continue; }
+          const enPost = p.postId ? ponerEnElCalendario({ archivo: r.archivo, postId: p.postId, ficha: p.ficha }) : false;
+          if (enPost) void mod.apuntarUso?.(ctx.clienteId, r.archivo.id, { calendarId: cal?.dbId || calId, postId: p.postId });
+          lineas.push(`${r.n}. «${p.titulo}» → archivo_id ${r.archivo.id}${p.postId ? (enPost ? ` (puesta en la publicación ${p.postId})` : ` (no encontré la publicación ${p.postId} en el mes abierto)`) : ""}.`);
+          imagenes.push({ clave: r.archivo.clave, formato: mod.formatoDe(r.archivo), id: r.archivo.id });
+          const [bloque] = await mod.paraElModelo([r.archivo]);
+          if (bloque) paraElModelo.push({ type: "text", text: `Pieza ${r.n} «${p.titulo}» (archivo_id ${r.archivo.id}):` }, bloque);
+        }
+        const hechas = imagenes.length;
+        // Un carrusel para un post: sus láminas, en orden, en ESE post (no lámina por lámina, que se perdía).
+        const carruselId = resultados.find((r) => r.carpetaId)?.carpetaId ?? "";
+        let enElPost = "";
+        if (entrada.carrusel === true && carruselId) {
+          const postCarrusel = String(entrada.post_id ?? "").trim();
+          if (postCarrusel) {
+            const laminas = resultados.filter((r) => r.archivo).map((r) => r.archivo);
+            const puesto = laminas.length ? await ponerPiezasEnPost(mod, ctx.clienteId, postCarrusel, laminas, "reemplazar") : { error: "No salió ninguna lámina." };
+            enElPost = puesto.error ? `\nNo se pudo poner en la publicación: ${puesto.error}` : `\nPuesto en la publicación ${postCarrusel}: ${puesto.puestas} láminas en orden, listas para revisar.`;
+          }
+          enElPost += `\ncarrusel_id ${carruselId} (para ponerlo en un post: poner_en_publicacion).`;
+        }
+        const directo = decision.sinPreguntar && !fijar && editadas === piezasDirectas ? `\n${textoSinPreguntar(decision.tope)}` : "";
+        resolve({
+          ok: hechas > 0,
+          mensaje: `${hechas} de ${plan.length} creadas con ${plan.find((p) => p.modelo)?.modelo.nombre ?? "el modelo del cliente"}. Están en la galería y la persona ya las ve.${directo}\n${lineas.join("\n")}${enElPost}\nAhora MÍRALAS (van abajo): si alguna tiene una falta, un texto ilegible o se sale del sistema, corrígela antes de darla por buena.`,
+          _imagenes: imagenes, _paraModelo: paraElModelo,
+        });
+      };
       setPlanDiseno({
         concepto: String(entrada.concepto ?? "").slice(0, 400),
-        piezas: borrador.map((p) => ({ n: p.n, titulo: p.titulo, ficha: p.ficha })),
-        calidades, estado: "revisar", avance: {}, logo: mod.logoDelKit(ctx.kit),
+        piezas: piezasDirectas,
+        calidades, estado: decision.preguntar ? "revisar" : "creando", avance: {}, logo: mod.logoDelKit(ctx.kit),
+        // Por qué se pregunta pese a «crear sin preguntar» (pasa del tope) y si se puede fijar desde aquí; sin preguntar,
+        // lo que la tarjeta dice mientras se crean.
+        motivo: decision.motivo, tope: decision.tope, aviso: decision.preguntar ? "" : textoSinPreguntar(decision.tope),
         cancelar: () => {
           setPlanDiseno(null);
           resolve({ ok: false, mensaje: "La persona no creó el plan: quiere cambiar algo. Pregúntale qué, en una línea, y vuelve a proponerlo." });
         },
-        crear: async (editadas, calidad, modoLogo) => {
-          // Las fichas corregidas en la tarjeta mandan; las quitadas no van. El logo, como se escogió para esta tanda.
-          const entradaFinal = editadas.map((e) => ({ ...piezas[e.n - 1], titulo: e.titulo, ficha: e.ficha }));
-          const ctx = mod.conModoDeLogo(ctxBase, modoLogo);
-          const plan = mod.planDePiezas(ctx, entradaFinal, { calidad });
-          setPlanDiseno((pl) => pl && { ...pl, piezas: plan.map((p) => ({ n: p.n, titulo: p.titulo, ficha: p.ficha })), estado: "creando", avance: {} });
-          const cal = calRef.current;
-          const resultados = await mod.crearPlan(ctx, plan, {
-            calendarId: cal ? cal.dbId || calId : null,
-            carrusel: entrada.carrusel === true ? String(entrada.concepto || plan[0]?.titulo || "Carrusel") : "",
-            alAvanzar: (n, est) => setPlanDiseno((pl) => pl && { ...pl, avance: { ...pl.avance, [n]: est } }),
-          });
-          setPlanDiseno((pl) => pl && { ...pl, estado: "hecho" });
-          const lineas = [];
-          const imagenes = [];
-          const paraElModelo = [];
-          for (const r of resultados) {
-            const p = plan[r.n - 1];
-            if (!r.archivo) { lineas.push(`${r.n}. «${p.titulo}»: NO salió (${r.error}).`); continue; }
-            const enPost = p.postId ? ponerEnElCalendario({ archivo: r.archivo, postId: p.postId, ficha: p.ficha }) : false;
-            if (enPost) void mod.apuntarUso?.(ctx.clienteId, r.archivo.id, { calendarId: cal?.dbId || calId, postId: p.postId });
-            lineas.push(`${r.n}. «${p.titulo}» → archivo_id ${r.archivo.id}${p.postId ? (enPost ? ` (puesta en la publicación ${p.postId})` : ` (no encontré la publicación ${p.postId} en el mes abierto)`) : ""}.`);
-            imagenes.push({ clave: r.archivo.clave, formato: mod.formatoDe(r.archivo), id: r.archivo.id });
-            const [bloque] = await mod.paraElModelo([r.archivo]);
-            if (bloque) paraElModelo.push({ type: "text", text: `Pieza ${r.n} «${p.titulo}» (archivo_id ${r.archivo.id}):` }, bloque);
-          }
-          const hechas = imagenes.length;
-          // Un carrusel para un post: sus láminas, en orden, en ESE post (no lámina por lámina, que se perdía).
-          const carruselId = resultados.find((r) => r.carpetaId)?.carpetaId ?? "";
-          let enElPost = "";
-          if (entrada.carrusel === true && carruselId) {
-            const postCarrusel = String(entrada.post_id ?? "").trim();
-            if (postCarrusel) {
-              const laminas = resultados.filter((r) => r.archivo).map((r) => r.archivo);
-              const puesto = laminas.length ? await ponerPiezasEnPost(mod, ctx.clienteId, postCarrusel, laminas, "reemplazar") : { error: "No salió ninguna lámina." };
-              enElPost = puesto.error ? `\nNo se pudo poner en la publicación: ${puesto.error}` : `\nPuesto en la publicación ${postCarrusel}: ${puesto.puestas} láminas en orden, listas para revisar.`;
-            }
-            enElPost += `\ncarrusel_id ${carruselId} (para ponerlo en un post: poner_en_publicacion).`;
-          }
-          resolve({
-            ok: hechas > 0,
-            mensaje: `${hechas} de ${plan.length} creadas con ${plan.find((p) => p.modelo)?.modelo.nombre ?? "el modelo del cliente"}. Están en la galería y la persona ya las ve.\n${lineas.join("\n")}${enElPost}\nAhora MÍRALAS (van abajo): si alguna tiene una falta, un texto ilegible o se sale del sistema, corrígela antes de darla por buena.`,
-            _imagenes: imagenes, _paraModelo: paraElModelo,
-          });
-        },
+        crear,
       });
+      // Fijado «sin preguntar» y dentro del tope, con el modelo del cliente: se crea YA; la tarjeta enseña cómo salen.
+      if (!decision.preguntar) void crear(piezasDirectas, "borrador", mod.logoDelKit(ctx.kit).modo);
     });
   }, [client, calId, ponerEnElCalendario, ponerPiezasEnPost]);
 
@@ -979,16 +1010,18 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
       if (client) {
         setProgreso(video ? "Preparando el video con el kit de la marca…" : `Preparando la imagen con el kit de la marca (${FORMATOS_IMAGEN[formato].label})…`);
         try {
-          const { crearPiezaParaElChat, fraseDeConfirmar, apuntarUso } = await import("../lib/piezaChat");
+          const { crearPiezaParaElChat, fraseDeConfirmar, fraseSinPreguntar, apuntarUso } = await import("../lib/piezaChat");
           const r = await crearPiezaParaElChat({
             cliente: client, idea: toolInput.prompt, tipo: video ? "video" : "imagen", formato,
             estilo: toolInput.estilo || "", confirmado: toolInput.confirmado === true, alProgresar: setProgreso,
+            // Otro motor que sugiere el asistente (con su porqué): con «crear sin preguntar» fijado, se pregunta.
+            modelo: toolInput.modelo || "", motivoModelo: toolInput.motivo_modelo || "",
           });
           if (r.confirmar) return { ok: false, mensaje: fraseDeConfirmar(r, video) };
           // La imagen vuelve al modelo para que la mire (antes sólo recibía «Imagen creada»).
           const vista = video ? [] : await import("../lib/disenoChat").then((m) => m.paraElModelo([r.archivo])).catch(() => []);
           const entregada = { ok: true, ...(video ? { _video: { clave: r.archivo.clave } } : { _imagen: { clave: r.archivo.clave, formato, id: r.archivo.id }, _paraModelo: vista }) };
-          const dicho = `${video ? "Video" : "Imagen"} creada en el Estudio con el kit de ${client.name} (${r.modelo.nombre}, archivo_id ${r.archivo.id}) y mostrada en el chat; también queda en su galería.`;
+          const dicho = `${video ? "Video" : "Imagen"} creada en el Estudio con el kit de ${client.name} (${r.modelo.nombre}, archivo_id ${r.archivo.id}) y mostrada en el chat; también queda en su galería.${fraseSinPreguntar(r)}`;
           if (!toolInput.post_id) return { ...entregada, mensaje: dicho };
           if (!post || !calId || !onUpdateCal) return { ...entregada, mensaje: `${dicho} No encontré la publicación ${toolInput.post_id} para ponerla.` };
           const medio = { src: r.archivo.src, tipo: video ? "video" : "imagen", nombre: r.archivo.prompt?.slice(0, 40) || (video ? "video" : "imagen") };

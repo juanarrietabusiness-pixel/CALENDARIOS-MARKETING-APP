@@ -42,9 +42,10 @@
 
 import {
   MODELOS, modeloPorId, modeloPorDefecto, nombreDelModelo, textoCosto, MAX_VIDEOS_POR_PEDIDO, NOMBRE_ESTADO, estaVivo, MAX_PROMPT,
-  modeloQueRespeta, validarPedido, pideConfirmar,
+  modeloQueRespeta, validarPedido, estimar, ajustesDe,
 } from "../../../src/lib/estudioCatalogo.js";
-import { bloqueoPorPresupuesto } from "../configIA.js";
+import { bloqueoPorPresupuesto, topeSinPreguntar } from "../configIA.js";
+import { decidirConfirmacion, textoSinPreguntar, textoSugerencia, textoDelMotivo } from "../../../src/lib/sinPreguntar.js";
 import { ESCENA } from "../../../src/lib/encargos.js";
 import { estadoMotores } from "./motores.js";
 import { crearTrabajo, trabajoPublico, ErrorEstudio } from "./trabajos.js";
@@ -110,6 +111,8 @@ export const DEFINICIONES_ESTUDIO = Object.freeze([
       "Para una imagen suelta que deba verse aquí mismo en el chat, usa generar_imagen; esta es para video, para varias variantes, para elegir modelo " +
       "o para partir de imágenes de la galería. Cuesta dinero: si el pedido sale caro, la respuesta trae el costo y NO se crea nada hasta confirmarlo. " +
       "Entonces pregúntale al usuario, con la cifra, y sólo si dice que sí vuelve a llamarla con confirmado=true. Nunca pongas confirmado=true por tu cuenta. " +
+      "Si la agencia tiene fijado «crear sin preguntar» (Ajustes → IA), una imagen con el modelo del cliente dentro de su tope se crea a la primera, y la respuesta lo dice. " +
+      "Puedes SUGERIR otro motor (modelo) sólo cuando de verdad convenga —un texto exacto largo que el del cliente escribe mal, una proporción que no hace— y diciendo por qué en motivo_modelo: entonces se pregunta a la persona, que acepta o se queda con el suyo. " +
       `Topes: hasta ${LIMITES.imagenes} imágenes o ${LIMITES.videos} videos por pedido, y ${LIMITES.segundos} s por video.`,
     input_schema: {
       type: "object",
@@ -117,7 +120,8 @@ export const DEFINICIONES_ESTUDIO = Object.freeze([
         ...clienteParam,
         tipo: { type: "string", enum: ["imagen", "video"], description: "Por defecto, imagen." },
         prompt: { type: "string", description: "Qué crear: sujeto, composición, luz, estilo y, si hace falta, el texto exacto. Incluye lo esencial de la guía visual de ver_estudio." },
-        modelo: { type: "string", description: "ID de un modelo de ver_estudio. Si se omite, el predeterminado del tipo." },
+        modelo: { type: "string", description: "ID de un modelo de ver_estudio. Si se omite, el del cliente (el fijado en su kit, o el predeterminado). Pide otro sólo si de verdad conviene, con motivo_modelo." },
+        motivo_modelo: { type: "string", description: "Si pides un modelo que no es el del cliente: por qué, en una frase corta («el titular es largo y Muse lo escribe mal»). Se le enseña a la persona." },
         cantidad: { type: "integer", description: "Cuántas variantes. Por defecto 1." },
         formato: { type: "string", enum: ["1:1", "4:5", "3:4", "9:16", "16:9"], description: "Proporción: 4:5 feed de Instagram, 9:16 historia o reel, 1:1 cuadrada, 16:9 horizontal. Cada modelo admite algunas." },
         duracion: { type: "integer", description: "Segundos de un video (el modelo admite unos valores concretos)." },
@@ -382,7 +386,7 @@ export function crearHerramientasEstudio({ env, acceso, resolverCliente, usuario
    * Luego, en el servidor: el trabajo, la proporción, el control con UNA corrección y el logo estampado si el kit lo pide.
    * El costo se confirma ANTES (el mismo «NO SE CREÓ NADA» de siempre) y el presupuesto se mira antes de crear.
    */
-  async function imagenPorEncargo({ c, modelo, n, ajustes, medios, idea, prompt, armar, acortada, estampar, estilo, confirmado }) {
+  async function imagenPorEncargo({ c, modelo, n, ajustes, medios, idea, prompt, armar, acortada, estampar, estilo, confirmado, fijo = null, motivoModelo = "" }) {
     if (!idea.trim()) throw new ErrorHerramientaEstudio("Escribe qué quieres crear.");
     if (!(modelo.motor === "prueba" || activos()[modelo.motor])) {
       throw new ErrorHerramientaEstudio(`${modelo.nombre} no tiene su llave en este servidor: usa ver_estudio para ver los que sí.`);
@@ -390,9 +394,21 @@ export function crearHerramientasEstudio({ env, acceso, resolverCliente, usuario
     const v = validarPedido({ modelo: modelo.id, prompt, n: 1, ajustes, medios });
     if (!v.ok) throw new ErrorHerramientaEstudio(v.error);
     const costo = Math.round(v.pedido.costoEstimado * n * 1000) / 1000;
-    if (pideConfirmar(costo) && !confirmado) {
-      return `NO SE CREÓ NADA. Este pedido cuesta ${textoCosto(costo)} (${modelo.nombre}, ${n} imagen${n > 1 ? "es" : ""}). ` +
-        "Díselo al usuario con esa cifra y pregúntale si lo hago. Sólo si responde que sí, vuelve a llamar con los MISMOS datos y confirmado=true.";
+    // La confirmación: desde 0,50 $, salvo «crear sin preguntar» del espacio con el modelo del cliente y dentro del tope.
+    // Otro motor (el que pidió el asistente en vez del del cliente) se pregunta, con la sugerencia y su porqué.
+    const otroMotor = Boolean(fijo) && fijo.id !== modelo.id;
+    const tope = confirmado ? 0 : await topeSinPreguntar(acceso);
+    const d = decidirConfirmacion({ tope, costo, tipo: "imagen", otroMotor });
+    if (d.preguntar && !confirmado) {
+      const sugerencia = otroMotor ? textoSugerencia({ sugerido: modelo.nombre, fijo: fijo.nombre, motivo: motivoModelo }) : "";
+      return [
+        `NO SE CREÓ NADA. Este pedido cuesta ${textoCosto(costo)} (${modelo.nombre}, ${n} imagen${n > 1 ? "es" : ""}).`,
+        textoDelMotivo({ ...d, tope }),
+        sugerencia ? `${sugerencia} Con ${fijo.nombre} costaría ${textoCosto(Math.round(estimar(fijo, 1, ajustesDe(fijo, ajustes, medios)) * n * 1000) / 1000)}.` : "",
+        sugerencia
+          ? `Díselo al usuario con esas cifras y pregúntale cuál. Si acepta ${modelo.nombre}, vuelve a llamar con los MISMOS datos y confirmado=true; si se queda con el suyo, vuelve a llamar SIN modelo (sale con ${fijo.nombre}).`
+          : "Díselo al usuario con esa cifra y pregúntale si lo hago. Sólo si responde que sí, vuelve a llamar con los MISMOS datos y confirmado=true.",
+      ].filter(Boolean).join(" ");
     }
     const bloqueo = costo > 0 ? await bloqueoPorPresupuesto(acceso) : null;
     if (bloqueo) throw new ErrorHerramientaEstudio(bloqueo);
@@ -427,6 +443,7 @@ export function crearHerramientasEstudio({ env, acceso, resolverCliente, usuario
     const texto = [
       acortada ? `Ojo: con la marca y el logo del kit tu ficha no cabía en ${MAX_PROMPT} caracteres; se acortará quitando primero «Marca», «Evitar» y «Fondo» (el texto exacto va entero). Para la próxima, cada línea más corta.` : "",
       `Pedido creado: ${fila.id} (${modelo.nombre}, ${n} imagen${n > 1 ? "es" : ""}, costo ${textoCosto(costo)}${modelo.estimado ? ", aprox." : ""}).`,
+      d.sinPreguntar && !confirmado ? textoSinPreguntar(tope) : "",
       ficha ? "Va con tu ficha tal cual." : "La diseña primero el director de arte de la agencia (con el kit, el catálogo y el cerebro del cliente).",
       `Se hace en el servidor, como el lote: la proporción, el control de calidad (corrige sola una letra mal escrita y se queda con la mejor)${estampar ? " y el logo estampado" : ""}. Tarda de uno a pocos minutos; no hace falta esperar aquí.`,
       `Va a la galería de ${c.name} (pestaña Crear). Para saber cómo va: estado_trabajo con el ID ${fila.id}.`,
@@ -526,7 +543,9 @@ export function crearHerramientasEstudio({ env, acceso, resolverCliente, usuario
       const motores = activos();
       // Una IMAGEN sale con el modelo del CLIENTE (el fijado en su kit) salvo que se pida otro, y si ése no hace el formato
       // pedido con sus referencias, con el que lo releva (como la pantalla y el lote). Un video, como siempre.
-      let modelo = entrada.modelo ? modeloPorId(entrada.modelo) : tipo === "imagen" ? modeloFijado(motores, kitDe(c)) : modeloPorDefecto(motores, tipo);
+      // El del cliente: con él (y su relevo de proporción) vale «crear sin preguntar»; otro pedido por el asistente, se pregunta.
+      const fijo = tipo === "imagen" ? modeloFijado(motores, kitDe(c)) : null;
+      let modelo = entrada.modelo ? modeloPorId(entrada.modelo) : tipo === "imagen" ? fijo : modeloPorDefecto(motores, tipo);
       if (!entrada.modelo && modelo && tipo === "imagen" && entrada.formato) {
         modelo = modeloQueRespeta(modelo, motores, String(entrada.formato), (entrada.referencias?.length ?? 0) + (kitDe(c).logo ? 1 : 0));
       }
@@ -588,7 +607,12 @@ export function crearHerramientasEstudio({ env, acceso, resolverCliente, usuario
       // Una IMAGEN, con las mismas reglas que el lote: un ENCARGO del servidor (el director si no llega una ficha, la
       // proporción, el control con su corrección y el logo estampado si el kit lo pide).
       if (tipo === "imagen") {
-        return imagenPorEncargo({ c, modelo, n, ajustes, medios, idea, prompt, armar, acortada, estampar: entrada.sin_logo !== true && kit.logoModo === "estampado" && Boolean(kit.logo), estilo: entrada.estilo ?? "", confirmado: entrada.confirmado === true });
+        return imagenPorEncargo({
+          c, modelo, n, ajustes, medios, idea, prompt, armar, acortada, estampar: entrada.sin_logo !== true && kit.logoModo === "estampado" && Boolean(kit.logo),
+          estilo: entrada.estilo ?? "", confirmado: entrada.confirmado === true,
+          // Sólo cuenta como «otro motor» lo que pidió el asistente; el relevo de proporción no es una elección.
+          fijo: entrada.modelo ? fijo : null, motivoModelo: String(entrada.motivo_modelo ?? "").slice(0, 240),
+        });
       }
 
       let fila;

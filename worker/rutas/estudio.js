@@ -101,12 +101,13 @@ import {
 } from "../lib/estudio/galeria.js";
 import { crearEncargo, avanzarEncargo, cancelarEncargo, finalesDePaso, encargoPublico, encargoConArchivos, accionDeReel } from "../lib/estudio/encargos.js";
 import { ponerPiezasEnPost, ErrorPoner } from "../lib/estudio/ponerPiezas.js";
+import { topeSinPreguntar } from "../lib/configIA.js";
 
 const ID = /^[\w-]{1,80}$/;
 
 
 /** Una respuesta de error de este módulo: lleva además el `codigo` y el costo, que la pantalla usa para pedir confirmación. */
-const fallo = (e) => json({ error: e.message, ...(e.codigo ? { codigo: e.codigo } : {}), ...(e.costo != null ? { costo: e.costo } : {}), ...(e.usos != null ? { usos: e.usos } : {}), ...(e.que ? { que: e.que } : {}) }, e.estado ?? 400);
+const fallo = (e) => json({ error: e.message, ...(e.codigo ? { codigo: e.codigo } : {}), ...(e.costo != null ? { costo: e.costo } : {}), ...(e.usos != null ? { usos: e.usos } : {}), ...(e.que ? { que: e.que } : {}), ...(e.motivo ? { motivo: e.motivo } : {}) }, e.estado ?? 400);
 
 export async function rutasEstudio(req, env, { acceso, usuario, partes, metodo }) {
   const [, a, b, c, d] = partes;
@@ -148,6 +149,9 @@ export async function rutasEstudio(req, env, { acceso, usuario, partes, metodo }
         ...(perdidas.size ? { perdidas: [...perdidas].map((c) => ({ clave: c, ...protegidas.get(c) })) } : {}),
         // Cuándo se aprobó el estudio de mercado: el semáforo de Marca pide revisarlo cada mes (curso, entrega 8).
         estudioMercado: { aprobadoAt: mercado?.estudio?.aprobadoAt ?? null, conBorrador: Boolean(mercado?.borrador) },
+        // «Crear imágenes sin preguntar» del espacio (Ajustes → IA): el tope por pedido, 0 = apagado. El compositor lo
+        // mira antes de su «¿Seguimos?» (src/lib/sinPreguntar.js).
+        sinPreguntar: await topeSinPreguntar(acceso),
       });
     }
 

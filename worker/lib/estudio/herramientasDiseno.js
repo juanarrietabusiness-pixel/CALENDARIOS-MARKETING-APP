@@ -19,7 +19,9 @@
 // pedida desde el chat de la aplicación.
 //
 // EL COSTO SE CONFIRMA POR TEXTO. El chat tiene un botón; aquí la primera llamada devuelve el plan y la cifra, y sólo
-// `confirmado: true` (el booleano, tras el «sí» de la persona) crea el encargo.
+// `confirmado: true` (el booleano, tras el «sí» de la persona) crea el encargo. Salvo que el espacio tenga fijado «crear
+// imágenes sin preguntar» (Ajustes → IA, src/lib/sinPreguntar.js): con el modelo del cliente y dentro del tope, la
+// primera llamada ya crea y lo dice. Si Claude sugiere OTRO modelo (`modelo` + `motivo_modelo`), siempre se pregunta.
 //
 // Sólo existen en el MCP: el asistente de la aplicación tiene las suyas, con el mismo nombre, en el navegador.
 // ============================================================
@@ -48,6 +50,8 @@ import { pedidoDeCorreccion, modeloParaCorregir, proporcionDeMedidas } from "../
 import { conHistoriaEncajada } from "../redesServidor.js";
 import { vistaDeEncargo, vistaDeTrabajo } from "./vistaEstudio.js";
 import { vistaDe } from "../mcpVista/modelo.js";
+import { topeSinPreguntar } from "../configIA.js";
+import { decidirConfirmacion, textoSinPreguntar, textoSugerencia, textoDelMotivo } from "../../../src/lib/sinPreguntar.js";
 
 /** Un error de lo pedido: vuelve a Claude como resultado con `isError`, no como fallo del servidor. */
 export class ErrorDiseno extends Error {}
@@ -101,9 +105,10 @@ export function fotosDeLaPieza(productos = [], pieza = {}, huecos = 0) {
  * El pedido y el costo de cada pieza, sin crear nada: el MISMO armado que el chat de la aplicación (`planDePiezas`), con
  * la escena en el hueco. → [{ ...pieza, modelo, costo, pedido } | { ...pieza, error }]. Pura salvo por los imports.
  */
-export function planDeDiseno(ctx, piezas = [], { productosTanda = [] } = {}) {
+export function planDeDiseno(ctx, piezas = [], { productosTanda = [], modelo: elegido = null } = {}) {
   const { kit, activos, productos = [], archivos = [], cliente } = ctx;
-  const modelo = modeloDelCliente(activos, kit);
+  // El del cliente; `elegido`, el que sugirió Claude (antes se pregunta: ver disenar_piezas).
+  const modelo = elegido ?? modeloDelCliente(activos, kit);
   return (Array.isArray(piezas) ? piezas : []).slice(0, MAX_FICHAS).map((x, i) => {
     const p = limpiarPiezaMcp(x, i, productosTanda);
     if (!p.ficha && !p.idea) return { ...p, error: "Falta la ficha de esta pieza (o, para que la diseñe el director, su idea)." };
@@ -144,7 +149,7 @@ export function pasoDelPlan(p, { calendarioDePost = {}, productos = [], estampa 
 }
 
 /** El texto del plan que se le enseña a Claude (y él a la persona) antes de confirmar. Pura. */
-export function textoDelPlan(plan, { carrusel = false, cliente = "" } = {}) {
+export function textoDelPlan(plan, { carrusel = false, cliente = "", sugerencia = "", motivo = "" } = {}) {
   const buenas = plan.filter((p) => !p.error);
   const total = buenas.reduce((t, p) => t + (p.costo || 0), 0);
   return [
@@ -152,16 +157,19 @@ export function textoDelPlan(plan, { carrusel = false, cliente = "" } = {}) {
     ...plan.map((p) => (p.error
       ? `${p.n}. ${p.titulo} — NO VA: ${p.error}`
       : `${p.n}. ${p.titulo} · ${PROPORCION[p.formato]} · ${nombreDelModelo(p.modelo.id)} · ${textoCosto(p.costo)} · ${p.ficha ? "con tu ficha" : "la diseña el director de la agencia"}${p.postId ? ` · para la publicación ${p.postId}` : ""}`)),
-    "Dile a la persona el plan y la cifra. Sólo si dice que sí, repite la MISMA llamada con confirmado=true.",
-  ].join("\n");
+    motivo,
+    sugerencia
+      ? `${sugerencia} Dile a la persona el plan, la cifra y por qué. Si acepta, repite la MISMA llamada con confirmado=true; si se queda con el suyo, repítela SIN modelo.`
+      : "Dile a la persona el plan y la cifra. Sólo si dice que sí, repite la MISMA llamada con confirmado=true.",
+  ].filter(Boolean).join("\n");
 }
 
 /** El plan como VISTA PREVIA del chat (MCP Apps): cada pieza con su formato, su modelo y su costo; «Crear» es el sí. Pura. */
-export function vistaDelPlan(plan, { carrusel = false, cliente = null } = {}) {
+export function vistaDelPlan(plan, { carrusel = false, cliente = null, sugerencia = "" } = {}) {
   const total = plan.filter((p) => !p.error).reduce((t, p) => t + (p.costo || 0), 0);
   return vistaDe({
     tipo: "plan", titulo: `Plan ${carrusel ? "del carrusel" : "de diseño"}${cliente?.nombre ? ` · ${cliente.nombre}` : ""}`, cliente,
-    subtitulo: `${plan.filter((p) => !p.error).length} ${carrusel ? "láminas" : "piezas"} · nada se ha creado todavía`,
+    subtitulo: `${plan.filter((p) => !p.error).length} ${carrusel ? "láminas" : "piezas"} · nada se ha creado todavía${sugerencia ? ` · ${sugerencia}` : ""}`,
     plan: {
       costo: textoCosto(total),
       piezas: plan.map((p) => ({
@@ -200,7 +208,7 @@ export const DEFINICIONES_DISENO_MCP = Object.freeze([
   },
   {
     name: "disenar_piezas",
-    description: "Diseña de 1 a 12 piezas de imagen (posts, historias, portadas, anuncios o las láminas de UN carrusel) para un cliente, por el mismo camino que la aplicación: su kit, las fotos REALES de sus productos, el control de calidad. Cada pieza con su FICHA (escrita por ti con guia_de_diseno) o sólo con «idea» y «texto» (la diseña el director de la agencia). La PRIMERA llamada, sin confirmado, NO crea nada: devuelve el plan con el costo. Díselo a la persona y, sólo con su «sí», repite la MISMA llamada con confirmado=true. Nunca pongas confirmado=true por tu cuenta. Se hace en el servidor: mira cómo va con estado_encargo.",
+    description: "Diseña de 1 a 12 piezas de imagen (posts, historias, portadas, anuncios o las láminas de UN carrusel) para un cliente, por el mismo camino que la aplicación: su kit, las fotos REALES de sus productos, el control de calidad. Cada pieza con su FICHA (escrita por ti con guia_de_diseno) o sólo con «idea» y «texto» (la diseña el director de la agencia). La PRIMERA llamada, sin confirmado, NO crea nada: devuelve el plan con el costo. Díselo a la persona y, sólo con su «sí», repite la MISMA llamada con confirmado=true. Nunca pongas confirmado=true por tu cuenta. EXCEPCIÓN: si la agencia tiene fijado «crear sin preguntar» (Ajustes → IA) y el plan va con el modelo del cliente sin pasar de su tope, la primera llamada YA CREA, y la respuesta lo dice. Va con el modelo del cliente; puedes SUGERIR otro (modelo + motivo_modelo) sólo cuando de verdad convenga —un texto exacto largo que el suyo escribe mal, una proporción que no hace—: entonces se pregunta a la persona con la cifra y el porqué. Se hace en el servidor: mira cómo va con estado_encargo.",
     inputSchema: {
       type: "object",
       properties: {
@@ -228,6 +236,8 @@ export const DEFINICIONES_DISENO_MCP = Object.freeze([
             required: ["titulo"],
           },
         },
+        modelo: { type: "string", description: "Opcional: el ID de OTRO modelo de imagen (de ver_estudio) que sugieres en vez del del cliente. Sólo si de verdad conviene, con motivo_modelo." },
+        motivo_modelo: { type: "string", description: "Por qué sugieres ese modelo, en una frase corta («el titular es largo y el del cliente lo escribe mal»): se le enseña a la persona." },
         confirmado: { type: "boolean", description: "Sólo tras oír «sí» de la persona a la cifra exacta del plan." },
       },
       required: ["cliente"],
@@ -316,37 +326,61 @@ export function crearHerramientasDiseno({ env, acceso, resolverCliente, usuario,
       return vistas.length ? { texto: textoGuia, imagenes: vistas.map((v) => ({ datos: v.data, mime: v.media_type })) } : textoGuia;
     },
 
-    async disenar_piezas({ cliente, piezas = [], concepto = "", carrusel = false, post_id: postCarrusel = "", productos = [], tema = "", confirmado }) {
+    async disenar_piezas({ cliente, piezas = [], concepto = "", carrusel = false, post_id: postCarrusel = "", productos = [], tema = "", modelo: modeloId = "", motivo_modelo: motivoModelo = "", confirmado }) {
       const c = await resolverCliente(cliente);
       const ctx = await contexto(c);
       const estampa = logoEstampado(ctx.kit);
       const esCarrusel = carrusel === true;
       const lasPiezas = esCarrusel ? (Array.isArray(piezas) ? piezas : []).map((p) => ({ ...p, formato: "vertical", post_id: "" })) : piezas;
       if (!lasPiezas.length && !(esCarrusel && texto(tema, 400))) throw new ErrorDiseno("Faltan las piezas (de 1 a 12, cada una con su ficha o su idea).");
-      const plan = lasPiezas.length ? planDeDiseno(ctx, lasPiezas, { productosTanda: productos }) : [];
+      // El modelo del cliente, o el que SUGIERE Claude (con su porqué): ése se pregunta siempre.
+      const fijo = modeloDelCliente(ctx.activos, ctx.kit);
+      const pedidoModelo = String(modeloId ?? "").trim();
+      const sugerido = pedidoModelo ? modeloPorId(pedidoModelo) : null;
+      if (pedidoModelo && !(sugerido && sugerido.tipo === "imagen" && (sugerido.motor === "prueba" || ctx.activos[sugerido.motor]))) {
+        throw new ErrorDiseno(`«${pedidoModelo}» no es un modelo de imagen con llave en este servidor: mira cuáles hay con ver_estudio, o no pases modelo (va el del cliente).`);
+      }
+      const otro = sugerido && sugerido.id !== fijo?.id ? sugerido : null;
+      const plan = lasPiezas.length ? planDeDiseno(ctx, lasPiezas, { productosTanda: productos, modelo: otro }) : [];
       const buenas = plan.filter((p) => !p.error);
       if (esCarrusel && buenas.some((p) => !p.ficha)) throw new ErrorDiseno("Un carrusel va con la ficha de CADA lámina (o sin piezas y con «tema», y lo diseña el director).");
       if (!buenas.length && !(esCarrusel && tema)) throw new ErrorDiseno(plan.map((p) => `${p.n}. ${p.error}`).join("\n") || "Ninguna pieza se puede crear.");
 
       // Un carrusel sin fichas, con tema: el director lo diseña entero (una lámina de costo aproximado por cada una).
-      const modeloCarrusel = esCarrusel ? (buenas[0]?.modelo ?? modeloDelCliente(ctx.activos, ctx.kit)) : null;
+      const modeloCarrusel = esCarrusel ? (buenas[0]?.modelo ?? otro ?? fijo) : null;
       if (esCarrusel && !modeloCarrusel) throw new ErrorDiseno("No hay ningún modelo de imagen con llave (Ajustes → IA).");
 
       const quien = { id: c.id, nombre: c.name };
-      if (confirmado !== true) {
+      // ¿Se pregunta? Sin el ajuste, siempre: la primera llamada es el plan. Con «crear sin preguntar» fijado en el
+      // espacio, sólo si pasa del tope o si Claude sugiere otro motor (src/lib/sinPreguntar.js). El tope se compara con lo
+      // MÁS que puede costar: un carrusel del director, 8 láminas.
+      const una = esCarrusel && !buenas.length ? estimar(modeloCarrusel, 1, ajustesDe(modeloCarrusel, { aspectRatio: "4:5" }, {})) : 0;
+      const totalPlan = esCarrusel && !buenas.length ? una * 8 : buenas.reduce((t, p) => t + (p.costo || 0), 0);
+      const tope = confirmado === true ? 0 : await topeSinPreguntar(acceso);
+      const decision = decidirConfirmacion({ tope, costo: totalPlan, tipo: "imagen", otroMotor: Boolean(otro), siempre: true });
+      const sugerencia = otro ? textoSugerencia({ sugerido: otro.nombre, fijo: fijo?.nombre ?? "", motivo: motivoModelo }) : "";
+      const motivo = textoDelMotivo({ ...decision, tope });
+      if (confirmado !== true && decision.preguntar) {
         if (esCarrusel && !buenas.length) {
-          const una = estimar(modeloCarrusel, 1, ajustesDe(modeloCarrusel, { aspectRatio: "4:5" }, {}));
           return {
-            texto: `NO SE CREÓ NADA TODAVÍA. Un carrusel de ${c.name} sobre «${texto(tema, 120)}» que diseña el director (de 5 a 8 láminas): unos ${textoCosto(una * 6)} (${textoCosto(una)} por lámina, ${nombreDelModelo(modeloCarrusel.id)}). Dile la cifra a la persona y, sólo si dice que sí, repite la llamada con confirmado=true.`,
+            texto: [
+              `NO SE CREÓ NADA TODAVÍA. Un carrusel de ${c.name} sobre «${texto(tema, 120)}» que diseña el director (de 5 a 8 láminas): unos ${textoCosto(una * 6)} (${textoCosto(una)} por lámina, ${nombreDelModelo(modeloCarrusel.id)}).`,
+              motivo,
+              sugerencia
+                ? `${sugerencia} Dile a la persona la cifra y por qué. Si acepta, repite la llamada con confirmado=true; si se queda con el suyo, repítela SIN modelo.`
+                : "Dile la cifra a la persona y, sólo si dice que sí, repite la llamada con confirmado=true.",
+            ].filter(Boolean).join(" "),
             imagenes: [],
             vista: vistaDe({
-              tipo: "plan", titulo: `Plan del carrusel · ${c.name}`, cliente: quien, subtitulo: "Nada se ha creado todavía",
+              tipo: "plan", titulo: `Plan del carrusel · ${c.name}`, cliente: quien, subtitulo: `Nada se ha creado todavía${sugerencia ? ` · ${sugerencia}` : ""}`,
               plan: { costo: textoCosto(una * 6), piezas: [{ titulo: `Carrusel sobre «${texto(tema, 120)}»`, detalle: `De 5 a 8 láminas que diseña el director · ${textoCosto(una)} por lámina · ${nombreDelModelo(modeloCarrusel.id)}` }] },
             }),
           };
         }
-        return { texto: textoDelPlan(plan, { carrusel: esCarrusel, cliente: c.name }), imagenes: [], vista: vistaDelPlan(plan, { carrusel: esCarrusel, cliente: quien }) };
+        return { texto: textoDelPlan(plan, { carrusel: esCarrusel, cliente: c.name, sugerencia, motivo }), imagenes: [], vista: vistaDelPlan(plan, { carrusel: esCarrusel, cliente: quien, sugerencia }) };
       }
+      // Lo que se dice si se creó a la primera gracias al ajuste del espacio.
+      const sinPreguntar = confirmado !== true && decision.sinPreguntar ? textoSinPreguntar(tope) : "";
 
       // ¿De qué calendario es cada publicación? (la pieza queda unida a ella en la galería)
       const calendarioDePost = {};
@@ -379,6 +413,7 @@ export function crearHerramientasDiseno({ env, acceso, resolverCliente, usuario,
           return {
             texto: [
               `Carrusel en marcha para ${c.name}: encargo ${fila.id} (carpeta ${carpeta.id}, que es su carrusel_id).`,
+              sinPreguntar,
               "Se hace en el servidor, lámina a lámina y en orden (cada una con la anterior y la portada de referencia), con el control de calidad.",
               `Mira cómo va con estado_encargo (encargo_id ${fila.id}); al terminar te devuelve cada lámina para que la revises. La vista previa del chat enseña las láminas según salen.`,
               postId ? `Al terminar se pone SOLO en la publicación ${postId}, en su orden (para cambiarlo después: poner_en_publicacion con carrusel_id ${carpeta.id}).` : "",
@@ -398,6 +433,7 @@ export function crearHerramientasDiseno({ env, acceso, resolverCliente, usuario,
         return {
           texto: [
             `En marcha para ${c.name}: encargo ${fila.id}, ${buenas.length} pieza${buenas.length === 1 ? "" : "s"} (unos ${textoCosto(total)}).`,
+            sinPreguntar,
             plan.some((p) => p.error) ? `No van: ${plan.filter((p) => p.error).map((p) => `${p.n} (${p.error})`).join("; ")}.` : "",
             "Se hacen en el servidor, de dos en dos, con el control de calidad (corrige sola una letra mal escrita y se queda con la mejor).",
             `Mira cómo va con estado_encargo (encargo_id ${fila.id}); al terminar te devuelve cada imagen para que la revises. La vista previa del chat enseña las piezas según salen.`,

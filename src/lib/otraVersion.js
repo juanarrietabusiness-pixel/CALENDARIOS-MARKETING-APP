@@ -27,7 +27,7 @@
 // ============================================================
 
 import * as api from "./estudio";
-import { ajustesDe, estimar, modeloPorId, modeloQueRespeta, porPrecio, MODELOS, CONFIRMAR_DESDE, respetaProporcion, relevoPara, pedidoDeRecomponer } from "./estudioCatalogo";
+import { ajustesDe, estimar, modeloPorId, modeloQueRespeta, porPrecio, MODELOS, respetaProporcion, relevoPara, pedidoDeRecomponer } from "./estudioCatalogo";
 import { modeloParaCorregir } from "./edicion";
 import { ideaDelPedido, nombreDePreset, referenciaDePlantilla, lineaDePlantillaEnPedido } from "./kitMarca";
 import { apoyosDePieza, pedidoDePieza, lineaDeTexto } from "./pieza";
@@ -38,6 +38,17 @@ import { promptListo } from "./promptImagen";
 import { esperarArchivos } from "./carruselEstudio";
 import { conMarcaDeHoy } from "./marcaDeHoy";
 import { crearUnaEnServidor, pasoListo } from "./piezaServidor";
+import { decidir } from "./sinPreguntarApi";
+
+/**
+ * La pregunta del costo (`confirmar`, el «¿Sigo?» de quien llama) con «crear imágenes sin preguntar» del espacio
+ * delante (src/lib/sinPreguntar.js): una IMAGEN dentro del tope sigue sola; un video, desde 0,50 $ como siempre. Lo
+ * escogido a mano para esta vez («Con qué modelo») lo decidió la persona: no es «otro motor». → si sigue.
+ */
+async function sigue(confirmar, costo, { tipo = "imagen" } = {}) {
+  const d = await decidir({ costo, tipo });
+  return !d.preguntar || Boolean(await confirmar(costo, d));
+}
 
 const PARA_HISTORIA = new Set(["historia", "reel"]);
 
@@ -190,7 +201,7 @@ async function prepararVersion({ clienteId, client, post, medio, g, activos, ind
 }
 
 /**
- * Crea la otra versión y espera a que salga. `confirmar(costo)` se llama si cuesta desde 0,50 $ (devuelve si sigue).
+ * Crea la otra versión y espera a que salga. `confirmar(costo)` se llama si cuesta desde 0,50 $ y el espacio no lo tiene fijado «sin preguntar» (devuelve si sigue; puede ser async).
  * → el archivo nuevo de la galería, o null si no se confirmó.
  */
 export async function otraVersionDelPost({ client, post, medio, indicacion = "", modelo = "", calendarId = null, confirmar = () => true, alProgresar = () => {} }) {
@@ -198,7 +209,7 @@ export async function otraVersionDelPost({ client, post, medio, indicacion = "",
   alProgresar("Escribiendo otra escena con la misma información…");
   const { g, activos } = await leerTodo(clienteId);
   const { pedido, costo, texto } = await prepararVersion({ clienteId, client, post, medio, g, activos, indicacion, modeloId: modelo });
-  if (costo >= CONFIRMAR_DESDE && !confirmar(costo)) return null;
+  if (!(await sigue(confirmar, costo))) return null;
   alProgresar(`Creando la imagen nueva con ${modeloPorId(pedido.modelo)?.nombre ?? "el modelo"}…`);
   return crearPorElServidor({ clienteId, pedido, texto, kit: g?.kit ?? {}, post, calendarId, alProgresar, titulo: "Otra versión" });
 }
@@ -252,7 +263,7 @@ export async function crearImagenDelPost({ client, post, indicacion = "", opcion
   });
   const usado = modeloPorId(pedido.modelo) ?? modelo;
   const costo = estimar(usado, 1, pedido.ajustes);
-  if (costo >= CONFIRMAR_DESDE && !confirmar(costo)) return null;
+  if (!(await sigue(confirmar, costo))) return null;
   alProgresar(`Creando la imagen con ${usado.nombre}…`);
   const texto = post.format === "carrusel" ? "" : (post.textoPieza || textoDeLaFicha(idea) || "");
   return crearPorElServidor({ clienteId, pedido, texto, kit, post, calendarId, alProgresar, titulo: post.title || "Imagen de la publicación" });
@@ -329,7 +340,7 @@ export async function recrearConLaMarca({ client, post, medio, indicacion = "", 
   if (medio.tipo !== "video") {
     const deseada = PARA_HISTORIA.has(post.format) ? "9:16" : api.proporcionDeMedidas(medio.ancho, medio.alto) || "4:5";
     const { pedido, costo, texto, modelo } = await pedidoDeRecrear({ clienteId, client, post, refSrc: medio.src, g, activos, indicacion, modeloId, deseada, alProgresar });
-    if (costo >= CONFIRMAR_DESDE && !confirmar(costo)) return null;
+    if (!(await sigue(confirmar, costo))) return null;
     alProgresar(`Creando la imagen con ${modelo.nombre}…`);
     return crearPorElServidor({ clienteId, pedido, texto, kit, post, calendarId, alProgresar, titulo: "Recreada con la marca" });
   }
@@ -347,7 +358,7 @@ export async function recrearConLaMarca({ client, post, medio, indicacion = "", 
   const medios = { ...base.medios, video: [ref.clave] };
   const pedido = { ...base, medios, ajustes: ajustesDe(modelo, base.ajustes, medios) };
   const costo = estimar(modelo, 1, pedido.ajustes);
-  if (costo >= CONFIRMAR_DESDE && !confirmar(costo)) return null;
+  if (!(await sigue(confirmar, costo, { tipo: "video" }))) return null;
   alProgresar(`Creando el video con ${modelo.nombre} (unos minutos)…`);
   const { trabajo } = await api.pedirImagenes(clienteId, { ...pedido, confirmado: true, ...(calendarId ? { calendarId, postId: post.id } : {}) });
   const [nueva] = await esperarArchivos(clienteId, trabajo);
@@ -366,7 +377,7 @@ export async function recrearAnuncioConLaMarca({ client, archivo, version = {}, 
   const { g, activos } = await leerTodo(clienteId);
   const post = { format: "post", idea: String(version.idea ?? ""), textoPieza: String(version.texto ?? ""), productoId, productoIds: productoId ? [productoId] : [] };
   const { pedido, costo, texto, modelo } = await pedidoDeRecrear({ clienteId, client, post, refSrc: archivo.src, g, activos, deseada: "4:5", alProgresar });
-  if (costo >= CONFIRMAR_DESDE && !confirmar(costo)) return null;
+  if (!(await sigue(confirmar, costo))) return null;
   alProgresar(`Creando la imagen con ${modelo.nombre}…`);
   return crearPorElServidor({ clienteId, pedido, texto, kit: g?.kit ?? {}, post, calendarId: null, alProgresar, titulo: "Anuncio recreado con la marca" });
 }
