@@ -21,7 +21,7 @@ import "./GuionUgc.css";
 // ============================================================
 
 const tramosVacios = () => [{ desde: 0, hasta: 3, funcion: "" }, { desde: 3, hasta: 30, funcion: "" }];
-const VACIA = { nombre: "", duracion: 30, tramos: tramosVacios(), gancho: "", porQue: "", cuando: "" };
+const VACIA = { nombre: "", duracion: 30, tramos: tramosVacios(), gancho: "", porQue: "", cuando: "", variantes: "" };
 const USOS = Object.entries(USOS_ESTRUCTURA);
 
 /** «un guion UGC», «una voz en off» o las dos, para decir dónde se va a poder escoger. */
@@ -107,6 +107,10 @@ function Editor({ inicial, usoInicial, onGuardar, onCancelar, ocupado }) {
       <label className="field" htmlFor={`${ids}-c`}>
         <span className="label">Cuándo conviene</span>
         <input id={`${ids}-c`} className="input" maxLength={200} value={f.cuando} onChange={(e) => campo("cuando", e.target.value)} placeholder="Ej.: productos con un antes y un después claro" />
+      </label>
+      <label className="field" htmlFor={`${ids}-v`}>
+        <span className="label">Variantes <span className="hint">(opcional)</span></span>
+        <input id={`${ids}-v`} className="input" maxLength={300} value={f.variantes ?? ""} onChange={(e) => campo("variantes", e.target.value)} placeholder="Ej.: el gancho también vale como un dato que sorprende" />
       </label>
       {f.fuente && (f.fuente.cuenta || f.fuente.enlace) && (
         <p className="hint" style={{ margin: 0 }}>Sale de: {f.fuente.cuenta || ""} {f.fuente.enlace && <a href={f.fuente.enlace} target="_blank" rel="noreferrer">ver el video</a>}</p>
@@ -227,6 +231,7 @@ export default function FormulasUgc({ inicial = null, uso = "", onCerrar, onGuar
                     <div>
                       <strong>{f.nombre}</strong> <span className="hint">· {f.duracion} s</span> <Usos para={f.para} />
                       {f.cuando && <p className="hint" style={{ margin: 0 }}>Conviene: {f.cuando}</p>}
+                      {f.variantes && <p className="hint" style={{ margin: 0 }}>Variantes: {f.variantes}</p>}
                       <ol className="formulas-ugc-pasos">
                         {f.tramos.map((t, i) => <li key={i}>{t.desde != null ? <span className="guion-ugc-tiempo">{t.desde}–{t.hasta} s</span> : null} {t.funcion}</li>)}
                       </ol>

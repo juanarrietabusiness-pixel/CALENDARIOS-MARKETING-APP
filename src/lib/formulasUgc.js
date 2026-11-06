@@ -88,8 +88,37 @@ export function limpiarFormula(f) {
     gancho: limpio(f.gancho, 200),
     porQue: limpio(f.porQue, 300),
     cuando: limpio(f.cuando, 200),
+    // Otras formas de la misma estructura que también valen (opcional; sólo si la hay: una de antes no cambia).
+    ...(limpio(f.variantes, 300) ? { variantes: limpio(f.variantes, 300) } : {}),
     ...(Object.keys(fuente).length ? { fuente } : {}),
   };
+}
+
+/**
+ * Una estructura escrita POR TRAMOS CON PESO (lo que manda Claude por MCP: `guardar_estructura`) → la forma de siempre de
+ * la agencia (la misma que guarda Ajustes → Cómo trabajamos). Cada tramo { nombre, papel, peso, ejemplo? } pasa a su
+ * `funcion` («Nombre — papel. Ej.: «…»») y su tramo en segundos sobre `duracion`, en proporción a su peso (sin peso, a
+ * partes iguales; da igual si suman 100 o 1). → la estructura sin limpiar (la limpia `limpiarFormula`). Pura.
+ */
+export function estructuraDeTramosConPeso({ nombre = "", para = [], duracion = 30, tramos = [], tipoGancho = "", porQue = "", cuando = "", variantes = "" } = {}) {
+  const lista = (Array.isArray(tramos) ? tramos : []).filter((t) => t && (limpio(t.papel, 160) || limpio(t.nombre, 60)));
+  const d = duracionValida(duracion);
+  const pesos = lista.map((t) => (Number(t.peso) > 0 ? Number(t.peso) : 0));
+  const total = pesos.reduce((a, b) => a + b, 0);
+  const peso = (i) => (total > 0 ? (pesos[i] || total / lista.length) : 1);
+  const suma = lista.reduce((a, _, i) => a + peso(i), 0) || 1;
+  let acumulado = 0;
+  const conTiempo = lista.map((t, i) => {
+    const desde = Math.round(((acumulado / suma) * d) * 10) / 10;
+    acumulado += peso(i);
+    const hasta = i === lista.length - 1 ? d : Math.round(((acumulado / suma) * d) * 10) / 10;
+    const nombreT = limpio(t.nombre, 60);
+    const papel = limpio(t.papel, 160);
+    const ejemplo = limpio(t.ejemplo, 80);
+    const funcion = `${nombreT && papel ? `${nombreT} — ${papel}` : nombreT || papel}${ejemplo ? `. Ej.: «${ejemplo}»` : ""}`;
+    return { desde, hasta: Math.max(hasta, desde + 0.1), funcion: limpio(funcion, 160) };
+  });
+  return { nombre, para, duracion: d, tramos: conTiempo, gancho: tipoGancho, porQue, cuando, variantes };
 }
 
 /** La duración del video al que se lleva (cualquiera de 3 a 600 s: una voz en off dura 8, 10, 20…). */
@@ -138,6 +167,7 @@ export function lineaDeFormula(formula, duracion, { uso = "ugc" } = {}) {
       : `SIGUE ESTA FÓRMULA «${f.nombre}» (la forma, no el contenido): ${tramos}.`,
     f.gancho ? `Su gancho: ${f.gancho}.` : "",
     f.porQue ? `Por qué funciona: ${f.porQue}.` : "",
+    f.variantes ? `Variantes que también valen: ${f.variantes}.` : "",
   ].filter(Boolean).join(" ");
 }
 

@@ -470,6 +470,8 @@ export function describirUso(nombre, entrada = {}) {
     case "generar_locucion": return `Pidió la locución de un video animado${entrada.confirmado === true ? "" : " (sin confirmar)"}`;
     case "generar_musica": return `Pidió una música de fondo con Suno${entrada.confirmado === true ? "" : " (sin confirmar)"}`;
     case "formato_video": return "Leyó el formato de escenas del video animado";
+    case "guardar_estructura": return `${entrada.id ? "Corrigió" : "Guardó"} la estructura de guion «${entrada.nombre ?? ""}» de la agencia`;
+    case "eliminar_estructura": return "Quitó una estructura de guion de la agencia";
     case "ver_estructuras": return `Miró las estructuras de guion de la agencia${entrada.para === "voz" ? " (voz en off)" : entrada.para === "ugc" ? " (UGC)" : ""}`;
     case "listar_videos": return `Miró los videos animados${entrada.cliente ? ` de ${entrada.cliente}` : ""}`;
     case "ver_video": return "Miró un video animado";
