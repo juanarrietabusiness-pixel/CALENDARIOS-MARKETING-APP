@@ -5,6 +5,9 @@ import { COOKIE } from "../../worker/lib/sesion.js";
 import { sha256 } from "../../worker/lib/ids.js";
 import { crearAcceso } from "../../worker/lib/acceso.js";
 import { avanzarEncargo } from "../../worker/lib/estudio/encargos.js";
+import { crearHerramientasEstudio } from "../../worker/lib/estudio/herramientas.js";
+import { HERRAMIENTAS_MCP } from "../../worker/lib/mcp.js";
+import { formatoParaLaIA } from "../../src/lib/videoFormatoIA.js";
 import { EJEMPLO_GUION } from "../../src/lib/videoFormatoIA.js";
 import { marcaParaElVideo, paletaEnTokens, lineaDeReferenciasVideo } from "../../src/lib/estiloVideo.js";
 import { pedidoDeGuionAnimado, pedidoDeGuionCancion } from "../../src/lib/guionAnimadoIA.js";
@@ -277,5 +280,40 @@ describe("crear las imágenes de fondo de un video guardado", () => {
     const r = await pedir("POST", `/videos/bc/${v.id}/fondos`, { confirmado: true });
     expect(r.status).toBe(409);
     expect((await r.json()).codigo).toBe("sin_fondos");
+  });
+});
+
+describe("Claude y el asistente", () => {
+  const herramientas = () => crearHerramientasEstudio({
+    env, acceso: crearAcceso(db, JEFE), resolverCliente: async () => db.sqlite.prepare("select * from clients where id = 'bc'").get(),
+    usuario: { id: JEFE, nombre: "Juan" }, origen: "claude", por: { userId: JEFE, nombre: "Juan" },
+  });
+
+  it("formato_video explica el texto con carácter y los fondos por crear", () => {
+    const f = formatoParaLaIA();
+    expect(f).toMatch(/TEXTO CON CARÁCTER[\s\S]*\*asteriscos\*[\s\S]*gigante[\s\S]*porPalabra[\s\S]*golpe/);
+    expect(f).toMatch(/FONDO POR CREAR[\s\S]*«pide»/);
+  });
+
+  it("fondos_video está en el MCP (escribe): sin confirmar, NO SE CREÓ NADA con el costo; con el sí, el encargo", async () => {
+    const def = HERRAMIENTAS_MCP.find((x) => x.name === "fondos_video");
+    expect(def.annotations?.readOnlyHint).toBe(false);
+    expect(HERRAMIENTAS_MCP.find((x) => x.name === "video_con_cancion").inputSchema.properties.con_fondos).toBeDefined();
+    const r0 = await pedir("POST", "/videos/bc", { guion: guionConFondos(), titulo: "Las manos" });
+    const video = (await r0.json()).video;
+    const h = herramientas();
+    const visto = await h.ver_video({ video_id: video.id });
+    expect(typeof visto === "string" ? visto : visto.texto).toMatch(/Imágenes de fondo POR CREAR: 2/);
+    const sin = await h.fondos_video({ video_id: video.id });
+    expect(sin).toMatch(/^NO SE CREÓ NADA\. Crear las 2 imágenes de fondo cuesta/);
+    expect(db.sqlite.prepare("select count(*) n from estudio_encargos").get().n).toBe(0);
+    const con = await h.fondos_video({ video_id: video.id, confirmado: true });
+    expect(con).toMatch(/Pedidas las 2 imágenes de fondo/);
+    expect(db.sqlite.prepare("select count(*) n from estudio_encargos").get().n).toBe(1);
+  });
+
+  it("ver_estudio dice el estilo de los videos de la marca", async () => {
+    const r = await herramientas().ver_estudio({});
+    expect(typeof r === "string" ? r : r.texto).toMatch(/ESTILO DE LOS VIDEOS DE LA MARCA[\s\S]*Grabados bíblicos/);
   });
 });
