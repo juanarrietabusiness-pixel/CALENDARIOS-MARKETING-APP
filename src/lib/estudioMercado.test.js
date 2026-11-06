@@ -5,7 +5,7 @@ import {
   leerReferencia, notaDeReferencia, fraseActivo, diasActivo, estudioParaElKit, LIMITES_ANUNCIO, MAX_PRODUCTOS,
   productosParaPlan, mensajePedirDatos, lineaDeProducto, fechaLarga,
   pedidoDeReferenciaVideo, limpiarEstructura, estructuraATexto, pedidoDeAdaptacion, leerAdaptacion, ideaParaRecrear, ideaParaSeguirVideo,
-  limpiarReferencia, limpiarProducto, fotosDeProducto, fotosDelCatalogo,
+  limpiarReferencia, limpiarProducto, fotosDeProducto, fotosDelCatalogo, ELEMENTOS_MERCADO, elementosConAlias, resumenGeneral,
 } from "./estudioMercado";
 
 const CATALOGO = [
@@ -170,6 +170,56 @@ describe("el estudio entero", () => {
     expect(idea).toContain("«Tu sofá como nuevo en 4 horas»");
     expect(idea).toContain("escrito exactamente así: Desde $45");
     expect(estudioParaElKit(estudio)).toContain("Propuesta de valor");
+  });
+});
+
+describe("las 7 maletas del curso", () => {
+  it("son las del curso, en el orden en que se decide una compra; testimonios y garantía los da el cliente", () => {
+    expect(ELEMENTOS_MERCADO.map((e) => e.clave)).toEqual(["publico", "problema", "solucion", "diferenciales", "testimonios", "objeciones", "garantia"]);
+    expect(ELEMENTOS_MERCADO.filter((e) => e.delCliente).map((e) => e.clave)).toEqual(["testimonios", "garantia"]);
+  });
+
+  it("un estudio APROBADO con los siete elementos de antes se lee con alias, y el deseo y las alternativas no se pierden", () => {
+    const e = limpiarEstudio({ general: GENERAL, productos: { "p-lavado": PRODUCTO }, aprobadoAt: "2026-10-01T00:00:00Z" });
+    const p = e.productos["p-lavado"];
+    expect(p.elementos).toEqual({
+      publico: "Familias", problema: "Manchas", diferenciales: "Secado rápido", objeciones: "¿Daña la tela?", garantia: "Garantía de satisfacción",
+    });
+    expect(p.extra).toEqual({ deseo: "Sofá limpio", alternativas: "Hacerlo uno mismo" });
+    // La nota del cerebro (lo que lee la IA) lleva las maletas con su nombre nuevo y lo de antes aparte.
+    const nota = notasDelEstudio(e, CATALOGO).find((n) => n.ruta === "estudio-lavado-de-muebles").texto;
+    expect(nota).toContain("## Público\nFamilias");
+    expect(nota).toContain("## Garantía\nGarantía de satisfacción");
+    expect(nota).toContain("## Deseo y resultado (del estudio de antes)\nSofá limpio");
+    expect(nota).not.toMatch(/Cliente ideal|Prueba y confianza/);
+    // Leerlo dos veces da lo mismo (lo que se guarda ya limpio no cambia).
+    expect(limpiarEstudio(e)).toEqual(e);
+  });
+
+  it("«confianza» se parte: la garantía a su maleta, los clientes a testimonios (y lo que dice las dos, a las dos)", () => {
+    expect(elementosConAlias({ confianza: "Más de 300 clientes felices. Garantía de 6 meses en la tela." }))
+      .toEqual({ testimonios: "Más de 300 clientes felices.", garantia: "Garantía de 6 meses en la tela." });
+    expect(elementosConAlias({ confianza: "Reseñas de 5 estrellas" })).toEqual({ testimonios: "Reseñas de 5 estrellas" });
+    expect(elementosConAlias({ confianza: "Garantía de 1 año que nuestros clientes recomiendan" }))
+      .toEqual({ testimonios: "Garantía de 1 año que nuestros clientes recomiendan", garantia: "Garantía de 1 año que nuestros clientes recomiendan" });
+    // Lo escrito con la clave nueva manda sobre la de antes.
+    expect(elementosConAlias({ publico: "Nuevo", cliente: "Viejo" })).toEqual({ publico: "Nuevo" });
+  });
+
+  it("el pedido de un producto pide las 7 maletas y no inventa testimonios ni garantía", () => {
+    const p = pedidoDeProducto({ marca: "Dcasa", producto: CATALOGO[0], general: GENERAL });
+    expect(p).toContain('"elementos":{"publico":"…","problema":"…","solucion":"…","diferenciales":"…","testimonios":"…","objeciones":"…","garantia":"…"}');
+    expect(p).toMatch(/Testimonios y garantía, SÓLO los que estén/);
+    expect(p).not.toMatch(/"cliente":|"dolor":|"confianza":/);
+  });
+
+  it("el estudio general propone de 3 a 5 sesgos por perfil, se guardan y se leen al escribir", () => {
+    expect(pedidoGeneral({ marca: "Dcasa" })).toMatch(/«sesgos» de cada perfil: de 3 a 5 de estos[^\n]*reciprocidad[^\n]*microcompromiso/);
+    const g = leerGeneral(JSON.stringify({ ...GENERAL, perfiles: [{ ...GENERAL.perfiles[0], sesgos: ["Prueba social", "reciprocidad", "inventado"] }] }));
+    expect(g.perfiles[0].sesgos).toEqual(["prueba-social", "reciprocidad"]);
+    expect(resumenGeneral(g)).toContain("lo mueve: prueba social, reciprocidad");
+    // Uno de antes no trae sesgos: queda vacío.
+    expect(leerGeneral(JSON.stringify(GENERAL)).perfiles[0].sesgos).toEqual([]);
   });
 });
 

@@ -215,3 +215,25 @@
   overflow: hidden;
 }
 .competencia-ig-acciones { display: flex; flex-direction: column; gap: var(--sp-1); margin-top: auto; }
+
+/* El semáforo de las 7 maletas (SemaforoMaletas.jsx): verde, ámbar o rojo por maleta y por producto. */
+.maletas, .maletas-resumen { display: flex; flex-direction: column; gap: var(--sp-2); margin: var(--sp-2) 0; }
+.maletas-aviso, .maletas-resumen-titulo { margin: 0; display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; font-size: var(--fs-xs); }
+.maletas-lista, .maletas-resumen-lista { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: var(--sp-2); }
+.maletas-resumen-lista { grid-template-columns: 1fr; }
+.maletas-lista li, .maletas-resumen-lista li {
+  display: flex; align-items: flex-start; gap: var(--sp-2); flex-wrap: wrap; padding: var(--sp-2) var(--sp-3);
+  background: var(--surface-2); border-radius: var(--radius-sm); border-left: 3px solid var(--success); font-size: var(--fs-xs);
+}
+.maletas-lista li[data-estado="ambar"], .maletas-resumen-lista li[data-estado="ambar"] { border-left-color: var(--accent-alt); }
+.maletas-lista li[data-estado="rojo"], .maletas-resumen-lista li[data-estado="rojo"] { border-left-color: var(--danger); }
+.maletas-texto { flex: 1 1 160px; display: flex; flex-direction: column; min-width: 0; }
+.maletas-texto .hint { margin: 0; }
+.maletas-luz {
+  flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px;
+  border-radius: 50%; color: #06130a; background: var(--success);
+}
+[data-estado="ambar"] > .maletas-luz, .maletas[data-estado="ambar"] .maletas-aviso .maletas-luz { background: var(--accent-alt); color: #1a1200; }
+[data-estado="rojo"] > .maletas-luz, .maletas[data-estado="rojo"] .maletas-aviso .maletas-luz { background: var(--danger); color: #fff; }
+.maletas-pedir { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
+.mercado-sesgos { display: flex; flex-wrap: wrap; gap: var(--sp-1); margin: 0; }

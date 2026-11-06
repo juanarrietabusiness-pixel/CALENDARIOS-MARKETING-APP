@@ -127,6 +127,11 @@ export const TACTICAS = Object.freeze([
   ["autoridad", "autoridad: lo que la marca sabe o lleva haciendo (sólo lo que esté escrito)"],
   ["prueba", "prueba: un dato o una cifra REAL (sólo si está escrita; si no, otra táctica)"],
   ["urgencia", "urgencia: sólo con una fecha o un cupo REAL; si no hay, otra táctica"],
+  // Los tres sesgos del curso que faltaban (SESGOS de tiposArte.js); los ids de antes no cambian, así lo guardado en
+  // `post.tactica` sigue valiendo.
+  ["reciprocidad", "reciprocidad: da algo de valor primero (un consejo útil o un regalo REAL de la marca; si no hay regalo, el consejo)"],
+  ["empatia", "empatía: habla como alguien que vive lo mismo que quien lee, con sus palabras"],
+  ["microcompromiso", "micro-compromiso: pide un paso pequeño y fácil (escribir una palabra, guardar la pieza), no la compra"],
 ]);
 
 /** El fondo: la tercera cosa que, igual en todas, hace que un lote parezca una plantilla. */

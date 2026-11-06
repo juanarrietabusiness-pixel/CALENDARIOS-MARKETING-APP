@@ -3,7 +3,7 @@
 //
 // Lo que hacía el bot de Felipe, con lo que la aplicación ya sabe del
 // cliente: su ADN y su cerebro, el catálogo (precios), el estudio de
-// mercado (los 7 elementos, los ganchos) y el kit. También para un
+// mercado (las 7 maletas, los ganchos) y el kit. También para un
 // producto que no está en el catálogo o para alguien que no es cliente:
 // entonces se le da lo que haya y, si se pide, saca él las 7 maletas.
 //
@@ -20,7 +20,8 @@
 // ============================================================
 
 import { limpiarDisenoTipos } from "./director.js";
-import { ELEMENTOS_MERCADO } from "./estudioMercado.js";
+import { ELEMENTOS_MERCADO, elementosConAlias } from "./estudioMercado.js";
+import { ETAPAS_CICLO, idEtapaCiclo } from "./cicloVentas.js";
 import { OBJETIVOS, DESTINOS, TIPOS_CONJUNTO, MAX_CONJUNTOS, MAX_ANUNCIOS, MAX_TARJETAS, EDAD_MIN, EDAD_MAX, MAX_TEXTO, MAX_TITULO } from "./anuncios.js";
 
 /** Las mejoras de oferta que la agencia propone (como sugerencia: la decide el cliente). */
@@ -32,12 +33,19 @@ export const TIPOS_OFERTA = Object.freeze({
   bono: "Bono o regalo con la compra",
 });
 
-/** Las etapas del embudo. */
-export const ETAPAS_EMBUDO = Object.freeze({
-  frio: "Frío: no te conocen",
-  tibio: "Tibio: ya te vieron o te siguen",
-  caliente: "Caliente: escribieron, visitaron o compraron",
-});
+/**
+ * Las etapas del embudo: las del ciclo de ventas del curso (cicloVentas.js). Un plan guardado con las de antes (frío,
+ * tibio, caliente) se lee por alias (`etapaEmbudoDe`, `leerPlan`) sin reescribir la fila.
+ */
+const QUIEN_EN_ETAPA = {
+  presentacion: "no te conocen",
+  evaluacion: "ya te vieron y te comparan",
+  conversion: "escribieron o están por decidir",
+  ascension: "ya te compraron",
+};
+export const ETAPAS_EMBUDO = Object.freeze(Object.fromEntries(ETAPAS_CICLO.map((e) => [e.id, `${e.nombre}: ${QUIEN_EN_ETAPA[e.id]}`])));
+/** La etapa del embudo dicha para la pantalla («Presentación: no te conocen»), también de un id de antes. Pura. */
+export const etapaEmbudoDe = (id) => ETAPAS_EMBUDO[idEtapaCiclo(id)] ?? "";
 
 /** Cómo se llama cada cosa en Meta, si el manual no dice otra. `{…}` se rellena. */
 export const NOMENCLATURA_POR_DEFECTO = Object.freeze({
@@ -153,7 +161,7 @@ export function escenarios({ diario, dias, costos = {}, eco }) {
 // Lo que se le pide a la IA
 // ------------------------------------------------------------
 
-const ESQUEMA = `{"resumen":"…","embudo":[{"etapa":"frio|tibio|caliente","objetivo":"…","idea":"…"}],"costos":{"conservador":0,"esperado":0,"optimista":0,"porque":"…"},"tasaCierre":0,"presupuesto":{"diario":0,"dias":30,"porque":"…"},"ofertas":[{"tipo":"gratis|garantia|pago_facil|urgencia|bono","texto":"…"}],"maletas":{${ELEMENTOS_MERCADO.map((e) => `"${e.clave}":"…"`).join(",")}},"campana":{"objetivo":"OUTCOME_SALES","destino":"whatsapp|web","conjuntos":[{"tipo":"intereses|advantage|similares|abierto","presupuestoDiario":0,"edadMin":18,"edadMax":65,"sexo":"todos|mujeres|hombres","intereses":["…"],"lugar":"…","porque":"…"}],"anuncios":[{"formato":"unico|carrusel","angulo":"…","pieza":"qué imagen o video usar","texto":"…","titulo":"…","descripcion":"…","tarjetas":[{"titulo":"…","descripcion":"…"}]}]},"pasos":["…"],"riesgos":["…"]}`;
+const ESQUEMA = `{"resumen":"…","embudo":[{"etapa":"${Object.keys(ETAPAS_EMBUDO).join("|")}","objetivo":"…","idea":"…"}],"costos":{"conservador":0,"esperado":0,"optimista":0,"porque":"…"},"tasaCierre":0,"presupuesto":{"diario":0,"dias":30,"porque":"…"},"ofertas":[{"tipo":"gratis|garantia|pago_facil|urgencia|bono","texto":"…"}],"maletas":{${ELEMENTOS_MERCADO.map((e) => `"${e.clave}":"…"`).join(",")}},"campana":{"objetivo":"OUTCOME_SALES","destino":"whatsapp|web","conjuntos":[{"tipo":"intereses|advantage|similares|abierto","presupuestoDiario":0,"edadMin":18,"edadMax":65,"sexo":"todos|mujeres|hombres","intereses":["…"],"lugar":"…","porque":"…"}],"anuncios":[{"formato":"unico|carrusel","angulo":"…","pieza":"qué imagen o video usar","texto":"…","titulo":"…","descripcion":"…","tarjetas":[{"titulo":"…","descripcion":"…"}]}]},"pasos":["…"],"riesgos":["…"]}`;
 
 /**
  * El pedido al estratega. `contexto` es lo que se sabe de la marca (ficha, cerebro, catálogo, estudio); `producto`, lo
@@ -165,7 +173,9 @@ export function pedidoEstratega({
   notas = "", manual = null, eco = null, conMaletas = false, conWeb = false, planPegado = "", anterior = null, cambio = "",
 }) {
   const m = limpiarManual(manual ?? {});
-  const tieneElementos = producto?.elementos && Object.keys(producto.elementos).length >= 3;
+  // Las 7 maletas del producto (las de un estudio de antes, por alias).
+  const elementos = elementosConAlias(producto?.elementos);
+  const tieneElementos = Object.keys(elementos).length >= 3;
   return [
     `Eres el estratega de campañas de Meta Ads de una agencia en Panamá. Arma la campaña para ${marca}${rubro ? ` (${rubro})` : ""}.`,
     conWeb ? "Tienes búsqueda en internet: úsala con pocas búsquedas para ver cómo anuncia la competencia y qué cuesta un resultado en ese rubro y país." : "",
@@ -173,7 +183,7 @@ export function pedidoEstratega({
     m.reglas ? `EL MANUAL DE CAMPAÑAS DE LA AGENCIA (síguelo siempre; manda sobre lo demás):\n${m.reglas}\n` : "",
     "LO QUE SE ANUNCIA:",
     `${corto(producto.nombre, 120) || "(sin nombre)"}${producto.precio ? ` · precio: ${corto(producto.precio, 60)}` : ""}${producto.descripcion ? `\n${largo(producto.descripcion, 1500)}` : ""}`,
-    tieneElementos ? `\nSUS 7 ELEMENTOS (del estudio de mercado; úsalos para los textos):\n${ELEMENTOS_MERCADO.filter((e) => producto.elementos[e.clave]).map((e) => `- ${e.titulo}: ${producto.elementos[e.clave]}`).join("\n")}` : "",
+    tieneElementos ? `\nSUS 7 MALETAS (del estudio de mercado; úsalas para los textos):\n${ELEMENTOS_MERCADO.filter((e) => elementos[e.clave]).map((e) => `- ${e.titulo}: ${elementos[e.clave]}`).join("\n")}` : "",
     "",
     "LO QUE SABEMOS DE LA MARCA:",
     contexto ? largo(contexto, 24000) : "(Casi nada: trabaja con lo de arriba y lo que sepas del rubro.)",
@@ -188,13 +198,13 @@ export function pedidoEstratega({
     anterior ? `\nEL PLAN ANTERIOR (devuélvelo entero con el cambio aplicado):\n${JSON.stringify(anterior).slice(0, 12000)}\nEL CAMBIO QUE PIDE LA AGENCIA: ${largo(cambio, 1500)}` : "",
     "",
     "Reglas:",
-    "- Embudo: de 1 a 3 etapas; sólo las que el presupuesto aguante (con poco, sólo frío con objetivo de ventas o conversaciones).",
+    `- Embudo: de 1 a 4 etapas del ciclo de ventas (${ETAPAS_CICLO.map((e) => `${e.id}: ${QUIEN_EN_ETAPA[e.id]}`).join("; ")}); sólo las que el presupuesto aguante (con poco o con una cuenta nueva, sólo presentación con objetivo de ventas o conversaciones).`,
     `- Conjuntos: de 1 a ${MAX_CONJUNTOS}. Para ventas, lo habitual es uno por intereses (de 3 a 8 intereses concretos que existan en Meta, en español), uno Advantage+ y uno de similares si la cuenta tiene clientes o conversaciones. Edad entre ${EDAD_MIN} y ${EDAD_MAX}.`,
     `- Anuncios: de 4 a ${MAX_ANUNCIOS} con ángulos DISTINTOS (dolor, deseo, objeción, prueba, oferta, comparación). Texto principal que enganche en la primera línea (hasta ${MAX_TEXTO} caracteres, mejor 3 a 6 líneas), título hasta 40 caracteres, descripción corta. Un carrusel lleva de 2 a ${MAX_TARJETAS} tarjetas con título cada una. Cada precio, EXACTO del catálogo; nunca nombres a la competencia.`,
     "- «pieza»: qué imagen o video usar (foto del producto, reel de testimonio, antes y después…), para que la agencia la busque o la produzca.",
     "- «costos»: lo que suele costar UN resultado (conversación o cliente potencial) en ese rubro y país, en la moneda del precio: conservador (caro), esperado, optimista. Números, sin símbolo.",
     "- «ofertas»: de 1 a 3 mejoras de la oferta (gratis, garantía, pago fácil, urgencia, bono) como SUGERENCIA para hablar con el cliente: realistas para el negocio.",
-    conMaletas || !tieneElementos ? `- «maletas»: los 7 elementos del producto, de 2 a 3 frases cada uno: ${ELEMENTOS_MERCADO.map((e) => `${e.clave} (${e.ayuda.toLowerCase()})`).join("; ")}.` : "- «maletas»: déjalo vacío (ya están arriba).",
+    conMaletas || !tieneElementos ? `- «maletas»: las 7 maletas del producto, de 2 a 3 frases cada una: ${ELEMENTOS_MERCADO.map((e) => `${e.clave} (${e.ayuda.toLowerCase()})`).join("; ")}. Testimonios y garantía, SÓLO los reales: si no los sabes, vacíos y dilo en «riesgos» (sin ellos no se lanza).` : "- «maletas»: déjalo vacío (ya están arriba).",
     "- «pasos»: lo que hay que tener listo antes de activar (WhatsApp conectado a la página, píxel, piezas). «riesgos»: lo que puede salir mal o el dato que falta.",
     "- Español latino neutro, con «tú». Sin promesas que no se puedan cumplir.",
     "",
@@ -246,15 +256,12 @@ export function leerPlan(texto) {
     };
   }).filter((a) => a.texto);
   if (!conjuntos.length || !anuncios.length) return null;
-  const maletas = {};
-  for (const e of ELEMENTOS_MERCADO) {
-    const t = largo(d.maletas?.[e.clave], 800);
-    if (t) maletas[e.clave] = t;
-  }
+  // Las 7 maletas del curso; un plan guardado con las de antes (cliente, dolor, confianza…) se lee por alias.
+  const maletas = elementosConAlias(d.maletas, 800);
   return {
     resumen: largo(d.resumen, 1500),
-    embudo: (Array.isArray(d.embudo) ? d.embudo : []).slice(0, 3).map((x) => ({
-      etapa: ETAPAS_EMBUDO[x?.etapa] ? x.etapa : "frio", objetivo: corto(x?.objetivo, 120), idea: corto(x?.idea, 400),
+    embudo: (Array.isArray(d.embudo) ? d.embudo : []).slice(0, ETAPAS_CICLO.length).map((x) => ({
+      etapa: idEtapaCiclo(x?.etapa) || "presentacion", objetivo: corto(x?.objetivo, 120), idea: corto(x?.idea, 400),
     })),
     costos: {
       conservador: Math.max(0, num(d.costos?.conservador)), esperado: Math.max(0, num(d.costos?.esperado)),
@@ -320,7 +327,7 @@ export function planATexto(plan, { marca = "", eco = null, filas = [] } = {}) {
   const l = [];
   l.push(`PLAN DE CAMPAÑA${marca ? ` · ${marca}` : ""}`, "");
   if (plan.resumen) l.push(plan.resumen, "");
-  if (plan.embudo.length) l.push("EMBUDO", ...plan.embudo.map((e) => `- ${ETAPAS_EMBUDO[e.etapa]}: ${e.objetivo}. ${e.idea}`), "");
+  if (plan.embudo.length) l.push("EMBUDO", ...plan.embudo.map((e) => `- ${etapaEmbudoDe(e.etapa)}: ${e.objetivo}. ${e.idea}`), "");
   if (eco) l.push("CUENTAS", `- Ganancia por venta: ${eco.ganancia} · de cada 100 resultados compran ${eco.tasaCierre}`, `- Costo máximo por resultado: ${eco.costoMaxResultado} (para ganar: ${eco.costoObjetivo})`, "");
   if (filas.length) l.push("ESCENARIOS", ...filas.map((f) => `- ${f.nombre}: ${f.resultados} resultados a ${f.costoResultado}${f.ventas != null ? ` → ${f.ventas} ventas, ganancia ${f.ganancia}` : ""}`), "");
   l.push(`CAMPAÑA: ${OBJETIVOS[c.objetivo]?.nombre}${c.destino === "whatsapp" ? " a WhatsApp" : ""}`);

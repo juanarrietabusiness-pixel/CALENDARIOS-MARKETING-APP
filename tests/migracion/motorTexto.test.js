@@ -127,8 +127,9 @@ describe("la estrategia del mes llega siempre", () => {
     await lote({ modo: "publicacion", formato: "post", publicacion: { fecha: "2030-03-04" } });
     const t = textoDe(peticiones[0]);
     expect(t).toMatch(/ESTRATEGIA DEL MES[\s\S]*Objetivo del mes: Vender[\s\S]*Campaña: Marzo cómodo[\s\S]*Foco: Sofá cama[\s\S]*Ofertas del mes: 10 % en sofás[\s\S]*Código promocional: COMODO/);
-    expect(t).toMatch(/Semana 1: Semana del descanso \(etapa: Atraer/);
-    expect(t).toMatch(/Semana 2: Visitas \(etapa: Convertir/);
+    // Guardada con las etapas de antes («atraer», «convertir»): llega al motor con las del ciclo de ventas.
+    expect(t).toMatch(/Semana 1: Semana del descanso \(etapa: Presentación/);
+    expect(t).toMatch(/Semana 2: Visitas \(etapa: Conversión/);
   });
 
   it("la que manda la pantalla gana (en «Planificar mes» está a medias, sin guardar)", async () => {

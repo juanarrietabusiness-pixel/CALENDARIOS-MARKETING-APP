@@ -277,6 +277,17 @@ describe("los personajes de la marca", () => {
 });
 
 
+describe("los tipos de arte de la marca", () => {
+  it("se guardan sólo los que existen (de 2 a 4), no los toca la IA al volver a preparar, y no van al motor de imagen", () => {
+    const k = limpiarKit({ paleta: [{ hex: "#112233", rol: "fondo" }], tiposArte: ["demostracion", "inventado", "testimonio", "demostracion", "producto", "humano", "prensa"] });
+    expect(k.tiposArte).toEqual(["demostracion", "testimonio", "producto", "humano"]);
+    expect(limpiarKit({}).tiposArte).toEqual([]);
+    expect(fundirKit(k, limpiarKit({ tiposArte: ["prensa"] })).tiposArte).toEqual(k.tiposArte);
+    // El bloque de la marca va en TODA pieza al motor de imagen: los tipos de arte son para quien diseña, no para él.
+    expect(bloqueDeMarca(k)).not.toMatch(/Tipos de arte|Demostración/);
+  });
+});
+
 describe("reglas que no se rompen y quién pone el logo", () => {
   const kit = { paleta: [{ hex: "#112233", nombre: "Azul", rol: "fondo" }], logo: "clientes/c1/estudio/logo.png", reglas: ["El texto ocupa como mucho un tercio.", "el texto ocupa como mucho un tercio", "  ", "Nunca tapar la cara del bebé"] };
 

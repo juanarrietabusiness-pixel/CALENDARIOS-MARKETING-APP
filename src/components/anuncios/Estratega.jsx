@@ -6,7 +6,7 @@ import { leerMercado, guardarCatalogo } from "../../lib/mercado";
 import { productosActivos, ELEMENTOS_MERCADO, limpiarCatalogo } from "../../lib/estudioMercado";
 import { OBJETIVOS, DESTINOS, TIPOS_CONJUNTO, formatoMoneda } from "../../lib/anuncios";
 import {
-  economia, escenarios, planABorrador, planATexto, TIPOS_OFERTA, ETAPAS_EMBUDO,
+  economia, escenarios, planABorrador, planATexto, TIPOS_OFERTA, etapaEmbudoDe, leerPlan,
 } from "../../lib/estratega";
 import { fechaEnZona } from "../../lib/agenda";
 import "./Estratega.css";
@@ -50,7 +50,7 @@ function Plan({ r, moneda, diario, dias }) {
         <section aria-label="Embudo">
           <h3>Embudo</h3>
           <ol className="est-embudo">
-            {plan.embudo.map((e, i) => <li key={i}><strong>{ETAPAS_EMBUDO[e.etapa]}</strong> · {e.objetivo}<span className="hint"> {e.idea}</span></li>)}
+            {plan.embudo.map((e, i) => <li key={i}><strong>{etapaEmbudoDe(e.etapa)}</strong> · {e.objetivo}<span className="hint"> {e.idea}</span></li>)}
           </ol>
         </section>
       )}
@@ -222,7 +222,9 @@ export default function Estratega({ clients = [], clienteId = "", cuentaLista = 
     const g = planesGuardados.find((x) => x.id === id);
     if (!g) return;
     const d = g.datos ?? {};
-    setR({ plan: d.plan, eco: d.eco, producto: d.producto, fuentes: d.fuentes ?? [] });
+    // Pasa por `leerPlan`: un plan guardado antes del ciclo de ventas (frío, tibio, caliente; las maletas de antes) se lee
+    // con las etapas y las 7 maletas del curso, sin reescribir la fila.
+    setR({ plan: (d.plan && leerPlan(d.plan)) || d.plan, eco: d.eco, producto: d.producto, fuentes: d.fuentes ?? [] });
     setGuardadoId(g.id);
     if (d.para) setPara(d.para);
     if (g.clientId) setCliente(g.clientId);

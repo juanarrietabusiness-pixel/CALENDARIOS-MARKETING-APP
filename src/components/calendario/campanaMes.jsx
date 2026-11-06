@@ -15,7 +15,7 @@ import { limpiarEstrategia, resumenEstrategia, etapaDe } from "../../lib/embudo"
 // especiales del mes. Sin nombre, la tarjeta invita a ponerlo o a que la
 // IA lo proponga.
 //
-// La ESTRATEGIA del mes (objetivo, producto foco, la etapa del embudo de cada
+// La ESTRATEGIA del mes (objetivo, producto foco, la etapa del ciclo de ventas de cada
 // semana) también se ve aquí y se edita en «Editar el mes» → Estrategia: antes
 // sólo existía dentro de «Planificar mes» y, al cerrarlo, nadie la volvía a ver.
 // ============================================================

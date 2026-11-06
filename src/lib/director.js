@@ -23,6 +23,8 @@
 // Lo importan el Worker y la pantalla.
 // ============================================================
 
+import { lineaDeTiposArte } from "./tiposArte.js";
+
 export const MAX_MANUAL_DISENO = 6_000;
 /** Una ficha, como mucho: con la marca, las referencias y el logo detrás, el pedido no pasa de MAX_PROMPT (4.000). */
 export const MAX_FICHA = 1_800;
@@ -496,6 +498,7 @@ export function resumenDelKit({ kit = null, marca = "", vacio = false, cliente =
         : "Logo: va al motor como la ÚLTIMA imagen de referencia y la IA lo integra en el diseño; di en la ficha dónde va y de qué tamaño, y que es EL logo de referencia (no otro). Si Muse no lo acepta, la aplicación le estampa el original. La persona puede escoger en el plan que lo estampe la aplicación.")
       : `Logo: el kit NO tiene logo cargado. Díselo a la persona en una línea (en la galería, abre su logo → «Usar como logo»). ${SIN_LOGO_EN_LA_FICHA}`,
     (kit.plantillas ?? []).length ? `Plantillas guardadas (diseños que ya funcionaron; pasa su id en «plantilla» para seguir una):\n${kit.plantillas.map(lineaDePlantilla).join("\n")}` : "",
+    lineaDeTiposArte(kit.tiposArte),
   ].filter(Boolean).join("\n");
 }
 

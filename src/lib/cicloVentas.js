@@ -89,3 +89,7 @@ export const CUENTA_NEGOCIO = Object.freeze([
   { id: "nueva", nombre: "Cuenta nueva", ayuda: "Sin historial de campañas: presentación y evaluación primero." },
   { id: "historial", nombre: "Con historial", ayuda: "Ya tiene campañas y públicos: las cuatro etapas." },
 ]);
+
+// Qué pieza va en cada etapa según el negocio y el destino (`CICLO_POR_NEGOCIO`, `cicloDe`, `OBJETIVOS_CICLO`) vive en
+// cicloNegocio.js y se importa DE ALLÍ, no de aquí: este archivo va en la carga inicial (lo lee el embudo del mes) y
+// reexportarla metería la tabla entera en el arranque en cuanto una pantalla diferida la usara.

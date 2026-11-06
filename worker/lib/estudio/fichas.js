@@ -21,6 +21,7 @@ import { contexto as contextoCerebro } from "../cerebro/cerebro.js";
 import { kitDe } from "./kit.js";
 import { leerMercado } from "../mercado.js";
 import { bloqueDeMarca, kitVacio } from "../../../src/lib/kitMarca.js";
+import { lineaDeTiposArte } from "../../../src/lib/tiposArte.js";
 import { productosActivos, lineaDeProducto, catalogoATexto } from "../../../src/lib/estudioMercado.js";
 import {
   pedidoDeFichas, leerFichas, limpiarPiezaEncargo, MAX_FICHAS, correccionesRecientes, plantillaParaTipo, PAPELES_ESPECIALES, MAX_SOBRE_LA_MARCA,
@@ -150,7 +151,8 @@ export async function fichasDeDiseno(env, acceso, cliente, { piezas = [], concep
     const r = await llamarIA(env, acceso, cliente, {
       prompt: conVistas(imagenes, pedidoDeFichas({ conLogo: Boolean(kit?.logo),
         cliente: cliente.name, rubro: cliente.industry ?? "", piezas: [pieza], serie: total,
-        marca: kitVacio(kit) ? "" : bloqueDeMarca(kit), guia: ctx.guia, sobreLaMarca: ctx.sobreLaMarca, catalogo: ctx.catalogo,
+        // Los tipos de arte de la marca (curso de campañas) van con la marca: sólo para quien diseña, no al motor.
+        marca: [kitVacio(kit) ? "" : bloqueDeMarca(kit), lineaDeTiposArte(kit.tiposArte)].filter(Boolean).join("\n"), guia: ctx.guia, sobreLaMarca: ctx.sobreLaMarca, catalogo: ctx.catalogo,
         plantillas: kit.plantillas, manual: ctx.manual, concepto: c, productos: lineas.join("\n"),
         correcciones: ctx.correcciones, vistas: imagenes.length - deEspeciales.length, especiales: papeles, previas: antes,
       })),
