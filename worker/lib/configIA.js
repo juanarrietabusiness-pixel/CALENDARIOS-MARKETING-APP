@@ -76,14 +76,14 @@ export const MODELOS_POR_FUNCION = Object.freeze(["sonnet", "opus", "haiku", "mu
  * `consumo_ia`) se reparten así; lo que no esté, va a «analisis».
  */
 export const FUNCIONES_IA = Object.freeze({
-  redaccion: ["calendario", "descripciones", "publicación", "ideas de anuncios", "ideas del estudio", "lote del mes", "estrategia del mes"],
+  redaccion: ["calendario", "descripciones", "publicación", "ideas de anuncios", "ideas del estudio", "lote del mes", "estrategia del mes", "kit de WhatsApp"],
   guiones: ["guiones", "guion de video", "fórmula UGC", "voz UGC", "director comercial"],
   lectura: ["lectura de contenido"],
   // El director de arte (las fichas del lote, «Producir el mes», el post, los carruseles) diseña con el MISMO modelo que
   // el director del chat: con modelos distintos el chat daba un 8 y el lote menos.
   asistente: ["asistente", "resumen del chat", "título de conversación", "director de arte"],
   prompts: ["prompt de imagen"],
-  analisis: ["informe", "auditoria", "cerebro", "ADN de marca", "kit de marca", "revisión de marca", "control de calidad", "sistema de diseño", "aprendizaje visual", "estudio de mercado", "catálogo", "referencia de competencia", "revisión de textos", "estratega de campañas", "diagnóstico de campañas", "informe de anuncios", "saber del rubro", "lo que funciona en la competencia", "revisión de video", "piezas juntas", "clasificar lo mejor"],
+  analisis: ["informe", "auditoria", "cerebro", "ADN de marca", "kit de marca", "revisión de marca", "control de calidad", "sistema de diseño", "aprendizaje visual", "estudio de mercado", "catálogo", "referencia de competencia", "revisión de textos", "estratega de campañas", "diagnóstico de campañas", "informe de anuncios", "saber del rubro", "lo que funciona en la competencia", "revisión de video", "piezas juntas", "clasificar lo mejor", "números del negocio", "voz del cliente"],
 });
 /** Lo que escribe Muse Spark Contributor por defecto en cuanto hay llave de Meta (decisión de la agencia). */
 export const MUSE_POR_DEFECTO_EN = Object.freeze(["redaccion", "guiones"]);
