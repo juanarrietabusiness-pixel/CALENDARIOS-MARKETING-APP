@@ -42,6 +42,28 @@ export const COMPONENTES_LISTOS = Object.freeze([
 
 /** Una capa de video a sangre (`encuadre` «completo»): va detrás de todo, a todo el cuadro, y no entra en el reparto. */
 export const esVideoCompleto = (capa) => capa?.tipo === "video" && capa.encuadre !== "caja";
+/** Una IMAGEN a sangre (`encuadre` «completo»: una foto con música). Por defecto una imagen va en su caja. */
+export const esImagenCompleta = (capa) => capa?.tipo === "imagen" && capa.encuadre === "completo";
+/** Lo que va A SANGRE detrás de todo y fuera del reparto: un video o una imagen con `encuadre` «completo». */
+export const esCapaCompleta = (capa) => esVideoCompleto(capa) || esImagenCompleta(capa);
+
+/** Cuánto se mueve una imagen a sangre: lo que se acerca (o aleja) en todo lo que se ve, y la escala del paneo. */
+export const MOVIMIENTO_IMAGEN = Object.freeze({ zoom: 0.12, paneo: 1.08 });
+
+/**
+ * Cómo está una imagen a sangre con su `movimiento` cuando lleva `p` (0–1) de lo que se ve: { escala, desplaza }
+ * (`desplaza`, de −1 a 1: cuánto de lo que sobra a los lados se corre a la derecha). Suave al empezar y al acabar
+ * (seno), sin saltos: es el «Ken Burns» de una foto con música. Pura.
+ */
+export function movimientoDeImagen(movimiento, p) {
+  const q = (1 - Math.cos(Math.PI * Math.min(1, Math.max(0, Number(p) || 0)))) / 2;
+  switch (movimiento) {
+    case "acercar": return { escala: 1 + MOVIMIENTO_IMAGEN.zoom * q, desplaza: 0 };
+    case "alejar": return { escala: 1 + MOVIMIENTO_IMAGEN.zoom * (1 - q), desplaza: 0 };
+    case "paneo": return { escala: MOVIMIENTO_IMAGEN.paneo, desplaza: -1 + 2 * q };
+    default: return { escala: 1, desplaza: 0 };
+  }
+}
 
 export const FUENTE_RESPALDO = "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif";
 
@@ -403,7 +425,7 @@ export function repartirEscena(ctx, capas, tiempos, c) {
   if (sub?.aparta) {
     if (c.subtitulos.pos === "arriba") { caja.y += sub.h; caja.h -= sub.h; } else caja.h -= sub.h;
   }
-  const lista = capas.filter((capa) => !esVideoCompleto(capa))
+  const lista = capas.filter((capa) => !esCapaCompleta(capa))
     .map((capa, i) => ({ capa, i, zona: zonaDe(capa.pos), lado: ladoDe(capa.pos), cuando: tiempos.get(capa.id) }));
   for (const it of lista) if (it.capa.pos && typeof it.capa.pos === "object") sitio.set(it.capa.id, { ...centroDe(it.capa.pos, c.ancho, c.alto), escala: 1, ancho: anchoPedido(it.capa, c, caja.w) });
   const repartidas = lista.filter((it) => !(it.capa.pos && typeof it.capa.pos === "object") && it.capa.tipo !== "forma")
@@ -469,8 +491,8 @@ export function tiemposDeEscena(capas, momento, primera = false) {
     t.set(principal.id, { ...t.get(principal.id), desde: momento.desde });
     const luego = momento.desde + DESPUES_DEL_GANCHO;
     for (const capa of capas) {
-      // Un video a sangre es el FONDO del gancho: no se retrasa (si no, el primer cuadro saldría sin él).
-      if (capa.id === principal.id || esVideoCompleto(capa)) continue;
+      // Un video (o una imagen) a sangre es el FONDO del gancho: no se retrasa (si no, el primer cuadro saldría sin él).
+      if (capa.id === principal.id || esCapaCompleta(capa)) continue;
       const v = t.get(capa.id);
       if (v.desde < luego) t.set(capa.id, { desde: luego, hasta: Math.max(v.hasta, luego) });
     }
@@ -790,6 +812,52 @@ function dibujarVideoCompleto(ctx, capa, estado, c) {
     const k = Math.min(W / cuadro.width, H / cuadro.height);
     ctx.drawImage(cuadro, (-cuadro.width * k) / 2, (-cuadro.height * k) / 2, cuadro.width * k, cuadro.height * k);
   } else dibujarImagenEn(ctx, cuadro, W, H, "cubrir");
+  if (capa.oscurecer > 0) {
+    ctx.fillStyle = "#000000";
+    ctx.globalAlpha *= capa.oscurecer;
+    ctx.fillRect(-W / 2, -H / 2, W, H);
+  }
+  ctx.restore();
+}
+
+/**
+ * Una IMAGEN A SANGRE (una foto con música): a todo el lienzo con su `movimiento` repartido en lo que se ve (`cuando`).
+ * Con `recorte` «cubrir» llena el cuadro (lo que sobra se corta); con «contener» se ve ENTERA —un post 4:5 no pierde su
+ * texto en 9:16— sobre ella misma ampliada, difuminada y oscurecida, que llena los huecos. El difuminado es el `filter`
+ * del lienzo: donde no lo hay (Safari), el fondo sale nítido y oscurecido, que también sirve. `oscurecer`: el velo.
+ */
+function dibujarImagenCompleta(ctx, capa, estado, c, cuando) {
+  const { ancho: W, alto: H, recursos, paleta } = c;
+  const img = recursos?.imagen?.(capa.archivo) ?? null;
+  const dura = Math.max(1e-3, (cuando?.hasta ?? 0) - (cuando?.desde ?? 0));
+  const mov = movimientoDeImagen(capa.movimiento, (Number(estado.vida) || 0) / dura);
+  ctx.save();
+  ctx.globalAlpha *= estado.alfa;
+  ctx.translate(W / 2 + estado.dx, H / 2 + estado.dy);
+  if (estado.escala !== 1) ctx.scale(estado.escala, estado.escala);
+  if (!img?.width || !img?.height) marcador(ctx, "Imagen", W * 0.8, H * 0.5, paleta, c.fuentes?.cuerpo || FUENTE_RESPALDO);
+  else {
+    const cubre = Math.max(W / img.width, H / img.height);
+    let k = cubre * mov.escala;
+    if (capa.recorte === "contener") {
+      // El fondo: la misma imagen, más grande, difuminada y oscurecida (se mueve con ella).
+      ctx.save();
+      ctx.filter = `blur(${Math.round(Math.min(W, H) * 0.04)}px)`;
+      const kf = cubre * 1.1 * mov.escala;
+      ctx.drawImage(img, (-img.width * kf) / 2, (-img.height * kf) / 2, img.width * kf, img.height * kf);
+      ctx.restore();
+      ctx.save();
+      ctx.fillStyle = "#000000";
+      ctx.globalAlpha *= 0.35;
+      ctx.fillRect(-W / 2, -H / 2, W, H);
+      ctx.restore();
+      k = Math.min(W / img.width, H / img.height) * mov.escala;
+    }
+    const w = img.width * k; const h = img.height * k;
+    // El paneo corre la imagen por lo que sobra a los lados (nunca deja ver el borde).
+    const holgura = Math.max(0, (w - W) / 2);
+    ctx.drawImage(img, -w / 2 + mov.desplaza * holgura, -h / 2, w, h);
+  }
   if (capa.oscurecer > 0) {
     ctx.fillStyle = "#000000";
     ctx.globalAlpha *= capa.oscurecer;
@@ -1149,17 +1217,32 @@ export function capasDe(escena) {
 /** La luz del fondo de una escena (para decidir si el logo necesita placa). */
 const luzDelFondo = (escena, paleta) => { const f = colorDe(escena?.fondo?.color ?? "fondo", paleta); return HEX.test(f) ? luminancia(f) : 0.5; };
 
+/**
+ * El estado de una capa A SANGRE. Una IMAGEN que entra con su escena y «aparece» ES la escena: se ve entera desde su
+ * primer cuadro (la entrada la hace la transición de la escena); con la rampa de «aparece», el primer cuadro de una foto
+ * con música salía negro, y ése es el que enseñan TikTok y la vista previa. Lo demás, como cualquier capa.
+ */
+function estadoACompleta(capa, cuando, momento, t, c) {
+  const estado = estadoDeCapa(capa, cuando, t, { ritmo: c.ritmo, lado: c.lado });
+  const conLaEscena = capa.tipo === "imagen" && (capa.animacion?.entrada ?? "aparece") === "aparece" && cuando.desde <= momento.desde + 1e-6;
+  if (!conLaEscena || t < cuando.desde || t > cuando.hasta + 1e-6) return estado;
+  return { ...(estado ?? { dx: 0, dy: 0, escala: 1, giro: 0, revelado: 1 }), alfa: 1, vida: t - cuando.desde };
+}
+
 function dibujarEscena(ctx, escena, momento, t, cGuion, primera = false) {
   const c = { ...cGuion, tipoEscena: escena.tipo, luzFondo: luzDelFondo(escena, cGuion.paleta), escenaId: escena.id };
   dibujarFondo(ctx, escena.fondo, c.ancho, c.alto, c.paleta, escena.id, t);
   const todas = capasDe(escena);
   const tiempos = tiemposDeEscena(todas, momento, primera);
-  // Los videos a sangre, encima del fondo y detrás de todo lo demás.
-  for (const capa of todas.filter(esVideoCompleto)) {
-    const estado = estadoDeCapa(capa, tiempos.get(capa.id), t, { ritmo: c.ritmo, lado: c.lado });
-    if (estado) dibujarVideoCompleto(ctx, capa, estado, c);
+  // Los videos y las imágenes a sangre, encima del fondo y detrás de todo lo demás.
+  for (const capa of todas.filter(esCapaCompleta)) {
+    const cuando = tiempos.get(capa.id);
+    const estado = estadoACompleta(capa, cuando, momento, t, c);
+    if (!estado) continue;
+    if (capa.tipo === "imagen") dibujarImagenCompleta(ctx, capa, estado, c, cuando);
+    else dibujarVideoCompleto(ctx, capa, estado, c);
   }
-  const capas = todas.filter((capa) => !esVideoCompleto(capa));
+  const capas = todas.filter((capa) => !esCapaCompleta(capa));
   const sitio = repartirEscena(ctx, capas, tiempos, c);
   // Las formas van detrás de lo que acompañan: se dibujan primero.
   const orden = [...capas].sort((p, q) => Number(Boolean(sitio.get(q.id)?.detras)) - Number(Boolean(sitio.get(p.id)?.detras)));
@@ -1372,8 +1455,8 @@ export function cajasDeEscena(ctx, { guion, linea, indice = 0, formato, recursos
   const c = { ...base, tipoEscena: escena.tipo, luzFondo: luzDelFondo(escena, base.paleta), escenaId: escena.id };
   const todas = capasDe(escena);
   const tiempos = tiemposDeEscena(todas, linea.escenas[indice], indice === 0);
-  // Un video a sangre no tiene caja: es el fondo.
-  const capas = todas.filter((capa) => !esVideoCompleto(capa));
+  // Un video (o una imagen) a sangre no tiene caja: es el fondo.
+  const capas = todas.filter((capa) => !esCapaCompleta(capa));
   const sitio = repartirEscena(ctx, capas, tiempos, c);
   return capas.map((capa) => {
     const s = sitio.get(capa.id);

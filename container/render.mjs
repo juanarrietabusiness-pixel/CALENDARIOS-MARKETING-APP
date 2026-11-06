@@ -24,7 +24,7 @@ import { createCanvas } from "@napi-rs/canvas";
 import { FORMATOS_VIDEO } from "../src/lib/videoEscenas.js";
 import { dibujarFrame, videosEnInstante, usosDeVideo } from "../src/lib/motorVideo.js";
 import { RENDER, cuadrosDelVideo, tramosDeAudio, armarPcm, FILTRO_MEDIR, filtroDeNormalizar, leerLoudnorm } from "../src/lib/renderVideo.js";
-import { momentosDeEfectos, mezclarEfectos } from "../src/lib/efectosSonido.js";
+import { momentosDeEfectos, mezclarEfectos, muestrasDeEfecto } from "../src/lib/efectosSonido.js";
 import { mezclarMusica, mezclarClip } from "../src/lib/sonidoVideo.js";
 import { Decodificador, audioDe } from "./clips.mjs";
 
@@ -71,14 +71,34 @@ async function decodificar(carpeta, nombre, bytes, que) {
 }
 
 /**
+ * Los efectos de la biblioteca (`{ whoosh?, pop? }`, sus bytes) decodificados a muestras. Uno que no se puede leer no
+ * tumba el audio: suena el sintetizado. → { whoosh?, pop? } (Float32Array).
+ */
+async function efectosDeLaBiblioteca(carpeta, efectosPropios) {
+  const out = {};
+  for (const tipo of ["whoosh", "pop"]) {
+    const bytes = efectosPropios?.[tipo];
+    if (!bytes?.length) continue;
+    try {
+      const s = muestrasDeEfecto(await decodificar(carpeta, `efecto-${tipo}`, bytes, "No se pudo leer el efecto"), RENDER.muestreo);
+      if (s.length) out[tipo] = s;
+    } catch (e) {
+      console.error(`render: el efecto ${tipo} no se pudo leer, va el sintetizado:`, e?.message ?? e);
+    }
+  }
+  return out;
+}
+
+/**
  * El audio del video en `salida` (AAC) → { lufs, pico, antes } medidos tras normalizar, o null sin voz.
  *
  *   1. La toma se DECODIFICA sola, con una cadena simple (MP3 mono a 44,1 kHz → PCM estéreo a 48 kHz). Una cadena simple
  *      sí sabe rehacerse si el archivo cambia de parámetros a la mitad.
  *   2. Los silencios de las escenas se meten copiando muestras (`armarPcm`), hasta el último cuadro exacto; encima, el
  *      SONIDO de los clips de video que lo llevan (`clips`: los usos de `usosDeVideo` con `sonido`), los EFECTOS
- *      (`efectos`: whoosh y pop, src/lib/efectosSonido.js) y la MÚSICA con ducking y fundido (`musica`: { audio, volumen },
- *      src/lib/sonidoVideo.js), que baja también cuando habla un clip.
+ *      (`efectos`: whoosh y pop, src/lib/efectosSonido.js; con `efectosPropios` { whoosh?, pop? } —los bytes de un efecto
+ *      de la biblioteca de sonido—, ese suena en vez del sintetizado, decodificado a PCM como la voz) y la MÚSICA con
+ *      ducking y fundido (`musica`: { audio, volumen }, src/lib/sonidoVideo.js), que baja también cuando habla un clip.
  *   3. El volumen: loudnorm MIDE, la segunda pasada aplica una ganancia fija (y un limitador si el pico se pasaría) y
  *      una tercera mide lo que quedó.
  *
@@ -86,7 +106,7 @@ async function decodificar(carpeta, nombre, bytes, que) {
  * reinitializing filters! | Failed to inject frame into filter network: Invalid argument» cada vez que no podía ir en
  * lineal y pasaba a su modo dinámico: con una voz de verdad, casi siempre.
  */
-export async function audioDelVideo(carpeta, { audio, linea, total, salida, guion = null, efectos = false, musica = null, clips = [] }) {
+export async function audioDelVideo(carpeta, { audio, linea, total, salida, guion = null, efectos = false, musica = null, clips = [], efectosPropios = null }) {
   const muestreo = String(RENDER.muestreo);
   const toma = audio?.length ? await decodificar(carpeta, "voz", audio, "No se pudo leer el audio de la locución") : new Uint8Array(0);
   const voz = armarPcm(toma, tramosDeAudio(linea.silencios), total, RENDER.muestreo);
@@ -99,7 +119,11 @@ export async function audioDelVideo(carpeta, { audio, linea, total, salida, guio
   }
   // Lo que suena debajo, en el mismo PCM y antes del volumen: así guarda su distancia con la voz sea cual sea la toma.
   const pcm = musica?.audio?.length || efectos ? new Uint8Array(habla) : habla;
-  if (efectos && guion) mezclarEfectos(pcm, momentosDeEfectos(guion, linea), { muestreo: RENDER.muestreo });
+  if (efectos && guion) {
+    const propios = await efectosDeLaBiblioteca(carpeta, efectosPropios);
+    const duraciones = propios.whoosh ? { whoosh: propios.whoosh.length / RENDER.muestreo } : undefined;
+    mezclarEfectos(pcm, momentosDeEfectos(guion, linea, duraciones ? { duraciones } : {}), { muestreo: RENDER.muestreo, propios });
+  }
   if (musica?.audio?.length) {
     const fondo = await decodificar(carpeta, "musica", musica.audio, "No se pudo leer la música");
     mezclarMusica(pcm, fondo, { muestreo: RENDER.muestreo, volumen: musica.volumen ?? 0, voz: habla });
@@ -108,7 +132,10 @@ export async function audioDelVideo(carpeta, { audio, linea, total, salida, guio
   await writeFile(pista, pcm);
   const leer = ["-f", "s16le", "-ar", muestreo, "-ac", "2", "-i", pista];
   const codificar = ["-c:a", "aac", "-b:a", `${RENDER.kbpsAudio}k`, "-ar", muestreo, salida];
-  if (!toma.length && !conClips) {
+  // Sin voz ni clips que suenen, el audio se codifica tal cual (silencio o sólo efectos)… salvo que lleve MÚSICA: una
+  // foto con música (src/lib/conMusica.js) es sólo la música, que sin voz que la mida queda muy baja; se normaliza a
+  // -14 LUFS como una locución.
+  if (!toma.length && !conClips && !musica?.audio?.length) {
     const r = await ffmpeg([...leer, ...codificar]).fin;
     if (r.codigo !== 0) throw falla("No se pudo armar el audio", r);
     return null;
@@ -132,7 +159,7 @@ export async function audioDelVideo(carpeta, { audio, linea, total, salida, guio
  * `base`: lo de `preparar()` del servidor (guion, linea, formato, paleta, recursos, fuentes). `audio`: los bytes de la
  * toma (o null: silencio).
  */
-export async function renderizar(base, { audio = null, musica = null, efectos = false, fps = RENDER.fps } = {}) {
+export async function renderizar(base, { audio = null, musica = null, efectos = false, efectosPropios = null, fps = RENDER.fps } = {}) {
   const inicio = Date.now();
   const { ancho: W, alto: H } = FORMATOS_VIDEO[base.formato];
   const total = base.linea.total;
@@ -143,7 +170,7 @@ export async function renderizar(base, { audio = null, musica = null, efectos = 
     const sonido = join(carpeta, "audio.m4a");
     const usos = usosDeVideo(base.guion, base.linea).filter((u) => base.infoVideos?.has(u.archivo));
     const clips = usos.filter((u) => u.sonido && base.infoVideos.get(u.archivo)?.audio);
-    const medidas = await audioDelVideo(carpeta, { audio, linea: base.linea, total: duracion, salida: sonido, guion: base.guion, efectos, musica, clips });
+    const medidas = await audioDelVideo(carpeta, { audio, linea: base.linea, total: duracion, salida: sonido, guion: base.guion, efectos, musica, clips, efectosPropios });
     const tAudio = Date.now() - inicio;
 
     const salida = join(carpeta, "video.mp4");

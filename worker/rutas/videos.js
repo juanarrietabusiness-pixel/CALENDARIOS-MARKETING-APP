@@ -31,8 +31,9 @@
 //                                           del render lo hace (worker/lib/estudio/render.js). No gasta IA
 //   POST   /api/videos/<c>/<id>/publicacion { postId, calendarId? }: ligarlo a una publicación del cliente (postId vacío:
 //                                           desligarlo). Si el mp4 ya está hecho, se pone en ella ya
-//   PUT    /api/videos/<c>/<id>/sonido      { efectos, musica: { archivoId, volumen } | null }: lo que suena debajo de la
-//                                           voz. Va aparte del guion: no sube la versión ni pide otra voz (gratis)
+//   PUT    /api/videos/<c>/<id>/sonido      { efectos, musica: { archivoId, volumen } | null, efectosPropios?: { transicion,
+//                                           sello } (ids de efectos de la biblioteca) }: lo que suena debajo de la voz. Va
+//                                           aparte del guion: no sube la versión ni pide otra voz (gratis)
 //   GET    /api/videos/<c>/<id>/versiones   El historial: las versiones de antes del guion
 //   POST   /api/videos/<c>/<id>/versiones   { version, aVersion }: volver a una (crea una versión nueva con su guion)
 //   POST   /api/videos/<c>/escribir         { idea, segundos?, formato?, postId?, estructuraId? }: la IA de texto ESCRIBE el
@@ -40,8 +41,14 @@
 //                                           siguiendo la ESTRUCTURA de guion escogida (o la que escoja la IA entre las de
 //                                           voz en off: vuelve en `estructura`). No guarda nada: la pantalla lo abre como
 //                                           borrador sin guardar. Texto, sin confirmación
-//   GET    /api/videos/<c>/musicas          Las músicas de fondo del cliente (audio de su galería)
-//   POST   /api/videos/<c>/musicas          Subir una (multipart: archivo; MP3 o WAV, ≤ 15 MB)
+//   POST   /api/videos/<c>/con-musica       { postId, calendarId?, musicaId?, segundos?, movimiento?, logo? }: «Publicar con
+//                                           música»: el post de UNA foto pasa a un video animado de una escena (la foto a
+//                                           sangre con su movimiento y la música en su sonido), aprobado y renderizándose;
+//                                           al terminar la publicación es un reel con la foto de portada. No gasta IA
+//                                           (worker/lib/estudio/conMusica.js). 503 sin Container, 409 `sin_musica`
+//   GET    /api/videos/<c>/musicas          { musicas, efectos }: la BIBLIOTECA DE SONIDO del cliente y la de la agencia
+//                                           (`de: "agencia"`), la música de la marca primero (worker/lib/estudio/sonidos.js)
+//   POST   /api/videos/<c>/musicas          Subir una (multipart: archivo, duracion?; MP3, WAV o M4A, ≤ 15 MB)
 //   POST   /api/videos/<c>/musicas/generar  { estilo, instrumental?, letra?, duracion?, titulo?, evitar?, modelo?, videoId?,
 //                                           confirmado }: GENERARLA con Suno por Kie (un trabajo del Estudio; dos
 //                                           versiones a la galería). Siempre pide confirmar: sin `confirmado`, 409 con el
@@ -51,7 +58,8 @@
 //                                           música de la marca en el kit (su estilo; gratis)
 //   POST   /api/videos/<c>/<id>/musica      «Proponer la música para este video»: el DIRECTOR MUSICAL lee el guion guardado
 //                                           (con la locución si está lista), el kit y al cliente, y escribe el pedido para
-//                                           Suno con su porqué. No guarda nada en el video ni pide a Suno; texto, sin
+//                                           Suno con su porqué, y `biblioteca`: lo que YA hay en la biblioteca de sonido que
+//                                           encaja (gratis). No guarda nada en el video ni pide a Suno; texto, sin
 //                                           confirmación (worker/lib/estudio/directorMusical.js)
 //
 // El guion lo valida `validarGuion` (src/lib/videoEscenas.js) aquí, en el servidor: lo que llega del navegador, del
@@ -71,7 +79,7 @@ import {
   deFila, listarProyectos, crearProyecto, guardarProyecto, aprobarProyecto, ErrorVideo, ID_VIDEO as ID,
   guardarSonido, versionesDe, volverAVersion, publicacionDelCliente,
 } from "../lib/videosProyectos.js";
-import { musicasDe, subirArchivo } from "../lib/estudio/galeria.js";
+import { musicasDe, efectosDe, subirSonido, ErrorSonido } from "../lib/estudio/sonidos.js";
 import { ErrorEstudio } from "../lib/estudio/trabajos.js";
 import { listarVoces, pedirMuestra, pedirLocucion, locucionAlDia, claveDeMuestra, HUELLA, ErrorVoz, viaDeVoz, fijarVozDeMarca } from "../lib/estudio/locucion.js";
 import { buscarEnBiblioteca, anadirDeLaBiblioteca, previaGratis, ACENTOS_BIBLIOTECA } from "../lib/estudio/elevenlabs.js";
@@ -83,6 +91,7 @@ import { pedirMusica, ErrorMusica } from "../lib/estudio/musica.js";
 import { proponerMusica, musicaALaMarca, resumenDelAnalisis, ErrorDirectorMusical } from "../lib/estudio/directorMusical.js";
 import { pedidoConClips, alContenedor } from "../lib/estudio/cuadros.js";
 import { pedirRender, renderAlDia, ligarAPublicacion } from "../lib/estudio/render.js";
+import { publicarConMusica } from "../lib/estudio/conMusica.js";
 import { costoDeVoz, fraseDeMuestra, modeloDeVoz, esIdDeVoz } from "../../src/lib/voces.js";
 
 /** Un ErrorVoz como respuesta: su mensaje, su estado y lo que la pantalla necesita (`codigo`, `costo`…). */
@@ -205,20 +214,37 @@ async function rutasDelCliente(req, env, { acceso, usuario, partes, metodo }) {
 
   if (id === "voces") return rutasVoces(req, env, { acceso, usuario, cliente, sub: accion, metodo });
 
-  // Las músicas de fondo del cliente: listar y subir (gratis).
+  // Las músicas de fondo del cliente y de la AGENCIA (la biblioteca de sonido), con sus efectos: listar y subir (gratis).
   if (id === "musicas" && !accion) {
-    if (metodo === "GET") return json({ musicas: await musicasDe(acceso, clienteId) });
+    if (metodo === "GET") {
+      const [musicas, efectos] = await Promise.all([musicasDe(acceso, clienteId), efectosDe(acceso, clienteId)]);
+      return json({ musicas, efectos });
+    }
     if (metodo === "POST") {
       try {
         const form = await req.formData().catch(() => null);
-        const a = await subirArchivo(env, acceso, cliente, form?.get("archivo"), { musica: true });
-        return json({ musica: { id: a.id, nombre: String(a.prompt || "Música").replace(/\.[a-z0-9]+$/i, ""), src: a.src ?? `/api/media/${a.clave}` }, repetido: a.repetido === true }, 201);
+        const r = await subirSonido(env, acceso, { cliente, archivo: form?.get("archivo"), categoria: "musica", duracion: form?.get("duracion") ?? null, usuario });
+        difundir(env, acceso.ownerId, { tipo: "sonidos", clienteId, por: firma(usuario, req) });
+        return json({ musica: { id: r.pista.id, nombre: r.pista.nombre, src: r.pista.src }, pista: r.pista, repetido: r.repetido }, 201);
       } catch (e) {
-        if (e instanceof ErrorEstudio) return error(e.message, e.estado ?? 400);
+        if (e instanceof ErrorSonido) return error(e.message, e.estado ?? 400);
         throw e;
       }
     }
     return error("Método no permitido.", 405);
+  }
+
+  // «Publicar con música»: la foto de un post → un reel con su música (crea, aprueba y renderiza; no gasta IA).
+  if (id === "con-musica" && !accion) {
+    if (metodo !== "POST") return error("Método no permitido.", 405);
+    const b = (await cuerpo(req)) ?? {};
+    const r = await publicarConMusica(env, acceso, cliente, {
+      postId: typeof b.postId === "string" ? b.postId : "", calendarId: typeof b.calendarId === "string" ? b.calendarId : null,
+      musicaId: typeof b.musicaId === "string" ? b.musicaId : "", segundos: b.segundos, movimiento: b.movimiento,
+      logo: typeof b.logo === "boolean" ? b.logo : undefined, usuario, por: firma(usuario, req),
+    });
+    avisar(env, acceso, usuario, req, clienteId, r.video.id);
+    return json(r, 202);
   }
 
   // «Me gusta esta»: una música generada pasa a referencia de la música de la marca (en el kit guardado).
@@ -294,7 +320,7 @@ async function rutasDelCliente(req, env, { acceso, usuario, partes, metodo }) {
   if (accion === "musica" && metodo === "POST") {
     try {
       const r = await proponerMusica(env, acceso, cliente, fila);
-      return json({ propuesta: r.propuesta, video: resumenDelAnalisis(r.analisis), aviso: r.aviso, modelo: r.modelo });
+      return json({ propuesta: r.propuesta, video: resumenDelAnalisis(r.analisis), aviso: r.aviso, modelo: r.modelo, biblioteca: r.biblioteca ?? [] });
     } catch (e) {
       if (e instanceof ErrorDirectorMusical) return error(e.message, e.estado);
       throw e;
@@ -318,7 +344,9 @@ async function rutasDelCliente(req, env, { acceso, usuario, partes, metodo }) {
 
   // El sonido (efectos y música): tampoco toca el guion ni la voz.
   if (accion === "sonido" && metodo === "PUT") {
-    const r = await guardarSonido(acceso, cliente, fila, { efectos: b.efectos, musica: b.musica ?? null });
+    // Sin `efectosPropios` en el cuerpo (una pantalla de antes), los de la biblioteca que ya tenía se quedan.
+    const efectosPropios = b.efectosPropios === undefined ? deFila(fila).sonido.efectosPropios ?? null : b.efectosPropios;
+    const r = await guardarSonido(acceso, cliente, fila, { efectos: b.efectos, musica: b.musica ?? null, efectosPropios });
     avisar(env, acceso, usuario, req, clienteId, id);
     return json(r);
   }

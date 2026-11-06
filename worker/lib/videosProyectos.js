@@ -21,7 +21,8 @@
 import { uuid, ahora } from "./ids.js";
 import { validarGuion, lineaDeTiempo, estadoTrasEditar, NOMBRE_ESTADO_VIDEO } from "../../src/lib/videoEscenas.js";
 import { textoParaVoz } from "../../src/lib/voces.js";
-import { limpiarSonido } from "../../src/lib/sonidoVideo.js";
+import { limpiarSonido, SITIOS_EFECTO } from "../../src/lib/sonidoVideo.js";
+import { sonidoParaVideo, musicaDeLaMarca } from "./estudio/sonidos.js";
 
 export const ID_VIDEO = /^[\w-]{1,80}$/;
 export const MAX_PROYECTOS = 200;
@@ -96,9 +97,12 @@ export async function publicacionDelCliente(acceso, clienteId, postId) {
   return null;
 }
 
-/** Lo que se guarda en `origen`: el reel del que sale ({ tipo, encargoId }) y la estructura de guion que siguió. */
+/** Lo que se guarda en `origen`: el reel del que sale ({ tipo, encargoId }), la foto de una foto con música y la estructura de guion que siguió. */
 function origenLimpio(origen, estructuraId) {
   const o = origen && typeof origen === "object" && !Array.isArray(origen) ? { tipo: String(origen.tipo ?? "").slice(0, 20), encargoId: String(origen.encargoId ?? "").slice(0, 80) } : {};
+  // El de una foto con música (lib/conMusica.js) recuerda la foto con que se hizo: si la publicación ya no la lleva al
+  // terminar el render, el video no la toca.
+  if (o.tipo === "foto" && /^\/api\/media\/clientes\/[^\s]{1,300}$/.test(String(origen.foto ?? "")) && !String(origen.foto).includes("..")) o.foto = String(origen.foto);
   return /^[\w-]{1,80}$/.test(String(estructuraId ?? "")) ? { ...o, estructuraId: String(estructuraId) } : o;
 }
 
@@ -117,7 +121,9 @@ export async function crearProyecto(acceso, cliente, { guion: entrada, titulo, c
     throw new ErrorVideo(`Como mucho ${MAX_PROYECTOS} videos por cliente: borra los que ya no sirvan.`, 409);
   }
   const momento = ahora();
+  const sonido = await sonidoInicial(acceso, cliente.id, guion);
   const fila = await acceso.insertar("videos_proyectos", {
+    ...(sonido ? { sonido: JSON.stringify(sonido) } : {}),
     id: uuid(), client_id: cliente.id, calendar_id: cal?.id ?? null,
     post_id: cal && ID_VIDEO.test(String(postId ?? "")) ? String(postId) : null,
     titulo: limpiarTitulo(titulo ?? guion.titulo) || "Video sin título",
@@ -129,6 +135,19 @@ export async function crearProyecto(acceso, cliente, { guion: entrada, titulo, c
     guion: JSON.stringify(guion), creado_por: usuario?.id ?? null, created_at: momento, updated_at: momento,
   });
   return { video: deFila(fila), avisos };
+}
+
+/**
+ * El sonido con que nace un video: la MÚSICA DE LA MARCA del cliente (su favorita de la biblioteca de sonido) si la
+ * tiene, salvo que el guion ya traiga su música (por su clave) o el sonido de sus clips (un montaje que suena solo).
+ * Sin favorita, nada (el de siempre: efectos encendidos y sin música). Nunca tumba la creación. → el sonido o null.
+ */
+async function sonidoInicial(acceso, clienteId, guion) {
+  if (guion?.musica?.clave) return null;
+  if ((guion?.escenas ?? []).some((e) => (e.capas ?? []).some((c) => c.tipo === "video" && c.sonido))) return null;
+  const m = await musicaDeLaMarca(acceso, clienteId).catch(() => null);
+  if (!m) return null;
+  return limpiarSonido({ efectos: true, musica: { archivoId: m.id, clave: m.src.replace(/^\/api\/media\//, ""), nombre: m.nombre, volumen: 0 } });
 }
 
 /** La versión que se leyó tiene que ser la de ahora: si no, otra persona lo cambió y no se pisa. */
@@ -229,11 +248,19 @@ export async function vozQueSigueValiendo(acceso, clienteId, fila, guion) {
 export async function guardarSonido(acceso, cliente, fila, sonido) {
   if (fila.estado === "renderizando") throw new ErrorVideo("Se está renderizando: espera a que termine para cambiar el sonido.", 409);
   const limpio = limpiarSonido(sonido);
+  // La música y los efectos, de la biblioteca del cliente o de la de la AGENCIA: la clave la pone el servidor.
   if (limpio.musica) {
-    const a = await acceso.leerUno("estudio_archivos", { id: limpio.musica.archivoId, client_id: cliente.id });
-    if (!a || a.tipo !== "audio" || a.borrado_at) throw new ErrorVideo("Esa música no está en la galería de este cliente.", 404);
-    const nombre = limpio.musica.nombre || String(a.prompt ?? "").replace(/\.[a-z0-9]+$/i, "").trim().slice(0, 80) || "Música";
-    limpio.musica = { ...limpio.musica, clave: a.clave, nombre };
+    const a = await sonidoParaVideo(acceso, cliente.id, limpio.musica.archivoId, "musica");
+    if (!a) throw new ErrorVideo("Esa música no está en la biblioteca de este cliente ni en la de la agencia.", 404);
+    const m = limpio.musica;
+    limpio.musica = { archivoId: a.archivoId, clave: a.clave, nombre: m.nombre || a.nombre, volumen: m.volumen, ...(a.de ? { de: a.de } : {}) };
+  }
+  for (const sitio of SITIOS_EFECTO) {
+    const e = limpio.efectosPropios?.[sitio];
+    if (!e) continue;
+    const a = await sonidoParaVideo(acceso, cliente.id, e.archivoId, "efecto");
+    if (!a) throw new ErrorVideo("Ese efecto no está en la biblioteca de este cliente ni en la de la agencia.", 404);
+    limpio.efectosPropios[sitio] = { archivoId: a.archivoId, clave: a.clave, nombre: a.nombre, ...(a.de ? { de: a.de } : {}) };
   }
   const momento = ahora();
   const n = await acceso.actualizar("videos_proyectos", { id: fila.id, client_id: cliente.id, estado: fila.estado }, { sonido: JSON.stringify(limpio), updated_at: momento });

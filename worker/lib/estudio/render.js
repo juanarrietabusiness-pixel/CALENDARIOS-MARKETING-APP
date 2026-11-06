@@ -26,9 +26,12 @@ import { pedidoDelVideo, aBase64, subirClips } from "./cuadros.js";
 import { claveDeArchivo, claveDelCliente, slugCorto } from "./archivos.js";
 import { puedeRenderizar, esMp4, PLAZO_RENDER_MS } from "../../../src/lib/renderVideo.js";
 import { tieneHabla } from "../../../src/lib/videoEscenas.js";
-import { limpiarSonido } from "../../../src/lib/sonidoVideo.js";
+import { limpiarSonido, SITIOS_EFECTO } from "../../../src/lib/sonidoVideo.js";
+import { claveDeSonido } from "./sonidos.js";
+import { MAX_BYTES_SONIDO } from "../../../src/lib/bibliotecaSonido.js";
 import { dbDeVolumenGuion } from "../../../src/lib/musica.js";
 import { avisarRender } from "../equipo.js";
+import { esVideoDeFoto, postConMusica } from "../../../src/lib/conMusica.js";
 
 const leerJSON = (t, d) => { try { return typeof t === "string" ? JSON.parse(t) : (t ?? d); } catch { return d; } };
 const SISTEMA = { userId: "sistema", nombre: "Render", color: "", tab: null };
@@ -36,6 +39,10 @@ const SISTEMA = { userId: "sistema", nombre: "Render", color: "", tab: null };
 const TOPE_VOZ = 20 * 1024 * 1024;
 /** Lo que pesa como mucho la música de fondo (va en el mismo pedido que la voz). */
 const TOPE_MUSICA = 15 * 1024 * 1024;
+/** Lo que pesa como mucho un efecto de la biblioteca (los dos van en el pedido, en base64). */
+const TOPE_EFECTO = MAX_BYTES_SONIDO.efecto;
+/** El efecto sintetizado al que sustituye cada efecto de la biblioteca (src/lib/efectosSonido.js). */
+const SINTETIZADO = Object.freeze({ transicion: "whoosh", sello: "pop" });
 
 const avisar = (env, ownerId, clienteId, id, por = SISTEMA) => difundir(env, ownerId, { tipo: "videos", clienteId, id, por });
 
@@ -95,9 +102,13 @@ export async function ponerEnPublicacion(env, acceso, fila, medio, { rellenar = 
   if (!fila.calendar_id || !fila.post_id) return null;
   const origen = leerJSON(fila.origen, {});
   const esSuyo = (m) => m?.videoAnimado === fila.id || (origen.encargoId && m?.deReel === origen.encargoId);
+  // Una FOTO CON MÚSICA (lib/conMusica.js): la publicación pasa a reel con el mp4 de único medio y la foto de portada, y
+  // apunta lo de antes para «Volver a la foto». Si la foto ya no es la misma (se cambió mientras se hacía), no se toca.
+  const deFoto = esVideoDeFoto(origen);
   const r = await cambiarPublicacion(env, acceso, {
     clienteId: fila.client_id, calendarId: fila.calendar_id, postId: fila.post_id, por: SISTEMA,
     cambiar: (post) => {
+      if (deFoto) return postConMusica(post, medio, { videoId: fila.id, foto: origen.foto ?? "", ahora: ahora() });
       const con = conVideoEnPost(post, medio, esSuyo);
       // La estructura de guion que siguió la voz: la publicación la recuerda (si no tenía otra).
       const campos = { ...(rellenar ?? {}), ...(origen.estructuraId ? { estructura: origen.estructuraId } : {}) };
@@ -110,6 +121,7 @@ export async function ponerEnPublicacion(env, acceso, fila, medio, { rellenar = 
     if (/a la vez/.test(r.aviso)) return { aviso: "El calendario se estaba guardando a la vez: el video quedó en la galería; ponlo desde ahí." };
     return { aviso: "La publicación ligada ya no está en su calendario: el video quedó en la galería." };
   }
+  if (deFoto && r?.sinCambios) return { aviso: "La foto de la publicación cambió mientras se hacía el video: quedó en la galería, sin tocarla." };
   return { calendarId: r.calendarId, postId: fila.post_id };
 }
 
@@ -191,7 +203,8 @@ export async function ejecutarRender(env, { ownerId, clienteId, videoId, intento
     }
     let musica = null;
     let sinMusica = null;
-    const claveMusica = sonido.musica ? claveDelCliente(sonido.musica.clave, clienteId) : null;
+    // La música puede ser de la biblioteca del cliente o de la de la AGENCIA (de este espacio): `claveDeSonido`.
+    const claveMusica = sonido.musica ? claveDeSonido(sonido.musica.clave, clienteId, ownerId) : null;
     if (sonido.musica) {
       const obj = claveMusica ? await env.MEDIA.get(claveMusica) : null;
       if (!obj) sinMusica = "La música de fondo ya no está en la galería: salió sin ella.";
@@ -199,7 +212,26 @@ export async function ejecutarRender(env, { ownerId, clienteId, videoId, intento
       else musica = { audio: aBase64(new Uint8Array(await obj.arrayBuffer())), volumen: sonido.musica.volumen };
     }
 
-    const r = await enviar("/render", { ...pedido, ...(audio ? { audio } : {}), efectos: sonido.efectos, ...(musica ? { musica } : {}) });
+    // Los EFECTOS de la biblioteca (en vez del whoosh y del pop sintetizados), sólo con los efectos encendidos. Uno que ya
+    // no está no tumba el render: suena el sintetizado y se dice.
+    const efectosPropios = {};
+    const sinEfecto = [];
+    if (sonido.efectos) {
+      for (const sitio of SITIOS_EFECTO) {
+        const e = sonido.efectosPropios?.[sitio];
+        if (!e) continue;
+        const clave = claveDeSonido(e.clave, clienteId, ownerId);
+        const obj = clave ? await env.MEDIA.get(clave) : null;
+        if (!obj || obj.size > TOPE_EFECTO * 1.1) sinEfecto.push(e.nombre || "un efecto");
+        else efectosPropios[SINTETIZADO[sitio]] = aBase64(new Uint8Array(await obj.arrayBuffer()));
+      }
+    }
+    const avisoEfectos = sinEfecto.length ? `${sinEfecto.length === 1 ? `El efecto «${sinEfecto[0]}» ya no está` : `Los efectos ${sinEfecto.map((x) => `«${x}»`).join(" y ")} ya no están`}: sonó el de la aplicación.` : null;
+
+    const r = await enviar("/render", {
+      ...pedido, ...(audio ? { audio } : {}), efectos: sonido.efectos, ...(musica ? { musica } : {}),
+      ...(Object.keys(efectosPropios).length ? { efectosPropios } : {}),
+    });
     if (!r.ok) {
       const j = await r.json().catch(() => ({}));
       throw new Error(j.error || `El Container respondió ${r.status}.`);
@@ -223,6 +255,9 @@ export async function ejecutarRender(env, { ownerId, clienteId, videoId, intento
       duracion, cuadros: num("X-Cuadros"), lufs: num("X-Lufs"), lufsAntes: num("X-Lufs-Antes"),
       ms: { audio: num("X-Ms-Audio"), video: num("X-Ms-Video"), total: Date.now() - inicio }, videoId: fila.id, version: render.version,
       efectos: sonido.efectos, musica: musica ? sonido.musica.nombre || "Música" : null,
+      ...(Object.keys(efectosPropios).length ? {
+        efectosPropios: Object.fromEntries(SITIOS_EFECTO.filter((x) => efectosPropios[SINTETIZADO[x]]).map((x) => [x, sonido.efectosPropios[x].nombre || "Efecto"])),
+      } : {}),
     };
     await acceso.insertar("estudio_archivos", {
       id: archivoId, client_id: clienteId, clave, tipo: "video", mime: "video/mp4", ancho, alto, bytes: bytes.byteLength,
@@ -232,7 +267,7 @@ export async function ejecutarRender(env, { ownerId, clienteId, videoId, intento
     const listo = {
       ...render, estado: "listo", clave, archivoId, bytes: bytes.byteLength, ancho, alto, ...datos, terminadoAt: momento,
       adjunto: puesto?.postId ? { calendarId: puesto.calendarId, postId: puesto.postId } : null,
-      aviso: [sinClips, sinMusica, puesto?.aviso].filter(Boolean).join(" ") || null,
+      aviso: [sinClips, sinMusica, avisoEfectos, puesto?.aviso].filter(Boolean).join(" ") || null,
     };
     delete listo.anterior;
     const escrito = await terminar(acceso, clienteId, videoId, intento, "renderizado", listo);

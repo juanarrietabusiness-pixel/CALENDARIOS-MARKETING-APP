@@ -26,7 +26,8 @@ export default function MusicaDeMarca({ kit, lectura = false, onGuardar }) {
     setGuardando(true);
     setAviso(null);
     try {
-      const nuevo = await onGuardar({ ...kit, musica: { estilo, evitar, referencias } });
+      // Lo demás de la música de la marca (las canciones de Instagram…) se queda como está.
+      const nuevo = await onGuardar({ ...kit, musica: { ...(kit?.musica ?? {}), estilo, evitar, referencias } });
       const m = limpiarMusicaDeMarca(nuevo?.musica ?? { estilo, evitar, referencias });
       setEstilo(m.estilo); setEvitar(m.evitar); setReferencias(m.referencias);
       setAviso({ ok: true, texto: "Guardada: el director musical la sigue en los próximos videos." });

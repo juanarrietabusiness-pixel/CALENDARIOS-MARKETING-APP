@@ -16,11 +16,13 @@
 //                      zona segura, capas encimadas (con las fuentes reales)
 //   · renderizar_video el mp4 (voz, escenas, subtítulos, -14 LUFS) en el Container: a la galería y a su publicación
 //   · ligar_video      a qué publicación va (o ninguna); si el mp4 ya está hecho, se pone en ella ya
-//   · sonido_video     lo que suena debajo de la voz: efectos (whoosh y pop) y la música de fondo con su volumen; no toca
-//                      el guion ni la voz (gratis)
-//   · musicas          las músicas de fondo del cliente (audio de su galería)
+//   · sonido_video     lo que suena debajo de la voz: efectos (whoosh y pop, o uno de la biblioteca para las transiciones y
+//                      otro para los sellos) y la música de fondo con su volumen; no toca el guion ni la voz (gratis)
+//   · musicas          la BIBLIOTECA DE SONIDO del cliente y la de la agencia: músicas (la de la marca, primero) y efectos
 //   · personaje_video  el aspecto del personaje de la casa en los videos del cliente (piel, pelo, ropa, accesorio): al kit
 //   · versiones_video  el historial del guion; volver_a_version vuelve a una (versión nueva, en borrador)
+//   · publicar_con_musica  «con música»: un post de UNA foto → un reel con su música (crea, aprueba y renderiza; no gasta
+//                      IA); un carrusel → a mano con la música de Instagram y la canción sugerida (worker/lib/estudio/conMusica.js)
 //
 // Las tres de mirar devuelven { texto, imagenes } (no un texto): el MCP las manda como bloques de imagen y el
 // asistente como imagen en su tool_result. No gastan IA: es cómputo del Container.
@@ -38,7 +40,8 @@ import {
   deFila, listarProyectos, proyectoDe, crearProyecto, guardarProyecto, editarEscena, aprobarProyecto, publicacionDelCliente, ErrorVideo,
   guardarSonido, versionesDe, volverAVersion,
 } from "../videosProyectos.js";
-import { musicasDe } from "./galeria.js";
+import { sonidosDelCliente, sonidosDeLaAgencia } from "./sonidos.js";
+import { textoDePista } from "../../../src/lib/bibliotecaSonido.js";
 import { kitDe, guardarKit } from "./kit.js";
 import {
   ACCESORIOS_PERSONAJE, EXPRESIONES_PERSONAJE, TOKENS_ROPA, ASPECTO_POR_DEFECTO, limpiarPersonaje, tieneAspecto,
@@ -51,6 +54,8 @@ import { textoDeSubtitulo } from "../../../src/lib/subtitulos.js";
 import { instanteLleno } from "../../../src/lib/revisionEscenas.js";
 import { pedidoConClips, alContenedor, respuestaEnBase64 } from "./cuadros.js";
 import { pedirRender, renderAlDia, ligarAPublicacion } from "./render.js";
+import { conMusicaSegun } from "./conMusica.js";
+import { DURACIONES_FOTO, MOVIMIENTOS_FOTO, textoDeCancion } from "../../../src/lib/conMusica.js";
 import { vistaDe, piezaDe } from "../mcpVista/modelo.js";
 import { vistaDeVideo, lineasDeMedios } from "./vistaMedios.js";
 import { leerEstructuras, estructuraExistente } from "../estructurasGuion.js";
@@ -186,21 +191,23 @@ export const DEFINICIONES_VIDEO = Object.freeze([
   },
   {
     name: "sonido_video",
-    description: `Lo que suena DEBAJO de la voz del video animado: «efectos» (un whoosh suave en cada transición que no es un corte y un pop cuando entra un sello o el llamado; bajitos, encendidos por defecto) y la MÚSICA de fondo («musica_id», de musicas; vacío para quitarla) con su «volumen» en dB (${VOLUMEN_MUSICA.min} a +${VOLUMEN_MUSICA.max}; 0 por defecto). La música baja sola mientras se habla y sube en los huecos (ducking), entra y sale con fundido y se repite si es corta. Va APARTE del guion: no sube la versión ni pide otra voz. Para oírlo hay que volver a renderizar (renderizar_video, no gasta IA). Sin parámetros, dice cómo está. No gasta nada.`,
+    description: `Lo que suena DEBAJO de la voz del video animado: «efectos» (un whoosh suave en cada transición que no es un corte y un pop cuando entra un sello o el llamado; bajitos, encendidos por defecto; con «efecto_transicion_id» y «efecto_sello_id», un efecto de la BIBLIOTECA del cliente o de la agencia —de musicas— suena en su lugar, al mismo nivel) y la MÚSICA de fondo («musica_id», de musicas: del cliente o de la agencia; vacío para quitarla) con su «volumen» en dB (${VOLUMEN_MUSICA.min} a +${VOLUMEN_MUSICA.max}; 0 por defecto). La música baja sola mientras se habla y sube en los huecos (ducking), entra y sale con fundido y se repite si es corta. Va APARTE del guion: no sube la versión ni pide otra voz. Para oírlo hay que volver a renderizar (renderizar_video, no gasta IA). Sin parámetros, dice cómo está. No gasta nada.`,
     input_schema: {
       type: "object",
       properties: {
         ...clienteParam, ...videoParam,
         efectos: { type: "boolean", description: "Encender o apagar los efectos." },
-        musica_id: { type: "string", description: "El id de una música de musicas; vacío («») para quitarla." },
+        musica_id: { type: "string", description: "El id de una música de musicas (del cliente o de la agencia); vacío («») para quitarla." },
         volumen: { type: "number", description: "El volumen de la música en dB respecto a lo normal (-12 a 12)." },
+        efecto_transicion_id: { type: "string", description: "El id de un EFECTO de musicas para las transiciones (en vez del whoosh); vacío («») vuelve al de la aplicación." },
+        efecto_sello_id: { type: "string", description: "El id de un EFECTO de musicas para los sellos y llamados (en vez del pop); vacío («») vuelve al de la aplicación." },
       },
       required: ["video_id"],
     },
   },
   {
     name: "musicas",
-    description: "Las músicas de fondo de un cliente que se pueden poner en sus videos animados (audio subido a su galería desde la pantalla del video: «Sonido» → «Subir música»). No gasta nada.",
+    description: "La BIBLIOTECA DE SONIDO que puede usar un cliente en sus videos: su música (la de la marca, primero; las generadas con Suno y las subidas) y sus efectos, y la música y los efectos de la AGENCIA (para todos los clientes), cada uno con su id, BPM, etiquetas (ánimo, ritmo) y duración. Antes de generar una música con Suno, mira aquí: reutilizar una es gratis. No gasta nada.",
     input_schema: { type: "object", properties: { ...clienteParam } },
   },
   {
@@ -233,6 +240,24 @@ export const DEFINICIONES_VIDEO = Object.freeze([
     },
   },
   {
+    name: "publicar_con_musica",
+    description: `«Publicar CON MÚSICA». La API de Instagram no deja poner música de su biblioteca en fotos ni en carruseles; hay dos caminos según la publicación (ofrécelos cuando pidan un post «con música»):
+· Un POST DE UNA FOTO se convierte en un REEL corto: la foto a sangre con un movimiento suave (${MOVIMIENTOS_FOTO.map((m) => `«${m.id}»: ${m.nombre.toLowerCase()}`).join("; ")}) de ${DURACIONES_FOTO.join(", ")} s y una música de la galería del cliente (musica_id de musicas; sin él, la favorita, la de la marca o la más nueva). Crea el video, lo aprueba y lo renderiza ligado a la publicación; al terminar es un reel con el video y la foto de PORTADA (en Instagram, «audio original»). En la pestaña Pieza, «Volver a la foto» lo deshace. NO gasta IA (0 $): el video lo hace el servidor. Sin música en la galería, dilo: se sube o se genera en «Sonido» (no generes música nueva salvo que la pidan, con generar_musica y su confirmación).
+· Un CARRUSEL no se convierte: se marca para publicarlo A MANO desde el teléfono con la música de Instagram («La publico yo»): a su hora llega un aviso con la pantalla del teléfono (las imágenes en orden para compartir a Instagram, el texto para copiar y una CANCIÓN SUGERIDA de la lista que la agencia escribe por cliente en Marca → Kit y voz).`,
+    input_schema: {
+      type: "object",
+      properties: {
+        ...clienteParam,
+        publicacion_id: { type: "string", description: "La publicación del calendario (de ver_calendario): un post de una foto o un carrusel." },
+        musica_id: { type: "string", description: "Sólo para el reel: el id de una música de musicas. Si se omite, la favorita, la de la marca o la más nueva." },
+        segundos: { type: "number", enum: [...DURACIONES_FOTO], description: "Sólo para el reel: lo que dura (10 por defecto)." },
+        movimiento: { type: "string", enum: MOVIMIENTOS_FOTO.map((m) => m.id), description: "Sólo para el reel: cómo se mueve la foto (acercar por defecto)." },
+        logo: { type: "boolean", description: "Sólo para el reel: el logo del kit encima. Si se omite, sólo si el kit lo estampa y la foto no salió ya del Estudio con él." },
+      },
+      required: ["publicacion_id"],
+    },
+  },
+  {
     name: "ligar_video",
     description: "Liga el video animado a una publicación del calendario del cliente (de ver_calendario), o lo desliga con publicacion_id vacío. Si el mp4 ya está renderizado, se pone en esa publicación YA (primero en sus medios, o en el sitio del mp4 anterior de este video); si no, se pondrá al terminar el render. Desligar no quita el mp4 del post de antes. No gasta nada.",
     input_schema: {
@@ -244,7 +269,7 @@ export const DEFINICIONES_VIDEO = Object.freeze([
 ]);
 
 /** Las que escriben (en el MCP van como escritura; las demás, de sólo lectura). */
-export const ESCRIBEN_VIDEO = Object.freeze(["crear_video", "guardar_video", "editar_escena", "aprobar_video", "renderizar_video", "ligar_video", "sonido_video", "volver_a_version", "personaje_video"]);
+export const ESCRIBEN_VIDEO = Object.freeze(["publicar_con_musica", "crear_video", "guardar_video", "editar_escena", "aprobar_video", "renderizar_video", "ligar_video", "sonido_video", "volver_a_version", "personaje_video"]);
 
 /** Lo que falta para el siguiente paso, en una frase para el modelo. Pura. */
 /** ¿La locución es de la versión aprobada? (un video «aprobado» con voz de esa versión ya no la necesita otra vez). */
@@ -448,32 +473,68 @@ export function crearHerramientasVideo({ env, acceso, resolverCliente, usuario, 
       });
     },
 
-    async sonido_video({ cliente, video_id: id, efectos, musica_id: musicaId, volumen }) {
+    async sonido_video({ cliente, video_id: id, efectos, musica_id: musicaId, volumen, efecto_transicion_id: transicion, efecto_sello_id: sello }) {
       const c = await resolverCliente(cliente);
       return conErrores(async () => {
         const fila = await proyectoDe(acceso, c.id, id);
         const antes = deFila(fila).sonido;
-        const cambia = efectos !== undefined || musicaId !== undefined || volumen !== undefined;
+        const cambia = [efectos, musicaId, volumen, transicion, sello].some((x) => x !== undefined);
         let ahora = antes;
         if (cambia) {
           const musica = musicaId === undefined ? antes.musica : musicaId ? { archivoId: musicaId, volumen: volumen ?? (antes.musica?.archivoId === musicaId ? antes.musica.volumen : 0) } : null;
           if (musica && volumen !== undefined) musica.volumen = volumen;
-          ahora = (await guardarSonido(acceso, c, fila, { efectos: efectos ?? antes.efectos, musica })).video.sonido;
+          // Los efectos de la biblioteca: un id lo pone; «» lo quita (vuelve el sintetizado); sin pasarlo, se queda el de antes.
+          const propio = (nuevo, sitio) => (nuevo === undefined ? antes.efectosPropios?.[sitio] ?? null : nuevo || null);
+          const efectosPropios = { transicion: propio(transicion, "transicion"), sello: propio(sello, "sello") };
+          ahora = (await guardarSonido(acceso, c, fila, { efectos: efectos ?? antes.efectos, musica, efectosPropios })).video.sonido;
           avisar(c.id, id);
         }
         const m = ahora.musica;
+        const ef = ahora.efectosPropios ?? {};
+        const efectosTexto = !ahora.efectos ? "efectos apagados" : `efectos encendidos (transiciones: ${ef.transicion ? `«${ef.transicion.nombre}»` : "el whoosh de la aplicación"}; sellos y llamados: ${ef.sello ? `«${ef.sello.nombre}»` : "el pop de la aplicación"})`;
         return [
-          `${cambia ? "Guardado. " : ""}Sonido de «${fila.titulo}»: efectos ${ahora.efectos ? "encendidos" : "apagados"}; ${m ? `música «${m.nombre}» (${m.volumen > 0 ? "+" : ""}${m.volumen} dB)` : "sin música"}.`,
+          `${cambia ? "Guardado. " : ""}Sonido de «${fila.titulo}»: ${efectosTexto}; ${m ? `música «${m.nombre}»${m.de === "agencia" ? " (de la agencia)" : ""} (${m.volumen > 0 ? "+" : ""}${m.volumen} dB)` : "sin música"}.`,
           cambia && fila.estado === "renderizado" ? "El mp4 que ya hay es de antes: renderizar_video para oírlo (no gasta IA ni pide otra voz)." : "",
         ].filter(Boolean).join(" ");
       });
     },
 
+    async publicar_con_musica({ cliente, publicacion_id: postId, musica_id: musicaId = "", segundos, movimiento, logo }) {
+      const c = await resolverCliente(cliente);
+      return conErrores(async () => {
+        const r = await conMusicaSegun(env, acceso, c, { postId, musicaId, segundos, movimiento, logo: typeof logo === "boolean" ? logo : undefined, usuario, por });
+        if (r.tipo === "a-mano") {
+          return [
+            "Marcada para publicarla A MANO con la música de Instagram (el carrusel no se convierte: la API no deja poner su música).",
+            r.cancion ? `Canción sugerida: «${textoDeCancion(r.cancion)}» (de la lista de ${c.name}; no repite la última usada).`
+              : r.sinLista ? `${c.name} no tiene lista de canciones de Instagram: la agencia la escribe en Marca → Kit y voz.` : "",
+            r.sacadas ? "Estaba programada: se sacó de la cola para que no salga sola sin la música." : "",
+            `A su hora (y 10 min antes) llega el aviso a la campana con la pantalla del teléfono: ${r.enlace} (las imágenes en orden para compartir a Instagram, el texto para copiar y la canción).`,
+          ].filter(Boolean).join(" ");
+        }
+        avisar(c.id, r.video.id);
+        const capa = r.video.guion?.escenas?.[0]?.capas?.[0] ?? {};
+        const mov = MOVIMIENTOS_FOTO.find((m) => m.id === capa.movimiento)?.nombre.toLowerCase() ?? "con movimiento";
+        const texto = `Haciendo el reel con música de la publicación ${postId}: la foto con ${mov}, ${capa.dura ?? ""} s, con «${r.musica.nombre}». ${r.aviso} Míralo con ver_video (video_id ${r.video.id}).`;
+        const video = { ...r.video, locucion: await locucionAlDia(acceso, r.video.locucion) };
+        return { texto, imagenes: [], vista: await vistaDeVideo(env, { video, clienteId: c.id, cliente: { id: c.id, nombre: c.name } }) };
+      });
+    },
+
     async musicas({ cliente }) {
       const c = await resolverCliente(cliente);
-      const lista = await musicasDe(acceso, c.id);
-      if (!lista.length) return `${c.name} no tiene músicas de fondo en su galería. Se suben desde la pantalla del video (Sonido → Subir música: MP3 o WAV de hasta 15 MB, con derechos para usarla).`;
-      return [`Músicas de fondo de ${c.name}:`, ...lista.map((m) => `· ${m.id} — «${m.nombre}» · ${(m.bytes / 1048576).toFixed(1)} MB · ${String(m.fecha).slice(0, 10)}`)].join("\n");
+      const [suya, agencia] = await Promise.all([sonidosDelCliente(acceso, c.id), sonidosDeLaAgencia(acceso).catch(() => ({ musica: [], efectos: [] }))]);
+      const linea = (p) => `· ${p.id} — ${textoDePista(p)} · ${(p.bytes / 1048576).toFixed(1)} MB`;
+      const bloque = (titulo, lista, vacio) => (lista.length ? [titulo, ...lista.map(linea)] : [`${titulo} ${vacio}`]);
+      const hay = suya.musica.length + suya.efectos.length + agencia.musica.length + agencia.efectos.length;
+      if (!hay) return `${c.name} no tiene músicas ni efectos en su biblioteca, y la agencia tampoco. Se suben en Marca → Música y efectos (MP3, WAV o M4A: música de hasta 15 MB, efectos de hasta 2 MB, con derechos para usarlos) o se genera una con generar_musica.`;
+      return [
+        `La biblioteca de sonido de ${c.name} (gratis: no hace falta generar otra con Suno si alguna sirve). Para un video: sonido_video con musica_id, y efecto_transicion_id / efecto_sello_id para los efectos.`,
+        ...bloque(`Música de ${c.name}:`, suya.musica, "ninguna."),
+        ...bloque(`Efectos de ${c.name}:`, suya.efectos, "ninguno."),
+        ...bloque("Música de la agencia (para todos los clientes):", agencia.musica, "ninguna."),
+        ...bloque("Efectos de la agencia:", agencia.efectos, "ninguno."),
+      ].join("\n");
     },
 
     async personaje_video({ cliente, ...cambios }) {

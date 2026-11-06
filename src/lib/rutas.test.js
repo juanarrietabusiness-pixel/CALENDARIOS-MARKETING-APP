@@ -134,6 +134,11 @@ describe("analizar y construir son inversas", () => {
     }
   });
 
+  it("Marca → «Música y efectos» (la biblioteca de sonido) tiene su dirección", () => {
+    expect(analizarRuta(url("/cliente/dcasa/marca/sonido"))).toMatchObject({ pestana: "marca", seccion: "sonido" });
+    expect(construirRuta({ cliente: "dcasa", pestana: "marca", seccion: "sonido" })).toBe("/cliente/dcasa/marca/sonido");
+  });
+
   it("una sub-sección que no existe abre la pestaña en la de entrada", () => {
     expect(analizarRuta(url("/cliente/dcasa/marca/no-existe"))).toMatchObject({ pestana: "marca", seccion: null });
     expect(pestanaYSeccion("resultados", "kit")).toEqual({ pestana: "resultados", seccion: null });

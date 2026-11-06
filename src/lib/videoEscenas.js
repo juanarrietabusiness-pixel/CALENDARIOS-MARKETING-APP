@@ -129,6 +129,8 @@ export const POSICIONES = Object.freeze(["centro", "arriba", "abajo", "izq", "de
 export const ENTRADAS = Object.freeze(["aparece", "fundido", "sube", "baja", "escala", "rebote", "escribe", "barrido", "dibuja"]);
 export const SALIDAS = Object.freeze(["ninguna", "fundido", "baja", "escala"]);
 export const BUCLES = Object.freeze(["ninguno", "flota", "pulso", "gira", "late"]);
+/** Cómo se mueve una imagen a sangre mientras se ve (el «Ken Burns» de una foto con música). */
+export const MOVIMIENTOS_IMAGEN = Object.freeze(["ninguno", "acercar", "alejar", "paneo"]);
 export const TRANSICIONES = Object.freeze(["corte", "fundido", "barrido", "zoom", "deslizar"]);
 export const FONDOS = Object.freeze(["plano", "degradado", "papel", "rayas", "puntos", "estrellas", "lineas"]);
 export const RITMOS = Object.freeze(["calmado", "medio", "rapido"]);
@@ -183,7 +185,19 @@ export const COMPONENTES = Object.freeze({
     },
   },
   burbuja: { nombre: "Burbuja de chat", props: { texto: T(90, true), lado: E(["izq", "der"], "izq"), color: C("superficie") } },
-  imagen: { nombre: "Imagen de la galería", props: { archivo: T(64, true), rol: E(["producto", "foto", "persona"], "producto"), recorte: E(["contener", "cubrir"], "contener"), marco: B(false) } },
+  // Una IMAGEN de la galería. En su caja por defecto; con `encuadre` «completo», A SANGRE detrás de todo (como un video):
+  // `recorte` cubrir llena el cuadro, contener la enseña entera sobre ella misma ampliada, difuminada y oscurecida.
+  // `movimiento` la mueve despacio todo el rato que se ve (acercar, alejar o paneo: un «Ken Burns»), `dura` hace que la
+  // escena dure al menos eso aunque no diga nada (una foto con música) y `oscurecer` pone un velo para leer el texto.
+  // Los cuatro son OPCIONALES y no se escriben si van como por defecto: un guion de antes valida igual que siempre.
+  imagen: {
+    nombre: "Imagen de la galería",
+    props: {
+      archivo: T(64, true), rol: E(["producto", "foto", "persona"], "producto"), recorte: E(["contener", "cubrir"], "contener"), marco: B(false),
+      encuadre: { ...E(["caja", "completo"], "caja"), omitir: true }, movimiento: { ...E(MOVIMIENTOS_IMAGEN, "ninguno"), omitir: true },
+      dura: { ...N(0, MAX_TRAMO_VIDEO, 0), omitir: true }, oscurecer: { ...N(0, 0.85, 0), omitir: true },
+    },
+  },
   // Un CLIP de la galería (grabado por el cliente, de Kie, de Drive): `encuadre` «completo» lo pone a sangre detrás de
   // todo (con `oscurecer`, un velo para leer el texto); «caja», en su zona como una imagen. Empieza en su segundo
   // `desde` cuando entra la capa y sigue a velocidad normal; `hasta` (> desde) fija el tramo y la escena dura al menos
@@ -360,7 +374,12 @@ function validarCapa(capa, donde, nPalabras, errores, avisos, ids) {
   if (ids.has(id)) errores.push({ donde: `${donde}.id`, mensaje: `El id «${id}» se repite.` });
   ids.add(id);
   const props = {};
-  for (const [k, d] of Object.entries(def.props)) props[k] = validarProp(d, capa[k], `${donde}.${k}`, errores);
+  for (const [k, d] of Object.entries(def.props)) {
+    const v = validarProp(d, capa[k], `${donde}.${k}`, errores);
+    // Un campo OPCIONAL que va como por defecto no se escribe: así un guion de antes valida exactamente igual.
+    if (d.omitir && v === d.def) continue;
+    props[k] = v;
+  }
   for (const f of def.comprobar?.(props) ?? []) errores.push({ donde: `${donde}.${f.campo}`, mensaje: f.mensaje });
   for (const k of Object.keys(capa)) {
     if (!COMUNES.has(k) && !(k in def.props)) avisos.push({ donde: `${donde}.${k}`, mensaje: `«${k}» no es de un ${capa.tipo}: se quitó.` });
@@ -393,8 +412,9 @@ function validarEscena(e, i, errores, avisos, idsEscenas) {
   const nPalabras = palabrasDe(habla).length;
   const pausa = e.pausa === undefined ? 0 : Number(e.pausa);
   if (!(pausa >= 0 && pausa <= MAX_PAUSA)) errores.push({ donde: `${donde}.pausa`, mensaje: `«pausa» son segundos de silencio detrás del habla: entre 0 y ${MAX_PAUSA}.` });
-  const conTramo = Array.isArray(e.capas) && e.capas.some((c) => c?.tipo === "video" && Number(c.hasta) > Number(c.desde ?? 0));
-  if (!nPalabras && !(pausa > 0) && !conTramo) errores.push({ donde, mensaje: "Una escena que no dice nada necesita «pausa» (los segundos que dura en silencio) o un video con su tramo («desde» y «hasta»)." });
+  const conTramo = Array.isArray(e.capas) && e.capas.some((c) => (c?.tipo === "video" && Number(c.hasta) > Number(c.desde ?? 0))
+    || (c?.tipo === "imagen" && Number(c.dura) > 0));
+  if (!nPalabras && !(pausa > 0) && !conTramo) errores.push({ donde, mensaje: "Una escena que no dice nada necesita «pausa» (los segundos que dura en silencio), un video con su tramo («desde» y «hasta») o una imagen con «dura»." });
   const pantalla = recorta(e.pantalla);
   if (pantalla.length > MAX_PANTALLA) errores.push({ donde: `${donde}.pantalla`, mensaje: `Pasa de ${MAX_PANTALLA} caracteres.` });
 
@@ -609,15 +629,18 @@ export function videosDelGuion(guion) {
 export const tieneHabla = (guion) => palabrasDe(textoDeLocucion(guion)).length > 0;
 
 /**
- * Lo que dura como poco una escena: `MIN_ESCENA`, o el TRAMO de su video más largo (`hasta − desde`, más su entrada
- * si es en segundos: anclada a una palabra no se sabe antes de los tiempos). Pura.
+ * Lo que dura como poco una escena: `MIN_ESCENA`, o el TRAMO de su video más largo (`hasta − desde`) o lo que `dura` una
+ * imagen, más su entrada si es en segundos (anclada a una palabra no se sabe antes de los tiempos). Pura.
  */
 export function duracionMinimaDeEscena(escena) {
   let min = MIN_ESCENA;
   for (const c of escena?.capas ?? []) {
-    if (c?.tipo !== "video" || !(Number(c.hasta) > Number(c.desde ?? 0))) continue;
+    // Lo que impone la capa: el tramo de su video, o lo que `dura` una imagen (una foto con música, sin habla).
+    const tramo = c?.tipo === "video" && Number(c.hasta) > Number(c.desde ?? 0) ? Number(c.hasta) - Number(c.desde ?? 0)
+      : c?.tipo === "imagen" && Number(c.dura) > 0 ? Number(c.dura) : 0;
+    if (!tramo) continue;
     const entra = Number.isFinite(c.entra?.s) ? c.entra.s : 0;
-    min = Math.max(min, Number(c.hasta) - Number(c.desde ?? 0) + entra);
+    min = Math.max(min, tramo + entra);
   }
   return min;
 }

@@ -24,13 +24,18 @@ import "./cliente.css";
 // Arriba, el SEMÁFORO del kit (lib/semaforoKit.js): qué le falta para que el diseño salga bien, con el arreglo a un
 // toque. Se calcula con GET /api/estudio (que también usa el kit) y el estado del cerebro: ninguna consulta nueva.
 // Con el curso de campañas suma el estudio de mercado (revisarlo cada mes) y la sub-sección «WhatsApp»: el kit de
-// WhatsApp Business y la voz de sus clientes (negocio/KitWhatsApp.jsx).
+// WhatsApp Business y la voz de sus clientes (negocio/KitWhatsApp.jsx). «Música y efectos» es su BIBLIOTECA DE SONIDO
+// (BibliotecaSonido.jsx): lo de Suno, lo subido y sus efectos, y lo que toma de la de la agencia.
 // ============================================================
 
 const FichaCliente = lazy(() => import("../FichaCliente"));
 const EstudioKit = lazy(() => import("../EstudioKit"));
 const VozDeMarca = lazy(() => import("../VozDeMarca"));
 const MusicaDeMarca = lazy(() => import("../MusicaDeMarca"));
+// La biblioteca de sonido del cliente: su música (Suno, subidas) y sus efectos, con «Usar de la agencia».
+const BibliotecaSonido = lazy(() => import("../BibliotecaSonido"));
+// Las canciones de Instagram que le van (para lo que se publica a mano con su música: src/lib/cancionesInstagram.js).
+const CancionesInstagram = lazy(() => import("../CancionesInstagram"));
 const Cerebro = lazy(() => import("../Cerebro"));
 const PestanaContenido = lazy(() => import("../PestanaContenido"));
 const EditorSemana = lazy(() => import("../calendario/PlanSemanal").then((m) => ({ default: m.EditorSemana })));
@@ -42,6 +47,7 @@ const KitWhatsApp = lazy(() => import("../negocio/KitWhatsApp"));
 const SUBPESTANAS_MARCA = Object.freeze([
   ["ficha", "Ficha", "building"],
   ["kit", "Kit y voz", "palette"],
+  ["sonido", "Música y efectos", "music"],
   ["negocio", "Números del negocio", "calculator"],
   ["whatsapp", "WhatsApp", "messageCircle"],
   ["cerebro", "Cerebro", "brain"],
@@ -66,6 +72,9 @@ function KitYVoz({ client, estudio, lectura, onCambio, onError }) {
       </section>
       <section className="card" aria-label="Música de la marca">
         <MusicaDeMarca kit={estudio.kit} lectura={lectura} onGuardar={guardar} />
+      </section>
+      <section className="card" aria-label="Canciones de Instagram">
+        <CancionesInstagram kit={estudio.kit} lectura={lectura} onGuardar={guardar} />
       </section>
       <EstudioKit
         client={client}
@@ -214,6 +223,7 @@ export default function Marca({ client, seccion = null, pulso = 0, lectura = fal
         <Suspense fallback={<p role="status" className="hint">Cargando…</p>}>
           {actual === "ficha" && <FichaCliente client={client} onEditar={onEditar} />}
           {actual === "kit" && <KitYVoz client={client} estudio={estudio} lectura={lectura} onCambio={cargar} onError={setError} />}
+          {actual === "sonido" && <BibliotecaSonido key={client.id} client={client} lectura={lectura} />}
           {actual === "negocio" && <NumerosNegocio key={client.id} client={client} lectura={lectura} pulso={pulso} />}
           {actual === "whatsapp" && <KitWhatsApp key={client.id} client={client} lectura={lectura} />}
           {actual === "cerebro" && <Cerebro client={client} abrirMercado={abrirMercado} />}

@@ -17,7 +17,7 @@
 // ============================================================
 
 import {
-  cajasDeEscena, areaSegura, bandaDeSubtitulos, encajarTexto, capasDe, esVideoCompleto, TIPO_POR_ROL, FUENTE_RESPALDO, DURACION_ENTRADA,
+  cajasDeEscena, areaSegura, bandaDeSubtitulos, encajarTexto, capasDe, esCapaCompleta, TIPO_POR_ROL, FUENTE_RESPALDO, DURACION_ENTRADA,
 } from "./motorVideo.js";
 import { FORMATOS_VIDEO, tiempoDeCapa } from "./videoEscenas.js";
 import { DURACION_CUENTA } from "./motorPiezas.js";
@@ -115,14 +115,14 @@ export function revisarEscenas(ctx, { guion, linea, formato, recursos = {}, fuen
       grave, tipo, escena: escena.id, n: i + 1, capa: caja.id, en: Math.round((caja.cuando?.desde ?? linea.escenas[i]?.desde ?? 0) * 10) / 10, mensaje,
     });
     const delante = cajas.filter((c) => !c.detras && c.tipo !== "forma");
-    // Un video a sangre es el fondo: llena el cuadro, pero el texto encima necesita velo o placa para leerse.
-    const aSangre = capas.filter(esVideoCompleto);
+    // Un video (o una imagen) a sangre es el fondo: llena el cuadro, pero el texto encima necesita velo o placa para leerse.
+    const aSangre = capas.filter(esCapaCompleta);
     if (aSangre.length && aSangre.every((v) => (v.oscurecer ?? 0) < 0.2)) {
       const sinPlaca = capas.find((c) => c.tipo === "texto" && !c.placa);
       if (sinPlaca) {
         problemas.push({
           grave: false, tipo: "video_sin_velo", escena: escena.id, n: i + 1, capa: sinPlaca.id, en: Math.round((linea.escenas[i]?.desde ?? 0) * 10) / 10,
-          mensaje: `El texto «${sinPlaca.id}» va encima del video casi sin velo (oscurecer < 0,2): sobre un fondo movido puede no leerse. Sube «oscurecer» del video (0,3–0,5) o ponle placa al texto.`,
+          mensaje: `El texto «${sinPlaca.id}» va encima ${aSangre.some((v) => v.tipo === "imagen") ? "de la imagen" : "del video"} casi sin velo (oscurecer < 0,2): sobre un fondo así puede no leerse. Sube «oscurecer» (0,3–0,5) o ponle placa al texto.`,
         });
       }
     }

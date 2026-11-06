@@ -38,6 +38,7 @@ import { rutaChat, rutaResumenChat, rutaTurnoChat } from "./rutas/chat.js";
 import { rutasConversaciones } from "./rutas/conversaciones.js";
 import { rutasBancoIdeas } from "./rutas/bancoIdeas.js";
 import { rutasFormulasUgc } from "./rutas/formulasUgc.js";
+import { rutasSonidos } from "./rutas/sonidos.js";
 import { rutasVideos } from "./rutas/videos.js";
 import { rutasInspiracion } from "./rutas/inspiracion.js";
 import { inspiracionPendiente } from "./lib/inspiracion.js";
@@ -73,6 +74,7 @@ import { rutasMCP, rutasMCPPublicas } from "./rutas/mcp.js";
 import { informePendiente } from "./lib/informes.js";
 import { informeAnunciosPendiente } from "./lib/informeAnuncios.js";
 import { historiasAutomaticasPendiente } from "./lib/historiasAuto.js";
+import { avisosAManoPendiente } from "./lib/avisosAMano.js";
 import { encargosDelCron } from "./lib/estudio/bomba.js";
 import { encargosPorTerminar } from "./lib/estudio/encargos.js";
 import { rutasBandeja, rutaWebhookMeta } from "./rutas/bandeja.js";
@@ -416,6 +418,10 @@ export default {
       if (partes[0] === "videos") {
         return await rutasVideos(req, env, { acceso, usuario, partes, metodo });
       }
+      // La biblioteca de sonido: la música y los efectos de cada cliente y los de la agencia (worker/rutas/sonidos.js).
+      if (partes[0] === "sonidos") {
+        return await rutasSonidos(req, env, { acceso, usuario, partes, metodo });
+      }
       if (partes[0] === "ia" && partes[1] === "chat" && partes[2] === "turno" && metodo === "GET") {
         return await rutaTurnoChat(req, env, { acceso, partes });
       }
@@ -566,6 +572,10 @@ export default {
       // sin nada que hacer es UNA consulta). Antes del Estudio: con el Estudio ocupado horas, no saldría ninguna.
       const historias = await historiasAutomaticasPendiente(env, cuando).catch((e) => { console.error("cron historias:", e); return 1; });
       if (historias) return;
+      // El aviso a la hora de lo que se publica A MANO (10 min antes y a la hora): sin nada que avisar es UNA consulta.
+      // Antes del Estudio por lo mismo que las historias: un «es la hora» que llega una hora tarde no sirve.
+      const aMano = await avisosAManoPendiente(env, cuando).catch((e) => { console.error("cron avisos a mano:", e); return 1; });
+      if (aMano) return;
       // El Estudio: lo que nadie está mirando (cerró la pestaña).
       const estudio = await avanzarPendientes(env, cuando).catch((e) => { console.error("cron estudio:", e); return 1; });
       if (estudio) return;

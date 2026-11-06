@@ -198,12 +198,22 @@ src/
                           ganancia a -14 LUFS, cuándo se puede renderizar (puro: lo leen el Container, el Worker y la pantalla)
     sonidoVideo.js        Lo que suena DEBAJO de la voz (aparte del guion): limpiar el sonido del video, la música con ducking,
                           fundido y repetida (puro: Worker, Container y pantalla)
+    conMusica.js          «Publicar con música»: el guion de UNA escena que sale de una foto (a sangre, con su movimiento y su
+                          duración, sin habla), de post a reel con la foto de portada y «Volver a la foto», la música por
+                          defecto (puro: Worker, render y pantalla)
+    cancionesInstagram.js Las canciones de Instagram de cada cliente (`kit.musica.cancionesInstagram`) y la sugerida sin repetir
+                          la última usada (puro y sin importaciones: también lo lee el kit)
+    conMusicaApi.js       Cliente de POST /api/videos/<c>/con-musica y de seguir su render (lo carga ConMusica.jsx)
     musica.js             La música con SUNO por Kie: modelos V6, el pedido limpio, el cuerpo de createTask, leer las dos
                           pistas, el costo (puro; también el Worker)
     directorMusical.js    El DIRECTOR MUSICAL: lo que el código cuenta del video (BPM por los cortes, silencios, momentos), el
                           pedido a la IA con la música de la marca delante, leer su propuesta (sin artistas) y el respaldo (puro)
     efectosSonido.js      Los efectos del video animado: whoosh en las transiciones y pop en sellos y llamados, sintetizados
-                          (sin archivos) y mezclados bajitos (puro: el Container)
+                          (sin archivos) y mezclados bajitos; o los de la biblioteca (`muestrasDeEfecto`, `propios`) (puro: el Container)
+    bibliotecaSonido.js   La BIBLIOTECA DE SONIDO (música y efectos de cada cliente y de la agencia): la categoría por el modelo,
+                          limpiar nombre, etiquetas, BPM y duración, el orden (la música de la marca primero) y qué pista encaja
+                          con lo que propone el director musical (`pistasQueEncajan`) (puro: Worker, herramientas y pantalla)
+    sonidosApi.js         Cliente de /api/sonidos (subir y medir lo que dura de su dirección, cambiar, quitar, copiar)
     revisionEscenas.js    La revisión antes de renderizar: subtítulos que tapan, texto que se sale o se parte, fuera de la zona
                           segura, capas encimadas; el instante «lleno» de cada escena (puro: mide con el lienzo que le dan)
     videoFormatoIA.js     El formato de escenas v1 contado a una IA (`formato_video`), sacado del mismo vocabulario que valida,
@@ -495,7 +505,8 @@ src/
     cliente/Marca.jsx     La pestaña Marca: semáforo del kit, ficha, kit y voz, cerebro, plan semanal, fechas y Drive (lazy)
     cliente/SemaforoKit.jsx  El semáforo del kit en pantalla (plegado; «Subir el logo» ahí mismo) y su aviso corto
     cliente/cliente.css   Los estilos de esas tres pestañas, de las sub-pestañas y del semáforo (van con sus chunks)
-    SeccionComoTrabajamos.jsx  Ajustes → «Cómo trabajamos»: recetas, estructuras de guion (UGC y voz en off), plantillas de plan y manuales
+    SeccionComoTrabajamos.jsx  Ajustes → «Cómo trabajamos»: recetas, estructuras de guion (UGC y voz en off), la música y los efectos de
+                          la agencia, plantillas de plan y manuales
     Drive.css / FichaCliente.css / PestanaContenido.css  Estilos que salieron de index.css (el CSS inicial estaba en su tope)
     Presencia.jsx         Avatares, estado de la conexión, «X está editando»
     SelectorFecha.jsx     Calendario del mes para escoger una fecha (portal)
@@ -588,6 +599,7 @@ src/
                           (lazy; dentro de VideoAnimado)
     BibliotecaVoces.jsx   «Buscar voces en español»: la biblioteca de ElevenLabs (gratis), escuchar y «Añadir a mis voces»
     MusicaDeMarca.jsx     La música de la marca en el kit (Marca → Kit y voz): cómo suena, lo que nunca suena y las que gustaron (lazy)
+    CancionesInstagram.jsx  Las canciones de Instagram que le van a un cliente (Marca → Kit y voz, junto a la música de la marca; lazy)
     VideoAnimado.jsx      «Animado con código»: los videos animados del cliente, el guion (errores con su sitio), la vista
                           previa en el lienzo y «Aprobar el guion» (lazy; dentro de FlujoReel)
     CrearVideoAnimado.jsx «Video nuevo»: idea o publicación, duración, formato y la estructura de guion → la IA escribe el guion (lazy)
@@ -598,8 +610,14 @@ src/
     EditorEscenas.jsx     «Editar los textos»: lo que se dice, lo que se lee, tipo, pausa, orden de las escenas (lazy)
     LocucionVideo.jsx     «La voz» del video en su pantalla: ver el costo y generarla (lazy)
     RenderVideo.jsx       «Renderizar a mp4»: pedirlo, esperarlo (relee cada 4 s), verlo, descargarlo y a qué publicación va
-    VideoSonido.jsx       «Sonido» (efectos y música de la galería, con su volumen) e «Historial de versiones» del video
+    VideoSonido.jsx       «Sonido» (efectos —los de la aplicación o uno de la biblioteca para cada sitio— y música de la
+                          biblioteca del cliente o de la agencia, con su volumen) e «Historial de versiones» del video
                           animado (lazy: el chunk de VideoAnimado está en su tope)
+    GenerarMusica.jsx     «Generar la música con IA (Suno)»: en «Sonido» (con el director musical) y en la biblioteca del cliente
+                          (sin video); si en la biblioteca ya hay una que encaja, la ofrece antes de pagar
+    BibliotecaSonido.jsx  La biblioteca de sonido en pantalla: Marca → «Música y efectos» de un cliente y, sin cliente, la de la
+                          agencia en Ajustes → Cómo trabajamos (dos listas, subir, etiquetas, BPM, la estrella, quitar, «Usar de
+                          la agencia», «Pasar a la agencia», «Generar con Suno») (lazy)
     ReferenciasGaleria.jsx  Ejemplos de la galería al corregir (y referencias del reel), cada uno con qué se toma
     GuardarRegla.jsx      «Guardar como regla» junto a cada corrección
     Recetas.jsx           Las recetas de la agencia: «Crear aquí» (el director, pestaña Diseño), «Crear con Claude» y el editor (lazy)
@@ -652,6 +670,8 @@ src/
     calendario/repeticionesMes.jsx  Lo que se repite este mes (añadir, ahora no, no repetir más) y «Se repite» del panel
     calendario/ExportarContenido.jsx  «Exportar ideas y descripciones» (lazy: con su estado, fuera de la carga inicial)
     calendario/PortadaClic.jsx  «Portada que da clic» dentro de «Portada del video»: concepto, titular, formato, la vista a 120 px (lazy)
+    calendario/ConMusica.jsx  «Publicar con música» en la pestaña Pieza: la foto → un reel con música (pista con «Escuchar», duración,
+                          movimiento) y «Volver a la foto»; el carrusel → a mano con la música de Instagram y su canción (lazy)
     VideoListo.jsx        «¿Está listo este video?»: en la pestaña Subir y en el visor del Estudio (lazy)
     calendario/avisoTemporada.jsx  «Se acerca …»: la fecha comercial del cliente en tres semanas y cómo reutilizar una pieza
     calendario/PlanSemanal.jsx  «Plan semanal de <empresa>»: el editor ÚNICO (`EditorSemana`: formato, tipo, hora y nota de cada día,
@@ -736,6 +756,8 @@ worker/
     redesServidor.js      Preparar una publicación para sus redes en el Container al aprobarla (JPEG y copias), y guardarla
     historiasAuto.js      Historias automáticas: ajustes, lo que falta preparar, guardar la pieza y el paso del cron
                           que pone en la cola la del día
+    avisosAMano.js        El aviso a la hora de lo que se publica A MANO (10 min antes y a la hora): las filas de `avisos_a_mano`
+                          al guardar un calendario y el paso del cron (UNA consulta sin nada que avisar)
     postpeer.js           TikTok por PostPeer: perfiles y cuentas, creator-info, el cuerpo de /posts, leer su
                           estado y la firma del webhook
     youtube.js            OAuth de Google por cliente (YouTube), subida reanudable por trozos,
@@ -821,10 +843,17 @@ worker/
                           herramientas van por aquí)
     estudio/reelDelMes.js  Los reels de un mes (el asistente del mes): el costo sin crear nada y, con el sí, el encargo de cada uno
     estudio/directorMusical.js  El director musical: lee el video guardado, el kit y al cliente y propone la música de Suno
-                          (`proponerMusica`, guardada en R2 para la confirmación); «Me gusta» a la marca (`musicaALaMarca`)
+                          (`proponerMusica`, guardada en R2 para la confirmación, con lo de la biblioteca que encaja); «Me gusta»
+                          a la marca (`musicaALaMarca`)
+    estudio/sonidos.js    La BIBLIOTECA DE SONIDO: lo de un cliente en estudio_archivos y lo de la agencia en biblioteca_sonidos (R2
+                          bajo `biblioteca/<espacio>/`): listar (`musicasDe` suma la de la agencia), subir, cambiar, quitar con
+                          aviso si un video la usa, copiar entre las dos, qué puede sonar en un video (`sonidoParaVideo`,
+                          `claveDeSonido`) y lo que encaja con el director (`lasQueEncajan`)
     estudio/encargoReel.js  El REEL por planos como encargo (tipo «reel»): el storyboard en orden, se para a revisar y se retoma
                           (`continuarReel`), el video o los clips, el montaje (`montarReel`) y a su publicación
     estudio/montaje.js    El proyecto de video animado del montaje de un reel (`origen`: { tipo: "reel", encargoId })
+    estudio/conMusica.js  «Publicar con música»: el video de una foto (crear, aprobar y renderizar, ligado a su publicación; no gasta
+                          IA) y el carrusel a mano con la canción sugerida; la herramienta `publicar_con_musica` va por aquí
     estudio/ponerEnPost.js  Cambiar UNA publicación desde el servidor sin pisar a nadie (updated_at como condición, la cola, el aviso)
     estudio/ponerPiezas.js  «Poner en una publicación…» del Estudio (POST /api/estudio/<c>/poner): lo de la galería a un post
     estudio/guionVideo.js El contexto común de los guiones de video (`contextoDeGuion`): producto, cerebro, criterio, publicación
@@ -885,13 +914,16 @@ worker/
                           el tope de créditos, releer los anuncios y el proxy de los videos del CDN de Meta
     historiasAuto.js      /api/historias-auto/<cliente>: ajustes, pendientes de preparar, piezas
     videos.js             /api/videos/<cliente>: los videos animados (listar, crear, guardar el guion, aprobar, borrar)
+    sonidos.js            /api/sonidos/<cliente> y /api/sonidos/agencia: la biblioteca de sonido (listar, subir, cambiar, quitar,
+                          «Deshacer», «Usar de la agencia», «Pasar a la agencia» y el audio de la agencia por trozos)
     ventas.js             /api/ventas/<cliente> (8 semanas, escribir, quitar, el enlace) y /api/publico-ventas/<testigo>
     whatsapp.js           /api/whatsapp/<cliente> (kit, proponer, voz, enlace, estudio, aceptar, quitar) y /api/publico-voz/<testigo>
 container/                El Container del video animado (Node + @napi-rs/canvas + ffmpeg, Dockerfile): /cuadro, /hoja, /revisar y
                           /render (render.mjs) con el MISMO motor de src/lib; los clips de video (clips.mjs, PUT /clip/<id>);
                           probar.mjs, probarAudio.mjs y probarClips.mjs son sus pruebas (job «contenedor»)
 migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales, 0033 kit de marca, 0034 estudio de mercado, 0035 ritmo de contenido, 0036 inventario, 0037 plantillas de plan, 0038 campañas con varios conjuntos y anuncios, 0039 estratega, 0040 historial de anuncios, 0041 informe de anuncios, 0042 galería agrupada y repetidos, 0043 conversaciones del asistente, 0044 banco de ideas único, 0045 fórmulas UGC, 0046 inspiración, 0047 conversaciones de diseño, 0048 historias automáticas, 0049 encargos del Estudio: lote y carrusel, 0050 historias apartadas, 0051 notas fijas de los días, 0052 programar al aprobar por cliente, 0053 qué se le cambió a una nota, 0054 qué redes entran en el informe, 0055 hasta 5 historias automáticas al día, 0056 los días fijos de cada empresa, 0057 la lista aplicada de una auditoría, 0058 la caché de Scrape Creators, 0059 proyectos de video animado, 0060 sonido e historial de los videos, 0061 recetas y «Crear con Claude», 0062 «Lo mejor del momento»)
-migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales, 0033 kit de marca, 0034 estudio de mercado, 0035 ritmo de contenido, 0036 inventario, 0037 plantillas de plan, 0038 campañas con varios conjuntos y anuncios, 0039 estratega, 0040 historial de anuncios, 0041 informe de anuncios, 0042 galería agrupada y repetidos, 0043 conversaciones del asistente, 0044 banco de ideas único, 0045 fórmulas UGC, 0046 inspiración, 0047 conversaciones de diseño, 0048 historias automáticas, 0049 encargos del Estudio: lote y carrusel, 0050 historias apartadas, 0051 notas fijas de los días, 0052 programar al aprobar por cliente, 0053 qué se le cambió a una nota, 0054 qué redes entran en el informe, 0055 hasta 5 historias automáticas al día, 0056 los días fijos de cada empresa, 0057 la lista aplicada de una auditoría, 0058 la caché de Scrape Creators, 0059 proyectos de video animado, 0060 sonido e historial de los videos, 0061 recetas y «Crear con Claude», 0063 de dónde sale un video animado, 0066 el plan semanal único, 0068 TikTok y tendencias por Scrape Creators, 0069 números del negocio, 0070 las ventas de la semana, 0071 la revisión 3Q, 0072 WhatsApp y la voz del cliente, 0073 qué publicación es cada anuncio, 0074 crear imágenes sin preguntar)
+migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales, 0033 kit de marca, 0034 estudio de mercado, 0035 ritmo de contenido, 0036 inventario, 0037 plantillas de plan, 0038 campañas con varios conjuntos y anuncios, 0039 estratega, 0040 historial de anuncios, 0041 informe de anuncios, 0042 galería agrupada y repetidos, 0043 conversaciones del asistente, 0044 banco de ideas único, 0045 fórmulas UGC, 0046 inspiración, 0047 conversaciones de diseño, 0048 historias automáticas, 0049 encargos del Estudio: lote y carrusel, 0050 historias apartadas, 0051 notas fijas de los días, 0052 programar al aprobar por cliente, 0053 qué se le cambió a una nota, 0054 qué redes entran en el informe, 0055 hasta 5 historias automáticas al día, 0056 los días fijos de cada empresa, 0057 la lista aplicada de una auditoría, 0058 la caché de Scrape Creators, 0059 proyectos de video animado, 0060 sonido e historial de los videos, 0061 recetas y «Crear con Claude», 0063 de dónde sale un video animado, 0066 el plan semanal único, 0068 TikTok y tendencias por Scrape Creators, 0069 números del negocio, 0070 las ventas de la semana, 0071 la revisión 3Q, 0072 WhatsApp y la voz del cliente, 0073 qué publicación es cada anuncio, 0074 crear imágenes sin preguntar, 0075 la biblioteca de sonido de la agencia)
+migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales, 0033 kit de marca, 0034 estudio de mercado, 0035 ritmo de contenido, 0036 inventario, 0037 plantillas de plan, 0038 campañas con varios conjuntos y anuncios, 0039 estratega, 0040 historial de anuncios, 0041 informe de anuncios, 0042 galería agrupada y repetidos, 0043 conversaciones del asistente, 0044 banco de ideas único, 0045 fórmulas UGC, 0046 inspiración, 0047 conversaciones de diseño, 0048 historias automáticas, 0049 encargos del Estudio: lote y carrusel, 0050 historias apartadas, 0051 notas fijas de los días, 0052 programar al aprobar por cliente, 0053 qué se le cambió a una nota, 0054 qué redes entran en el informe, 0055 hasta 5 historias automáticas al día, 0056 los días fijos de cada empresa, 0057 la lista aplicada de una auditoría, 0058 la caché de Scrape Creators, 0059 proyectos de video animado, 0060 sonido e historial de los videos, 0061 recetas y «Crear con Claude», 0063 de dónde sale un video animado, 0066 el plan semanal único, 0068 TikTok y tendencias por Scrape Creators, 0069 números del negocio, 0070 las ventas de la semana, 0071 la revisión 3Q, 0072 WhatsApp y la voz del cliente, 0073 qué publicación es cada anuncio, 0074 crear imágenes sin preguntar, 0076 el aviso a la hora de lo que se publica a mano)
 scripts/migracion/        Volcado desde Supabase, conversión e importación
 tests/
   utils/                  Lector de wrangler.jsonc y _headers, fallos e informe
@@ -912,7 +944,7 @@ tests/
 | `/cliente/<slug>/<mes>-<año>` | Un mes del calendario de ese cliente (`octubre-2026`), exista o no su cajón. Los enlaces viejos con el nombre o el id del calendario siguen abriendo su mes |
 | `/cliente/<slug>/crear` · `/crear/director` · `/crear/galeria` | Crear: el director («¿Qué quieres crear?») arriba y la galería del Estudio debajo, con lo manual en «Avanzado» |
 | `/cliente/<slug>/referencias` · `/referencias/ideas` · `/inspiracion` · `/competencia` | Referencias: el banco de ideas, «Lo mejor» del cliente (`?pieza=<clave>` la señala) y la competencia del estudio de mercado |
-| `/cliente/<slug>/marca` · `/marca/ficha` · `/kit` · `/negocio` · `/whatsapp` · `/cerebro` · `/plan` · `/fechas` · `/drive` | Marca: ficha, kit y voz, números del negocio, el kit de WhatsApp y la voz de los clientes, cerebro (con el estudio de mercado), plan semanal, fechas especiales y la carpeta de Drive, con el semáforo del kit arriba |
+| `/cliente/<slug>/marca` · `/marca/ficha` · `/kit` · `/sonido` · `/negocio` · `/whatsapp` · `/cerebro` · `/plan` · `/fechas` · `/drive` | Marca: ficha, kit y voz, música y efectos (la biblioteca de sonido), números del negocio, el kit de WhatsApp y la voz de los clientes, cerebro (con el estudio de mercado), plan semanal, fechas especiales y la carpeta de Drive, con el semáforo del kit arriba |
 | `/cliente/<slug>/resultados` · `/resultados/redes` · `/resultados/anuncios` | Resultados del cliente: redes y la revisión 3Q de sus anuncios |
 | `/cliente/<slug>/tareas` | Todas las tareas del cliente (con las que se repiten). Ya no es pestaña: su cabecera lleva a Mi día por empresa |
 | `/cliente/<slug>/estudio` · `/diseno` · `/ideas` · `/inspiracion` · `/cerebro` · `/ficha` · `/contenido` | Las pestañas de antes: abren la nueva en su sub-sección (Crear → Galería / Director, Referencias → Ideas / Lo mejor, Marca → Cerebro / Ficha / Drive) sin reescribir la dirección, así `?lote=`, `?receta=` y `?pieza=` siguen |
@@ -5455,6 +5487,58 @@ son del servidor.
   sólo el administrador (`fijarSinPreguntar`: el doble del pedido redondeado, o 3 $) y a los demás se les dice dónde.
   Encenderlo o cambiarlo lo hace PUT /api/ajustes, sólo el administrador (403 a los demás), con el mismo CHECK que la base
   (0 a 1000). Las «Recrear para…» de «Lo mejor» siguen preguntando: crean además una publicación en un día.
+- **La BIBLIOTECA DE SONIDO: la música y los efectos de cada cliente y de la AGENCIA, para no pagar a Suno dos veces**
+  (decisión de la agencia: «quiero ahorrar créditos… reutilizar música ya generada y subir la mía»; `src/lib/bibliotecaSonido.js`,
+  `worker/lib/estudio/sonidos.js`, `worker/rutas/sonidos.js`, `BibliotecaSonido.jsx`; 0075). Cosas que no se ven en la pantalla:
+  · **Lo de un cliente sigue en `estudio_archivos`, SIN migrar nada**: la categoría sale del `modelo` (`categoriaDeModelo`:
+  musica-suno, musica-subida y musica-agencia son música; efecto-subido y efecto-agencia, efectos), el nombre es el `prompt`, la
+  favorita el `favorito` y las etiquetas, el BPM y la duración van en `ajustes.biblioteca`. Las 8 músicas de Suno de Feria del
+  Lente y las 4 de Juancito Ads salen solas (con el BPM leído de su estilo). La LOCUCIÓN también es audio y no es de la
+  biblioteca (su modelo no empieza por «musica» ni por «efecto»). `vistasDelCliente` (herramientasDiseno.js) ahora pide sólo
+  imágenes favoritas: con el tope de 8, una favorita de audio le quitaba sitio a las de diseño.
+  · **Lo de la agencia va en `biblioteca_sonidos` y su archivo en R2 bajo `biblioteca/<espacio>/`**, que /api/media NO sirve (sólo
+  `clientes/`): lo sirve GET /api/sonidos/agencia/<id>/audio con la sesión del espacio y por TROZOS (`rangoServido`; sin 206 el iPhone
+  no lo reproduce). La cambian admin y editores sin clientes (`puedeCambiarAgencia`, 403 a un colaborador, como las estructuras de
+  guion); la ven y la usan todos.
+  · **`musicasDe` (y GET /api/videos/<c>/musicas) devuelve también lo de la agencia, marcado `de: "agencia"`**, con la forma de
+  siempre (id, nombre, src, bytes, modelo, fecha, estilo) y campos AÑADIDOS (categoria, de, origen, favorita, etiquetas, bpm,
+  duracion); la ruta suma `efectos`. Orden: la favorita del cliente, lo del cliente, la favorita de la agencia, lo de la agencia
+  (`ordenarPistas`). galeria.js la reexporta desde sonidos.js. Quien la use (otro agente hizo «Publicar con música») sólo debe
+  AÑADIR campos, nunca cambiarla.
+  · **La favorita de la MÚSICA es UNA por biblioteca (la música de la marca)**: marcar otra desmarca la de antes. Un video NUEVO
+  nace con ella en su sonido (`sonidoInicial` en videosProyectos.js), salvo que el guion traiga su música por su clave o el sonido
+  de sus clips (un montaje que suena solo). Un video de antes no cambia. La favorita de los efectos sólo los pone primero.
+  · **El sonido del video puede llevar lo de la AGENCIA**: `limpiarSonido` acepta claves `biblioteca/…` (con `de: "agencia"`) y
+  `guardarSonido` busca la pista en las dos (`sonidoParaVideo`; una música del cliente sigue aceptando cualquier audio suyo, como
+  antes). El render la lee de R2 sólo si es de ESE cliente o de ESTE espacio (`claveDeSonido`).
+  · **Los EFECTOS de la biblioteca** van en `sonido.efectosPropios` ({ transicion, sello }; SÓLO si hay alguno: así el sonido de
+  antes sigue siendo `{ efectos, musica }` igual que siempre): con los efectos encendidos, el render manda sus bytes en base64
+  (`efectosPropios: { whoosh, pop }`, ≤ 2 MB cada uno) y el Container los DECODIFICA a PCM como la voz y suenan en los mismos
+  instantes que los sintetizados (`muestrasDeEfecto`: mono, sin el silencio de delante ni de detrás, hasta 4 s, pico en 1) y al
+  MISMO nivel (12 dB bajo la voz, por el RMS de lo que SUENA: con el del archivo entero, un efecto con silencio detrás saldría
+  más fuerte). Un whoosh largo se centra en el cambio sin arrancar más de 0,5 s antes. Uno que ya no está o no se puede leer no
+  tumba nada: suena el sintetizado (y el render lo dice en su aviso). Un PUT del sonido SIN `efectosPropios` (una pantalla de
+  antes) conserva los que había. `container/probarAudio.mjs` lo prueba dentro de la imagen con un MP3 y un WAV subidos.
+  · **Quitar una pista que usa un video lo dice**: 409 `en_uso` con cuáles (`videosQueUsan` mira el sonido de los videos del
+  cliente, o de todo el espacio si es de la agencia) y sólo con `?forzar=1` se quita. La del cliente va a la PAPELERA de su
+  galería (su archivo sigue 30 días: un render no se rompe; «Deshacer» la recupera); la de la agencia se borra.
+  · **Copiar entre las dos no repite**: «Usar de la agencia» copia el archivo al cliente (modelo `*-agencia`, con su estilo de
+  Suno en `ajustes.pedido.estilo`: así «Me gusta» la sabe repetir) y «Pasar a la agencia» al revés (para reutilizar una de Suno
+  con todos los clientes); las dos por la huella SHA-256 de los bytes. Lo subido también se compara por huella.
+  · **M4A se reconoce por su marca** (`tipoPorBytes`: «ftyp» con «M4A »/«M4B » es `audio/mp4`; cualquier otro, video como
+  siempre). Topes: 15 MB la música, 2 MB un efecto.
+  · **La duración la mide el navegador DESPUÉS de subir, de su dirección** (`conDuracion` en sonidosApi.js, y PATCH con `duracion`):
+  medir el archivo antes, con un `blob:`, lo bloquea la CSP (`media-src` cae en `default-src 'self'`). Lo cazó Chromium.
+  · **El director musical mira la biblioteca antes de pagar** (`lasQueEncajan` → `pistasQueEncajan`): POST …/<id>/musica y la
+  cotización de Suno (el 409) traen `biblioteca`, las pistas que encajan con lo propuesto por sus etiquetas (en español, con sus
+  sinónimos en inglés: el director escribe para Suno en inglés), su estilo de Suno y su BPM (también al doble o a la mitad); con el
+  BPM solo no basta. «Sonido» las ofrece con «Usar esta (gratis)» y `generar_musica` dice «ANTES DE PAGAR…» para que el asistente
+  las ofrezca primero. Es código, no IA: no cuesta nada. `musicas` (Claude y el asistente) lista las dos bibliotecas y
+  `sonido_video` acepta `efecto_transicion_id` y `efecto_sello_id`.
+  · **El tiempo real**: cada cambio avisa `sonidos` (App.jsx lo pasa como evento de `window`); la biblioteca y «Sonido» releen.
+  · Lo probado: las rutas con una D1 de verdad (tests/migracion/sonidos.test.js), el audio con efectos subidos con el ffmpeg del
+  sistema y la pantalla en Chromium (subir, etiquetas, la estrella, «Pasar a la agencia», «Usar de la agencia», el teléfono). Ni
+  el render en Cloudflare con efectos de la agencia ni el reproductor en un iPhone.
 
 - **«Ver el mes como se verá»: revisar MIRANDO y programar lo listo sin la aprobación del cliente** (decisión de la agencia:
   «hay clientes que no me piden revisión… y cuando reviso no le pongo "revisado"»; `src/lib/vistaMes.js`,
@@ -5491,6 +5575,64 @@ son del servidor.
   portada de los reels.
   · **Los estilos de la vista previa de cada red salieron de publicar.css a vistaRed.css** (con su componente): la vista del
   mes no carga los 36 kB del panel.
+- **«Publicar con música»: un post de UNA foto sale como REEL con música; un carrusel, a mano en un minuto** (decisión de
+  la agencia, para probar: la API de Instagram no deja poner su música en fotos ni carruseles —ni en reels: sólo el audio que
+  ya trae el video—; `src/lib/conMusica.js`, `worker/lib/estudio/conMusica.js`, `calendario/ConMusica.jsx`, 0076). Cosas que
+  no se ven en la pantalla:
+  · **La foto es un VIDEO ANIMADO de una escena**: una capa `imagen` con `encuadre: "completo"` (a sangre, detrás de todo y
+  fuera del reparto, como un video; `esCapaCompleta` en motorVideo.js), `movimiento` (acercar, alejar, paneo: un «Ken
+  Burns» suave de seno en todo lo que se ve; `movimientoDeImagen`) y `dura` (la escena dura eso sin decir nada: sin habla no
+  hay locución, `tieneHabla` → `sinVoz`). Los cuatro campos nuevos de la imagen (con `oscurecer`) son OPCIONALES y NO se
+  escriben si van como por defecto (`omitir` en su definición): un guion de antes valida EXACTAMENTE igual —si no, volver a
+  guardar un video viejo subiría su versión y lo devolvería a borrador—. Con `recorte` «contener» (lo de partida si la foto
+  no es casi vertical: un post 4:5 no pierde su texto en 9:16) se ve entera sobre ella misma ampliada, difuminada
+  (`ctx.filter = blur()`: @napi-rs/canvas lo hace —probado con el Container en local—; Safari no, y sale nítida y oscurecida)
+  y oscurecida. Una imagen a sangre que «aparece» con su escena se ve desde el PRIMER cuadro (`estadoACompleta`): con la rampa
+  de 0,12 s el primer cuadro salía negro, y es el que enseñan TikTok y la vista previa.
+  · **`POST /api/videos/<c>/con-musica` crea, APRUEBA y RENDERIZA** (`publicarConMusica`): la foto pasa a la galería si no
+  estaba (una ficha que APUNTA al mismo objeto de R2, `origen` «app»: la papelera nunca borra el objeto, que es de la
+  publicación), la música va en el SONIDO del video (aparte del guion, sin efectos) y el proyecto lleva `origen: { tipo:
+  "foto", foto }`. Sin Container (en local), 503 `sin_container` ANTES de crear nada; sin música en la galería, 409
+  `sin_musica` (no se genera música nueva salvo que se pida en «Sonido»). La música por defecto (`musicaPorDefecto`): la
+  favorita de la lista de `musicasDe` (el campo `favorita`/`favorito`, que añade la biblioteca de sonido), si no una de la
+  marca (`kit.musica.referencias`), si no la más nueva. Pedirlo otra vez REUSA el mismo video (otra versión); lo mismo que ya
+  salió (mismo guion y misma música: se volvió a la foto) se pone ya sin renderizar (`yaHecho`, por `ligarAPublicacion`).
+  · **Al terminar, el RENDER convierte la publicación** (`ponerEnPublicacion` en render.js con `postConMusica`): formato
+  reel, el mp4 de ÚNICO medio, la foto de PORTADA (la regla de la portada) y lo de antes en `post.conMusica` ({ foto,
+  formato, portada, videoId }) para «Volver a la foto» (`volverALaFoto`: el mp4 se queda en la galería). Si la publicación
+  ya no lleva esa foto (se cambió mientras se hacía), no se toca y el render lo dice.
+  · **Sin voz, la música sola se NORMALIZA** (container/render.mjs: antes, un audio sin voz ni clips se codificaba tal cual y
+  la música quedaba en -34 LUFS, porque `mezclarMusica` la pone por debajo de una voz que no hay). Un caso más en
+  container/probarAudio.mjs («Sólo música»); probado aquí con el ffmpeg del sistema: -14,0 LUFS, y un render de 7 s en ~10 s.
+  · **Lo que se está haciendo va EN la publicación** (`post.conMusicaPendiente`: { videoId, foto }), no en el componente: el
+  panel guarda al desmontar, así que si el reel sale mientras el panel está abierto y su formulario no lo tiene, cerrar lo
+  pisaría. Lo sigue la pestaña que esté abierta (Pieza, o Publicar en compacto), con el aviso `videos` y una mirada cada 3 s,
+  y al salir pone el reel también en el formulario (`postConMusica` lo quita). Si aun así se pisa (cerrar justo en el
+  segundo en que sale), la marca se queda y al volver a abrir el panel se pone sola: se cura sola.
+  · **Un carrusel no se convierte: va A MANO** («Con música de Instagram»): `asistida`, `conMusicaInstagram`, la nota y la
+  canción (`post.cancionInstagram`, con cuándo se escogió: así la siguiente no la repite). La lista es del kit
+  (`kit.musica.cancionesInstagram`, `limpiarMusicaDeMarca` la limpia, `fundirKit` la conserva con la música; se edita en Marca
+  → Kit y voz) y vive en `src/lib/cancionesInstagram.js`, SIN importaciones, porque la lee el kit (kitMarca.js no puede
+  arrastrar lib/publicacion.js). «Guardar la música de la marca» (MusicaDeMarca) guarda ahora encima de lo que ya había en
+  `kit.musica`: antes reescribía el objeto y se habría llevado las canciones. /a-mano comparte las imágenes EN ORDEN de una
+  vez (y si el navegador no deja compartir archivos, las descarga todas numeradas) y sugiere la canción con «Copiar el
+  nombre» (que la guarda en la publicación) y «Otra canción».
+  · **El aviso a la hora de lo que se publica a mano** (`worker/lib/avisosAMano.js`, tabla `avisos_a_mano`, 0076): las
+  publicaciones viven en el JSON del mes y buscarlas cada minuto sería leer todos los calendarios; por eso cada una a mano
+  tiene una fila con su momento (`para`) y lo ya avisado (`previo_at`, `hora_at`), escrita por `sincronizarAvisosAMano`
+  desde `resincronizarCalendario` (por donde pasan todas las escrituras de un calendario; sin nada a mano NO consulta nada).
+  El cron (`avisosAManoPendiente`) hace UNA consulta sin nada que avisar; si toca, apunta el aviso ANTES de darlo (con lo
+  leído como condición: no se repite), lo comprueba contra el calendario (lo que dejó de ser a mano, se publicó o cambió de
+  momento no avisa: la fila es un atajo y el calendario la verdad), avisa a quien la lleva o a todo el equipo con el enlace a
+  /a-mano, y da como mucho tres por vuelta. Va DETRÁS de las historias automáticas y ANTES del Estudio (no al final del
+  todo): un «es la hora» que llega una hora tarde no sirve, y sin nada que hacer cuesta lo mismo que no estar. Lo que lleva
+  más de 2 h pasado se apunta sin avisar.
+  · **El asistente y Claude**: `publicar_con_musica` (herramientasVideo.js): un post de una foto → el reel (no gasta: lo dice);
+  un carrusel → a mano con la canción. No está en `CON_VISTA` (la vista previa del chat): el mp4 se mira con `ver_video`.
+  · **Nada de esto se ha probado contra Instagram**: que el reel salga como «audio original» lo dice su documentación.
+- **`wrangler d1 migrations apply` pinta la tabla ENTERA de migraciones tras cada una**: su salida crece con el cuadrado de
+  cuántas hay, y con la 0076 (72 migraciones) pasó del 1 MB que `execFile` admite por defecto. `npm run test:vivo` moría con
+  «stdout maxBuffer length exceeded» antes de arrancar el Worker, con el SQL perfecto. `tests/vivo/espacio.js` le da 64 MB.
 
 ## Documentos relacionados
 

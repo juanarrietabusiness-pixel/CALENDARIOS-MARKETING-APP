@@ -5,6 +5,7 @@ import { saveCalendar } from "../lib/db";
 import { navegar } from "../lib/rutas";
 import { mediosDe, historiasDe, textoPara, primerComentario, momentoPublicacion } from "../lib/publicacion";
 import { fechaHora } from "../lib/cola";
+import { cancionSugerida, ultimaCancionUsada, cancionParaGuardar, textoDeCancion, limpiarCanciones } from "../lib/cancionesInstagram";
 
 // ============================================================
 // /a-mano/<calendario>/<publicación> — publicar desde el teléfono
@@ -15,6 +16,12 @@ import { fechaHora } from "../lib/cola";
 // imagen o el video listos para guardar (o para compartir directo con
 // Instagram), el texto para copiar con un toque, la nota de qué poner
 // —«canción X»— y, al volver, «Ya la publiqué».
+//
+// Un carrusel con la música de Instagram (src/lib/conMusica.js): las imágenes
+// EN ORDEN se comparten a Instagram de una vez (si el navegador no deja
+// compartir archivos, se descargan todas) y sale la CANCIÓN SUGERIDA de la
+// lista del cliente (Marca → Kit y voz), sin repetir la última usada; la que
+// se copia queda en la publicación para que la siguiente no la repita.
 // ============================================================
 
 function Copiar({ texto, que }) {
@@ -31,16 +38,33 @@ function Copiar({ texto, que }) {
   );
 }
 
-/** Compartir el archivo con Instagram (u otra app) desde el menú del teléfono, si el navegador puede. */
-async function compartir(medios, setAviso) {
+/** Descarga todos los archivos, en orden (uno detrás de otro: algunos navegadores frenan varias descargas a la vez). */
+async function descargarTodos(medios, prefijo) {
+  for (const [i, m] of medios.entries()) {
+    const a = document.createElement("a");
+    a.href = m.src;
+    a.download = m.nombre || `${prefijo}-${String(i + 1).padStart(2, "0")}`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    await new Promise((r) => setTimeout(r, 400));
+  }
+}
+
+/**
+ * Compartir los archivos con Instagram (u otra app) desde el menú del teléfono, EN ORDEN y de una vez. Si el navegador
+ * no deja compartir archivos, se descargan todos (numerados) para subirlos desde Instagram.
+ */
+async function compartir(medios, setAviso, prefijo = "publicacion") {
   try {
     const archivos = await Promise.all(medios.map(async (m, i) => {
       const blob = await (await fetch(m.src, { credentials: "same-origin" })).blob();
       const ext = (blob.type.split("/")[1] || "jpg").replace("jpeg", "jpg");
-      return new File([blob], m.nombre || `publicacion-${i + 1}.${ext}`, { type: blob.type });
+      return new File([blob], m.nombre || `${prefijo}-${String(i + 1).padStart(2, "0")}.${ext}`, { type: blob.type });
     }));
     if (!navigator.canShare?.({ files: archivos })) {
-      setAviso("Este navegador no deja compartir archivos: usa «Guardar» y súbela desde Instagram.");
+      await descargarTodos(medios, prefijo);
+      setAviso(`Este navegador no deja compartir archivos: se ${medios.length > 1 ? `descargaron las ${medios.length}, numeradas en orden` : "descargó"}. Súbelas desde Instagram.`);
       return;
     }
     await navigator.share({ files: archivos });
@@ -49,10 +73,17 @@ async function compartir(medios, setAviso) {
   }
 }
 
+const leerKit = (k) => {
+  if (!k) return {};
+  if (typeof k === "object") return k;
+  try { return JSON.parse(k) ?? {}; } catch { return {}; }
+};
+
 export default function PublicarAMano({ clients = [], ruta, onGuardado }) {
   const [aviso, setAviso] = useState("");
   const [hecha, setHecha] = useState(false);
   const [guardando, setGuardando] = useState(false);
+  const [copiada, setCopiada] = useState(false);
 
   let hallado = null;
   for (const c of clients) {
@@ -74,6 +105,9 @@ export default function PublicarAMano({ clients = [], ruta, onGuardado }) {
   }
 
   const { cliente, cal, dia, post } = hallado;
+  const canciones = limpiarCanciones(leerKit(cliente.kitMarca)?.musica?.cancionesInstagram);
+  const ultimaUsada = ultimaCancionUsada(cliente, post.id);
+  const cancion = cancionSugerida(canciones, { ultima: ultimaUsada, actual: post.cancionInstagram });
   const esHistoria = post.format === "historia";
   const medios = mediosDe(post);
   const historias = !esHistoria && post.historiaTambien ? historiasDe(post) : [];
@@ -82,39 +116,60 @@ export default function PublicarAMano({ clients = [], ruta, onGuardado }) {
   const cuando = momentoPublicacion(dia.date, post.publishTime);
   const publicada = post.status === "published" || hecha;
 
-  const yaPublicada = async () => {
-    setGuardando(true);
-    setAviso("");
-    const ahora = new Date().toJSON();
+  /** Guarda un cambio de ESTA publicación en su calendario. → si se guardó. */
+  const guardarPost = async (cambios) => {
     const nuevo = {
       ...cal,
-      days: cal.days.map((d) => ({ ...d, posts: (d.posts ?? []).map((p) => (p.id === post.id ? { ...p, status: "published", publicadaAMano: ahora } : p)) })),
+      days: cal.days.map((d) => ({ ...d, posts: (d.posts ?? []).map((p) => (p.id === post.id ? { ...p, ...cambios } : p)) })),
     };
     try {
       await saveCalendar(nuevo, cliente.dbId || cliente.id);
       onGuardado?.(cal.id, nuevo);
-      setHecha(true);
+      return true;
     } catch (e) {
       setAviso(`No se pudo guardar: ${e.message}`);
+      return false;
     }
+  };
+
+  const yaPublicada = async () => {
+    setGuardando(true);
+    setAviso("");
+    const ahora = new Date().toJSON();
+    if (await guardarPost({ status: "published", publicadaAMano: ahora })) setHecha(true);
     setGuardando(false);
+  };
+
+  // La canción: la que se copia queda en la publicación (así la siguiente publicación a mano no la repite).
+  const copiarCancion = async () => {
+    if (!cancion) return;
+    try { await navigator.clipboard?.writeText(textoDeCancion(cancion)); } catch { /* sin portapapeles */ }
+    setCopiada(true);
+    setTimeout(() => setCopiada(false), 1500);
+    if (!post.cancionInstagram?.nombre) await guardarPost({ cancionInstagram: cancionParaGuardar(cancion, new Date().toJSON()) });
+  };
+  const otraCancion = async () => {
+    const c = cancionSugerida(canciones, { ultima: ultimaUsada, actual: cancion, otra: true });
+    if (c) await guardarPost({ cancionInstagram: cancionParaGuardar(c, new Date().toJSON()) });
   };
 
   const bloqueMedios = (lista, titulo) => lista.length > 0 && (
     <section className="a-mano-bloque" aria-label={titulo}>
       <h2>{titulo}</h2>
-      <ul className="a-mano-medios">
+      {lista.length > 1 && <p className="a-mano-cuando">{lista.length} en este orden: así se comparten y así van en Instagram.</p>}
+      <ol className="a-mano-medios">
         {lista.map((m, i) => (
           <li key={`${m.src}-${i}`}>
+            {lista.length > 1 && <span className="a-mano-numero" aria-hidden="true">{i + 1}</span>}
             {m.tipo === "video" ? <video src={m.src} controls playsInline preload="metadata" /> : <img src={m.src} alt={`${titulo} ${i + 1}`} />}
             <a className="btn btn-secondary btn-sm" href={m.src} download={m.nombre || `${cliente.name}-${dia.date}-${i + 1}`}>
               <Icon name="download" size={16} /> Guardar
             </a>
           </li>
         ))}
-      </ul>
-      <button type="button" className="btn btn-primary" onClick={() => compartir(lista, setAviso)}>
-        <Icon name="send" size={18} /> Compartir {lista.length > 1 ? "todo" : ""} con Instagram
+      </ol>
+      <button type="button" className="btn btn-primary" onClick={() => compartir(lista, setAviso, `${cliente.name}-${dia.date}`)}>
+        <Icon name="send" size={18} /> Compartir {lista.length > 1 ? `las ${lista.length}` : ""} con Instagram
       </button>
     </section>
   );
@@ -131,7 +186,29 @@ export default function PublicarAMano({ clients = [], ruta, onGuardado }) {
         <p className="a-mano-nota"><Icon name="bulb" size={18} /> <span><strong>A mano:</strong> {post.notaAsistida}</span></p>
       )}
 
-      {bloqueMedios(medios, esHistoria ? "Historias" : "Imagen o video")}
+      {(cancion || post.conMusicaInstagram) && (
+        <section className="a-mano-bloque" aria-label="La música">
+          <h2><Icon name="music" size={18} /> Música de Instagram</h2>
+          {cancion ? (
+            <>
+              <p className="a-mano-texto">{textoDeCancion(cancion)}</p>
+              <div className="a-mano-botones">
+                <button type="button" className="btn btn-secondary" onClick={copiarCancion}>
+                  <Icon name={copiada ? "check" : "copy"} size={18} /> {copiada ? "Copiado" : "Copiar el nombre"}
+                </button>
+                {canciones.length > 1 && (
+                  <button type="button" className="btn btn-ghost" onClick={otraCancion}><Icon name="refresh" size={18} /> Otra canción</button>
+                )}
+              </div>
+              <p className="a-mano-cuando">En Instagram: «Añadir música» y busca este nombre.</p>
+            </>
+          ) : (
+            <p className="a-mano-cuando">Escoge una canción de Instagram que le vaya a la marca (la agencia puede dejar su lista en Marca → Kit y voz).</p>
+          )}
+        </section>
+      )}
+
+      {bloqueMedios(medios, esHistoria ? "Historias" : post.format === "carrusel" ? "Las imágenes del carrusel" : "Imagen o video")}
       {!medios.length && <p className="notice notice-warn">Esta publicación no tiene imagen ni video todavía.</p>}
 
       {(texto || comentario) && (
