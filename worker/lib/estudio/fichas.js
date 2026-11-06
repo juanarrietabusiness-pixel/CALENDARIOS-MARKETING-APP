@@ -150,7 +150,7 @@ export async function fichasDeDiseno(env, acceso, cliente, { piezas = [], concep
     const r = await llamarIA(env, acceso, cliente, {
       prompt: conVistas(imagenes, pedidoDeFichas({ conLogo: Boolean(kit?.logo),
         cliente: cliente.name, rubro: cliente.industry ?? "", piezas: [pieza], serie: total,
-        marca: kitVacio(kit) ? "" : bloqueDeMarca(kit), guia: ctx.guia, sobreLaMarca: ctx.sobreLaMarca, catalogo: ctx.catalogo,
+        marca: kitVacio(kit) ? "" : bloqueDeMarca(kit), tiposArte: kit.tiposArte, guia: ctx.guia, sobreLaMarca: ctx.sobreLaMarca, catalogo: ctx.catalogo,
         plantillas: kit.plantillas, manual: ctx.manual, concepto: c, productos: lineas.join("\n"),
         correcciones: ctx.correcciones, vistas: imagenes.length - deEspeciales.length, especiales: papeles, previas: antes,
       })),

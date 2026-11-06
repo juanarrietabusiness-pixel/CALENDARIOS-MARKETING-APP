@@ -183,6 +183,27 @@ describe("presupuesto de descarga", () => {
   });
 });
 
+describe("el curso de campañas no pesa en el arranque", () => {
+  // El embudo del mes (carga inicial) lee las etapas de src/lib/cicloVentas.js; la tabla de qué pieza va en cada
+  // etapa según el negocio es texto largo que sólo usan las pantallas de anuncios y el Worker, y vive aparte
+  // (src/lib/cicloNegocio.js). Si alguien la reexporta desde cicloVentas.js, o la importa desde algo de la carga
+  // inicial, rollup la mete entera en el arranque —reparte por módulo, no por función— y ningún tope de kB lo notaría
+  // a tiempo: son unos 3 kB comprimidos.
+  it("la tabla del ciclo por tipo de negocio no va en el JavaScript inicial", () => {
+    const marca = "Dar a conocer la marca con lo más vendido";
+    const dentro = jsInicial().filter((a) => a.buf.toString("utf8").includes(marca)).map((a) => a.nombre);
+    expect(
+      dentro,
+      fallo({
+        que: `la tabla del ciclo de ventas por negocio está en la carga inicial (${dentro.join(", ")})`,
+        donde: "src/lib/cicloNegocio.js y quien lo importa",
+        porque: "Es texto que sólo necesitan las pantallas de anuncios y el Worker: en el arranque se descarga y se analiza sin que nadie lo use.",
+        arreglo: "Importa `cicloDe` / `CICLO_POR_NEGOCIO` de src/lib/cicloNegocio.js (no de cicloVentas.js, que va en la carga inicial) y sólo desde una pantalla diferida.",
+      }),
+    ).toEqual([]);
+  });
+});
+
 describe("el mapa 3D del cerebro", () => {
   // Es la pantalla que más tentaría a meter una librería (three.js son 144 kB comprimidos, más que toda la aplicación).
   // Se dibuja en un lienzo 2D, sin dependencias, y este caso es lo que impide que eso cambie sin que nadie lo decida.

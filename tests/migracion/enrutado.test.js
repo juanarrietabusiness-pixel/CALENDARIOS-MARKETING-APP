@@ -492,6 +492,24 @@ describe("la puerta, en general", () => {
     expect(res.status).toBe(401);
   });
 
+  it("el enlace de ventas del cliente va ANTES de la sesión: un testigo que no existe es 404, nunca 401", async () => {
+    // Si cayera detrás de la sesión, el cliente (que no tiene cuenta) vería «No autenticado» en vez de su página.
+    const env = await entorno();
+    const testigo = "a".repeat(48);
+    const leer = await worker.fetch(new Request(`https://calendarios.test/api/publico-ventas/${testigo}`), env);
+    expect(leer.status).toBe(404);
+    expect(leer.headers.get("content-type")).toContain("application/json");
+    const escribir = await worker.fetch(new Request(`https://calendarios.test/api/publico-ventas/${testigo}`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ semana: "2026-11-02", ventas: 1, monto: 1 }),
+    }), env);
+    expect(escribir.status).toBe(404);
+    // Y la página la sirve el frontend.
+    const pagina = await worker.fetch(new Request(`https://calendarios.test/ventas?t=${testigo}`), env);
+    expect(pagina.headers.get("content-type")).toContain("text/html");
+    // Con sesión, las ventas de un cliente que no es del espacio no existen.
+    expect((await worker.fetch(conSesion("/api/ventas/cliente-ajeno"), env)).status).toBe(404);
+  });
+
   it("/api/live sin cabecera de Upgrade es 426, no un socket a medias", async () => {
     const env = await entorno();
     const res = await worker.fetch(conSesion("/api/live"), env);
@@ -1337,6 +1355,23 @@ describe("anuncios de Meta (/api/anuncios)", () => {
   it("un cliente de otro espacio es 404", async () => {
     const env = await entorno();
     expect((await worker.fetch(conSesion("/api/anuncios/clientes/cliente-de-otro/campanas"), env)).status).toBe(404);
+  });
+
+  it("los números del negocio llegan a su rama SIN cuenta publicitaria (no es el 409 de las campañas)", async () => {
+    // La lógica entera, contra una D1 de verdad, está en negocio.test.js.
+    const env = await entorno();
+    const res = await worker.fetch(conSesion("/api/anuncios/clientes/cliente-1/negocio"), env);
+    expect(res.status).toBe(200);
+    const d = await res.json();
+    expect(d).toMatchObject({ negocio: { v: 1, costos: [] }, tasaDefecto: 5, cuenta: null, lectura: null });
+    expect(d.avisoMeta).toMatch(/Sin cuenta publicitaria/);
+    expect((await worker.fetch(conSesion("/api/anuncios/clientes/cliente-de-otro/negocio"), env)).status).toBe(404);
+    // «Proponer» llega a la IA: sin llave lo dice, en vez de un 404 de ruta.
+    const p = await worker.fetch(conSesion("/api/anuncios/clientes/cliente-1/negocio/proponer", {
+      method: "POST", body: JSON.stringify({}), headers: { "Content-Type": "application/json" },
+    }), env);
+    expect(p.status).toBe(503);
+    expect((await p.json()).error).toMatch(/llave de IA/);
   });
 
   it("una ruta que no existe es 404, y sin sesión 401", async () => {

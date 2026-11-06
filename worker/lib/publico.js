@@ -446,3 +446,30 @@ export async function auditoriaPorTestigo(db, token) {
     } : null,
   };
 }
+
+/**
+ * El cliente del enlace de ventas («Tus ventas de la semana», `/ventas?t=…`), o null. Es la ÚNICA lectura sin dueño
+ * del enlace: devuelve el espacio y el cliente para construir la capa de acceso, y todo lo demás (las semanas, la
+ * cuenta publicitaria, el token de Meta) va acotado por ella en worker/lib/ventas.js. El cliente tiene que ser del
+ * mismo espacio que la fila del testigo. El espacio (`ownerId`) no sale de worker/lib/ventas.js hacia el navegador.
+ */
+export async function clienteDeVentasPorTestigo(db, token) {
+  if (!testigoValido(token)) return null;
+  const f = await db
+    .prepare(
+      `select a.owner_id, a.client_id, c.name, c.primary_color, c.logo
+         from anuncios_clientes a
+         join clients c on c.id = a.client_id and c.owner_id = a.owner_id
+        where a.testigo_ventas = ?`,
+    )
+    .bind(token)
+    .first();
+  if (!f) return null;
+  return {
+    ownerId: f.owner_id,
+    clientId: f.client_id,
+    nombre: f.name ?? "",
+    color: f.primary_color ?? "",
+    logo: typeof f.logo === "string" && f.logo.startsWith("data:image/") ? f.logo : null,
+  };
+}

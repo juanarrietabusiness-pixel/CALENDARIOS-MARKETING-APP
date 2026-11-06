@@ -37,6 +37,7 @@ import { SIN_TEXTO_VIDEO } from "./videoLimpio.js";
 
 import { limpiarAprendido, lineasAprendidas } from "./aprendizajeVisual.js";
 import { posicionDelKit } from "./logoEncima.js";
+import { limpiarTiposArte } from "./tiposArte.js";
 
 /** Los presets, uno por tipo de contenido (los ids de `PILARES`, en pilares.js). `base`: la plantilla sin escribir. */
 export const TIPOS_PRESET = Object.freeze({
@@ -249,6 +250,9 @@ export function limpiarKit(guardado) {
     // Las PLANTILLAS: piezas que quedaron muy bien, guardadas con su sistema de diseño para repetir el diseño con otro
     // contenido (post fijo, historia, portada o lámina de carrusel). Claves de la galería de ESTE cliente.
     plantillas: limpiarPlantillas(g.plantillas),
+    // Los TIPOS DE ARTE de esta marca (curso de campañas, tiposArte.js): de 2 a 4 que le funcionan; los leen el director
+    // y el motor de ideas (`lineaDeTiposArte`). Sólo ids que existen.
+    tiposArte: limpiarTiposArte(g.tiposArte),
     ...(g.preparadoAt ? { preparadoAt: String(g.preparadoAt) } : {}),
   };
 }
@@ -688,7 +692,7 @@ export function fundirKit(guardado, propuesto, ahora = new Date().toISOString())
   return limpiarKit({
     ...propuesto, logo: antes.logo, propios: antes.propios, estilos: antes.estilos, estiloPorTipo: antes.estiloPorTipo, personajes: antes.personajes,
     aprendido: antes.aprendido, referencias: antes.referencias, modelos: antes.modelos, reglas: antes.reglas,
-    logoModo: antes.logoModo, logoPosicion: antes.logoPosicion, fuente: antes.fuente, voz: antes.voz, locucion: antes.locucion, ...(antes.personajeVideo ? { personajeVideo: antes.personajeVideo } : {}), plantillas: antes.plantillas, preparadoAt: ahora,
+    logoModo: antes.logoModo, logoPosicion: antes.logoPosicion, fuente: antes.fuente, voz: antes.voz, locucion: antes.locucion, ...(antes.personajeVideo ? { personajeVideo: antes.personajeVideo } : {}), plantillas: antes.plantillas, tiposArte: antes.tiposArte, preparadoAt: ahora,
   });
 }
 

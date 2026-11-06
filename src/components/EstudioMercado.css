@@ -215,3 +215,6 @@
   overflow: hidden;
 }
 .competencia-ig-acciones { display: flex; flex-direction: column; gap: var(--sp-1); margin-top: auto; }
+
+/* Los sesgos de cada perfil del estudio (chips en el borrador). */
+.mercado-sesgos { display: flex; flex-wrap: wrap; gap: var(--sp-1); margin: 0; }

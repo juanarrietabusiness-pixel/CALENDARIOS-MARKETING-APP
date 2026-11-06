@@ -10,8 +10,8 @@ import {
 } from "../lib/planMes";
 import { casillasDelPlan, ideasDelPlan, rellenarConIdea } from "../lib/ideaPublicacion";
 import { avisoDeLoQueFalta } from "../lib/materialTipo";
-import { objetivoDe, semanasConEtapa, embudoDelMes, limpiarEstrategia } from "../lib/estrategiaMes";
-import { PasoEstrategia, EtapaSemana, BalanceDelMes } from "./EstrategiaMes";
+import { objetivoDe, semanasConEtapa, embudoDelMes, limpiarEstrategia, idEtapaCiclo } from "../lib/estrategiaMes";
+import { PasoEstrategia, EtapaSemana, BalanceDelMes, AyudaEtapas } from "./EstrategiaMes";
 import Icon from "./Icon";
 import { fechasDelMes } from "../lib/fechasEspeciales";
 import { leerMercado } from "../lib/mercado";
@@ -126,10 +126,11 @@ export default function PlanWizard({ client, onGenerate, onClose, mesInicial = n
   });
   const [offers, setOffers] = useState(b.offers || "");
   const [promoCode, setPromoCode] = useState(b.promoCode || "");
-  // La estrategia del mes: objetivo, producto foco y la etapa del embudo de cada semana (src/lib/estrategiaMes.js).
+  // La estrategia del mes: objetivo, producto foco y la etapa del ciclo de ventas de cada semana (src/lib/estrategiaMes.js).
+  // Un borrador guardado con las etapas de antes («atraer»…) se lee por alias.
   const [objetivo, setObjetivo] = useState(b.objetivo || "");
   const [focoId, setFocoId] = useState(b.focoId || "");
-  const [etapas, setEtapas] = useState(Array.isArray(b.etapas) ? b.etapas : []);
+  const [etapas, setEtapas] = useState(Array.isArray(b.etapas) ? b.etapas.map(idEtapaCiclo) : []);
   const [propuesta, setPropuesta] = useState(b.propuesta ? { ...b.propuesta, antes: null } : null); // { razon, ofertas, mejores, antes }
   const [ideas, setIdeas] = useState(b.ideas && typeof b.ideas === "object" ? b.ideas : {});
   // Si el mes ya tiene publicaciones, esos días NO reciben nuevas (salvo que se pida): no se ponen encima.
@@ -204,7 +205,7 @@ export default function PlanWizard({ client, onGenerate, onClose, mesInicial = n
     setPromoCode(otro.promoCode || "");
     setObjetivo(otro.objetivo || "");
     setFocoId(otro.focoId || "");
-    setEtapas(Array.isArray(otro.etapas) ? otro.etapas : []);
+    setEtapas(Array.isArray(otro.etapas) ? otro.etapas.map(idEtapaCiclo) : []);
     setAceptadas(Array.isArray(otro.aceptadas) ? otro.aceptadas : []);
     setRecuperado(otro.guardadoAt);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1033,7 +1034,7 @@ Formato: una linea por semana, solo el concepto. ${numWeeks} lineas exactas.`;
             />
           )}
 
-          {/* Los conceptos de cada semana (la FILA de la rejilla, lunes a domingo) y su etapa del embudo. */}
+          {/* Los conceptos de cada semana (la FILA de la rejilla, lunes a domingo) y su etapa del ciclo de ventas. */}
           {step === PASO.conceptos && (
             <div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "var(--sp-3)", marginBottom: "var(--sp-3)" }}>
@@ -1063,9 +1064,10 @@ Formato: una linea por semana, solo el concepto. ${numWeeks} lineas exactas.`;
                 ))}
                 {!etapas.some(Boolean) && (
                   <button type="button" className="btn btn-ghost btn-sm" style={{ alignSelf: "flex-start" }} onClick={() => setEtapas(embudoDelMes(objetivo, weekConcepts.length))}>
-                    Repartir las etapas del embudo según el objetivo
+                    Repartir las etapas del ciclo de ventas según el objetivo
                   </button>
                 )}
+                <AyudaEtapas />
               </div>
             </div>
           )}

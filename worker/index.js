@@ -63,6 +63,7 @@ import { rutasPlantillas } from "./rutas/plantillas.js";
 import { rutasRecetas } from "./rutas/recetas.js";
 import { rutasAnuncios } from "./rutas/anuncios.js";
 import { rutasHistoriasAuto } from "./rutas/historiasAuto.js";
+import { rutasVentas, rutaVentasPublica } from "./rutas/ventas.js";
 import { rutasTrozos } from "./rutas/trozos.js";
 import { avanzarPendientes } from "./lib/estudio/trabajos.js";
 import { rutasMCP, rutasMCPPublicas } from "./rutas/mcp.js";
@@ -265,6 +266,10 @@ export default {
         return datos ? json(datos) : noEncontrado("Informe");
       }
 
+      // «Tus ventas de la semana»: el enlace fijo de cada cliente, sin sesión.
+      // Lee y escribe sólo SUS semanas (la actual y las dos anteriores).
+      if (partes[0] === "publico-ventas") return await rutaVentasPublica(req, env, { partes, metodo });
+
       // La auditoría de perfil que se le manda a un cliente o a un
       // prospecto: igual que el informe, sin sesión y sólo si se compartió.
       if (partes[0] === "publico-auditoria" && partes.length === 2 && metodo === "GET") {
@@ -453,6 +458,8 @@ export default {
       if (partes[0] === "anuncios") return await rutasAnuncios(req, env, { acceso, usuario, partes, metodo });
       // Las historias automáticas: lo ya publicado vuelve como historia, una al día.
       if (partes[0] === "historias-auto") return await rutasHistoriasAuto(req, env, { acceso, partes, metodo });
+      // Las ventas de cada semana que apunta el cliente (o la agencia), con la tasa de cierre medida y el ROAS real.
+      if (partes[0] === "ventas") return await rutasVentas(req, env, { acceso, usuario, partes, metodo });
 
       // ---------- Medios ----------
       //

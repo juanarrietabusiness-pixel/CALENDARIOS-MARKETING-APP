@@ -61,6 +61,7 @@ import { conNotasDelDia, notaDelDia, productoDeNota } from "../../../src/lib/not
 import { planSemanalDeFila } from "../../../src/lib/planSemanal.js";
 import { CLAVES_NIVEL } from "../../../src/lib/consciencia.js";
 import { bloqueDeMarca, kitVacio } from "../../../src/lib/kitMarca.js";
+import { lineaDeTiposArte, nombresDeSesgos } from "../../../src/lib/tiposArte.js";
 import { lineaDePlantilla, bloqueDeDisenoPorTipo } from "../../../src/lib/director.js";
 import { manualDelEspacio } from "./fichas.js";
 import { kitDe } from "./kit.js";
@@ -393,7 +394,7 @@ export async function produccionDeLote(env, acceso, cliente, datos = {}) {
       prompt: pedidoDeCampos({
         marca: cliente.name, plan, contexto, estudio: textoEstudio,
         productos: Object.fromEntries(rotan.filter((p) => usadosProd.has(p.id)).map((p) => [p.id, lineaDeProducto(p, { inventario }).slice(2)])),
-        perfiles: Object.fromEntries(perfiles.map((p) => [p.nombre, [p.quien, p.dolor && `le duele: ${p.dolor}`, p.aspiracion && `quiere: ${p.aspiracion}`].filter(Boolean).join("; ")])),
+        perfiles: Object.fromEntries(perfiles.map((p) => [p.nombre, lineaDePerfil(p)])),
         fechasEspeciales: fechas.map((f) => `${f.fecha} · ${f.nombre}${f.delicada ? " (delicada: sin promociones)" : ""}`),
         usados: (Array.isArray(datos.usados) ? datos.usados : []).map((t) => String(t ?? "").slice(0, 80)).filter(Boolean).slice(0, 30),
         estrategia, falta: lineaDeLoQueFalta(faltan), ugc, cliente: textoDelCliente(cliente),
@@ -413,7 +414,7 @@ export async function produccionDeLote(env, acceso, cliente, datos = {}) {
     prompt: pedidoDeProduccion({
       marca: cliente.name, plan, formato, contexto, estudio: textoEstudio, mes: modo === "mes",
       productos: Object.fromEntries(rotan.filter((p) => usadosProd.has(p.id)).map((p) => [p.id, lineaDeProducto(p, { inventario }).slice(2)])),
-      perfiles: Object.fromEntries(perfiles.map((p) => [p.nombre, [p.quien, p.dolor && `le duele: ${p.dolor}`, p.aspiracion && `quiere: ${p.aspiracion}`].filter(Boolean).join("; ")])),
+      perfiles: Object.fromEntries(perfiles.map((p) => [p.nombre, lineaDePerfil(p)])),
       fechasEspeciales: fechas.map((f) => `${f.fecha} · ${f.nombre}${f.delicada ? " (delicada: sin promociones)" : ""}`),
       usados: (Array.isArray(datos.usados) ? datos.usados : []).map((t) => String(t ?? "").slice(0, 80)).filter(Boolean).slice(0, 30),
       nota: modo === "publicacion" ? String(datos.nota ?? "").slice(0, 600) : "",
@@ -454,6 +455,12 @@ function leerJSONSeguro(t) {
 /** Compatibilidad con el nombre de antes (anuncios por nivel). */
 export const ideasDeLote = (env, acceso, cliente, datos = {}) => produccionDeLote(env, acceso, cliente, { modo: "niveles", ...datos });
 
+/** Un perfil del estudio de mercado en una línea para el motor, con los sesgos que más lo mueven (curso de campañas). */
+const lineaDePerfil = (p) => [
+  p.quien, p.dolor && `le duele: ${p.dolor}`, p.aspiracion && `quiere: ${p.aspiracion}`,
+  p.sesgos?.length && `lo mueve: ${nombresDeSesgos(p.sesgos).toLowerCase()}`,
+].filter(Boolean).join("; ");
+
 /**
  * Lo que la ficha de diseño del motor de ideas necesita de la marca: su kit, sus plantillas y cómo se diseña cada tipo
  * del plan (el manual de la agencia o el de la casa). Sin kit, sólo lo de los tipos.
@@ -462,8 +469,10 @@ function identidadParaFichas(cliente, plan = [], manual = null) {
   try {
     const kit = kitDe(cliente);
     const porTipo = bloqueDeDisenoPorTipo(plan.map((r) => r.tipo ?? r.pilar), manual);
-    if (kitVacio(kit)) return porTipo;
-    return [bloqueDeMarca(kit), kit.plantillas.length ? `Plantillas de la marca (si una encaja, la ficha la nombra; la que «ES LA DE» un tipo va en las de ese tipo):\n${kit.plantillas.map(lineaDePlantilla).join("\n")}` : "", porTipo].filter(Boolean).join("\n");
+    // Los tipos de arte de la marca (curso de campañas): de cuál sale cada pieza; van aunque el kit esté sin preparar.
+    const artes = lineaDeTiposArte(kit.tiposArte);
+    if (kitVacio(kit)) return [artes, porTipo].filter(Boolean).join("\n");
+    return [bloqueDeMarca(kit), artes, kit.plantillas.length ? `Plantillas de la marca (si una encaja, la ficha la nombra; la que «ES LA DE» un tipo va en las de ese tipo):\n${kit.plantillas.map(lineaDePlantilla).join("\n")}` : "", porTipo].filter(Boolean).join("\n");
   } catch {
     return "";
   }

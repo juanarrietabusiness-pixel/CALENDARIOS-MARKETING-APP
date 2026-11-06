@@ -154,7 +154,7 @@ describe("el plan de un cliente", () => {
     const r = await plan({ clientId: "c1", producto: { nombre: "Impermeabilizado", precio: "$30", descripcion: "Protege la tela" }, margen: 50, conMaletas: true });
     expect(r.status).toBe(200);
     expect(textoDe(peticiones[0])).toMatch(/Impermeabilizado · precio: \$30/);
-    expect(textoDe(peticiones[0])).toMatch(/«maletas»: los 7 elementos/);
+    expect(textoDe(peticiones[0])).toMatch(/«maletas»: las 7 maletas/);
     expect((await plan({ clientId: "c1", productoId: "p-nada" })).status).toBe(404);
   });
 

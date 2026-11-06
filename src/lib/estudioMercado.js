@@ -2,8 +2,8 @@
 // El estudio de mercado de un cliente (puro)
 //
 // Lo que la agencia hacía a mano al recibir un cliente: organizar lo que
-// sabe de él, estudiar su mercado y sacar los siete elementos con los que
-// se escriben las campañas y los posts. Aquí, por cliente y en tres piezas:
+// sabe de él, estudiar su mercado y sacar las 7 maletas con las que se
+// escriben las campañas y los posts. Aquí, por cliente y en tres piezas:
 //
 //   · el CATÁLOGO: sus productos y servicios con precio, oferta, para quién
 //     y beneficios. Un precio no se inventa: sale de aquí, y va al cerebro
@@ -12,9 +12,16 @@
 //     hasta cuándo vale la oferta y su diferenciador; apagado, eso no existe
 //     para nadie: ni la pantalla lo enseña ni la IA lo lee;
 //   · el ESTUDIO: lo general del mercado (rubro, competencia, dos perfiles
-//     de comprador, sus tres deseos principales, el nivel de consciencia) y,
-//     por cada producto, los siete elementos, las objeciones con su
-//     respuesta, un gancho por nivel de consciencia y los textos de anuncio;
+//     de comprador con los sesgos que más los mueven, sus tres deseos
+//     principales, el nivel de consciencia) y, por cada producto, las 7
+//     maletas del curso de campañas (público, problema, solución,
+//     diferenciales, testimonios, objeciones y garantía), las objeciones con
+//     su respuesta, un gancho por nivel de consciencia y los textos de anuncio.
+//     Un estudio aprobado con los siete elementos de antes (cliente, dolor,
+//     deseo, objeciones, alternativas, diferenciador, confianza) se LEE con
+//     alias (`elementosConAlias`) sin reescribir la fila: «deseo» y
+//     «alternativas» no son maletas y quedan aparte (`extra`), a la vista y en
+//     la nota del cerebro;
 //   · las REFERENCIAS: anuncios de la competencia que la agencia sube (la
 //     captura) y la IA analiza.
 //
@@ -26,17 +33,72 @@
 import { MONTHS } from "../constants";
 import { DESEOS_REISS, NIVELES_CONSCIENCIA, nombreDeNivel } from "./consciencia";
 import { separarHashtags, juntarHashtags } from "./reglasFormato.js";
+import { SESGOS, limpiarSesgos, nombresDeSesgos } from "./tiposArte.js";
 
-/** Los siete elementos del estudio («las 7 maletas»), por producto o servicio. */
+/**
+ * Las 7 maletas del curso de campañas, por producto o servicio: lo que tiene que estar respondido antes de anunciar
+ * (si falta una, no se lanza; src/lib/maletas.js). En el orden en que se decide una compra. `delCliente`: sólo lo puede
+ * dar el cliente (no se inventa).
+ */
 export const ELEMENTOS_MERCADO = Object.freeze([
-  { clave: "cliente", titulo: "Cliente ideal", ayuda: "Quién compra, en qué momento y qué lo empuja a buscar" },
-  { clave: "dolor", titulo: "Dolor o problema", ayuda: "Lo que le duele o le frustra antes de comprar" },
-  { clave: "deseo", titulo: "Deseo y resultado", ayuda: "Lo que quiere lograr y cómo se ve su vida después" },
-  { clave: "objeciones", titulo: "Objeciones y miedos", ayuda: "Por qué duda, qué lo frena" },
-  { clave: "alternativas", titulo: "Alternativas y competencia", ayuda: "Qué usa hoy o a quién le compra en su lugar" },
-  { clave: "diferenciador", titulo: "Diferenciador", ayuda: "Por qué esta empresa y no otra" },
-  { clave: "confianza", titulo: "Prueba y confianza", ayuda: "Garantías, testimonios y datos que lo respaldan" },
+  { clave: "publico", titulo: "Público", ayuda: "Quién compra: edad, género, dónde vive, a qué se dedica, su poder de compra y en qué momento lo busca" },
+  { clave: "problema", titulo: "Problema", ayuda: "El problema más importante por el que compraría (el principal, no una lista)" },
+  { clave: "solucion", titulo: "Solución", ayuda: "Cómo este producto o servicio resuelve ESE problema" },
+  { clave: "diferenciales", titulo: "Diferenciales", ayuda: "Por qué comprarle a esta marca y no a otra: lo que hace mejor y casi nadie dice (material, proceso, tiempo, experiencia)" },
+  { clave: "testimonios", titulo: "Testimonios", ayuda: "Clientes reales o casos de éxito que dan confianza", delCliente: true },
+  { clave: "objeciones", titulo: "Objeciones", ayuda: "Los «peros» antes de comprar: el pago, el envío, las dudas del momento de la compra" },
+  { clave: "garantia", titulo: "Garantía", ayuda: "Lo que le quita el riesgo a la compra: qué cubre, por cuánto tiempo y cómo se pide", delCliente: true },
 ]);
+
+/**
+ * Lo que tenían los estudios de antes y no es una maleta: queda aparte en cada producto (`extra`), se ve y va en la
+ * nota del cerebro (la IA lo sigue leyendo). En lo NUEVO, el deseo vive en lo general (los deseos de Reiss) y las
+ * alternativas en la competencia.
+ */
+export const EXTRAS_MERCADO = Object.freeze([
+  { clave: "deseo", titulo: "Deseo y resultado (del estudio de antes)" },
+  { clave: "alternativas", titulo: "Alternativas y competencia (del estudio de antes)" },
+]);
+
+/** Los elementos de antes que pasan tal cual a una maleta. «confianza» se parte entre testimonios y garantía. */
+const ALIAS_ELEMENTO = Object.freeze({ cliente: "publico", dolor: "problema", diferenciador: "diferenciales" });
+const HABLA_DE_GARANTIA = /garant/i;
+const HABLA_DE_CLIENTES = /testimoni|reseñ|opini|cliente|caso|estrella|valoraci|recomiend/i;
+
+/**
+ * «Prueba y confianza» de antes, partida: las frases que hablan de la garantía van a la garantía y las demás a los
+ * testimonios (una que habla de las dos, a las dos). Si no nombra ninguna garantía, la garantía queda vacía. Pura.
+ */
+function partirConfianza(texto, max) {
+  const t = largo(texto, max);
+  if (!t) return { testimonios: "", garantia: "" };
+  if (!HABLA_DE_GARANTIA.test(t)) return { testimonios: t, garantia: "" };
+  const frases = (t.match(/[^.;!?\n]+[.;!?]*/g) ?? []).map((f) => f.trim()).filter(Boolean);
+  const garantia = frases.filter((f) => HABLA_DE_GARANTIA.test(f));
+  const testimonios = frases.filter((f) => !HABLA_DE_GARANTIA.test(f) || HABLA_DE_CLIENTES.test(f));
+  return { testimonios: testimonios.join(" "), garantia: garantia.join(" ") };
+}
+
+/**
+ * Las 7 maletas de un objeto de elementos, leyendo también los de antes por alias (cliente → público, dolor →
+ * problema, diferenciador → diferenciales, confianza → testimonios y garantía). Lo escrito con la clave nueva manda.
+ * Lo usan el estudio de cada producto y los planes del estratega. Pura.
+ */
+export function elementosConAlias(entrada, max = 1200) {
+  const e = entrada && typeof entrada === "object" ? entrada : {};
+  const salida = {};
+  for (const el of ELEMENTOS_MERCADO) {
+    const t = largo(e[el.clave], max);
+    if (t) salida[el.clave] = t;
+  }
+  for (const [viejo, nuevo] of Object.entries(ALIAS_ELEMENTO)) {
+    const t = largo(e[viejo], max);
+    if (t && !salida[nuevo]) salida[nuevo] = t;
+  }
+  const confianza = partirConfianza(e.confianza, max);
+  for (const k of ["testimonios", "garantia"]) if (confianza[k] && !salida[k]) salida[k] = confianza[k];
+  return Object.fromEntries(ELEMENTOS_MERCADO.filter((el) => salida[el.clave]).map((el) => [el.clave, salida[el.clave]]));
+}
 
 export { DESEOS_REISS, NIVELES_CONSCIENCIA, nombreDeNivel };
 const CLAVES_NIVEL = NIVELES_CONSCIENCIA.map((n) => n.clave);
@@ -305,12 +367,13 @@ export function pedidoGeneral({ marca, rubro = "", contexto = "", catalogo = [],
     "Reglas:",
     ...REGLAS_COMUNES,
     "- «perfiles»: exactamente DOS perfiles de comprador distintos (motivaciones o situaciones diferentes aunque compren lo mismo).",
+    `- «sesgos» de cada perfil: de 3 a 5 de estos, los que más lo mueven a decidir (escritos con su id): ${SESGOS.map((x) => `${x.id} (${x.ayuda.split(":")[0].toLowerCase()})`).join("; ")}.`,
     `- «deseos»: los TRES deseos que más mueven la compra, elegidos de esta lista (escritos igual): ${DESEOS_REISS.join(", ")}. Con el porqué en una frase.`,
     `- «nivel»: el nivel de consciencia dominante del mercado, uno de: ${CLAVES_NIVEL.join(", ")}.`,
     "- «competidores»: de 3 a 6, con lo que hacen bien y su punto débil.",
     "",
     "Responde SOLO con JSON, sin texto alrededor:",
-    '{"rubro":"…","resumen":"el panorama del mercado en 4 a 6 frases","competidores":[{"nombre":"…","queHacen":"…","fuerte":"…","debil":"…","enlace":"…"}],"perfiles":[{"nombre":"…","quien":"…","dolor":"…","aspiracion":"…"}],"deseos":[{"deseo":"…","porque":"…"}],"nivel":{"dominante":"…","porque":"…"},"propuestaValor":"…","diferenciadores":["…"],"tendencias":["…"],"oportunidades":["…"],"faltan":["…"],"fuentes":["https://…"]}',
+    '{"rubro":"…","resumen":"el panorama del mercado en 4 a 6 frases","competidores":[{"nombre":"…","queHacen":"…","fuerte":"…","debil":"…","enlace":"…"}],"perfiles":[{"nombre":"…","quien":"…","dolor":"…","aspiracion":"…","sesgos":["…"]}],"deseos":[{"deseo":"…","porque":"…"}],"nivel":{"dominante":"…","porque":"…"},"propuestaValor":"…","diferenciadores":["…"],"tendencias":["…"],"oportunidades":["…"],"faltan":["…"],"fuentes":["https://…"]}',
   ].join("\n");
 }
 
@@ -327,6 +390,8 @@ export function limpiarGeneral(d) {
     })).filter((c) => c.nombre).slice(0, 8),
     perfiles: (Array.isArray(d.perfiles) ? d.perfiles : []).map((p) => ({
       nombre: corto(p?.nombre, 60), quien: corto(p?.quien, 300), dolor: corto(p?.dolor, 300), aspiracion: corto(p?.aspiracion, 300),
+      // Los sesgos que más lo mueven (tiposArte.js): un estudio de antes no los trae y queda vacío.
+      sesgos: limpiarSesgos(p?.sesgos),
     })).filter((p) => p.nombre).slice(0, 2),
     deseos: (Array.isArray(d.deseos) ? d.deseos : []).map((x) => ({
       deseo: DESEOS_REISS.find((r) => r.toLowerCase() === String(x?.deseo ?? "").trim().toLowerCase()) ?? "", porque: corto(x?.porque, 300),
@@ -355,7 +420,7 @@ export function resumenGeneral(general) {
   return [
     g.rubro && `Rubro: ${g.rubro}`,
     g.propuestaValor && `Propuesta de valor: ${g.propuestaValor}`,
-    g.perfiles.length && `Perfiles de comprador: ${g.perfiles.map((p) => `${p.nombre} (${p.quien}; le duele: ${p.dolor}; quiere: ${p.aspiracion})`).join(" | ")}`,
+    g.perfiles.length && `Perfiles de comprador: ${g.perfiles.map((p) => `${p.nombre} (${p.quien}; le duele: ${p.dolor}; quiere: ${p.aspiracion}${p.sesgos.length ? `; lo mueve: ${nombresDeSesgos(p.sesgos).toLowerCase()}` : ""})`).join(" | ")}`,
     g.deseos.length && `Deseos que mueven la compra: ${g.deseos.map((d) => `${d.deseo} (${d.porque})`).join("; ")}`,
     g.nivel.dominante && `Nivel de consciencia dominante: ${nombreDeNivel(g.nivel.dominante)}`,
     g.diferenciadores.length && `Diferenciadores: ${g.diferenciadores.join("; ")}`,
@@ -387,7 +452,8 @@ export function pedidoDeProducto({ marca, producto, general = null, contexto = "
     "",
     "Reglas:",
     ...REGLAS_COMUNES,
-    `- «elementos»: los siete, de 2 a 4 frases cada uno: ${ELEMENTOS_MERCADO.map((e) => `${e.clave} (${e.ayuda.toLowerCase()})`).join("; ")}.`,
+    `- «elementos»: las 7 maletas, de 2 a 4 frases cada una, concretas (con las palabras del cliente, nada de «calidad» o «buen servicio» a secas): ${ELEMENTOS_MERCADO.map((e) => `${e.clave} (${e.ayuda.toLowerCase()})`).join("; ")}.`,
+    "- La solución responde al MISMO problema. Testimonios y garantía, SÓLO los que estén en lo que sabemos o en el material: si no hay, déjalos vacíos y pídelos en «faltan» (son del cliente: no se inventan, y sin ellos no se anuncia).",
     "- «pruebas»: SOLO garantías, testimonios o datos que estén en lo que sabemos o en el material. Si no hay, vacío y dilo en «faltan».",
     "- «ganchos»: una frase de gancho para un anuncio por nivel de consciencia. Inconsciente y problema, por el DOLOR (lo que quiere evitar); solución, producto y decisión, por la GANANCIA (lo que logra). Empieza con un verbo o una pregunta, nunca con el nombre de la marca. Concretos.",
     `- «anuncio»: los textos de un anuncio de Meta: título (hasta ${LIMITES_ANUNCIO.titulo} caracteres), texto principal (hasta ${LIMITES_ANUNCIO.textoPrincipal}, que enganche en la primera línea) y descripción (hasta ${LIMITES_ANUNCIO.descripcion}). Con el precio sólo si está en el catálogo.`,
@@ -400,12 +466,15 @@ export function pedidoDeProducto({ marca, producto, general = null, contexto = "
 /** El estudio de un producto, limpio. Null si no trae los elementos. Pura. */
 export function limpiarDeProducto(d, { nombre = "" } = {}) {
   if (!d || typeof d !== "object") return null;
-  const elementos = {};
-  for (const e of ELEMENTOS_MERCADO) {
-    const t = largo(d.elementos?.[e.clave], 1200);
-    if (t) elementos[e.clave] = t;
-  }
+  // Las 7 maletas; un estudio de antes trae los siete elementos viejos y se lee por alias.
+  const elementos = elementosConAlias(d.elementos);
   if (Object.keys(elementos).length < 3) return null;
+  // Lo de antes que no es una maleta (deseo, alternativas): aparte, para que no se pierda.
+  const extra = {};
+  for (const x of EXTRAS_MERCADO) {
+    const t = largo(d.extra?.[x.clave] ?? d.elementos?.[x.clave], 1200);
+    if (t) extra[x.clave] = t;
+  }
   const ganchos = {};
   for (const c of CLAVES_NIVEL) {
     const t = corto(d.ganchos?.[c], 220);
@@ -414,6 +483,7 @@ export function limpiarDeProducto(d, { nombre = "" } = {}) {
   return {
     nombre: corto(d.nombre || nombre, 80),
     elementos,
+    ...(Object.keys(extra).length ? { extra } : {}),
     objeciones: (Array.isArray(d.objeciones) ? d.objeciones : []).map((o) => ({ objecion: corto(o?.objecion, 200), respuesta: corto(o?.respuesta, 400) })).filter((o) => o.objecion && o.respuesta).slice(0, 8),
     pruebas: lista(d.pruebas, 8),
     ganchos,
@@ -474,7 +544,7 @@ export function notaGeneral(general, { marca = "" } = {}) {
     ...(g.rubro ? [`Rubro: ${g.rubro}`, ""] : []),
     ...(g.resumen ? ["## Panorama", g.resumen, ""] : []),
     ...(g.propuestaValor ? ["## Propuesta de valor", g.propuestaValor, ""] : []),
-    ...(g.perfiles.length ? ["## Perfiles de comprador", ...g.perfiles.map((p) => `- **${p.nombre}**: ${p.quien}. Le duele: ${p.dolor}. Quiere: ${p.aspiracion}.`), ""] : []),
+    ...(g.perfiles.length ? ["## Perfiles de comprador", ...g.perfiles.map((p) => `- **${p.nombre}**: ${p.quien}. Le duele: ${p.dolor}. Quiere: ${p.aspiracion}.${p.sesgos.length ? ` Lo mueve: ${nombresDeSesgos(p.sesgos).toLowerCase()}.` : ""}`), ""] : []),
     ...(g.deseos.length ? ["## Deseos que mueven la compra", ...g.deseos.map((d) => `- **${d.deseo}**: ${d.porque}`), ""] : []),
     ...(g.nivel.dominante ? ["## Nivel de consciencia dominante", `${nombreDeNivel(g.nivel.dominante)}${g.nivel.porque ? `: ${g.nivel.porque}` : ""}`, ""] : []),
     ...parrafos("Diferenciadores", g.diferenciadores),
@@ -509,6 +579,7 @@ export function notaDeProducto(estudioProducto, producto) {
     lineaDeProducto(p).slice(2),
     "",
     ...ELEMENTOS_MERCADO.filter((x) => e.elementos[x.clave]).flatMap((x) => [`## ${x.titulo}`, e.elementos[x.clave], ""]),
+    ...EXTRAS_MERCADO.filter((x) => e.extra?.[x.clave]).flatMap((x) => [`## ${x.titulo}`, e.extra[x.clave], ""]),
     ...(e.objeciones.length ? ["## Objeciones y cómo responderlas", ...e.objeciones.map((o) => `- «${o.objecion}» → ${o.respuesta}`), ""] : []),
     ...parrafos("Pruebas reales", e.pruebas),
     ...(Object.keys(e.ganchos).length ? ["## Ganchos por nivel de consciencia", ...NIVELES_CONSCIENCIA.filter((n) => e.ganchos[n.clave]).map((n) => `- ${n.nombre}: ${e.ganchos[n.clave]}`), ""] : []),

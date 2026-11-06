@@ -1,6 +1,6 @@
 import { useEffect, useId, useState } from "react";
 import Icon from "./Icon";
-import { OBJETIVOS_MES, ETAPAS, objetivoDe, balanceDelMes, resumenFormatos, embudoDelMes } from "../lib/estrategiaMes";
+import { OBJETIVOS_MES, ETAPAS, objetivoDe, balanceDelMes, resumenFormatos, embudoDelMes, idEtapaCiclo } from "../lib/estrategiaMes";
 import { estrategiaConIA } from "../lib/ideaPublicacion";
 import "./EstrategiaMes.css";
 
@@ -9,9 +9,11 @@ import "./EstrategiaMes.css";
 //
 //   · PasoEstrategia: el paso «Estrategia» de «Planificar mes» — objetivo,
 //     producto foco, campaña y «Proponer la estrategia con IA», que trae
-//     también el concepto y la etapa del embudo de cada semana y lo que mejor
+//     también el concepto y la etapa del ciclo de ventas de cada semana y lo que mejor
 //     funcionó el mes anterior. Propone: lo que cambia se puede deshacer.
-//   · EtapaSemana: la etapa del embudo junto al concepto de cada semana.
+//   · EtapaSemana: la etapa del ciclo de ventas (presentación, evaluación,
+//     conversión, ascensión) junto al concepto de cada semana; una de antes
+//     («Atraer»…) se enseña con su nombre de hoy.
 //   · BalanceDelMes: cuántas de cada formato, tipo y nivel, y los avisos
 //     (src/lib/estrategiaMes.js). Lo usan «Planificar mes» y «Revisar el mes».
 //   · EditorEstrategia: la estrategia DESPUÉS de planificar («Editar el mes» →
@@ -68,7 +70,7 @@ export function PasoEstrategia({
       </div>
       <p className="hint" style={{ margin: 0 }}>
         Con el catálogo, el estudio de mercado, las fechas especiales y lo que mejor funcionó el mes anterior: el objetivo, el foco,
-        la campaña y el concepto de cada semana con su etapa del embudo. Es texto: no gasta en imágenes.
+        la campaña y el concepto de cada semana con su etapa del ciclo de ventas. Es texto: no gasta en imágenes.
       </p>
       <div role="status" aria-live="polite" className="sr-only">{estado.cargando ? "Pensando la estrategia…" : propuesta ? "Estrategia propuesta." : ""}</div>
       {estado.error && <p role="alert" className="cerebro-error">{estado.error}</p>}
@@ -95,19 +97,26 @@ export function PasoEstrategia({
   );
 }
 
-/** La etapa del embudo de una semana (junto a su concepto). */
+/** La etapa del ciclo de ventas de una semana (junto a su concepto). Una guardada con el nombre de antes se lee por alias. */
 export function EtapaSemana({ semana, valor = "", onCambiar }) {
   const id = useId();
   return (
     <>
-      <label className="sr-only" htmlFor={id}>Etapa del embudo de la semana {semana}</label>
-      <select id={id} className="input estrategia-etapa" value={valor} onChange={(e) => onCambiar(e.target.value)}>
+      <label className="sr-only" htmlFor={id}>Etapa del ciclo de ventas de la semana {semana}</label>
+      <select id={id} className="input estrategia-etapa" value={idEtapaCiclo(valor)} onChange={(e) => onCambiar(e.target.value)}>
         <option value="">Sin etapa</option>
-        {Object.entries(ETAPAS).map(([k, e]) => <option key={k} value={k}>{e.nombre}</option>)}
+        {Object.entries(ETAPAS).map(([k, e]) => <option key={k} value={k} title={e.ayuda}>{e.nombre}</option>)}
       </select>
     </>
   );
 }
+
+/** Qué es cada etapa, en una línea (debajo de las semanas). */
+export const AyudaEtapas = () => (
+  <p className="hint" style={{ margin: 0 }}>
+    {Object.values(ETAPAS).map((e) => `${e.nombre}: ${e.ayuda.split(":")[0]}`).join(" · ")}.
+  </p>
+);
 
 /** El balance de un mes (o de un plan): cifras y avisos. `days`: [{ date, posts }]. */
 export function BalanceDelMes({ days = [], semanas = [], objetivo = "", foco = "", titulo = "Balance del mes" }) {
@@ -133,7 +142,7 @@ export function BalanceDelMes({ days = [], semanas = [], objetivo = "", foco = "
 
 /**
  * La estrategia del mes, después de planificar («Editar el mes» → Estrategia): el objetivo, el producto foco y la etapa
- * del embudo de cada semana (la FILA de la rejilla). `valor`: la guardada (`opciones.estrategia`); `onCambiar(nueva)`.
+ * del ciclo de ventas de cada semana (la FILA de la rejilla). `valor`: la guardada (`opciones.estrategia`); `onCambiar(nueva)`.
  * El catálogo se lee al abrirla (el foco sale de los productos del plan).
  */
 export function EditorEstrategia({ client, valor = null, semanas = [], conceptos = [], onCambiar }) {
@@ -151,7 +160,7 @@ export function EditorEstrategia({ client, valor = null, semanas = [], conceptos
     return () => { vivo = false; };
   }, [clienteId]);
   const poner = (cambios) => onCambiar({ ...e, ...cambios });
-  const etapas = semanas.map((_, i) => e.etapas?.[i] ?? "");
+  const etapas = semanas.map((_, i) => idEtapaCiclo(e.etapas?.[i]));
   const opciones = [...(productos ?? [])];
   if (e.focoId && !opciones.some((p) => p.id === e.focoId)) opciones.unshift({ id: e.focoId, nombre: e.foco || "El de antes" });
   const obj = objetivoDe(e.objetivo);
@@ -180,7 +189,7 @@ export function EditorEstrategia({ client, valor = null, semanas = [], conceptos
         </select>
       </div>
       <fieldset style={{ border: "none" }}>
-        <legend className="label">Etapa del embudo de cada semana</legend>
+        <legend className="label">Etapa del ciclo de ventas de cada semana</legend>
         {semanas.map((s, i) => (
           <div key={s.numero ?? i} className="estrategia-semana" style={{ alignItems: "center", marginBottom: "var(--sp-2)" }}>
             <span style={{ fontSize: "var(--fs-xs)", flex: 1, minWidth: 0 }}>
@@ -194,6 +203,7 @@ export function EditorEstrategia({ client, valor = null, semanas = [], conceptos
             Repartir las etapas según el objetivo
           </button>
         )}
+        <AyudaEtapas />
       </fieldset>
       {e.razon && <p className="hint" style={{ margin: 0 }}><strong>Por qué (de la propuesta):</strong> {e.razon}</p>}
     </div>

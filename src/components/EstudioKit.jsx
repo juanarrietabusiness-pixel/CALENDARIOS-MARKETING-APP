@@ -8,6 +8,7 @@ import {
 } from "../lib/kitMarca";
 import { MODOS_LOGO, ESQUINAS_LOGO, TAMANO_LOGO, MARGEN_LOGO, posicionDelKit } from "../lib/logoEncima";
 import { quitarPerdidasDelKit } from "../lib/estudio";
+import { TIPOS_ARTE, MIN_TIPOS_ARTE, MAX_TIPOS_ARTE, tipoArteDe } from "../lib/tiposArte";
 // Sus estilos son los del Estudio (est-kit-*): ahora vive en Marca, donde el Estudio no se ha cargado.
 import "./Estudio.css";
 
@@ -29,6 +30,37 @@ import "./Estudio.css";
 //
 // La voz de la marca (VozDeMarca) va aparte, en su tarjeta de Marca: con el kit vacío también se escoge.
 // ============================================================
+
+/**
+ * «Los tipos de arte de esta marca» (2 a 4, `kit.tiposArte`): la forma de pieza que le vende según su estudio de
+ * mercado (demostración, testimonio, producto…). El director y el motor de ideas los leen para escoger la composición.
+ */
+function TiposArteDeMarca({ kit, lectura = false, ocupado = false, onCambiar }) {
+  const ids = useId();
+  const elegidos = kit.tiposArte ?? [];
+  // Mientras guarda se ignora el toque (sin `disabled`: el chip pulsado soltaría el foco).
+  const alternar = (id) => { if (!ocupado) onCambiar(elegidos.includes(id) ? elegidos.filter((x) => x !== id) : [...elegidos, id]); };
+  if (lectura && !elegidos.length) return null;
+  return (
+    <section className="field est-kit-artes" aria-labelledby={`${ids}-t`}>
+      <span className="label" id={`${ids}-t`}>Los tipos de arte de esta marca</span>
+      <p className="hint" id={`${ids}-h`} style={{ margin: 0 }}>
+        Escoge de {MIN_TIPOS_ARTE} a {MAX_TIPOS_ARTE} según su estudio de mercado; prueba unas pocas piezas de cada uno y quédate con lo que funcione.
+        {elegidos.length === 1 ? " Falta al menos uno más." : ""}
+      </p>
+      <div className="est-tipos" role="group" aria-labelledby={`${ids}-t`} aria-describedby={`${ids}-h`}>
+        {TIPOS_ARTE.map((t) => {
+          const dentro = elegidos.includes(t.id);
+          return lectura ? (dentro ? <span key={t.id} className="filter-chip active">{t.nombre}</span> : null) : (
+            <button key={t.id} type="button" className="filter-chip" aria-pressed={dentro} title={t.ayuda}
+              aria-disabled={ocupado || undefined} disabled={!dentro && elegidos.length >= MAX_TIPOS_ARTE} onClick={() => alternar(t.id)}>{t.nombre}</button>
+          );
+        })}
+      </div>
+      {elegidos.length > 0 && <p className="hint" style={{ margin: 0 }}>{elegidos.map((id) => `${tipoArteDe(id).nombre}: ${tipoArteDe(id).ayuda}`).join(" · ")}</p>}
+    </section>
+  );
+}
 
 /** Hasta dos imágenes de la galería como referencia visual de un tipo de pieza. */
 function RefsDeTipo({ ids, id, nombre, claves = [], archivos = [], onCambiar, titulo = "Referencia visual:" }) {
@@ -182,6 +214,11 @@ export default function EstudioKit({ client, kit: guardado, archivos = [], perdi
               ? <p className="hint">Prepáralo con la IA desde el cerebro de {client.name}, o escríbelo a mano. Con el kit, cada idea sale con la paleta, el estilo y el logo de la marca.</p>
               : <><VistaKit kit={kit} marca={marca} logo={logo} onQuitarPlantilla={lectura || ocupado ? null : (id) => guardar({ ...kit, plantillas: kit.plantillas.filter((x) => x.id !== id) })}
                 onTiposPlantilla={lectura || ocupado ? null : (id, tipos) => guardar({ ...kit, plantillas: kit.plantillas.map((x) => (x.id === id ? { ...x, tipos } : x)) })} /><div className="field"><span className="label">Fuente de la marca</span><FuenteDeMarca client={client} kit={kit} lectura={lectura} onGuardar={onGuardar} /></div></>
+          )}
+
+          {/* Los tipos de arte de la marca (curso de campañas): se guardan al tocarlos, también con el kit sin preparar. */}
+          {!propuesta && !borrador && (
+            <TiposArteDeMarca kit={kit} lectura={lectura} ocupado={Boolean(ocupado)} onCambiar={(tiposArte) => guardar({ ...kit, tiposArte })} />
           )}
 
           {!propuesta && !borrador && vacio && !lectura && (

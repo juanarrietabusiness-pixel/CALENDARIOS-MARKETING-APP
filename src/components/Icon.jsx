@@ -57,6 +57,8 @@ const paths = {
   chart: <><path d="M4 20V10" /><path d="M10 20V4" /><path d="M16 20v-7" /><path d="M21 20H3" /></>,
   // «Lo mejor del momento»: lo que sube.
   trending: <><path d="m3 17 6-6 4 4 8-8" /><path d="M14 7h7v7" /></>,
+  // «Números del negocio»: la calculadora.
+  calculator: <><rect x="5" y="3" width="14" height="18" rx="2" /><path d="M8.5 7.5h7" /><path d="M9 12h.01" /><path d="M12 12h.01" /><path d="M15 12h.01" /><path d="M9 15.5h.01" /><path d="M12 15.5h.01" /><path d="M15 15.5h.01" /><path d="M9 18h.01" /><path d="M12 18h3" /></>,
   search: <><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></>,
   logout: <><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="m16 17 5-5-5-5" /><path d="M21 12H9" /></>,
   home: <><path d="m3 11 9-7 9 7" /><path d="M5 10v10h14V10" /><path d="M10 20v-6h4v6" /></>,

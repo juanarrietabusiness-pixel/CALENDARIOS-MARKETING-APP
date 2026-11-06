@@ -9,8 +9,9 @@ import { formatoMoneda } from "../../lib/anuncios";
 // El diagnóstico de las campañas activas
 //
 // Las reglas de src/lib/diagnostico.js sobre los últimos 7 días frente a
-// los 30 y al costo aceptable por resultado (el del estratega; si no se
-// escribe, el promedio del mes de cada campaña). Nada cambia solo:
+// los 30 y al costo aceptable por resultado (el número mágico de los números
+// del negocio; si se escribe otro, ése; sin ninguno, el promedio del mes de
+// cada campaña). Nada cambia solo:
 // «Apagar» pausa ese conjunto o anuncio; «Subir a…» cambia el presupuesto
 // y, como es dinero, es del administrador y se confirma. La IA, si se
 // marca, lo explica con palabras.
@@ -84,8 +85,8 @@ export default function Diagnostico({ clientId, moneda = "USD", esAdmin = false,
             <div className="field" style={{ margin: 0 }}>
               <label className="label" htmlFor={`${ids}-max`}>Costo aceptable por resultado ({moneda})</label>
               <input id={`${ids}-max`} className="input" type="number" inputMode="decimal" min="0" step="0.01" value={costoMax}
-                onChange={(e) => setCostoMax(e.target.value)} placeholder="El promedio del mes" aria-describedby={`${ids}-max-ayuda`} />
-              <p id={`${ids}-max-ayuda`} className="hint" style={{ margin: 0 }}>El que te dio el estratega para que el cliente gane. Vacío: se compara con el promedio de los últimos 30 días.</p>
+                onChange={(e) => setCostoMax(e.target.value)} placeholder="El número mágico" aria-describedby={`${ids}-max-ayuda`} />
+              <p id={`${ids}-max-ayuda`} className="hint" style={{ margin: 0 }}>Vacío: el número mágico de Marca → Números del negocio y, si no lo tiene, el promedio de los últimos 30 días. Escribe otro para probar.</p>
             </div>
             <label className="anu-check"><input type="checkbox" checked={conIA} onChange={(e) => setConIA(e.target.checked)} /> <span>Que la IA lo explique (unos centavos)</span></label>
             <button type="button" className="btn btn-primary" onClick={diagnosticar} disabled={Boolean(trabajando)}>
@@ -102,6 +103,8 @@ export default function Diagnostico({ clientId, moneda = "USD", esAdmin = false,
                 <div><dt>Resultados</dt><dd>{d.resumen.resultados}</dd></div>
                 <div><dt>Por resultado</dt><dd>{dinero(d.resumen.costoPorResultado)}</dd></div>
               </dl>
+              {d.origenCosto === "numero-magico" && <p className="hint">Comparado con el número mágico de los números del negocio: {dinero(d.costoMax)} por resultado.</p>}
+              {d.origenCosto === "promedio" && <p className="hint">Sin número mágico guardado: cada campaña se compara con su promedio de 30 días.</p>}
               {d.explicacion && <p className="anu-diag-explicacion">{d.explicacion}</p>}
               {d.avisoIA && <p className="hint">Sin explicación de la IA: {d.avisoIA}</p>}
               {!d.resumen.campanas && <p className="hint">Esta cuenta no tiene campañas activas.</p>}
