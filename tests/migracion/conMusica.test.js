@@ -140,6 +140,25 @@ describe("de una foto, un reel con su música", () => {
     expect(post().conMusica.foto.src).toBe(FOTO);
   });
 
+  it("volver a la foto y pedirlo igual: el mp4 que ya había vuelve a la publicación sin renderizar otra vez", async () => {
+    await conMusica();
+    await ejecutarRender(env, encargos.at(-1).cuerpo, container([]));
+    const d = dias();
+    d[0].posts[0] = volverALaFoto(d[0].posts[0]);
+    ponerDias(d);
+    expect(post().format).toBe("post");
+    const r = await conMusica();
+    expect(r.status).toBe(202);
+    expect((await r.json()).yaHecho).toBe(true);
+    expect(encargos).toHaveLength(1);
+    expect(post()).toMatchObject({ format: "reel", portada: FOTO });
+    // Con otra música, sí se renderiza otra vez.
+    db.sqlite.prepare("insert into estudio_archivos (id, owner_id, client_id, clave, tipo, mime, modelo, prompt) values (?,?,?,?,?,?,?,?)")
+      .run("m2", JEFE, "bc", "clientes/bc/estudio/otra.mp3", "audio", "audio/mpeg", "musica-subida", "Otra.mp3");
+    expect((await conMusica({ musicaId: "m2" })).status).toBe(202);
+    expect(encargos).toHaveLength(2);
+  });
+
   it("si la foto cambió mientras se hacía, la publicación no se toca", async () => {
     await conMusica();
     const d = dias();

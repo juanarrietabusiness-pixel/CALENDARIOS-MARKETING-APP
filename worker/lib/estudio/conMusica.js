@@ -17,7 +17,7 @@
 
 import { uuid, ahora } from "../ids.js";
 import { crearProyecto, guardarProyecto, aprobarProyecto, guardarSonido, publicacionDelCliente, ErrorVideo } from "../videosProyectos.js";
-import { pedirRender } from "./render.js";
+import { pedirRender, ligarAPublicacion } from "./render.js";
 import { musicasDe } from "./galeria.js";
 import { kitDe } from "./kit.js";
 import { claveDelCliente } from "./archivos.js";
@@ -119,8 +119,16 @@ export async function publicarConMusica(env, acceso, cliente, { postId, calendar
     fila = await acceso.leerUno("videos_proyectos", { id: r.video.id, client_id: cliente.id });
   }
   // La música, en el SONIDO del video (aparte del guion); sin efectos: una foto no tiene transiciones ni sellos.
+  const musicaAntes = leerJSON(fila.sonido, {})?.musica?.archivoId ?? null;
   await guardarSonido(acceso, cliente, fila, { efectos: false, musica: { archivoId: musica.id, volumen: 0 } });
   fila = await acceso.leerUno("videos_proyectos", { id: fila.id, client_id: cliente.id });
+  // Lo MISMO que ya salió (el mismo guion y la misma música: se volvió a la foto y se pide otra vez): el mp4 que hay se
+  // pone en la publicación ya, sin renderizar otra vez.
+  const hecho = leerJSON(fila.render, {});
+  if (fila.estado === "renderizado" && hecho.estado === "listo" && hecho.clave && hecho.version === fila.version && musicaAntes === musica.id) {
+    const r = await ligarAPublicacion(env, acceso, cliente, fila, { postId: post.id, calendarId: calId, por: por ?? undefined });
+    return { video: r.video, musica: { id: musica.id, nombre: musica.nombre }, costo: 0, yaHecho: true, aviso: r.aviso || "Ya estaba hecho así: el reel volvió a la publicación sin renderizarlo otra vez." };
+  }
   // Aprobado solo: lo decidió la persona al pedirlo (no hay voz que pagar ni texto que revisar). Un guion igual al de
   // antes (misma pista y duración) ya estaba aprobado: se renderiza otra vez tal cual.
   if (fila.estado === "borrador") {
