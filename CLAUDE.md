@@ -282,6 +282,24 @@ src/
                           gancho); `lineaDeTiposArte` para el director y el motor de ideas (puro; también el Worker)
     maletas.js            El SEMÁFORO de las 7 maletas por producto (verde, ámbar, rojo; «si falta una, no lances»),
                           `maletasQueFaltan` para el plan de campañas, el resumen y la tarea «Pedírselo al cliente» (puro)
+    pauta.js              LO QUE VA A PAUTA: `post.pauta` (etapa del ciclo, nivel, cómo se monta, `auto`) y `post.anuncio` (3–5 textos,
+                          títulos, descripción, botón), la regla del anuncio que lee la IA (con la tabla del ciclo del negocio), qué
+                          se marca solo (tipo «Anuncio» y la oferta del mes) y la revisión de anuncio con sus arreglos (puro; también
+                          el Worker)
+    tresQ.js              La REVISIÓN 3Q de lo que corre en el Ads Manager: cifras con las métricas del curso, Q1 frente al
+                          número mágico (30/14/7 días), Q2 con umbrales, Q3 (qué hacer y a dónde ir), efecto desglose,
+                          aprendizaje, cuándo se pausa, la etapa de cada campaña, lo grave del cron (puro; también el Worker)
+    umbrales3q.js         Los umbrales de la revisión 3Q (los del Manual de campañas) y su limpieza (puro, pequeño)
+    revision3qApi.js      Cliente de /api/anuncios/clientes/<c>/revision, /etapas y /revision/pendientes
+    kitWhatsApp.js        El KIT DE WHATSAPP BUSINESS de un cliente: limpiar (atajos, etapas del ciclo, guiones casados con el
+                          catálogo), el pedido a la IA y su lectura, los PRECIOS que pone el código ({precio}, {precios}, {oferta}),
+                          los avisos (cifras fuera del catálogo, garantía que el estudio no tiene, «[completar: …]»), volver a
+                          proponer sin pisar lo editado y «Copiar todo» (puro; también el Worker y la herramienta kit_whatsapp)
+    vozCliente.js         «La voz de tus clientes»: las preguntas (una obligatoria), limpiar lo que manda quien responde (trampa
+                          para robots), el resumen, el enlace y los mensajes (puro, sin importaciones: la página pública lo carga)
+    vozAlEstudio.js       «Llevar al estudio»: el pedido a la IA, la propuesta comprobada (testimonios sólo con permiso y con sus
+                          palabras) y ponerla en el borrador del estudio (puro; aparte porque arrastra el estudio de mercado)
+    whatsappApi.js        Cliente de /api/whatsapp y /api/publico-voz
     numerosNegocio.js     Los NÚMEROS DEL NEGOCIO de un cliente (cada dato con su origen) y las tres calculadoras de la agencia,
                           con sus mismas cuentas: objetivo (la Calculadora de presupuesto), equilibrio (deeplook, «todo el
                           negocio» y «sólo la pauta»), el Simulador (5 modos y 3 escenarios), el número mágico con su alarma y
@@ -607,6 +625,18 @@ src/
                           invertir, el equilibrio con su tabla, simular y las ventas de la semana (lazy)
     negocio/VentasSemana.jsx  Las ventas de la semana dentro de Números del negocio: 8 semanas con la pauta y las conversaciones,
                           escribir o corregir, copiar el enlace y el mensaje de los lunes, la tasa medida (`onTasaMedida`) y el ROAS real
+    negocio/KitWhatsApp.jsx  Marca → «WhatsApp»: el kit (proponer con IA, editar, guardar, copiar cada bloque y todo), con lo
+                          propuesto y no guardado recordado en el navegador (lazy)
+    negocio/VozDelCliente.jsx  «La voz de tus clientes» dentro de Marca → WhatsApp: el enlace, el mensaje para el cliente, las
+                          respuestas y «Llevar al estudio» con casillas
+    ChipsAnalisis.jsx     Las preguntas del curso sobre un anuncio de la competencia en chips (problema, nivel, tipo de arte,
+                          sesgo, oferta, llamado): en las referencias del estudio de mercado y en la Biblioteca
+    calendario/pautaPublicacion.jsx  «Se va a pautar» (pestaña Idea): etapa, nivel, cómo se monta y los textos del anuncio con «Copiar»
+    VersionAnuncio.jsx    «Versión para anuncio» de una ya publicada (Producción → Publicadas y Resultados): el texto de pauta y los
+                          textos aparte, para copiar (lazy)
+    cliente/ResultadosCliente.jsx  Resultados de un cliente: Redes (pages/Resultados) y Anuncios (la revisión 3Q), sub-secciones
+    anuncios/Revision3Q.jsx  La revisión 3Q en pantalla (Resultados → Anuncios y el diálogo de Anuncios → Campañas) (lazy)
+    anuncios/RevisarCampanasDia.jsx  Mi día: «Revisar las campañas de <cliente>» cada 6 días
   pages/
     Login.jsx             Acceso
     Equipo.jsx            Quién entra en el espacio; invitar y sacar
@@ -625,6 +655,7 @@ src/
     Informe.jsx           Lo que ve el cliente al abrir su informe mensual (sin sesión)
     InformeAnuncios.jsx   Lo que ve el cliente al abrir su informe de anuncios (sin sesión)
     VentasCliente.jsx     Lo que abre el cliente con su enlace de ventas (sin sesión)
+    VozCliente.jsx        Lo que abren los clientes del cliente con el enlace de la encuesta (sin sesión)
     Ajustes.jsx           IA, presupuesto y consumo, integraciones, tareas, copia
     LoMejor.jsx           /lo-mejor: «Lo mejor del momento» de todos los clientes (Esta semana · Este mes · Nuevo, filtros) (lazy)
     Campanas.jsx          /campanas («Anuncios»): cuenta publicitaria, cifras, campañas, crear (lazy)
@@ -669,6 +700,10 @@ worker/
                           llamada), la IA que propone sin guardar, y la ruta (la despacha rutas/anuncios.js)
     ventas.js             El enlace de ventas: el testigo (una vez), guardar una semana, la pauta y las conversaciones de
                           Meta por semana (una llamada) y lo que ven la agencia y el cliente
+    revision3q.js         La revisión 3Q: leer la cuenta por nivel (12 llamadas), la revisión de un cliente, las etapas, Mi día,
+                          lo grave del cron y lo que ve sólo la agencia en el informe de anuncios
+    whatsapp.js           El kit de WhatsApp (leer, guardar con `actualizar`, la IA que propone) y la voz del cliente (el testigo
+                          una vez, las respuestas, la encuesta pública, «Llevar al estudio» y aceptar en el borrador)
     anuncios.js           Meta Ads: cuentas publicitarias, campañas e /insights, subir el medio
                           (/adimages, /advideos por file_url), crear en pausa, activar y pausar
     mcp.js                Las herramientas de Claude por MCP (consulta + escritura)
@@ -783,11 +818,12 @@ worker/
     historiasAuto.js      /api/historias-auto/<cliente>: ajustes, pendientes de preparar, piezas
     videos.js             /api/videos/<cliente>: los videos animados (listar, crear, guardar el guion, aprobar, borrar)
     ventas.js             /api/ventas/<cliente> (8 semanas, escribir, quitar, el enlace) y /api/publico-ventas/<testigo>
+    whatsapp.js           /api/whatsapp/<cliente> (kit, proponer, voz, enlace, estudio, aceptar, quitar) y /api/publico-voz/<testigo>
 container/                El Container del video animado (Node + @napi-rs/canvas + ffmpeg, Dockerfile): /cuadro, /hoja, /revisar y
                           /render (render.mjs) con el MISMO motor de src/lib; los clips de video (clips.mjs, PUT /clip/<id>);
                           probar.mjs, probarAudio.mjs y probarClips.mjs son sus pruebas (job «contenedor»)
 migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales, 0033 kit de marca, 0034 estudio de mercado, 0035 ritmo de contenido, 0036 inventario, 0037 plantillas de plan, 0038 campañas con varios conjuntos y anuncios, 0039 estratega, 0040 historial de anuncios, 0041 informe de anuncios, 0042 galería agrupada y repetidos, 0043 conversaciones del asistente, 0044 banco de ideas único, 0045 fórmulas UGC, 0046 inspiración, 0047 conversaciones de diseño, 0048 historias automáticas, 0049 encargos del Estudio: lote y carrusel, 0050 historias apartadas, 0051 notas fijas de los días, 0052 programar al aprobar por cliente, 0053 qué se le cambió a una nota, 0054 qué redes entran en el informe, 0055 hasta 5 historias automáticas al día, 0056 los días fijos de cada empresa, 0057 la lista aplicada de una auditoría, 0058 la caché de Scrape Creators, 0059 proyectos de video animado, 0060 sonido e historial de los videos, 0061 recetas y «Crear con Claude», 0062 «Lo mejor del momento»)
-migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales, 0033 kit de marca, 0034 estudio de mercado, 0035 ritmo de contenido, 0036 inventario, 0037 plantillas de plan, 0038 campañas con varios conjuntos y anuncios, 0039 estratega, 0040 historial de anuncios, 0041 informe de anuncios, 0042 galería agrupada y repetidos, 0043 conversaciones del asistente, 0044 banco de ideas único, 0045 fórmulas UGC, 0046 inspiración, 0047 conversaciones de diseño, 0048 historias automáticas, 0049 encargos del Estudio: lote y carrusel, 0050 historias apartadas, 0051 notas fijas de los días, 0052 programar al aprobar por cliente, 0053 qué se le cambió a una nota, 0054 qué redes entran en el informe, 0055 hasta 5 historias automáticas al día, 0056 los días fijos de cada empresa, 0057 la lista aplicada de una auditoría, 0058 la caché de Scrape Creators, 0059 proyectos de video animado, 0060 sonido e historial de los videos, 0061 recetas y «Crear con Claude», 0063 de dónde sale un video animado, 0066 el plan semanal único, 0068 TikTok y tendencias por Scrape Creators, 0069 números del negocio, 0070 las ventas de la semana)
+migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales, 0033 kit de marca, 0034 estudio de mercado, 0035 ritmo de contenido, 0036 inventario, 0037 plantillas de plan, 0038 campañas con varios conjuntos y anuncios, 0039 estratega, 0040 historial de anuncios, 0041 informe de anuncios, 0042 galería agrupada y repetidos, 0043 conversaciones del asistente, 0044 banco de ideas único, 0045 fórmulas UGC, 0046 inspiración, 0047 conversaciones de diseño, 0048 historias automáticas, 0049 encargos del Estudio: lote y carrusel, 0050 historias apartadas, 0051 notas fijas de los días, 0052 programar al aprobar por cliente, 0053 qué se le cambió a una nota, 0054 qué redes entran en el informe, 0055 hasta 5 historias automáticas al día, 0056 los días fijos de cada empresa, 0057 la lista aplicada de una auditoría, 0058 la caché de Scrape Creators, 0059 proyectos de video animado, 0060 sonido e historial de los videos, 0061 recetas y «Crear con Claude», 0063 de dónde sale un video animado, 0066 el plan semanal único, 0068 TikTok y tendencias por Scrape Creators, 0069 números del negocio, 0070 las ventas de la semana, 0071 la revisión 3Q, 0072 WhatsApp y la voz del cliente)
 scripts/migracion/        Volcado desde Supabase, conversión e importación
 tests/
   utils/                  Lector de wrangler.jsonc y _headers, fallos e informe
@@ -808,8 +844,8 @@ tests/
 | `/cliente/<slug>/<mes>-<año>` | Un mes del calendario de ese cliente (`octubre-2026`), exista o no su cajón. Los enlaces viejos con el nombre o el id del calendario siguen abriendo su mes |
 | `/cliente/<slug>/crear` · `/crear/director` · `/crear/galeria` | Crear: el director («¿Qué quieres crear?») arriba y la galería del Estudio debajo, con lo manual en «Avanzado» |
 | `/cliente/<slug>/referencias` · `/referencias/ideas` · `/inspiracion` · `/competencia` | Referencias: el banco de ideas, «Lo mejor» del cliente (`?pieza=<clave>` la señala) y la competencia del estudio de mercado |
-| `/cliente/<slug>/marca` · `/marca/ficha` · `/kit` · `/negocio` · `/cerebro` · `/plan` · `/fechas` · `/drive` | Marca: ficha, kit y voz, números del negocio, cerebro (con el estudio de mercado), plan semanal, fechas especiales y la carpeta de Drive, con el semáforo del kit arriba |
-| `/cliente/<slug>/resultados` | Resultados del cliente |
+| `/cliente/<slug>/marca` · `/marca/ficha` · `/kit` · `/negocio` · `/whatsapp` · `/cerebro` · `/plan` · `/fechas` · `/drive` | Marca: ficha, kit y voz, números del negocio, el kit de WhatsApp y la voz de los clientes, cerebro (con el estudio de mercado), plan semanal, fechas especiales y la carpeta de Drive, con el semáforo del kit arriba |
+| `/cliente/<slug>/resultados` · `/resultados/redes` · `/resultados/anuncios` | Resultados del cliente: redes y la revisión 3Q de sus anuncios |
 | `/cliente/<slug>/tareas` | Todas las tareas del cliente (con las que se repiten). Ya no es pestaña: su cabecera lleva a Mi día por empresa |
 | `/cliente/<slug>/estudio` · `/diseno` · `/ideas` · `/inspiracion` · `/cerebro` · `/ficha` · `/contenido` | Las pestañas de antes: abren la nueva en su sub-sección (Crear → Galería / Director, Referencias → Ideas / Lo mejor, Marca → Cerebro / Ficha / Drive) sin reescribir la dirección, así `?lote=`, `?receta=` y `?pieza=` siguen |
 | `/tareas` | Mi día (`?empresa=<id>`: la vista por empresa con la de ese cliente) |
@@ -832,6 +868,7 @@ tests/
 | `/informe?t=<testigo>` | Informe mensual del cliente final (sin sesión) |
 | `/informe-anuncios?t=<testigo>` | Informe de anuncios del cliente final (sin sesión) |
 | `/ventas?t=<testigo>` | «Tus ventas de la semana» del cliente final (sin sesión) |
+| `/voz?t=<testigo>` | «Tu opinión»: la encuesta para los clientes del cliente (sin sesión) |
 
 El slug sale del nombre normalizado, y `slugsUnicos()` garantiza que dos
 clientes que normalicen igual no compartan dirección. Los nombres de las
@@ -5024,6 +5061,84 @@ son del servidor.
 - **`TASA_CIERRE_POR_DEFECTO` pasó de 20 a 5** (decisión del curso), pero el Manual de campañas guardaba SIEMPRE la tasa de
   entonces (`limpiarManual` la escribía aunque nadie la escogiera). Un 20 sin la marca `tasaCierreV: 2` se lee como el de
   ahora; lo que se guarda desde entonces lleva la marca, así que un 20 escogido después se respeta.
+- **Lo que va a pauta nace escrito como anuncio, porque en el Ads Manager su texto ya no se cambia** (`src/lib/pauta.js`;
+  decisiones 8, 9 y 10 de docs/propuesta-curso-campanas.md). El texto principal de un anuncio montado con la publicación
+  ES su caption. Cosas que no se ven en la pantalla:
+  · **`post.pauta` = { etapa, nivel?, como, auto?, motivo? }** con la etapa del ciclo (`idEtapaCiclo`: «atraer» o «tibio»
+  se leen); `como` "" = de las dos formas. **Quitarla deja `pauta: false`**, no la borra: así el asistente del mes no la
+  vuelve a proponer. El chip del mes mira `enPauta` (lib/estadoChip.js), la MISMA regla en una línea (un test las compara):
+  pauta.js arrastra el estudio de mercado y no puede ir a la carga inicial.
+  · **Toda la que va a pauta lleva además `post.anuncio`** (3–5 textos de hasta 600, títulos de 40 cortados en palabra,
+  descripción de 30, botón por su id de Meta) para montarla subiendo la pieza. Es un campo más del motor de textos,
+  «anuncio», que sólo se pide si va a pauta (`pideCampo` en camposTexto.js: nunca un directo; una historia sí, sin caption).
+  «Completar» y el botón del caption lo piden si falta (`camposQueFaltan` de escribirTextos.js, no el de reglasFormato.js).
+  · **El motor la escribe con `REGLA_ANUNCIO`** en los modos «campos», «plan» y «publicacion» (worker/lib/estudio/lote.js):
+  la etapa en la línea de cada pieza (`lineaPauta` en `lineaDePieza`) y el tipo de negocio y el DESTINO del cliente leídos
+  en el servidor de `anuncios_clientes.negocio` (`leerNegocio`, una lectura y sólo si alguna va a pauta; sin números,
+  WhatsApp). Los hashtags se recortan a 3 en el servidor aunque la IA traiga más. En «plan», el «anuncio» viene dentro de
+  cada idea y se lee aparte (`anunciosDeRespuesta`): `leerProduccion` no lo conoce.
+  · **Qué se marca solo** (`sugerirPauta`): las del tipo «Anuncio» y las de la oferta del mes (`offers`/`promoCode`: el tipo
+  «Beneficios», el código, una cifra o dos palabras de la oferta). Al poner el plan del asistente del mes salen marcadas con
+  `auto` y se dice cuántas; lo que YA estaba en el calendario sólo se propone (con su casilla), nunca se marca sin verse.
+  La etapa sugerida va por el nivel: el `decision` de la app es «listo para comprar» (conversión), no el «ya compró» del curso.
+  · **La revisión de anuncio son REGLAS** (lo que caduca, la primera línea, el llamado a WhatsApp o a la web, más de 3
+  hashtags, lo que dice de quien lee, «casi igual a otra de su etapa» por la primera línea o el 60 % de las palabras). Los
+  bordes de palabra van con `\p{L}` y no con `\b`: `\b` sólo entiende ASCII y «acné» o «últimas» no casaban. Lo que no se
+  arregla solo lo reescribe el motor (`reescribirComoAnuncio`) y se pone sobre la publicación de AHORA.
+  · **Nada de esto se ha probado contra la IA real**: los tests usan un `fetch` de mentira.
+- **La revisión 3Q LEE el Ads Manager, y por NIVEL, no campaña a campaña** (`src/lib/tresQ.js`, `worker/lib/revision3q.js`,
+  0071; Resultados → Anuncios). El diagnóstico de antes eran 2 + 4 llamadas por campaña activa; con tres ventanas pasaba de
+  40. Ahora son tres listas de lo encendido y `/act_…/insights` con `level` (campaña, conjunto, anuncio) × `last_30d`/
+  `last_14d`/`last_7d`: 12 llamadas, las tenga la cuenta que tenga. El `POST /diagnostico` de antes ES esta revisión con la
+  forma de entonces (`comoDiagnostico`), y el botón de Anuncios → Campañas abre la misma pantalla en un diálogo. Cosas que
+  no se ven:
+  · **Los campos nuevos** (clics únicos y su CTR y costo, tiempo de reproducción, ThruPlays, los rankings,
+  `learning_stage_info`) se piden. Si Meta rechaza alguno (#100), se baja de escalón una vez por nivel y se dice
+  (`leidoCon`). Las reproducciones de 3 s van en `actions` (`video_view`). Lo que no llegó es `null` («no se sabe»), nunca 0.
+  · **El efecto desglose:** con el conjunto (o la campaña con presupuesto de campaña) dentro del número mágico, sus hijos
+  salen «Sano: no se toca», aunque uno se vea peor. Presupuesto de campaña quiere decir que la campaña lo tiene y sus
+  conjuntos no tienen el suyo.
+  · **La fase de aprendizaje:** espera lo que está en `LEARNING`, lo creado o cambiado hace menos de `diasCambio` días (por
+  el `updated_time` de Meta o por `historial_anuncios`) y el conjunto al que se le sumó un anuncio.
+  · **Lo que aguanta cada etapa** (`EXIGENCIA_ETAPA`): presentación 1,3 veces el número mágico, sin pasar del equilibrio;
+  conversión y ascensión 0,8. La etapa sale del nombre (palabras enteras: «Conversiones» no cuenta, y los nombres del curso
+  ganan a los alias) o de `anuncios_clientes.etapas`.
+  · **Pausar** (decisión 7) exige `gastoParaApagar` veces el número mágico gastado, y que cueste más de `apagar` veces lo
+  que aguanta su etapa o que pase del equilibrio. Las reglas de antes (`evaluar`) son la base, ahora con los umbrales del
+  Manual (`manual_campanas.umbrales3q`).
+  · **Abrirla marca `revisada_at`**, salvo a quien sólo mira, y eso quita «Revisar las campañas de…» de Mi día durante 6
+  días. La pantalla no relee con cada aviso del espacio: cada lectura son 12 llamadas.
+  · **El cron** va el último y sólo si la vuelta no hizo nada más: un cliente al día, desde las 7:00, con 3 llamadas. A la
+  campana sólo lo grave (no gastó ayer, un anuncio rechazado, el doble del número mágico sin una conversación) y sólo lo
+  que no se avisó la vez anterior (`alertas.claves`). Si falla, se apunta igual: si no, lo miraría cada minuto.
+  · **El informe de anuncios** guarda `contenido.agencia` (% de mensajes, CTR único, número mágico frente al real) APARTE de
+  `cifras`. El enlace del cliente no lo lleva (`informeAnunciosPorTestigo` sólo da cifras y análisis).
+  · **«Mejorar los ganchos» y «Anuncios nuevos»** abren el lote del Estudio por la dirección (`?lote=anuncios&niveles=…&pide=…`).
+  · **Nada de esto se ha probado contra Meta real.** Lo primero: abrir la revisión de un cliente con campañas activas y
+  comparar cada cifra con el Ads Manager.
+- **El kit de WhatsApp y la voz del cliente: la IA propone, el código pone los precios y una persona guarda**
+  (`src/lib/kitWhatsApp.js`, `vozCliente.js`, `vozAlEstudio.js`, `worker/lib/whatsapp.js`, 0072). Cosas que no se ven:
+  · **La IA no escribe ni una cifra de precio**: escribe `{precio}` (cierre del guion), `{precios}` (la respuesta rápida) y
+  `{oferta}`, y `ponerPrecios` pone los del catálogo, exactos; sin precio en el catálogo queda «[completar: el precio de …]».
+  Si aun así aparece dinero que no está en el catálogo, o una garantía que el estudio aprobado no tiene, `avisosDelKit` lo
+  dice. Un «100 % algodón» no cuenta como dinero; un «20 % de descuento», sí.
+  · **Proponer no guarda; «Guardar» sí, con `antes`** (409 si otra persona guardó). Cada bloque tocado a mano lleva
+  `editado: true`, y «Volver a proponer» pregunta si conservarlo (`fundirKitWhatsApp`). Lo propuesto sin guardar se recuerda
+  en el navegador (`kit-whatsapp-borrador:<cliente>`, 7 días): es una comodidad, lo que vale es lo guardado.
+  · **`anuncios_clientes` ya tiene cinco dueños** (el informe, los números, las ventas, el kit y la voz): se escribe con
+  `actualizar` y su columna, nunca con `guardar`. Un test lo comprueba.
+  · **La encuesta va SIN sesión por `testigo_voz`**, creado una vez (`crearEnlaceDeVoz`, sólo escribe si seguía vacío); la
+  única lectura sin dueño es `clienteDeVozPorTestigo` (publico.js). Tope de 500 respuestas por cliente y un campo trampa
+  (`sitio`): un robot recibe «ok» y no se guarda nada. La página pública no carga el estudio de mercado: por eso «Llevar al
+  estudio» vive en `vozAlEstudio.js`.
+  · **«Llevar al estudio» propone; «Aceptar» va al BORRADOR** (se crea desde el aprobado, sin `aprobadoAt`), que se aprueba
+  como siempre. La propuesta la manda el navegador, así que se vuelve a comprobar: un testimonio sólo entra si su respuesta
+  dio permiso con nombre, con el nombre de la fila y una cita que sean sus palabras. Las leídas quedan `llevada_at` y la
+  siguiente vez sólo se leen las nuevas.
+  · **El semáforo de Marca pide revisar el estudio cada mes** (`puntoDelEstudio`, `DIAS_REVISAR_ESTUDIO`): GET /api/estudio
+  trae `estudioMercado`; sin esa clave el punto no sale. Es ámbar, así que el aviso corto de Crear no lo enseña.
+  · **El análisis de una referencia trae las preguntas del curso** (problema, `tipoArte`, `sesgo`, oferta, llamado) sólo si
+  vienen y con ids que existen; uno de antes se lee igual. **Nada de esto se ha probado contra la IA real.**
 
 ## Documentos relacionados
 
