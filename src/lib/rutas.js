@@ -101,7 +101,7 @@ export const PESTANAS_DEL_CLIENTE = Object.freeze([
 export const SECCIONES_DEL_CLIENTE = Object.freeze({
   crear: ["director", "galeria"],
   referencias: ["ideas", "inspiracion", "competencia"],
-  marca: ["ficha", "kit", "cerebro", "plan", "fechas", "drive"],
+  marca: ["ficha", "kit", "negocio", "cerebro", "plan", "fechas", "drive"],
 });
 
 /**

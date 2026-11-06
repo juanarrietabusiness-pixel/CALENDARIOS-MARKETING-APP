@@ -39,6 +39,9 @@ describe("las cuentas las hace el código", () => {
     expect(economia({ precio: 0, margen: 30 })).toBeNull();
     expect(economia({ precio: 50 })).toBeNull();
     expect(economia({ precio: 100, margen: 50, tasaCierre: 0 }).tasaCierre).toBe(TASA_CIERRE_POR_DEFECTO);
+    // La del curso hasta medir la del cliente (decisión 4): era 20.
+    expect(TASA_CIERRE_POR_DEFECTO).toBe(5);
+    expect(economia({ precio: 400, margen: 30 })).toMatchObject({ tasaCierre: 5, costoMaxResultado: 6, costoObjetivo: 3 });
   });
 
   it("tres escenarios con los costos de la IA (o estimados del máximo)", () => {
@@ -76,7 +79,8 @@ describe("el pedido", () => {
     });
     expect(p.indexOf("MANUAL DE CAMPAÑAS")).toBeLessThan(p.indexOf("LO QUE SE ANUNCIA"));
     expect(p).toContain("Nunca menos de 5 $ por conjunto.");
-    expect(p).toContain("Costo máximo por resultado 24");
+    // Sin tasa de cierre, la del curso (5 de cada 100): 400 × 30 % × 5 % = 6.
+    expect(p).toContain("Costo máximo por resultado 6");
     expect(p).toContain("SUS 7 ELEMENTOS");
     expect(p).toContain("«maletas»: déjalo vacío");
     expect(p).toContain("Presupuesto: 15 al día");
@@ -122,8 +126,9 @@ describe("el plan", () => {
     const eco = economia({ precio: 400, margen: 30 });
     const t = planATexto(plan, { marca: "Dcasa", eco, filas: escenarios({ diario: 15, dias: 30, costos: plan.costos, eco }) });
     expect(t).toMatch(/^PLAN DE CAMPAÑA · Dcasa/);
-    expect(t).toContain("Costo máximo por resultado: 24");
-    expect(t).toContain("Esperado: 180 resultados a 2.5 → 36 ventas");
+    // Sin tasa de cierre, la del curso (5 de cada 100): 120 de ganancia × 5 % = 6; 180 resultados → 9 ventas.
+    expect(t).toContain("Costo máximo por resultado: 6");
+    expect(t).toContain("Esperado: 180 resultados a 2.5 → 9 ventas");
     expect(t).toContain("Tarjeta 2: Azul");
     expect(t).toContain("LAS 7 MALETAS");
   });

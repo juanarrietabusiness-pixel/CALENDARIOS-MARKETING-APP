@@ -20,6 +20,7 @@ import { HERRAMIENTAS_WEB } from "./herramientasServidor.js";
 import { ahora, uuid } from "./ids.js";
 import { pedidoEstratega, leerPlan, economia, limpiarManual } from "../../src/lib/estratega.js";
 import { productosActivos, catalogoATexto, limpiarEstudio, resumenGeneral, lineaDeProducto } from "../../src/lib/estudioMercado.js";
+import { numerosParaEstratega } from "./negocio.js";
 
 const leerJSON = (t, d) => { try { return JSON.parse(t) ?? d; } catch { return d; } };
 // La misma búsqueda que el estudio de mercado, con menos vueltas: el plan no es un estudio.
@@ -112,7 +113,10 @@ export async function armarPlan(env, acceso, cliente, datos = {}) {
   let contexto;
   let marca;
   let rubro;
+  // Los números del negocio del cliente (Marca): el ticket, el margen efectivo y la tasa de cierre, para no teclearlos.
+  let numeros = null;
   if (cliente) {
+    numeros = await numerosParaEstratega(acceso, cliente.id).catch(() => null);
     const mercado = await leerMercado(acceso, cliente.id);
     if (datos.productoId) {
       const p = productosActivos(mercado.catalogo).find((x) => x.id === datos.productoId);
@@ -132,10 +136,15 @@ export async function armarPlan(env, acceso, cliente, datos = {}) {
   }
   if (!producto.nombre && !datos.planPegado) throw new ErrorEstratega("Escoge o escribe qué se va a anunciar.");
 
+  // Lo que se teclea manda; si no, los números del negocio; si no, el Manual.
+  const margenEscrito = Number(datos.margen) > 0;
   const eco = economia({
-    precio: datos.precio ?? producto.precio, margen: datos.margen, margenTipo: datos.margenTipo === "$" ? "$" : "%",
-    tasaCierre: datos.tasaCierre || manual.tasaCierre,
+    precio: datos.precio || producto.precio || numeros?.ticket || "",
+    margen: margenEscrito ? datos.margen : numeros?.margen ?? datos.margen,
+    margenTipo: margenEscrito && datos.margenTipo === "$" ? "$" : "%",
+    tasaCierre: datos.tasaCierre || numeros?.tasaCierre || manual.tasaCierre,
   });
+  const deNumeros = Boolean(numeros && ((!margenEscrito && numeros.margen) || (!datos.tasaCierre && numeros.tasaCierre) || (!datos.precio && !producto.precio && numeros.ticket)));
   const conWeb = datos.conWeb === true;
   const r = await llamarIA(env, acceso, cliente ?? { id: null }, {
     prompt: pedidoEstratega({
@@ -147,7 +156,7 @@ export async function armarPlan(env, acceso, cliente, datos = {}) {
   });
   const plan = leerPlan(r.texto);
   if (!plan) throw new ErrorIA("La IA no devolvió un plan que se pueda leer. Inténtalo otra vez.", 502);
-  return { plan, eco, producto: { nombre: producto.nombre, precio: producto.precio }, modelo: r.modelo, aviso: r.aviso, conWeb: r.conWeb, fuentes: r.fuentes ?? [] };
+  return { plan, eco, deNumeros, producto: { nombre: producto.nombre, precio: producto.precio }, modelo: r.modelo, aviso: r.aviso, conWeb: r.conWeb, fuentes: r.fuentes ?? [] };
 }
 
 // ------------------------------------------------------------
