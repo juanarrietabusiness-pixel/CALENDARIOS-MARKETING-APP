@@ -9,7 +9,7 @@
 // cerebro para escribir (nunca lo interno).
 //
 // Cuatro modos, el mismo camino:
-//   · niveles  { productoId?, cuantas: { nivel: n } }
+//   · niveles  { productoId?, cuantas: { nivel: n }, pauta? } (pauta: { etapa } del plan de campañas: cada pieza va a pauta)
 //   · matriz   { productoId?, deseos: [..], perfiles: [..], niveles: [..] } (los del estudio aprobado)
 //   · tipos    { tipos: { educativo: 3, … } }
 //   · mes      { mes: "AAAA-MM", dias: [0–6], omitir?: ["AAAA-MM-DD"] } (omitir: los días que ya tienen publicación)
@@ -330,6 +330,8 @@ export async function produccionDeLote(env, acceso, cliente, datos = {}) {
         .map((p) => ({ ...p, tipo: p.pilar }));
     } else {
       celdas = celdasPorNiveles(limpiarCuantas(datos.cuantas));
+      // «Producir los anuncios que faltan» del plan de campañas: todas van a pauta en esa etapa, cada una con su nivel.
+      if (limpiarPauta(datos.pauta)) celdas = celdas.map((c) => ({ ...c, pauta: limpiarPauta({ ...datos.pauta, nivel: c.nivel }) }));
     }
     // Con un producto escogido, también las piezas frías saben de qué producto es el problema (aunque no salga).
     if (producto) celdas = celdas.map((c) => ({ ...c, productoId: producto.id }));

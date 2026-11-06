@@ -33,6 +33,7 @@
 //   POST /clientes/:c/informes/:mes/compartir { compartido, mostrarCosto }   El enlace del cliente
 //   DELETE /clientes/:c/informes/:mes
 //   GET|PUT /clientes/:c/negocio · POST /clientes/:c/negocio/proponer   Los números del negocio (worker/lib/negocio.js)
+//   GET|PUT /clientes/:c/ciclo?mes=                El plan de campañas y su guía de montaje (worker/lib/planCampanas.js)
 //   (y sin sesión, en worker/index.js: GET /api/publico-informe-anuncios/:testigo)
 //
 // ACTIVAR ES DEL SERVIDOR, NO DE LA PANTALLA. La pantalla enseña un
@@ -62,6 +63,7 @@ import {
 } from "../lib/informeAnuncios.js";
 import { testigo as nuevoTestigo } from "../lib/ids.js";
 import { rutasNegocio, costoAceptableDelCliente } from "../lib/negocio.js";
+import { rutasCiclo } from "../lib/planCampanas.js";
 
 const leerJSON = (t, d) => { try { return JSON.parse(t) ?? d; } catch { return d; } };
 const miniatura = (u) => (u ? `/api/metricas/miniatura?u=${encodeURIComponent(u)}` : "");
@@ -200,6 +202,8 @@ async function atender(req, env, { acceso, usuario, partes, metodo }) {
   if (sub === "informes" || sub === "ajustes-informe") return await rutasInforme(req, env, { acceso, usuario, clientId: id, sub, mes: subId, accion, metodo });
   // ---- Los números del negocio (Marca): tampoco piden cuenta asignada ----
   if (sub === "negocio") return await rutasNegocio(req, env, { acceso, usuario, clientId: id, accion: subId, metodo });
+  // ---- El plan de campañas: se monta en el Ads Manager, así que tampoco pide cuenta ----
+  if (sub === "ciclo") return await rutasCiclo(req, env, { acceso, usuario, clientId: id, metodo });
 
   // ---- De un cliente ----
   const { cliente, cuenta } = await clienteYCuenta(acceso, id, { exigirCuenta: sub !== "historial" && sub !== "medios" });

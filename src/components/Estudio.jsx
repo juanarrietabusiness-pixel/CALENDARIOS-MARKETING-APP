@@ -27,6 +27,7 @@ import {
   modeloDeLaPieza,
 } from "../lib/estudio";
 import { FiltroDeModelo } from "./SelectorModelo";
+import { loteDeLaDireccion } from "../lib/lotePauta";
 import "./Estudio.css";
 
 const EstudioLote = lazy(() => import("./EstudioLote"));
@@ -152,10 +153,11 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
   const [visor, setVisor] = useState(null);
   const [grupoAbierto, setGrupoAbierto] = useState(null);
   const [descartados, setDescartados] = useState(() => new Set());
-  // «Producir el mes» del calendario llega con «?lote=mes&mes=AAAA-MM»: abre el lote en «Mes completo» con ese mes.
+  // El lote abierto por la dirección (lib/lotePauta.js): «?lote=mes» desde «Producir el mes» y «?lote=pauta» desde
+  // «Producir los anuncios que faltan» del plan de campañas.
   const [loteAbierto, setLoteAbierto] = useState(() => {
     const q = modo === "pestana" ? new URLSearchParams(window.location.search) : null;
-    return !lectura && q?.get("lote") === "mes" ? { alcance: "mes", mes: q.get("mes") ?? "" } : false;
+    return !lectura && q ? loteDeLaDireccion(q) : false;
   });
   useEffect(() => {
     if (loteAbierto?.alcance) window.history.replaceState(window.history.state, "", window.location.pathname);

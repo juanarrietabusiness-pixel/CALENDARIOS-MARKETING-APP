@@ -24,6 +24,7 @@ import { ELEMENTOS_MERCADO, elementosConAlias } from "./estudioMercado.js";
 import { ETAPAS_CICLO, idEtapaCiclo } from "./cicloVentas.js";
 import { OBJETIVOS, DESTINOS, TIPOS_CONJUNTO, MAX_CONJUNTOS, MAX_ANUNCIOS, MAX_TARJETAS, EDAD_MIN, EDAD_MAX, MAX_TEXTO, MAX_TITULO } from "./anuncios.js";
 import { TASA_CIERRE_DEFECTO } from "./numerosNegocio.js";
+import { limpiarManualCiclo } from "./manualCiclo.js";
 
 /** Las mejoras de oferta que la agencia propone (como sugerencia: la decide el cliente). */
 export const TIPOS_OFERTA = Object.freeze({
@@ -48,9 +49,13 @@ export const ETAPAS_EMBUDO = Object.freeze(Object.fromEntries(ETAPAS_CICLO.map((
 /** La etapa del embudo dicha para la pantalla («Presentación: no te conocen»), también de un id de antes. Pura. */
 export const etapaEmbudoDe = (id) => ETAPAS_EMBUDO[idEtapaCiclo(id)] ?? "";
 
-/** Cómo se llama cada cosa en Meta, si el manual no dice otra. `{…}` se rellena. */
+/**
+ * Cómo se llama cada cosa en Meta, si el manual no dice otra. `{…}` se rellena. `{etapa}` es la del ciclo de ventas
+ * («Presentación»): la escribe el plan de campañas (lib/planCiclo.js) y por ella se reconoce cada campaña al leerla de
+ * Meta; donde no se sabe (el estratega de una campaña suelta), se quita con su separador.
+ */
 export const NOMENCLATURA_POR_DEFECTO = Object.freeze({
-  campana: "{cliente} · {objetivo} · {producto} · {mes}",
+  campana: "{cliente} · {etapa} · {objetivo} · {producto} · {mes}",
   conjunto: "{tipo} · {edad} · {lugar}",
   anuncio: "{numero} · {formato} · {angulo}",
 });
@@ -90,6 +95,8 @@ export function limpiarManual(m = {}) {
     diseno: largo(m?.diseno, MAX_MANUAL),
     // Cómo se diseña cada tipo de contenido (lib/director.js, DISENO_POR_TIPO); lo vacío vale el de la casa.
     disenoTipos: limpiarDisenoTipos(m?.disenoTipos),
+    // El plan de campañas: el reparto por etapa y cuántos anuncios por conjunto (lib/manualCiclo.js).
+    ...limpiarManualCiclo(m),
   };
 }
 

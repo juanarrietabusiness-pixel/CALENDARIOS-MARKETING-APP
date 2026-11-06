@@ -62,7 +62,7 @@ import {
   claveDeInspiracion, claveDeAnuncio, claveDeTendencia, claveDePropia, claveDeEnlace, formatoComun, rindeAjustado, senalDeAnuncio, diasDeAnuncio,
   unirRepetidas, ordenarLoMejor, filtrarLoMejor, marcarMejoresPropias, cifraDe, caminosPosibles, caminoPorDefecto, briefDeRecreacion,
   tituloDeRecreacion, proximoDiaLibre, semanaDe, pedidoDeClasificacion, leerClasificacion, nombreDelTipo,
-  proxyMiniatura, proxyVideo, miniaturaPermitida, CAMINOS, FORMATO_DE_CAMINO, CLASIFICAR_POR_VUELTA, DIAS_MAX, VENTANAS,
+  proxyMiniatura, proxyVideo, miniaturaPermitida, CAMINOS, FORMATO_DE_CAMINO, CLASIFICAR_POR_VUELTA, DIAS_MAX, VENTANAS, rindesDePropias,
 } from "../../src/lib/loMejor.js";
 import { mediana } from "../../src/lib/inspiracion.js";
 
@@ -184,16 +184,15 @@ async function dePropias(acceso, { cliente, desde }) {
   const filas = await acceso.leerColumnas("metricas_publicacion",
     ["id", "client_id", "cuenta_id", "red", "externo_id", "tipo", "enlace", "texto", "miniatura", "publicada_at", "me_gusta", "comentarios", "guardados", "compartidos", "vistas", "interacciones"],
     cliente ? { client_id: cliente } : {}, "publicada_at desc", 3000).catch(() => []);
-  const valor = (f) => (Number(f.interacciones) || 0) + (Number(f.guardados) || 0) + (Number(f.compartidos) || 0);
-  const medidas = medianasPor(filas, (f) => f.cuenta_id, valor);
+  // La cuenta de lo propio es UNA (src/lib/loMejor.js): también la usa el plan de campañas para escoger qué pautar.
+  const rindes = rindesDePropias(filas);
   return filas.filter((f) => f.client_id && String(f.publicada_at ?? "") >= desde).map((f) => {
-    const m = medidas.get(f.cuenta_id);
-    const rinde = m?.n >= 3 && m.mediana > 0 ? Math.round((valor(f) / m.mediana) * 10) / 10 : null;
+    const { rinde, senal } = rindes.get(f);
     return {
       clave: claveDePropia(f), fuente: "propia", red: f.red, formato: formatoComun(f.tipo), formatoOriginal: f.tipo,
       cuenta: "", texto: corto(f.texto, 600), enlace: f.enlace, fecha: f.publicada_at,
       miniaturaOriginal: f.miniatura, miniatura: proxyMiniatura(f.miniatura), video: "", conVideo: false,
-      clientes: [f.client_id], rinde, senal: rindeAjustado(rinde, m?.n ?? 0),
+      clientes: [f.client_id], rinde, senal,
       cifras: { interacciones: f.interacciones, guardados: f.guardados, compartidos: f.compartidos, vistas: f.vistas },
       origenes: [{ fuente: "propia", id: f.id, clienteId: f.client_id }],
     };

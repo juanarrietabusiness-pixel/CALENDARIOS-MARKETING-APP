@@ -77,6 +77,9 @@ const PLANOS_APROX = 5;
 
 /**
  * @param inicial  { alcance, mes }: desde «Producir el mes» del calendario abre en «Mes completo» con ESE mes.
+ *                 { alcance: "anuncios", pauta, cuantas, productoId, indicacion }: desde «Producir los anuncios que
+ *                 faltan» del plan de campañas (lib/lotePauta.js): por niveles, con esa etapa del ciclo de ventas, y
+ *                 cada pieza llega al calendario marcada «Va a pauta» con sus textos de anuncio.
  */
 export default function EstudioLote({ client, motores, productosConFotos = [], archivos = [], papelera = [], kit, inicial = null, onCerrar, onHecho, onLlevar = null }) {
   const ids = useId();
@@ -89,13 +92,15 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
   const [paso, setPaso] = useState(0);
   const [alcance, setAlcance] = useState(() => (MODOS.some(([id]) => id === inicial?.alcance) ? inicial.alcance : "anuncios"));
   const [mercado, setMercado] = useState(null); // { catalogo, general }
-  const [productoId, setProductoId] = useState("");
+  const [productoId, setProductoId] = useState(inicial?.productoId ?? "");
   // Anuncios: la matriz del estudio (si lo hay) o por niveles.
-  const [porMatriz, setPorMatriz] = useState(true);
+  const [porMatriz, setPorMatriz] = useState(() => !inicial?.pauta);
+  // Lo que va a pauta (el plan de campañas): la etapa va en el pedido y vuelve en cada idea.
+  const pautaLote = inicial?.pauta?.etapa ? inicial.pauta : null;
   const [deseosSel, setDeseosSel] = useState(null);
   const [perfilesSel, setPerfilesSel] = useState(null);
   const [nivelesSel, setNivelesSel] = useState(CLAVES_NIVEL);
-  const [cuantas, setCuantas] = useState(cuantasPorDefecto);
+  const [cuantas, setCuantas] = useState(() => (inicial?.cuantas ? limpiarCuantas(inicial.cuantas) : cuantasPorDefecto()));
   const [tipos, setTipos] = useState(() => Object.fromEntries(PILARES.map((p) => [p.id, p.id === "anuncio" ? 0 : 2])));
   // Los meses que se ofrecen: este y los dos siguientes, más el que pidió el calendario si es más adelante.
   const meses = useMemo(() => {
@@ -125,7 +130,7 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
   const [variantes, setVariantes] = useState(1);
   const [mejorar, setMejorar] = useState(true);
   // Lo que la agencia pide para TODA la tanda (lo lee el director de arte al diseñar cada pieza).
-  const [indicacion, setIndicacion] = useState("");
+  const [indicacion, setIndicacion] = useState(inicial?.indicacion ?? "");
   // Una plantilla del kit para toda la tanda ("" = la que escoja el director, si alguna encaja).
   const [plantillaLote, setPlantillaLote] = useState("");
   // El control de calidad de cada pieza (y corregir el texto solo): se recuerda por navegador.
@@ -364,7 +369,7 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
         : esMes ? { ...comun, mes, dias, omitir: ocupados, estrategia }
         : alcance === "tipos" ? { ...comun, modo: "tipos", tipos }
           : esMatriz ? { ...comun, modo: "matriz", productoId: productoId || undefined, deseos: deseosElegidos, perfiles: perfilesElegidos, niveles: nivelesSel }
-            : { ...comun, modo: "niveles", productoId: productoId || undefined, cuantas: limpiarCuantas(cuantas) };
+            : { ...comun, modo: "niveles", productoId: productoId || undefined, cuantas: limpiarCuantas(cuantas), ...(pautaLote ? { pauta: pautaLote } : {}) };
       let todas = [];
       let usados = titularesUsados(archivos);
       let ultima = null;
@@ -589,6 +594,9 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
                   <button type="button" className="btn btn-primary btn-sm" onClick={seguirBorrador}>Seguir con ellas</button>
                   <button type="button" className="btn btn-ghost btn-sm" onClick={descartarBorrador}>Descartarlas</button>
                 </div>
+              )}
+              {pautaLote && alcance === "anuncios" && (
+                <p className="notice" role="status">Anuncios para la campaña del plan: cada pieza llega al calendario marcada «Va a pauta», con su caption escrito como anuncio y sus textos aparte.</p>
               )}
               <div className="est-tipos" role="group" aria-label="Qué lote">
                 {MODOS.map(([id, n]) => <button key={id} type="button" className="filter-chip" aria-pressed={alcance === id} onClick={() => setAlcance(id)}>{n}</button>)}

@@ -60,6 +60,7 @@ export const HERRAMIENTAS_MCP = Object.freeze([
   { name: "buscar_cerebro", description: "Busca en el cerebro de un cliente —su ficha técnica, marca, precios, personas, límites y los documentos que se le subieron— y devuelve los pasajes que responden. Úsala antes de escribir para un cliente o de decir que no sabes algo de él. Incluye notas internas: es para el equipo, no las uses en textos que se publican.", inputSchema: { type: "object", properties: { ...clienteParam, consulta: { type: "string", description: "Qué buscar, en palabras del tema." } }, required: ["cliente", "consulta"] }, annotations: soloLectura },
   { name: "leer_nota_cerebro", description: "Lee ENTERA una nota del cerebro de un cliente, por su ruta (la que da buscar_cerebro entre corchetes) o por su título. Para cuando buscar_cerebro dio sólo pasajes de una nota larga.", inputSchema: { type: "object", properties: { ...clienteParam, nota: { type: "string", description: "La ruta de la nota o su título." } }, required: ["cliente", "nota"] }, annotations: soloLectura },
   { name: "ver_resultados", description: "Cómo le va en redes a un cliente: seguidores, alcance, interacción, mejores publicaciones, formatos, horarios y competencia.", inputSchema: { type: "object", properties: { ...clienteParam, dias: { type: "integer", description: "7 a 90. Por defecto 30." } }, required: ["cliente"] }, annotations: soloLectura },
+  { name: "plan_de_campanas", description: "El plan de campañas de un cliente para un mes, para montarlo en el Ads Manager: las campañas del ciclo de ventas (y la de temporada si el mes trae oferta o fecha comercial), su presupuesto, los conjuntos con públicos y exclusiones, qué pieza va en cada anuncio y los avisos. Sólo lectura: la aplicación no crea campañas.", inputSchema: { type: "object", properties: { ...clienteParam, mes: { type: "string", description: "AAAA-MM. Si se omite, el de este mes." } }, required: ["cliente"] }, annotations: soloLectura },
   { name: "kit_whatsapp", description: "El kit de WhatsApp Business de un cliente tal como lo guardó la agencia: bienvenida, ausencia, respuestas rápidas con su atajo (con las objeciones del estudio de mercado), etiquetas por etapa del ciclo de ventas y un guion de ventas por producto. Úsala antes de escribir mensajes de WhatsApp para un cliente.", inputSchema: { type: "object", properties: { ...clienteParam }, required: ["cliente"] }, annotations: soloLectura },
   {
     name: "crear_publicacion",
@@ -394,7 +395,7 @@ export function crearHerramientasMCP({ env, acceso, usuario }) {
         }
         return { content: [{ type: "text", text: r }] };
       }
-      if (["ver_calendario", "ver_tareas", "ver_banco_ideas", "ver_resultados", "buscar_cerebro", "leer_nota_cerebro", "kit_whatsapp"].includes(nombre)) {
+      if (["ver_calendario", "ver_tareas", "ver_banco_ideas", "ver_resultados", "buscar_cerebro", "leer_nota_cerebro", "kit_whatsapp", "plan_de_campanas"].includes(nombre)) {
         const r = await consultas.ejecutar({ id: "mcp", name: nombre, input: entrada ?? {} });
         return { content: [{ type: "text", text: String(r.content) }], ...(r.is_error ? { isError: true } : {}) };
       }

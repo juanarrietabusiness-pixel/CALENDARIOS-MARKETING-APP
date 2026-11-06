@@ -151,6 +151,18 @@ export const DEFINICIONES_DE_LECTURA = Object.freeze([
       "de escribir mensajes de WhatsApp para un cliente o si preguntan cómo responderle a alguien.",
     input_schema: { type: "object", properties: { ...clienteOpcional } },
   },
+  {
+    name: "plan_de_campanas",
+    description: "El PLAN DE CAMPAÑAS de un cliente para un mes, como se monta en el Ads Manager: las campañas del ciclo de ventas " +
+      "(presentación y evaluación en una cuenta nueva; las cuatro con historial; y la de temporada si el mes trae oferta o fecha " +
+      "comercial), el presupuesto de cada una (de los números del negocio y el reparto del Manual), sus conjuntos con los públicos " +
+      "y las exclusiones, cuántos anuncios y qué pieza del calendario va en cada uno, y los avisos (maletas que faltan, sin números, " +
+      "piezas repetidas para Meta). Sólo lectura: la aplicación no crea campañas; las monta la agencia en el Ads Manager con su guía.",
+    input_schema: {
+      type: "object",
+      properties: { ...clienteOpcional, mes: { type: "string", description: "AAAA-MM. Si se omite, el de este mes." } },
+    },
+  },
 ]);
 
 /** Todas las herramientas de servidor del asistente: las de lectura, las del Estudio y las recetas. */
@@ -356,6 +368,13 @@ export function crearEjecutor({ env, acceso, clienteActual = null, estudio = nul
     return texto || `${c.name} todavía no tiene kit de WhatsApp guardado: se prepara (y lo propone la IA) en Marca → WhatsApp.`;
   };
 
+  acciones.plan_de_campanas = async ({ cliente, mes }) => {
+    const c = await resolverCliente(cliente);
+    // En el momento: planCampanas.js llega a mercado.js, que importa este archivo (sería el ciclo de siempre).
+    const { planDeCampanasEnTexto } = await import("./planCampanas.js");
+    return planDeCampanasEnTexto(env, acceso, c, mes);
+  };
+
   if (estudio) Object.assign(acciones, crearHerramientasEstudio({ env, acceso, resolverCliente, ...estudio }));
   // Las recetas (el mismo «/receta» que llega de claude.ai): sólo leen, así que no necesitan a quien firma.
   Object.assign(acciones, crearHerramientasRecetas({ env, acceso, buscarPublicacion: (id) => buscarEn(acceso, id) }));
@@ -411,6 +430,7 @@ export function describirUso(nombre, entrada = {}) {
     case "leer_nota_cerebro": return `Leyó la nota «${entrada.nota ?? ""}» del cerebro${entrada.cliente ? ` de ${entrada.cliente}` : ""}`;
     case "ver_resultados": return `Consultó los resultados${entrada.cliente ? ` de ${entrada.cliente}` : ""}`;
     case "kit_whatsapp": return `Leyó el kit de WhatsApp${entrada.cliente ? ` de ${entrada.cliente}` : ""}`;
+    case "plan_de_campanas": return `Leyó el plan de campañas${entrada.cliente ? ` de ${entrada.cliente}` : ""}${entrada.mes ? ` (${entrada.mes})` : ""}`;
     case "ver_estudio": return `Miró el Estudio${entrada.cliente ? ` de ${entrada.cliente}` : ""}`;
     case "crear_en_estudio": return `Pidió al Estudio ${entrada.tipo === "video" ? "un video" : "una imagen"}: «${String(entrada.prompt ?? "").slice(0, 80)}»`;
     case "estado_trabajo": return "Miró cómo va un pedido del Estudio";
