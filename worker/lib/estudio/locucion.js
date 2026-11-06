@@ -42,6 +42,7 @@ import {
   modeloParaVia, modelosDeLaVia, enEspanolPrimero,
 } from "../../../src/lib/voces.js";
 import { textoCosto } from "../../../src/lib/estudioCatalogo.js";
+import { esCancion } from "../../../src/lib/videoCancion.js";
 import { vocesDeLaCuenta, modelosDeLaCuenta } from "./elevenlabs.js";
 
 /** Lo más que pesa una toma que se baja (una locución de 2 minutos en MP3 son ~2 MB). */
@@ -221,6 +222,11 @@ export async function pedirMuestra(env, acceso, cliente, { modelo = MODELO_VOZ_P
  * la voz va en camino.
  */
 export async function pedirLocucion(env, acceso, cliente, video, { modelo, vozId, confirmado = false, usuario = null, origen = "persona", por = null } = {}) {
+  // Un video con CANCIÓN no lleva voz generada: la canción ES la locución. Generarla la pisaría sin decirlo.
+  const guionAhora = leerJSON(video.guion, null);
+  if (esCancion(leerJSON(video.locucion, {})) || guionAhora?.cancion) {
+    throw new ErrorVoz("Este video va con una CANCIÓN ya grabada: no se genera voz (la canción es su audio). Si los tiempos no cuadran, «Volver a sincronizar» o el ajuste fino; para un video con locución, crea otro.", 409, { codigo: "cancion" });
+  }
   if (!puedeGenerarVoz(video)) {
     throw new ErrorVoz(`La voz se genera del guion APROBADO: está en «${NOMBRE_ESTADO_VIDEO[video.estado] ?? video.estado}». Apruébalo primero.`, 409, { codigo: "sin_aprobar" });
   }

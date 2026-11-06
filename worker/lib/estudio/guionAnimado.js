@@ -14,7 +14,8 @@ import { contextoDeGuion } from "./guionVideo.js";
 import { leerMercado } from "../mercado.js";
 import { productosActivos, lineaDeProducto } from "../../../src/lib/estudioMercado.js";
 import { validarGuion } from "../../../src/lib/videoEscenas.js";
-import { pedidoDeGuionAnimado, leerGuionAnimado, textoDePublicacion, duracionAnimado, MAX_IDEA_ANIMADO } from "../../../src/lib/guionAnimadoIA.js";
+import { pedidoDeGuionAnimado, leerGuionAnimado, textoDePublicacion, duracionAnimado, MAX_IDEA_ANIMADO, pedidoDeGuionCancion } from "../../../src/lib/guionAnimadoIA.js";
+import { conLaCancion, comprobarLetra } from "../../../src/lib/videoCancion.js";
 import { estructuraDeVoz, usadaEn, ErrorEstructura } from "../estructurasGuion.js";
 
 /** Un error de lo pedido, con su estado HTTP. */
@@ -102,4 +103,46 @@ export async function escribirGuion(env, acceso, cliente, datos = {}) {
     guion: v.guion, avisos: v.avisos, corregido, modelo: r.modelo, aviso: r.aviso ?? null, postId: post ? String(datos.postId) : null,
     estructura: usadaEn(eleccion, nombre),
   };
+}
+
+/**
+ * «Diseñar las escenas con IA» de un video con CANCIÓN (worker/lib/estudio/cancion.js): la IA diseña sobre la letra por
+ * líneas con sus tiempos, el coro y los huecos instrumentales (`pedidoDeGuionCancion`); la aplicación le pone SU canción
+ * (`conLaCancion`) y lo valida con el validador de siempre y con `comprobarLetra` (la `habla` es la letra tal cual). Si
+ * falla, UNA vuelta con los errores; si tampoco, 502. No guarda nada. Texto (unos céntimos), sin confirmación.
+ * `sincronia`: la de la canción ({ archivo, nombre, duracion, letra }); `lineas`, `huecos`: los de videoCancion.js.
+ * → { guion, avisos, corregido, modelo, aviso }.
+ */
+export async function escribirGuionCancion(env, acceso, cliente, { sincronia, lineas, huecos, formato = "9:16", titulo = "", postId = "", indicacion = "" }) {
+  const ctx = await contextoDeGuion(env, acceso, cliente, { postId: String(postId ?? ""), consulta: `${titulo || sincronia.nombre || ""} canción video animado`, presupuesto: 3000 });
+  const productos = await catalogoConFotos(acceso, cliente.id);
+  const personaje = kitDe(cliente).personajeVideo ?? null;
+  const base = {
+    marca: cliente.name, titulo, nombre: sincronia.nombre ?? "", duracion: sincronia.duracion, lineas, huecos, formato,
+    contexto: ctx.contexto, productos, personaje, indicacion,
+  };
+  const cancion = { archivo: sincronia.archivo, duracion: sincronia.duracion, nombre: sincronia.nombre ?? "" };
+  const revisar = (texto) => {
+    const g = leerGuionAnimado(texto);
+    if (!g) return { g: null, v: { ok: false, errores: [{ donde: "guion", mensaje: "No es un JSON que se pueda leer." }] } };
+    const conCancion = conLaCancion(g, cancion);
+    const v = validarGuion(conCancion);
+    const deLetra = v.guion ? comprobarLetra(v.guion, sincronia.letra) : [];
+    return { g: conCancion, v: deLetra.length ? { ...v, ok: false, errores: [...(v.errores ?? []), ...deLetra] } : v };
+  };
+  let r = await llamarIA(env, acceso, cliente, { prompt: pedidoDeGuionCancion(base), salida: 12000, funcion: "guion de video" });
+  let { g, v } = revisar(r.texto);
+  let corregido = false;
+  if (!v.ok) {
+    corregido = true;
+    r = await llamarIA(env, acceso, cliente, {
+      prompt: pedidoDeGuionCancion({ ...base, errores: v.errores, anterior: g ? JSON.stringify(g) : r.texto }), salida: 12000, funcion: "guion de video",
+    });
+    ({ g, v } = revisar(r.texto));
+  }
+  if (!v.ok) {
+    const lista = (v.errores ?? []).slice(0, 4).map((e) => `${e.donde}: ${e.mensaje}`).join("; ");
+    throw new ErrorGuion(`La IA no diseñó un guion válido con la letra tal cual ni al corregirlo${lista ? ` (${lista})` : ""}. Prueba con la prueba de sincronía (gratis) y edítala.`, 502);
+  }
+  return { guion: v.guion, avisos: v.avisos, corregido, modelo: r.modelo, aviso: r.aviso ?? null };
 }

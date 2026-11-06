@@ -12,6 +12,7 @@
 import {
   COMPONENTES, TIPOS_ESCENA, TOKENS_COLOR, POSICIONES, ENTRADAS, SALIDAS, BUCLES, TRANSICIONES, FONDOS, RITMOS,
   ILUSTRACIONES, FORMATOS_VIDEO, MIN_SEGUNDOS, MAX_SEGUNDOS, MAX_ESCENAS, MAX_CAPAS, MAX_HABLA, MAX_PANTALLA, MAX_PAUSA,
+  MAX_SEGUNDOS_CANCION, MAX_ESCENAS_CANCION,
 } from "./videoEscenas.js";
 import { COMPONENTES_LISTOS } from "./motorVideo.js";
 
@@ -115,6 +116,7 @@ export function formatoParaLaIA() {
     "DIBUJO (lienzo libre): para un objeto propio del video (una taza, una casa, un gráfico) sin imagen. Formas en FRACCIONES de su caja (0,0 arriba a la izquierda; 1,1 abajo a la derecha): circulo, elipse, rect (con radio), triangulo, estrella, corazon, gota (x, y = el centro; w, h = el tamaño; h 0 = tan alto como ancho), linea y curva (de x,y a x2,y2; la curva dobla hacia cx,cy) y arco (inicio y fin en grados). relleno false = sólo el trazo (grosor). Cada forma entra con su «retraso» (s) y su «entrada»; «dibuja» traza las líneas. Pocas formas y grandes: es un icono, no una ilustración. Ejemplo: " + JSON.stringify(EJEMPLO_DIBUJO),
     "FONDOS: plano, degradado, papel, rayas, puntos, estrellas (que titilan) y lineas; color2 elige el color del adorno.",
     "VIDEO (un clip de la galería del cliente: lo que grabó, un video de Kie, uno de Drive; su ID sale en ver_estudio, nunca inventado): encuadre «completo» lo pone a sangre detrás de todo (el texto encima, con «oscurecer» 0,3–0,5 o con placa) y «caja» en su zona como una imagen. «desde» es el segundo del clip donde empieza; «hasta» fija el tramo y la escena dura eso aunque no diga nada (un MONTAJE de clips sin habla no necesita locución). «sonido» true deja oír su audio (el de la persona que habla en un UGC); con habla encima, bájalo con «volumen».",
+    `CANCIÓN (MODO CANCIÓN: un video sobre una canción YA GRABADA, voz e instrumental mezclados; «cancion» {archivo, duracion} en la raíz la pone la aplicación con video_con_cancion, no la escribas): el «habla» de las escenas es la LETRA TAL CUAL y en orden; NO se genera voz ni se inserta nada en el audio (sin «pausa»: se ignora); el video dura lo que la canción (hasta ${MAX_SEGUNDOS_CANCION} s y ${MAX_ESCENAS_CANCION} escenas); una escena con «habla» vacío ocupa un hueco instrumental (intro, puente, final) y una escena demasiado corta se AVISA, no se estira. El coro, con más fuerza visual; el texto en pantalla, las palabras clave de la línea.`,
     "IMAGEN A SANGRE: una «imagen» con encuadre «completo» va detrás de todo, como un video (recorte «cubrir» llena el cuadro; «contener» la enseña entera sobre ella misma ampliada y difuminada). «movimiento» la mueve despacio mientras se ve (acercar, alejar o paneo), «dura» hace que la escena dure esos segundos aunque no diga nada (una FOTO CON MÚSICA, sin habla, no necesita locución) y «oscurecer» pone un velo para leer el texto encima.",
     "",
     "EJEMPLO (neutro, valida):",

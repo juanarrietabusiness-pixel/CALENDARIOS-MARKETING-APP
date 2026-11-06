@@ -46,6 +46,16 @@
 //                                           sangre con su movimiento y la música en su sonido), aprobado y renderizándose;
 //                                           al terminar la publicación es un reel con la foto de portada. No gasta IA
 //                                           (worker/lib/estudio/conMusica.js). 503 sin Container, 409 `sin_musica`
+//   POST   /api/videos/<c>/cancion          { musicaId, letra, confirmado }: «Video con tu canción»: SINCRONIZA la letra con
+//                                           una canción ya grabada de la biblioteca de sonido (del cliente o de la agencia):
+//                                           ElevenLabs alinea la letra (y aísla la voz si hace falta), si no Gemini la oye.
+//                                           Siempre pide confirmar: sin `confirmado`, 409 con el costo (aproximado). La misma
+//                                           canción con la misma letra otra vez sale gratis (`repetida`). → { sincronia }
+//   POST   /api/videos/<c>/cancion/video    { huella, modo: "karaoke" | "ia", formato?, titulo?, postId?, calendarId?,
+//                                           desplazamiento?, indicacion? }: crea el BORRADOR con la canción como su locución:
+//                                           la prueba de sincronía (gratis) o las escenas diseñadas por la IA (texto)
+//   PUT    /api/videos/<c>/<id>/cancion     { desplazamiento }: el ajuste fino de la letra (±1,5 s; gratis, sin versión)
+//   POST   /api/videos/<c>/<id>/cancion     { confirmado }: «Volver a sincronizar» la canción del video (pide confirmar)
 //   GET    /api/videos/<c>/musicas          { musicas, efectos }: la BIBLIOTECA DE SONIDO del cliente y la de la agencia
 //                                           (`de: "agencia"`), la música de la marca primero (worker/lib/estudio/sonidos.js)
 //   POST   /api/videos/<c>/musicas          Subir una (multipart: archivo, duracion?; MP3, WAV o M4A, ≤ 15 MB)
@@ -93,6 +103,11 @@ import { pedidoConClips, alContenedor } from "../lib/estudio/cuadros.js";
 import { pedirRender, renderAlDia, ligarAPublicacion } from "../lib/estudio/render.js";
 import { publicarConMusica } from "../lib/estudio/conMusica.js";
 import { costoDeVoz, fraseDeMuestra, modeloDeVoz, esIdDeVoz } from "../../src/lib/voces.js";
+import { sincronizarCancion, crearVideoConCancion, ajustarCancion, resincronizarVideo, resumenDeSincronia, ErrorCancion } from "../lib/estudio/cancion.js";
+
+/** Un ErrorCancion como respuesta: su mensaje, su estado y lo que la pantalla necesita (`codigo`, `costo`…). */
+const respuestaDeCancion = (e) => json({ error: e.message, ...e.extra }, e.estado);
+const texto = (v) => (typeof v === "string" ? v : "");
 
 /** Un ErrorVoz como respuesta: su mensaje, su estado y lo que la pantalla necesita (`codigo`, `costo`…). */
 function respuestaDeVoz(e) {
@@ -283,6 +298,30 @@ async function rutasDelCliente(req, env, { acceso, usuario, partes, metodo }) {
     }
   }
 
+  // «Video con tu canción»: sincronizar la letra (paga, con su confirmación) y crear el borrador con ella.
+  if (id === "cancion") {
+    if (metodo !== "POST") return error("Método no permitido.", 405);
+    const b = (await cuerpo(req)) ?? {};
+    try {
+      if (!accion) {
+        const s = await sincronizarCancion(env, acceso, cliente, { musicaId: texto(b.musicaId), letra: texto(b.letra), confirmado: b.confirmado === true, usuario });
+        return json({ sincronia: resumenDeSincronia(s, { desplazamiento: b.desplazamiento }), repetida: Boolean(s.repetida) });
+      }
+      if (accion === "video") {
+        const r = await crearVideoConCancion(env, acceso, cliente, {
+          huella: texto(b.huella), modo: b.modo === "ia" ? "ia" : "karaoke", formato: texto(b.formato) || "9:16", titulo: texto(b.titulo),
+          postId: texto(b.postId), calendarId: texto(b.calendarId), desplazamiento: b.desplazamiento, indicacion: texto(b.indicacion), usuario,
+        });
+        avisar(env, acceso, usuario, req, clienteId, r.video.id);
+        return json(r, 201);
+      }
+      return noEncontrado("Canción");
+    } catch (e) {
+      if (e instanceof ErrorCancion) return respuestaDeCancion(e);
+      throw e;
+    }
+  }
+
   if (!ID.test(String(id))) return noEncontrado("Video");
   // Un render que se quedó a medias (pasado su plazo) se da por fallido al leerlo.
   const fila = await renderAlDia(acceso, await acceso.leerUno("videos_proyectos", { id, client_id: clienteId }));
@@ -332,6 +371,20 @@ async function rutasDelCliente(req, env, { acceso, usuario, partes, metodo }) {
     const r = await guardarProyecto(acceso, cliente, fila, { guion: b.guion, titulo: b.titulo, version: b.version, por: usuario?.nombre ?? null });
     if (r.cambio) avisar(env, acceso, usuario, req, clienteId, id);
     return json({ video: r.video, avisos: r.avisos });
+  }
+
+  // La canción del video: el ajuste fino (PUT, gratis) o «Volver a sincronizar» (POST, pide confirmar). No tocan el guion.
+  if (accion === "cancion" && (metodo === "PUT" || metodo === "POST")) {
+    try {
+      const r = metodo === "PUT"
+        ? await ajustarCancion(acceso, cliente, fila, { desplazamiento: b.desplazamiento })
+        : await resincronizarVideo(env, acceso, cliente, fila, { confirmado: b.confirmado === true, usuario });
+      avisar(env, acceso, usuario, req, clienteId, id);
+      return json(r);
+    } catch (e) {
+      if (e instanceof ErrorCancion) return respuestaDeCancion(e);
+      throw e;
+    }
   }
 
   // A qué publicación va: no toca el guion, así que no pide la versión.
