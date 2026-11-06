@@ -6,9 +6,15 @@
 // iPhone no reproduce nada que no se lo dé así: pide `bytes=0-1` antes de empezar. El <nombre> es sólo para que el
 // archivo se llame bien al abrirlo; lo que manda es el testigo.
 //
-// Cabeceras: `nosniff`; `sandbox` (abierto suelto en una pestaña no ejecuta nada; a un <audio> o <video> no le afecta);
-// `Cache-Control` privado (son archivos de clientes: ninguna caché compartida); `Cross-Origin-Resource-Policy:
-// cross-origin`, para que el iframe de claude.ai (otro origen, quizá aislado) lo pueda reproducir.
+// Cabeceras: `nosniff`; `default-src 'none'; media-src 'self'` (abierto suelto en una pestaña —«Abrir» de la vista— no
+// carga ni ejecuta nada más que a sí mismo; a un <audio> o <video> de otra página no le afecta); `Cache-Control` privado
+// (son archivos de clientes: ninguna caché compartida); `Cross-Origin-Resource-Policy: cross-origin`, para que el iframe
+// de claude.ai (otro origen, quizá aislado) lo pueda reproducir.
+//
+// NO `sandbox`, como `/api/medio-publico/`: con él, Chromium le da al documento de medios (el que pinta un mp4 o un mp3
+// abierto suelto) un origen opaco, su propio <video> pide el archivo con CORS y se bloquea: «Abrir» enseñaba un
+// reproductor vacío. Lo cazó la prueba en Chromium, no los tests. Sólo sale audio y video con `nosniff`: no hay nada que
+// ejecutar que `sandbox` fuera a encerrar.
 // ============================================================
 
 import { claveDeTestigoVista } from "../lib/medioVista.js";
@@ -41,7 +47,7 @@ export async function rutaVistaMedio(req, env, partes) {
     "Accept-Ranges": "bytes",
     "Cache-Control": "private, max-age=3600",
     "X-Content-Type-Options": "nosniff",
-    "Content-Security-Policy": "sandbox",
+    "Content-Security-Policy": "default-src 'none'; media-src 'self'",
     "Cross-Origin-Resource-Policy": "cross-origin",
     "Referrer-Policy": "no-referrer",
   });

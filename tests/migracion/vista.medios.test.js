@@ -158,7 +158,7 @@ describe("la dirección firmada", () => {
 });
 
 describe("GET /api/vista-medio (sin sesión)", () => {
-  it("sirve el audio por trozos (206), con nosniff, sandbox, caché privada y para otro origen; HEAD sin cuerpo", async () => {
+  it("sirve el audio por trozos (206), con nosniff, su CSP, caché privada y para otro origen; HEAD sin cuerpo", async () => {
     archivo("l1");
     const { url } = await direccionDeVista(env, "clientes/c1/estudio/l1.mp3");
     const todo = await pedir(url);
@@ -166,7 +166,10 @@ describe("GET /api/vista-medio (sin sesión)", () => {
     expect(todo.headers.get("Content-Type")).toBe("audio/mpeg");
     expect(todo.headers.get("Accept-Ranges")).toBe("bytes");
     expect(todo.headers.get("X-Content-Type-Options")).toBe("nosniff");
-    expect(todo.headers.get("Content-Security-Policy")).toBe("sandbox");
+    // Abierto suelto («Abrir») sólo se carga a sí mismo. Sin `sandbox`: en Chromium, el documento de medios con origen
+    // opaco pide su propio archivo con CORS y se queda vacío (probado en Chromium).
+    expect(todo.headers.get("Content-Security-Policy")).toBe("default-src 'none'; media-src 'self'");
+    expect(todo.headers.get("Content-Security-Policy")).not.toMatch(/sandbox/);
     expect(todo.headers.get("Cache-Control")).toMatch(/^private/);
     expect(todo.headers.get("Cross-Origin-Resource-Policy")).toBe("cross-origin");
     expect(new Uint8Array(await todo.arrayBuffer())).toEqual(mp3());
