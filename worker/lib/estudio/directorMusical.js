@@ -12,6 +12,9 @@
 //     pide a Suno EXACTAMENTE lo que se le dijo a la persona, sin pagar otra vez al director.
 //   · Si la IA no contesta (sin llave, sin presupuesto, caída), sale la de RESPALDO (la música de la marca o la pista
 //     del guion con el tempo de los cortes) con el aviso: nunca deja sin música.
+//   · Antes de pagar a Suno, mira la BIBLIOTECA DE SONIDO (worker/lib/estudio/sonidos.js): si una pista del cliente o de
+//     la agencia encaja con lo que propone (por sus etiquetas, su estilo y su BPM: `pistasQueEncajan`), la ofrece GRATIS
+//     (`biblioteca`). Si no encaja ninguna, lo de siempre.
 // ============================================================
 
 import { llamarIA } from "../cerebro/ia.js";
@@ -22,6 +25,7 @@ import { nombreDePilar } from "../../../src/lib/pilares.js";
 import { VOCES_ELEVENLABS, VOCES_KIE, vozPorId } from "../../../src/lib/voces.js";
 import { textoPaleta, limpiarMusicaDeMarca } from "../../../src/lib/kitMarca.js";
 import { analisisDelVideo, pedidoDeDirectorMusical, leerPropuestaMusical, propuestaDeRespaldo, huellaMusical } from "../../../src/lib/directorMusical.js";
+import { lasQueEncajan } from "./sonidos.js";
 
 /** Cuánto vale la propuesta guardada (la confirmación llega en minutos; pasado esto, se vuelve a pensar). */
 export const VIGENCIA_PROPUESTA_MS = 6 * 60 * 60 * 1000;
@@ -69,11 +73,17 @@ function vozDelVideo(fila, kit) {
 }
 
 /**
- * La propuesta del director musical para un video (una fila de videos_proyectos). Con `reusar`, la guardada si sigue
- * valiendo (misma huella y menos de 6 h): no se paga otra vez. Lanza ErrorDirectorMusical si el guion tiene errores.
- * → { propuesta, analisis, aviso, modelo, guardada, huella }
+ * La propuesta del director musical para un video (una fila de videos_proyectos), con lo que YA hay en la biblioteca de
+ * sonido (del cliente y de la agencia) que encaja con ella (`biblioteca`: se ofrece gratis antes de pagar a Suno). Con
+ * `reusar`, la guardada si sigue valiendo (misma huella y menos de 6 h): no se paga otra vez. Lanza ErrorDirectorMusical
+ * si el guion tiene errores. → { propuesta, analisis, aviso, modelo, guardada, huella, biblioteca }
  */
-export async function proponerMusica(env, acceso, cliente, fila, { reusar = false } = {}) {
+export async function proponerMusica(env, acceso, cliente, fila, opciones = {}) {
+  const r = await pensarMusica(env, acceso, cliente, fila, opciones);
+  return { ...r, biblioteca: await lasQueEncajan(acceso, cliente.id, r.propuesta) };
+}
+
+async function pensarMusica(env, acceso, cliente, fila, { reusar = false } = {}) {
   const v = validarGuion(leerJSON(fila?.guion, null));
   if (!v.ok) throw new ErrorDirectorMusical("El guion tiene errores: corrígelos antes de proponer la música.", 400);
   const kit = kitDe(cliente);

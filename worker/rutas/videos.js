@@ -53,7 +53,8 @@
 //                                           música de la marca en el kit (su estilo; gratis)
 //   POST   /api/videos/<c>/<id>/musica      «Proponer la música para este video»: el DIRECTOR MUSICAL lee el guion guardado
 //                                           (con la locución si está lista), el kit y al cliente, y escribe el pedido para
-//                                           Suno con su porqué. No guarda nada en el video ni pide a Suno; texto, sin
+//                                           Suno con su porqué, y `biblioteca`: lo que YA hay en la biblioteca de sonido que
+//                                           encaja (gratis). No guarda nada en el video ni pide a Suno; texto, sin
 //                                           confirmación (worker/lib/estudio/directorMusical.js)
 //
 // El guion lo valida `validarGuion` (src/lib/videoEscenas.js) aquí, en el servidor: lo que llega del navegador, del
@@ -300,7 +301,7 @@ async function rutasDelCliente(req, env, { acceso, usuario, partes, metodo }) {
   if (accion === "musica" && metodo === "POST") {
     try {
       const r = await proponerMusica(env, acceso, cliente, fila);
-      return json({ propuesta: r.propuesta, video: resumenDelAnalisis(r.analisis), aviso: r.aviso, modelo: r.modelo });
+      return json({ propuesta: r.propuesta, video: resumenDelAnalisis(r.analisis), aviso: r.aviso, modelo: r.modelo, biblioteca: r.biblioteca ?? [] });
     } catch (e) {
       if (e instanceof ErrorDirectorMusical) return error(e.message, e.estado);
       throw e;
@@ -324,7 +325,9 @@ async function rutasDelCliente(req, env, { acceso, usuario, partes, metodo }) {
 
   // El sonido (efectos y música): tampoco toca el guion ni la voz.
   if (accion === "sonido" && metodo === "PUT") {
-    const r = await guardarSonido(acceso, cliente, fila, { efectos: b.efectos, musica: b.musica ?? null });
+    // Sin `efectosPropios` en el cuerpo (una pantalla de antes), los de la biblioteca que ya tenía se quedan.
+    const efectosPropios = b.efectosPropios === undefined ? deFila(fila).sonido.efectosPropios ?? null : b.efectosPropios;
+    const r = await guardarSonido(acceso, cliente, fila, { efectos: b.efectos, musica: b.musica ?? null, efectosPropios });
     avisar(env, acceso, usuario, req, clienteId, id);
     return json(r);
   }
