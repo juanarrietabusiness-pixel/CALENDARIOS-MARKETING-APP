@@ -354,6 +354,18 @@ describe("el logo del cierre", () => {
     expect(g.escenas[3].capas[0].tam).toBeLessThan(MIN_LOGO_CIERRE);
     expect(caja.w).toBeGreaterThanOrEqual(1080 * MIN_LOGO_CIERRE - 1);
   });
+
+  it("con una posición { x, y } en el guion mide lo que dice su «tam» (un sello pequeño)", () => {
+    const g = guionDelEjemplo();
+    g.escenas[3].capas = [{ ...g.escenas[3].capas[0], pos: { x: 0.5, y: 0.5 }, tam: 0.12 }];
+    const { ctx } = lienzo();
+    const logo = { width: 800, height: 400 };
+    const caja = cajasDeEscena(ctx, { guion: g, linea: lineaDeTiempo(g), indice: 3, formato: "9:16", recursos: { logo } })
+      .find((x) => x.tipo === "logo");
+    expect(caja.w).toBeLessThanOrEqual(1080 * 0.12 + 1);
+    expect(caja.w).toBeGreaterThan(1080 * 0.1);
+    expect(caja.x + caja.w / 2).toBeCloseTo(540, 0);
+  });
 });
 
 describe("el primer segundo", () => {

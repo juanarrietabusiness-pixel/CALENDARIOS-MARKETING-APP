@@ -4714,7 +4714,9 @@ son del servidor.
   en «·», comas y puntos (`partirEquilibrado`, recargo por cortar fuera de un separador): «Sin alcohol · sin / perfume»
   cortaba mal. Las imágenes se cargan SIN su borde transparente (`cajaOpaca` en el motor, puro; el recorte lo hace
   `motorVideoNavegador.js` y lo hará el gemelo del Container) y el logo del cierre mide al menos `MIN_LOGO_CIERRE` (la
-  mitad del lado corto): un logo con mucho aire se veía diminuto.
+  mitad del lado corto): un logo con mucho aire se veía diminuto. Con una posición `{ x, y }` en el guion, no: ahí el
+  tamaño también es del guion (`anchoPedido(…, { fija: true })`) y el dueño de 57DMC quería el logo como un sello
+  pequeño; antes todo `tam` por debajo de 0,5 daba lo mismo.
   · **El guion se valida también en el SERVIDOR** (`worker/rutas/videos.js`): lo que llega del navegador o de Claude no
   se cree, y con errores no se guarda (400 con cada error y su sitio). Guardar y aprobar llevan la `version` que se
   leyó: si otra persona guardó entremedias, 409 (`actualizar` con la versión como condición). Aprobar fija
