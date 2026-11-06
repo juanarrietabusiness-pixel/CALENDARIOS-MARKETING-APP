@@ -4,6 +4,8 @@ import { saveClientTask } from "../lib/db";
 import { EVENTO_CAMBIO } from "../lib/agenda";
 import { fmtDate } from "../utils";
 import { semaforoMaletas, resumenDeMaletas, tareaParaElCliente } from "../lib/maletas";
+// Sus estilos van con el componente: lo usa el estudio de mercado y lo podrá usar el plan de campañas.
+import "./SemaforoMaletas.css";
 
 // ============================================================
 // El semáforo de las 7 maletas, en pantalla (lib/maletas.js)
