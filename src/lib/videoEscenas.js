@@ -394,6 +394,17 @@ function validarMomento(valor, donde, nPalabras, errores) {
   return null;
 }
 
+/** Las capas que se ponen en su sitio a propósito (con coordenadas, si las traen): no entran en el reparto por zonas. */
+export const CON_SITIO_PROPIO = new Set(["logo", "sello", "dibujo", "forma"]);
+
+/** La zona más cercana a unas coordenadas (tercios del cuadro): { x: 0.2, y: 0.1 } → «arriba-izq». Pura. */
+export function zonaMasCercana({ x = 0.5, y = 0.5 } = {}) {
+  const fila = y < 1 / 3 ? "arriba" : y > 2 / 3 ? "abajo" : "centro";
+  const lado = x < 1 / 3 ? "izq" : x > 2 / 3 ? "der" : "";
+  if (fila === "centro") return lado || "centro";
+  return lado ? `${fila}-${lado}` : fila;
+}
+
 function validarPos(valor, donde, errores) {
   if (valor === undefined || valor === null) return "centro";
   if (typeof valor === "string") {
@@ -482,6 +493,18 @@ function validarEscena(e, i, errores, avisos, idsEscenas, { cancion = false } = 
   if (lista.length > MAX_CAPAS) errores.push({ donde: `${donde}.capas`, mensaje: `Como mucho ${MAX_CAPAS} capas por escena.` });
   const ids = new Set();
   const capas = lista.slice(0, MAX_CAPAS).map((c, k) => validarCapa(c, `${donde}.capas[${k}]`, nPalabras, errores, avisos, ids)).filter(Boolean);
+  // COORDENADAS donde el motor tiene que repartir: con dos capas o más que se reparten, una en { x, y } no se aparta de
+  // las demás y salían encimadas, fuera de cuadro o bajo los subtítulos. Se pasan a la zona más cercana (y se dice). Lo
+  // que va en su sitio a propósito (el logo, un sello, un dibujo, una forma) y lo que va a sangre conserva su posición.
+  const repartibles = capas.filter((c) => !CON_SITIO_PROPIO.has(c.tipo) && c.encuadre !== "completo");
+  if (repartibles.length >= 2) {
+    for (const c of repartibles) {
+      if (!esObjeto(c.pos)) continue;
+      const zona = zonaMasCercana(c.pos);
+      avisos.push({ donde: `${donde}.capas.${c.id}.pos`, mensaje: `Las coordenadas { x: ${c.pos.x}, y: ${c.pos.y} } se pasaron a «${zona}»: con varias capas, el motor sólo las reparte sin encimarlas si van por zonas.` });
+      c.pos = zona;
+    }
+  }
   if (!capas.length && !pantalla) avisos.push({ donde, mensaje: "Sin capas ni texto en pantalla: el motor la dibujará sólo con el fondo." });
   for (const et of etiquetasDe(habla)) {
     if (et.split(/\s+/).length > 4) avisos.push({ donde: `${donde}.habla`, mensaje: `La indicación «[${et}]» es larga: v3 sigue mejor una o dos palabras.` });
@@ -667,7 +690,11 @@ export function lineaDeTiempo(guion, palabras = null) {
     const a = corte(k);
     const b = k === escenas.length - 1 ? finAudio : corte(k + 1);
     const trozo = Math.max(0, b - a);
-    const pausa = Math.max(Number(e.pausa) || 0, duracionMinimaDeEscena(e) - trozo, 0);
+    // Con HABLA, la escena dura lo que su voz: ninguna capa (el tramo de un clip, lo que `dura` una imagen) la alarga,
+    // porque eso metía silencio en medio de una oración. El silencio sólo va donde el guion pone «pausa», o tras una
+    // escena demasiado corta que cierra una oración. Sin habla, lo de siempre.
+    const minimo = porEscena[k].length ? (cierraOracion(e.habla) ? MIN_ESCENA : 0) : duracionMinimaDeEscena(e);
+    const pausa = Math.max(Number(e.pausa) || 0, minimo - trozo, 0);
     const desde = reloj;
     const palabrasEscena = porEscena[k].map((texto, i) => {
       const t = tiempos[inicio[k] + i];
@@ -751,6 +778,8 @@ function lineaDeCancion(guion, palabras) {
 /** Los ids de la galería que nombra un guion como IMAGEN (imágenes, teléfonos, antes y después). Pura. */
 export function archivosDelGuion(guion) {
   const ids = new Set();
+  // Las imágenes de la mascota de la marca (una por pose): las dibuja la pieza «personaje».
+  for (const id of Object.values(guion?.estilo?.personaje?.imagenes ?? {})) if (id) ids.add(id);
   for (const e of guion?.escenas ?? []) {
     for (const c of e.capas ?? []) {
       if (c.tipo === "video") continue;
@@ -770,8 +799,11 @@ export function videosDelGuion(guion) {
 /** ¿Se dice algo en el guion? Sin habla en ninguna escena (un montaje de clips) no hay locución que generar. Pura. */
 export const tieneHabla = (guion) => palabrasDe(textoDeLocucion(guion)).length > 0;
 
+/** ¿El habla termina una oración? (un punto, un signo de cierre…): sólo ahí cabe un silencio sin trabar la voz. Pura. */
+export const cierraOracion = (habla = "") => /[.!?…»"')\]]\s*$/.test(String(habla ?? "").trim());
+
 /**
- * Lo que dura como poco una escena: `MIN_ESCENA`, o el TRAMO de su video más largo (`hasta − desde`) o lo que `dura` una
+ * Lo que dura como poco una escena SIN habla (con habla manda la voz: `lineaDeTiempo`): `MIN_ESCENA`, o el TRAMO de su video más largo (`hasta − desde`) o lo que `dura` una
  * imagen, más su entrada si es en segundos (anclada a una palabra no se sabe antes de los tiempos). Pura.
  */
 export function duracionMinimaDeEscena(escena) {

@@ -24,6 +24,7 @@
 
 import { ErrorMotor } from "./gemini.js";
 import { cuerpoSuno, pistasDeSuno } from "../../../src/lib/musica.js";
+import { USD_POR_CREDITO } from "../../../src/lib/voces.js";
 
 const BASE = (env) => (env.KIE_URL || "https://api.kie.ai").replace(/\/$/, "");
 const SUBIDAS = (env) => (env.KIE_UPLOAD_URL || "https://kieai.redpandaai.co").replace(/\/$/, "");
@@ -401,7 +402,7 @@ export function validarKie(modelo, pedido = {}) {
 export function errorDeKie(codigo, mensaje = "") {
   const d = mensaje ? `: ${String(mensaje).slice(0, 200)}` : "";
   if (codigo === 401) return new ErrorMotor("Kie.ai no aceptó la llave del servidor (KIE_API_KEY).", 502);
-  if (codigo === 402) return new ErrorMotor(`Kie.ai no tiene créditos suficientes en la cuenta${d}. Recárgala en kie.ai.`, 502);
+  if (codigo === 402) return Object.assign(new ErrorMotor(`Kie.ai no tiene créditos suficientes en la cuenta${d}. Recárgala en kie.ai.`, 502), { sinSaldo: true });
   if (codigo === 404) return new ErrorMotor(`Kie.ai no encontró eso${d}.`, 502);
   if (codigo === 422) return new ErrorMotor(`Kie.ai rechazó el pedido${d || " (datos no válidos)"}.`, 502);
   // 408 y 501 son de la TAREA (sin resultado en 10 minutos; la generación falló): repetir la consulta no los arregla.
@@ -447,6 +448,27 @@ async function subir(env, f, i) {
   const url = d?.downloadUrl ?? d?.fileUrl ?? d?.url;
   if (!/^https:\/\//.test(String(url ?? ""))) throw new ErrorMotor(`Kie.ai no devolvió la dirección ${video ? "del video" : "de la imagen"} de referencia subida.`, 502, { reintentable: true });
   return url;
+}
+
+/**
+ * El SALDO de la cuenta de la llave del servidor, en créditos (`GET /api/v1/chat/credit`, que no gasta): lo mira el plan
+ * de un reel antes de pedir nada caro. Sin llave, o si Kie no contesta, null (no se comprueba nada).
+ */
+export async function saldoKie(env) {
+  if (!env?.KIE_API_KEY) return null;
+  try {
+    const d = await llamar(env, `${BASE(env)}/api/v1/chat/credit`);
+    const n = Number(d !== null && typeof d === "object" ? d.credits ?? d.credit ?? d.balance : d);
+    return Number.isFinite(n) && n >= 0 ? n : null;
+  } catch { return null; }
+}
+
+/** «Saldo: 120 créditos (≈ 0,60 $) en la cuenta de la llave KIE_API_KEY (termina en abcd).» (o lo que se sepa). */
+export async function textoDeSaldo(env, saldo) {
+  const n = saldo === undefined ? await saldoKie(env) : saldo;
+  const llave = String(env?.KIE_API_KEY ?? "");
+  const cuenta = `la cuenta de la llave KIE_API_KEY del servidor${llave.length >= 8 ? ` (termina en ${llave.slice(-4)})` : ""}`;
+  return n === null ? `No se pudo leer el saldo de ${cuenta}.` : `Saldo: ${n} créditos (≈ ${(n * USD_POR_CREDITO).toFixed(2)} $) en ${cuenta}.`;
 }
 
 /** Las direcciones del resultado: `resultJson` es un texto JSON con `resultUrls` (o ya un objeto). Pura. */
@@ -496,9 +518,16 @@ export const MOTOR_KIE = {
     // La voz de la locución de Omni: se REGISTRA (gratis, en el acto) y su id va en `audio_ids`.
     const audios = OMNI_CON_VOZ.has(modelo.id) && ajustes?.voz && !inicio.length ? [await registrarVoz(env, ajustes.voz)] : [];
     const cuerpo = pedidoKie(modelo, { prompt, ajustes, refs, inicio, fin, videos, audios });
-    const d = await llamar(env, `${BASE(env)}/api/v1/jobs/createTask`, {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(cuerpo),
-    });
+    let d;
+    try {
+      d = await llamar(env, `${BASE(env)}/api/v1/jobs/createTask`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(cuerpo),
+      });
+    } catch (e) {
+      // Sin saldo: el error dice el saldo de VERDAD y de qué cuenta es la llave (puede no ser la que se recargó).
+      if (e?.sinSaldo) e.message = `${e.message} ${await textoDeSaldo(env)}`;
+      throw e;
+    }
     const id = d?.taskId ?? d?.task_id;
     if (!id) throw new ErrorMotor("Kie.ai no devolvió el número de la tarea.", 502);
     return { id: String(id), cada: esVideo ? 10_000 : modelo.musica ? 20_000 : modelo.tipo === "audio" ? 3000 : 4000 };

@@ -32,7 +32,10 @@ import { ErrorDiseno } from "./herramientasDiseno.js";
 import { proyectoDe } from "../videosProyectos.js";
 import { estructuraExistente } from "../estructurasGuion.js";
 import { duracionesDeReel, rutaDeDuracion, duracionDeClip, haceDuracion, DURACION_REEL_POR_DEFECTO } from "../../../src/lib/duracionesVideo.js";
-import { pedidoDeVideo, pedidoDeClip, modelosParaReel, modeloParaClips } from "../../../src/lib/reelPedidos.js";
+import { pedidoDeVideo, pedidoDeClip, modelosParaReel, modeloParaClips, modelosParaClips } from "../../../src/lib/reelPedidos.js";
+import { esTomaFija } from "../../../src/lib/reel.js";
+import { saldoKie, textoDeSaldo } from "./kie.js";
+import { USD_POR_CREDITO } from "../../../src/lib/voces.js";
 import { MODELOS, modeloPorId, porPrecio, estimar, textoCosto, nombreDelModelo } from "../../../src/lib/estudioCatalogo.js";
 import { estiloDeMarca, limpiarKit } from "../../../src/lib/kitMarca.js";
 import { fotosDelCatalogo } from "../../../src/lib/estudioMercado.js";
@@ -60,7 +63,7 @@ export function modeloParaFotogramas(activos = {}, kit = {}) {
  * El plan del reel con su costo (sin crear nada): cuántos fotogramas, por qué ruta sale (un video o clips y montaje),
  * con qué modelos y cuánto, más o menos. Pura salvo por los imports.
  */
-export function planDeReel({ guion, activos, kit, salida, modeloVideoId = "" }) {
+export function planDeReel({ guion, activos, kit, salida, modeloVideoId = "", montar = true }) {
   const segundos = Number(guion?.segundos) || DURACION_REEL_POR_DEFECTO;
   const planos = guion?.planos ?? [];
   const imagen = modeloParaFotogramas(activos, kit);
@@ -74,10 +77,51 @@ export function planDeReel({ guion, activos, kit, salida, modeloVideoId = "" }) 
     ? (elegido && deUno.some((m) => m.id === elegido.id) ? elegido : deUno.find((m) => m.id === ruta?.modelos?.[0]) ?? deUno.find((m) => m.motor !== "prueba") ?? deUno[0] ?? null)
     : (elegido?.inicial ? elegido : modeloParaClips(activos));
   const costoFotos = imagen ? planos.length * estimar(imagen, 1, { imageSize: "2K" }) : 0;
-  const costoVideo = !video ? 0 : s === "uno"
-    ? estimar(video, 1, pedidoDeVideo({ modelo: video, planos, segundos, fotogramas: [{ clave: "x" }] }).ajustes)
-    : planos.reduce((t, p) => t + estimar(video, 1, pedidoDeClip({ modelo: video, plano: p, fotograma: { clave: "x" }, segundos: duracionDeClip(video, Math.max(1, p.hasta - p.desde)) }).ajustes), 0);
-  return { segundos, salida: s, imagen, video, costoFotos, costoVideo, total: costoFotos + costoVideo, planos: planos.length };
+  // Con montaje, la toma FIJA (el producto, un beneficio, el cierre) va con su fotograma: ese clip no se paga.
+  const conClip = montar ? planos.filter((p) => !esTomaFija(p)) : planos;
+  const costoClips = (m, lista) => lista.reduce((t, p) => t + estimar(m, 1, pedidoDeClip({ modelo: m, plano: p, fotograma: { clave: "x" }, segundos: duracionDeClip(m, Math.max(1, p.hasta - p.desde)) }).ajustes), 0);
+  const costoUno = (m) => estimar(m, 1, pedidoDeVideo({ modelo: m, planos, segundos, fotogramas: [{ clave: "x" }] }).ajustes);
+  const costoVideo = !video ? 0 : s === "uno" ? costoUno(video) : costoClips(video, conClip);
+  // La OPCIÓN CARA con que se compara: lo más caro entre un solo video con el preferido de esa duración y un clip por
+  // cada plano con el siguiente modelo de clips. Así el plan dice cuánto se ahorra.
+  const alternativas = [
+    ...(deUno[0] ? [{ nombre: `un video con ${deUno[0].nombre}`, costo: costoUno(deUno[0]) }] : []),
+    ...modelosParaClips(activos).filter((m) => m.motor !== "prueba" && m.id !== video?.id).slice(0, 2)
+      .map((m) => ({ nombre: `${planos.length} clips con ${m.nombre}`, costo: costoClips(m, planos) })),
+  ].filter((a) => a.costo > costoVideo);
+  const cara = alternativas.sort((a, b) => b.costo - a.costo)[0] ?? null;
+  return {
+    segundos, salida: s, imagen, video, costoFotos, costoVideo, total: costoFotos + costoVideo, planos: planos.length,
+    clips: s === "clips" ? conClip.length : 0, fijos: s === "clips" ? planos.length - conClip.length : 0,
+    ...(cara ? { cara: { nombre: cara.nombre, costo: cara.costo, ahorro: cara.costo - costoVideo } } : {}),
+  };
+}
+
+/** El plan en una frase (lo que se le dice a la persona antes del «sí»). Pura. */
+export function textoDelPlan(plan, { revisar = false } = {}) {
+  const fotos = `${plan.planos} fotogramas con ${nombreDelModelo(plan.imagen?.id)} (${textoCosto(plan.costoFotos)})`;
+  if (revisar) return `${fotos}; luego se PARA a revisar el storyboard: el video (${plan.salida === "uno" ? `un video de ${plan.segundos} s` : `${plan.clips} clips`} con ${nombreDelModelo(plan.video?.id)}, unos ${textoCosto(plan.costoVideo)}) se confirma después con continuar_reel`;
+  const video = plan.salida === "uno" ? `un video de ${plan.segundos} s` : `${plan.clips} clips${plan.fijos ? ` (y ${plan.fijos} plano${plan.fijos === 1 ? "" : "s"} de toma fija con su fotograma, sin clip)` : ""}`;
+  return `${fotos} y ${video} con ${nombreDelModelo(plan.video?.id)} (${textoCosto(plan.costoVideo)})`;
+}
+
+/** Lo que se ahorra frente a la opción cara, en una frase («» si no hay con qué comparar). Pura. */
+export const textoDelAhorro = (plan) => (plan.cara ? `Frente a ${plan.cara.nombre} (unos ${textoCosto(plan.cara.costo)}) se ahorran unos ${textoCosto(plan.cara.ahorro)}.` : "");
+
+/**
+ * Los clips de un reel en palabras: cuántos están, cuáles NO salieron y por qué (con montaje, se montan con su
+ * fotograma: su frase no se pierde) y cuáles son de toma fija (sin clip). Pura.
+ */
+export function lineaDeClips(pasos = [], conMontaje = false) {
+  const con = pasos.filter((p) => p.clip && p.clip.fase !== "omitido");
+  const listos = con.filter((p) => p.clip.fase === "hecho");
+  const fallidos = con.filter((p) => p.clip.fase === "fallido");
+  const fijos = pasos.filter((p) => p.clip?.fase === "omitido");
+  return [
+    `Clips: ${listos.length} de ${con.length} listos (archivos ${listos.map((p) => p.clip.archivoId).join(", ") || "—"}).`,
+    fijos.length ? `Toma fija, con su fotograma (sin clip): ${fijos.map((p) => p.titulo || p.id).join(", ")}.` : "",
+    fallidos.length ? `NO salieron: ${fallidos.map((p) => `${p.titulo || p.id} (${p.clip.error || "sin motivo"})`).join("; ")}.${conMontaje ? " Se montan con su fotograma y su frase se dice igual." : ""}` : "",
+  ].filter(Boolean).join(" ");
 }
 
 /** El guion como lo lee Claude (y lo devuelve tal cual en la segunda llamada). */
@@ -91,19 +135,21 @@ const textoDelGuion = (g) => [
 export const DEFINICIONES_REEL_MCP = Object.freeze([
   {
     name: "crear_reel",
-    description: "Crea un REEL por planos para un cliente, en el SERVIDOR (sigue aunque se cierre todo): el storyboard (un fotograma por plano, en orden), el video (uno con todo, o un clip limpio por plano) y, con montar=true, el MONTAJE con la voz de la marca, el gancho escrito, los subtítulos, el logo y el llamado (el texto lo escribe el código: sin faltas). Lo que sale se pone SOLO en su publicación (publicacion_id). Sin «guion», escribe el guion (texto, céntimos) y devuelve el plan con su costo: NO SE CREÓ NADA. Díselo a la persona y, sólo con su «sí», repite la llamada con el MISMO guion y confirmado=true. La voz del montaje SIEMPRE se confirma aparte (confirmado_voz). Mira cómo va con estado_reel.",
+    description: "Crea un REEL por planos para un cliente, en el SERVIDOR (sigue aunque se cierre todo): el storyboard (un fotograma por plano, en orden), el video (uno con todo, o un clip limpio por plano) y, con montar=true, el MONTAJE con la voz de la marca, el gancho escrito, los subtítulos, el logo y el llamado (el texto lo escribe el código: sin faltas). Lo que sale se pone SOLO en su publicación (publicacion_id). Sin «guion», escribe el guion (texto, céntimos) y devuelve el plan con su costo, lo que se ahorra y si el saldo de Kie alcanza: NO SE CREÓ NADA. Díselo a la persona y, sólo con su «sí», repite la llamada con el MISMO guion y confirmado=true. Por defecto se PARA tras el storyboard (revisar=true): mira los fotogramas con estado_reel y sigue con continuar_reel. Por defecto pocos planos y clips con el modelo más barato que deja el producto fiel; los planos de toma «fija» (el producto, un beneficio, el cierre) se montan con su fotograma, sin clip. La voz del montaje SIEMPRE se confirma aparte (confirmado_voz). Mira cómo va con estado_reel.",
     inputSchema: {
       type: "object",
       properties: {
         cliente: clienteP,
         idea: { type: "string", description: "La idea central: la promoción, el beneficio o lo que se quiere contar." },
         segundos: { type: "integer", description: "8, 10, 15, 20, 30, 45 o 60. Lo que un modelo no hace en un video va por clips y montaje." },
+        planos: { type: "integer", description: "Cuántos planos (opcional). Por defecto POCOS para pagar menos clips: 4 hasta 20 s y 6 en 30 s. Sólo más si la persona lo pide." },
         publicacion_id: { type: "string", description: "La publicación del calendario (de ver_calendario): el guion sigue el que ya tiene y el resultado se pone en ella." },
         producto_id: { type: "string", description: "Un producto del catálogo (de guia_de_diseno): su precio exacto y sus fotos reales." },
         estructura_id: { type: "string", description: "La ESTRUCTURA de guion de la agencia que sigue la voz en off (de ver_estructuras con para=voz). Si se omite, la IA escoge la que encaje y la respuesta dice cuál." },
         salida: { type: "string", enum: ["uno", "clips"], description: "uno: un solo video con todo; clips: un clip por plano (para montar). Si se omite, la que mejor sale con esa duración." },
         montar: { type: "boolean", description: "true (por defecto): montarlo con la voz, el texto, los subtítulos y el logo, y renderizarlo a mp4." },
-        revisar: { type: "boolean", description: "true: se para tras el storyboard para que la persona lo revise (luego continuar_reel)." },
+        revisar: { type: "boolean", description: "true (por defecto): se para tras el storyboard para que la persona lo revise ANTES de pagar el video (luego continuar_reel). false sólo si la persona pide saltarse la revisión." },
+        voz: { type: "string", description: "Otra voz para ESTE reel (un id de ElevenLabs de listar_voces). Si se omite, la de la marca (voz_de_marca la cambia para todos)." },
         guion: { type: "object", description: "El guion que devolvió la primera llamada (tal cual, o corregido)." },
         confirmado: { type: "boolean", description: "Sólo tras el «sí» de la persona a la cifra del plan." },
         confirmado_voz: { type: "boolean", description: "Sólo si la persona ya aceptó pagar la voz del montaje (si no, el montaje se para a pedirla con su costo)." },
@@ -120,13 +166,14 @@ export const DEFINICIONES_REEL_MCP = Object.freeze([
   },
   {
     name: "continuar_reel",
-    description: "Tras revisar el storyboard de un reel creado con revisar=true: crea el video («uno») o los clips («clips») y, con montar, el montaje. La primera llamada sin confirmado dice el costo; sólo con el «sí» de la persona, confirmado=true.",
+    description: "Tras revisar el storyboard de un reel (crear_reel se para ahí por defecto): crea el video («uno») o los clips («clips»: sólo los planos de toma «movimiento»; los de toma fija van con su fotograma) y, con montar, el montaje. La primera llamada sin confirmado dice el costo, lo que se ahorra y si el saldo de Kie alcanza; sólo con el «sí» de la persona, confirmado=true.",
     inputSchema: {
       type: "object",
       properties: {
         encargo_id: { type: "string" }, salida: { type: "string", enum: ["uno", "clips"] },
-        modelo: { type: "string", description: "Opcional: el id de un modelo de video." },
+        modelo: { type: "string", description: "Opcional: el id de un modelo de video (por defecto, el más barato que deja el producto fiel)." },
         montar: { type: "boolean" }, confirmado: { type: "boolean" }, confirmado_voz: { type: "boolean" },
+        voz: { type: "string", description: "Otra voz para el montaje de ESTE reel (un id de listar_voces)." },
       },
       required: ["encargo_id"],
     },
@@ -137,7 +184,10 @@ export const DEFINICIONES_REEL_MCP = Object.freeze([
     description: "«Montarlo aquí»: de los clips (o el video) de un reel a un video animado con la voz de la marca, el gancho, los subtítulos, el logo y el llamado. automatico=false sólo crea el proyecto (para revisarlo con ver_video); automatico=true además lo aprueba, pide la voz y lo renderiza a mp4 en su publicación. La VOZ siempre se confirma: sin confirmado_voz se para y estado_reel dice el costo; con el «sí» de la persona, vuelve a llamar con confirmado_voz=true.",
     inputSchema: {
       type: "object",
-      properties: { encargo_id: { type: "string" }, automatico: { type: "boolean" }, confirmado_voz: { type: "boolean" } },
+      properties: {
+        encargo_id: { type: "string" }, automatico: { type: "boolean" }, confirmado_voz: { type: "boolean" },
+        voz: { type: "string", description: "Otra voz para ESTE montaje (un id de listar_voces); si se omite, la de la marca." },
+      },
       required: ["encargo_id"],
     },
     annotations: escribe,
@@ -187,6 +237,20 @@ export function crearHerramientasReel({ env, acceso, resolverCliente, usuario, b
     return { fila, cliente };
   }
 
+  /**
+   * ¿Alcanza el saldo de Kie para lo que se va a pedir? Sólo si algo del plan va por Kie (y se sabe leer el saldo).
+   * → { texto, noAlcanza }: el texto dice el saldo y de qué cuenta es la llave.
+   */
+  async function saldoParaElPlan(plan, costo) {
+    const porKie = [plan.imagen, plan.video].some((m) => m?.motor === "kie");
+    if (!porKie || !(costo > 0)) return { texto: "", noAlcanza: false };
+    const saldo = await saldoKie(env);
+    if (saldo === null) return { texto: "", noAlcanza: false };
+    const usd = saldo * USD_POR_CREDITO;
+    if (usd >= costo) return { texto: "", noAlcanza: false };
+    return { texto: `OJO: el saldo de Kie NO alcanza para esto (hace falta unos ${textoCosto(costo)}). ${await textoDeSaldo(env, saldo)} Recárgalo en kie.ai antes de seguir.`, noAlcanza: true };
+  }
+
   /** El estado de un reel en palabras, con las imágenes del storyboard (las mismas de la vista previa del chat). */
   async function estado(fila) {
     const e = encargoPublico(fila);
@@ -201,7 +265,7 @@ export function crearHerramientasReel({ env, acceso, resolverCliente, usuario, b
       e.error ? `Motivo: ${e.error}` : "",
       `Storyboard: ${hechos} de ${e.pasos.length} fotogramas.`,
       r.salida === "uno" ? `Video: ${{ espera: "espera la revisión (continuar_reel)", nuevo: "en cola", generando: "creándose", hecho: `listo (archivo ${v.archivoId})`, fallido: `no salió: ${v.error}` }[v.fase] ?? v.fase}.` : "",
-      r.salida === "clips" && clips.length ? `Clips: ${clips.filter((p) => p.clip.fase === "hecho").length} de ${clips.length} listos (archivos ${clips.map((p) => p.clip.archivoId).filter(Boolean).join(", ") || "—"}).` : "",
+      r.salida === "clips" && clips.length ? lineaDeClips(e.pasos, Boolean(m)) : "",
       m ? `Montaje: ${m.fase}${m.videoId ? ` (video animado ${m.videoId}: míralo con ver_video y ver_escenas)` : ""}${m.fase === "confirmar" ? ` · la voz cuesta ${m.costoTexto || "unos céntimos"}: pregúntale a la persona y, con su sí, montar_reel con confirmado_voz=true` : ""}${m.error ? ` · ${m.error}` : ""}${m.nota ? ` · ${m.nota}` : ""}.` : "",
       r.puesto?.postId ? `Ya está en su publicación ${r.puesto.postId}.` : "",
       imagenes.length ? "Van las imágenes del storyboard que ya están: MÍRALAS." : "",
@@ -213,7 +277,7 @@ export function crearHerramientasReel({ env, acceso, resolverCliente, usuario, b
   }
 
   return {
-    async crear_reel({ cliente, idea = "", segundos, publicacion_id: postId = "", producto_id: productoId = "", estructura_id: estructuraId = "", salida, montar = true, revisar = false, guion: guionDado, confirmado, confirmado_voz: confirmadoVoz }) {
+    async crear_reel({ cliente, idea = "", segundos, planos: planosPedidos = 0, publicacion_id: postId = "", producto_id: productoId = "", estructura_id: estructuraId = "", salida, montar = true, revisar = true, voz = "", guion: guionDado, confirmado, confirmado_voz: confirmadoVoz }) {
       const c = await resolverCliente(cliente);
       return conErrores(async () => {
         const activos = activosDe(env);
@@ -222,7 +286,7 @@ export function crearHerramientasReel({ env, acceso, resolverCliente, usuario, b
         let guion = guionDado && typeof guionDado === "object" && Array.isArray(guionDado.planos) ? guionDado : null;
         let escrito = false;
         if (!guion) {
-          guion = await guionDeReel(env, acceso, c, { idea, segundos: Number(segundos) || DURACION_REEL_POR_DEFECTO, productoId, postId, montaje: montar !== false, estructuraId });
+          guion = await guionDeReel(env, acceso, c, { idea, segundos: Number(segundos) || DURACION_REEL_POR_DEFECTO, planos: Number(planosPedidos) || 0, productoId, postId, montaje: montar !== false, estructuraId });
           escrito = true;
         } else if (estructuraId && !guion.estructuraId) {
           // Un guion que escribió Claude con una estructura: se apunta si existe en el espacio.
@@ -230,18 +294,22 @@ export function crearHerramientasReel({ env, acceso, resolverCliente, usuario, b
           if (!id) throw new ErrorReel(`No encontré la estructura de guion «${estructuraId}» (de ver_estructuras).`);
           guion = { ...guion, estructuraId: id };
         }
-        const plan = planDeReel({ guion, activos, kit, salida });
+        const revisa = revisar !== false;
+        const plan = planDeReel({ guion, activos, kit, salida, montar: montar !== false });
         if (!plan.imagen) throw new ErrorReel("No hay ningún modelo de imagen con llave para los fotogramas (Ajustes → IA).");
         if (!plan.video) throw new ErrorReel("No hay ningún modelo de video con llave que haga esto (Ajustes → IA).");
-        const cifra = `${plan.planos} fotogramas con ${nombreDelModelo(plan.imagen.id)} (${textoCosto(plan.costoFotos)})${revisar ? "" : ` y ${plan.salida === "uno" ? `un video de ${plan.segundos} s` : `${plan.planos} clips`} con ${nombreDelModelo(plan.video.id)} (${textoCosto(plan.costoVideo)})`}`;
-        const total = revisar ? plan.costoFotos : plan.total;
+        const cifra = textoDelPlan(plan, { revisar: revisa });
+        const total = revisa ? plan.costoFotos : plan.total;
+        const saldo = await saldoParaElPlan(plan, total);
         if (confirmado !== true) {
           return [
-            `NO SE CREÓ NADA TODAVÍA${escrito ? " (sólo se escribió el guion)" : ""}. Plan del reel de ${c.name}: ${cifra}; unos ${textoCosto(total)} en total${montar !== false ? ", más la voz del montaje (se confirma aparte)" : ""}.`,
+            `NO SE CREÓ NADA TODAVÍA${escrito ? " (sólo se escribió el guion)" : ""}. Plan del reel de ${c.name}: ${cifra}; unos ${textoCosto(total)} ahora${montar !== false ? ", más la voz del montaje (se confirma aparte)" : ""}. ${revisa ? "" : textoDelAhorro(plan)}`.trim(),
+            saldo.texto,
             textoDelGuion(guion),
             `Dile a la persona el guion y la cifra. Sólo si dice que sí, repite crear_reel con guion = este JSON (o corregido) y confirmado=true:\n${JSON.stringify(guion)}`,
-          ].join("\n\n");
+          ].filter(Boolean).join("\n\n");
         }
+        if (saldo.noAlcanza) throw new ErrorReel(saldo.texto);
         let calendarId = null;
         if (postId) {
           try { calendarId = (await buscarPublicacion(String(postId))).cal.id; } catch { throw new ErrorReel(`No encontré la publicación «${postId}» (de ver_calendario).`); }
@@ -253,8 +321,8 @@ export function crearHerramientasReel({ env, acceso, resolverCliente, usuario, b
         const fila = await crearEncargo(env, acceso, c, {
           tipo: "reel", titulo, reel: { ...guion, segundos: plan.segundos }, carpetaId: carpeta.id,
           comun: { modelo: plan.imagen.id, estilo: estiloDeMarca(limpiarKit(kit), "", { marca: c.name, rubro: c.industry ?? "" }), fotos, personajes: [], referencias: [] },
-          salida: plan.salida, revisar: revisar === true, video: { modelo: plan.video.id },
-          montaje: montar !== false ? { automatico: true, confirmadoVoz: confirmadoVoz === true } : null,
+          salida: plan.salida, revisar: revisa, video: { modelo: plan.video.id },
+          montaje: montar !== false ? { automatico: true, confirmadoVoz: confirmadoVoz === true, vozId: voz } : null,
           ...(postId && calendarId ? { calendarId, postId: String(postId) } : {}),
         }, { usuario });
         const r = await estado(fila);
@@ -262,7 +330,7 @@ export function crearHerramientasReel({ env, acceso, resolverCliente, usuario, b
           ...r,
           texto: [
             `Reel en marcha para ${c.name}: encargo ${fila.id} (${cifra}). Se hace en el servidor, en orden; sigue aunque se cierre todo.`,
-            revisar ? "Se parará tras el storyboard para revisarlo: luego continuar_reel." : "",
+            revisa ? "Se parará tras el storyboard para revisarlo ANTES de pagar el video: mira los fotogramas con estado_reel (uno por uno: el empaque fiel, nada de la marca en el producto «malo», nada inventado) y sigue con continuar_reel." : "",
             montar !== false ? `Al terminar se monta con la voz de la marca, el texto y el logo${confirmadoVoz === true ? "" : " (la voz se confirmará aparte: estado_reel dirá su costo)"}.` : "",
             postId ? `Lo que salga se pone SOLO en la publicación ${postId}.` : "",
             `Mira cómo va con estado_reel (encargo_id ${fila.id}).`,
@@ -276,27 +344,34 @@ export function crearHerramientasReel({ env, acceso, resolverCliente, usuario, b
       return estado(fila);
     },
 
-    async continuar_reel({ encargo_id: id, salida, modelo = "", montar = true, confirmado, confirmado_voz: confirmadoVoz }) {
+    async continuar_reel({ encargo_id: id, salida, modelo = "", montar = true, confirmado, confirmado_voz: confirmadoVoz, voz = "" }) {
       const { fila, cliente } = await encargoDe(id);
       return conErrores(async () => {
         const e = encargoPublico(fila);
-        const plan = planDeReel({ guion: e.reel?.reel, activos: activosDe(env), kit: kitDe(cliente), salida, modeloVideoId: modelo });
+        const plan = planDeReel({ guion: e.reel?.reel, activos: activosDe(env), kit: kitDe(cliente), salida, modeloVideoId: modelo, montar: montar !== false });
         if (!plan.video) throw new ErrorReel("No hay ningún modelo de video con llave que haga esto (Ajustes → IA).");
+        const saldo = await saldoParaElPlan({ ...plan, imagen: null }, plan.costoVideo);
         if (confirmado !== true) {
-          return `NO SE CREÓ NADA TODAVÍA. ${plan.salida === "uno" ? `Un video de ${plan.segundos} s` : `${plan.planos} clips`} con ${nombreDelModelo(plan.video.id)}: unos ${textoCosto(plan.costoVideo)}${montar !== false ? ", más la voz del montaje (se confirma aparte)" : ""}. Sólo con el «sí» de la persona, repite con confirmado=true.`;
+          const video = plan.salida === "uno" ? `Un video de ${plan.segundos} s` : `${plan.clips} clips${plan.fijos ? ` (y ${plan.fijos} plano${plan.fijos === 1 ? "" : "s"} de toma fija con su fotograma, sin clip)` : ""}`;
+          return [
+            `NO SE CREÓ NADA TODAVÍA. ${video} con ${nombreDelModelo(plan.video.id)}: unos ${textoCosto(plan.costoVideo)}${montar !== false ? ", más la voz del montaje (se confirma aparte)" : ""}. ${textoDelAhorro(plan)}`.trim(),
+            saldo.texto,
+            "Sólo con el «sí» de la persona, repite con confirmado=true.",
+          ].filter(Boolean).join("\n");
         }
+        if (saldo.noAlcanza) throw new ErrorReel(saldo.texto);
         const r = await accionDeReel(env, acceso, cliente, fila, "continuar", {
-          salida: plan.salida, video: { modelo: plan.video.id }, montaje: montar !== false ? { automatico: true, confirmadoVoz: confirmadoVoz === true } : null,
+          salida: plan.salida, video: { modelo: plan.video.id }, montaje: montar !== false ? { automatico: true, confirmadoVoz: confirmadoVoz === true, vozId: voz } : null,
         });
         if (r.ocupado) throw new ErrorReel("El reel está dando un paso ahora mismo: vuelve a intentarlo en unos segundos.");
         return estado(await acceso.leerUno("estudio_encargos", { id: fila.id }));
       });
     },
 
-    async montar_reel({ encargo_id: id, automatico = true, confirmado_voz: confirmadoVoz }) {
+    async montar_reel({ encargo_id: id, automatico = true, confirmado_voz: confirmadoVoz, voz = "" }) {
       const { fila, cliente } = await encargoDe(id);
       return conErrores(async () => {
-        const r = await accionDeReel(env, acceso, cliente, fila, "montar", { automatico: automatico !== false, confirmadoVoz: confirmadoVoz === true });
+        const r = await accionDeReel(env, acceso, cliente, fila, "montar", { automatico: automatico !== false, confirmadoVoz: confirmadoVoz === true, vozId: voz });
         if (r.ocupado) throw new ErrorReel("El reel está dando un paso ahora mismo: vuelve a intentarlo en unos segundos.");
         return estado(await acceso.leerUno("estudio_encargos", { id: fila.id }));
       });

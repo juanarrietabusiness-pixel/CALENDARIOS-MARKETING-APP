@@ -7,6 +7,7 @@ import { crearAcceso } from "../../worker/lib/acceso.js";
 import { bombear } from "../../worker/lib/estudio/bomba.js";
 import { avanzarEncargo } from "../../worker/lib/estudio/encargos.js";
 import { validarGuion } from "../../src/lib/videoEscenas.js";
+import { comprobarMontaje } from "../../src/lib/montajeReel.js";
 
 // ============================================================
 // El REEL por planos como encargo del servidor (worker/lib/estudio/encargoReel.js), contra una D1 de verdad
@@ -168,14 +169,36 @@ describe("el reel por planos sigue en el servidor", () => {
     expect(JSON.parse(v.origen)).toEqual({ tipo: "reel", encargoId: e.id });
     const guion = JSON.parse(v.guion);
     expect(validarGuion(guion).ok).toBe(true);
-    expect(guion.escenas.map((x) => x.habla)).toEqual(REEL.planos.map((p) => p.dice));
+    // Lo que se dice es todo lo de los planos, en orden (una frase más larga que su clip corto se parte en dos escenas:
+    // la segunda con el fotograma del plano, y nada se pierde).
+    expect(guion.escenas.map((x) => x.habla).join(" ")).toBe(REEL.planos.map((p) => p.dice).join(" "));
+    expect(comprobarMontaje({ ...REEL, planos: REEL.planos }, guion)).toEqual([]);
     const capas = guion.escenas.map((x) => x.capas.map((c) => c.tipo));
     expect(capas[0]).toEqual(["video", "texto"]);
-    expect(capas[2]).toEqual(["video", "llamado"]);
+    expect(capas.at(-1).at(-1)).toBe("llamado");
     expect(guion.escenas[0].capas[1].texto).toBe("¿Piel sensible?");
-    expect(guion.escenas[2].capas.at(-1).texto).toBe("Pídelos hoy");
+    expect(guion.escenas.at(-1).capas.at(-1).texto).toBe("Pídelos hoy");
+    // Los clips de prueba duran poco: una escena que no cabe en su clip sigue con el FOTOGRAMA de su plano.
+    for (const x of guion.escenas.filter((y) => y.capas[0].tipo === "imagen")) expect(fin.pasos.map((p) => p.finales?.[0] ?? p.opciones?.[0]?.id)).toContain(x.capas[0].archivo);
     expect(guion.escenas[0].capas[0]).toMatchObject({ encuadre: "completo", archivo: fin.pasos[0].clip.archivoId });
     expect(guion.subtitulos.activo).toBe(true);
+  });
+
+  it("B9/C12 · con montaje, la toma FIJA no paga clip: se monta con su fotograma, y la frase de cada plano se dice", async () => {
+    const reel = { ...REEL, planos: REEL.planos.map((p, i) => ({ ...p, toma: i === 2 ? "fija" : "movimiento" })) };
+    const { encargo: e } = await (await lanzar({ reel, salida: "clips", video: { modelo: "prueba-video" }, montaje: {} })).json();
+    await bombearHastaElFinal();
+    // Sólo dos clips pedidos: el plano 3 (el producto, el cierre) no paga.
+    expect(db.sqlite.prepare("select count(*) n from estudio_trabajos where tipo = 'video'").get().n).toBe(2);
+    const { encargo: fin } = await encargo(e.id);
+    expect(fin.pasos[2].clip).toMatchObject({ fase: "omitido" });
+    expect(fin.reel.montaje).toMatchObject({ fase: "hecho" });
+    const g = JSON.parse(db.sqlite.prepare("select guion from videos_proyectos where id = ?").get(fin.reel.montaje.videoId).guion);
+    expect(g.escenas.map((x) => x.habla).join(" ")).toBe(REEL.planos.map((p) => p.dice).join(" "));
+    const ultima = g.escenas.at(-1);
+    expect(ultima.capas[0]).toMatchObject({ tipo: "imagen", encuadre: "completo", archivo: fin.pasos[2].finales?.[0] ?? fin.pasos[2].opciones[0].id });
+    // Sobre clips reales, los efectos de transición vienen apagados (A4).
+    expect(JSON.parse(db.sqlite.prepare("select sonido from videos_proyectos where id = ?").get(fin.reel.montaje.videoId).sonido)).toMatchObject({ efectos: false });
   });
 
   it("montaje automático: sin la voz confirmada se queda esperando con su costo (el 409 de siempre); con el sí, la pide", async () => {

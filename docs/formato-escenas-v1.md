@@ -79,7 +79,7 @@ tu canción». La pone la aplicación (`video_con_cancion`); no se escribe a man
 | `grano` | 0–1 (0,25) |
 | `ritmo` | `calmado`, `medio`, `rapido` |
 | `ilustracion` | `plana`, `papel`, `linea`, `poster` |
-| `personaje` | El aspecto del personaje en ESTE video: `{ piel, pelo, ropa, accesorio, nombre }` (opcional; sin él, el del kit del cliente) |
+| `personaje` | El aspecto del personaje en ESTE video: `{ piel, pelo, ropa, accesorio, nombre, imagenes }` (opcional; sin él, el del kit del cliente). `imagenes` es la MASCOTA propia de la marca, una imagen de la galería por pose (`{ "saluda": "<id>" }`): con ella la pieza dibuja la mascota y no la figura |
 
 ## Escena
 
@@ -116,7 +116,7 @@ Los 17 componentes de la librería v1 y lo propio de cada uno:
 | `telefono` | `pantalla` (chat/imagen/color/notificacion), `mensajes` [{ `de`: cliente/marca, `texto` }] (≤ 6), `archivo`, `notificacion`, `color` |
 | `burbuja` | `texto`*, `lado` (izq/der), `color` |
 | `imagen` | `archivo`* (id de la galería: la foto REAL del producto), `rol` (producto/foto/persona), `recorte` (contener/cubrir), `marco`. Opcionales (no se escriben si van como por defecto): `encuadre` (caja: en su zona; completo: a sangre, detrás de todo y fuera del reparto, como un video), `movimiento` (ninguno, acercar, alejar, paneo: un «Ken Burns» lento todo lo que se ve), `dura` (0–60 s: la escena dura al menos eso aunque no diga nada), `oscurecer` (0–0,85: el velo, a sangre), `tratamiento` (color/byn: blanco y negro con más contraste), `pide` (≤ 400: un FONDO POR CREAR, sin `archivo`; ver «Los fondos por crear»). Ver «La imagen a sangre» abajo |
-| `video` | Un **clip de la galería** (grabado por el cliente, de Kie, de Drive): `archivo`* (id de un VIDEO de la galería), `encuadre` (completo: a sangre, detrás de todo y fuera del reparto; caja: en su zona, como una imagen), `recorte` (cubrir/contener), `desde` (el segundo del clip donde empieza), `hasta` (0 = sigue hasta que acaba la capa; mayor que `desde` = ese tramo, y la escena dura al menos eso), `sonido` (su audio se oye, debajo de la voz si la hay), `volumen` (0–1), `oscurecer` (0–0,85: un velo negro encima para leer el texto; sólo a sangre), `marco`. Ver «El video» abajo |
+| `video` | Un **clip de la galería** (grabado por el cliente, de Kie, de Drive): `archivo`* (id de un VIDEO de la galería), `encuadre` (completo: a sangre, detrás de todo y fuera del reparto; caja: en su zona, como una imagen), `recorte` (cubrir/contener), `desde` (el segundo del clip donde empieza), `hasta` (0 = sigue hasta que acaba la capa; mayor que `desde` = ese tramo; en una escena SIN habla la escena dura al menos eso, con habla manda la voz), `sonido` (su audio se oye, debajo de la voz si la hay), `volumen` (0–1), `oscurecer` (0–0,85: un velo negro encima para leer el texto; sólo a sangre), `marco`. Ver «El video» abajo |
 | `personaje` | `variante` (adulto/nino/bebe), `pose` (de-pie/saluda/senala/piensa/celebra/preocupado), `expresion` (auto/neutral/feliz/triste/preocupado/dormido; «auto» la toma de la pose), `color` — figura de la casa dibujada con código; su ASPECTO (piel, pelo, ropa, accesorio) es el del kit del cliente (`personaje_video`) o el de `estilo.personaje` |
 | `icono` | `nombre` (check, cruz, corazon, estrella, rayo, reloj, bolsa, carrito, chat, telefono, ubicacion, regalo, escudo, hoja, gota, bebe, casa, flecha, alerta, sonrisa, dinero, camion), `color`, `fondo` (un círculo de ese color detrás; el icono toma el color que más contraste) |
 | `cifra` | La **cifra gigante**: `valor`*, `prefijo` («$»), `sufijo` («%», «años»; más pequeño, al lado), `etiqueta` (≤ 30, debajo), `contar` (sube desde 0 en 1,2 s), `decimales`, `abreviada` («412K», «3,2M»: se lee de un vistazo), `color`. Coma decimal y punto de miles desde 5 cifras; el ancho es el del valor final (no baila mientras cuenta) |
@@ -139,9 +139,11 @@ Todos se dibujan (ninguno sale ya como marcador). Una capa anclada a una palabra
 Una capa `video` pone un clip de la galería en la escena. Empieza en su segundo `desde` cuando entra la capa y sigue
 a velocidad normal; pasado su final (o su `hasta`) se queda en el último cuadro. A sangre (`encuadre: "completo"`) va
 encima del fondo y detrás de todo lo demás, no ocupa sitio en el reparto y, en el gancho, no se retrasa como las demás
-capas (es el fondo del primer cuadro). Con `hasta` el clip impone su tramo: la escena dura al menos `hasta − desde`
-(como mucho 60 s) y lo que falte se inserta como silencio en la locución, igual que una `pausa`; así una escena sin
-`habla` puede durar lo que dura su clip. Un guion que no dice nada en ninguna escena (un montaje de clips) no necesita
+capas (es el fondo del primer cuadro). En una escena SIN `habla`, con `hasta` el clip impone su tramo: la escena dura
+al menos `hasta − desde` (como mucho 60 s) y lo que falte se inserta como silencio, igual que una `pausa`; así una escena
+sin `habla` dura lo que dura su clip. Con `habla`, manda la VOZ: ni un clip ni lo que `dura` una imagen la alargan (el
+silencio metía una pausa en medio de la oración); si la frase dura más que el clip, el clip se queda quieto en su último
+cuadro y la revisión lo avisa (`clip_corto`): se parte la frase en dos escenas. Un guion que no dice nada en ninguna escena (un montaje de clips) no necesita
 locución para renderizarse.
 
 Con `sonido`, el audio del tramo se mezcla con la voz (y la música baja también cuando habla el clip). En la vista

@@ -223,7 +223,7 @@ export async function prepararRecursos(guion, { archivos = [], kit = {}, alCambi
     recursos: {
       imagen: (id) => mapa.get(id) ?? null, logo: logo.img, logoTono: logo.tono, grano: texturaDeGrano(),
       video: proveedorDeVideos(porArchivo, { alCambiar, conSonido }),
-      videoInfo: (id) => { const v = porArchivo.get(id); return v ? { ancho: v.videoWidth, alto: v.videoHeight } : null; },
+      videoInfo: (id) => { const v = porArchivo.get(id); return v ? { ancho: v.videoWidth, alto: v.videoHeight, duracion: Number.isFinite(v.duration) ? v.duration : 0 } : null; },
     },
     fuentes: { titular: titular ? `"${titular}", system-ui, sans-serif` : "", cuerpo: cuerpo ? `"${cuerpo}", system-ui, sans-serif` : "" },
     faltan: [...faltan, ...[...cargadas, ...clips].filter(([id, x]) => porId.has(id) && !x).map(([id]) => id)],

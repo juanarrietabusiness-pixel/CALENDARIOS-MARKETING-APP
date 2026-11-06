@@ -255,3 +255,44 @@ describe("el ejemplo se dibuja entero", () => {
     for (const t of usados) expect(COMPONENTES_LISTOS).toContain(t);
   });
 });
+
+describe("E22/E23/D18 · la voz, el léxico y la mascota de la marca, por MCP", () => {
+  it("E23 · lexico_de_marca guarda las reglas, el PUT del kit las conserva y se aplican SOLAS al guardar un video", async () => {
+    expect((await llamar("lexico_de_marca", { cliente: "Baby Caleb" })).texto).toMatch(/\(ninguna\)/);
+    const g = await llamar("lexico_de_marca", { cliente: "Baby Caleb", reglas: [{ di: "fibras de bambú", nunca: ["bambú"] }, { nunca: ["barato"] }] });
+    expect(g.error).toBe(false);
+    expect(g.texto).toMatch(/di «fibras de bambú», nunca «bambú»/);
+    // El PUT del kit entero (otra pestaña, sin el léxico) no se lo lleva.
+    const { guardarKit, kitDe } = await import("../../worker/lib/estudio/kit.js");
+    const cli = () => db.sqlite.prepare("select * from clients where id = 'bc'").get();
+    await guardarKit(env, crearAcceso(db, JEFE), cli(), { estilo: "Cálido" });
+    expect(kitDe(cli()).lexico).toEqual([{ di: "fibras de bambú", nunca: ["bambú"] }, { nunca: ["barato"] }]);
+    // Un video que dice «bambú» se guarda diciendo «fibras de bambú» (en la voz y en lo que se lee) y avisa de «barato».
+    const guion = copia(EJEMPLO_GUION);
+    guion.escenas[0].habla = `Pañales de bambú, nada barato. ${guion.escenas[0].habla}`;
+    const r = await llamar("crear_video", { cliente: "Baby Caleb", guion });
+    expect(r.error).toBe(false);
+    const v = JSON.parse(fila(idDe(r.texto)).guion);
+    expect(v.escenas[0].habla).toMatch(/^Pañales de fibras de bambú, nada barato\./);
+  });
+
+  it("E22 · voz_de_marca dice la voz y, sin llave de voz, no la cambia (lo dice)", async () => {
+    expect((await llamar("voz_de_marca", { cliente: "Baby Caleb" })).texto).toMatch(/no tiene voz fijada/);
+    const r = await llamar("voz_de_marca", { cliente: "Baby Caleb", voz: "abcdefgh12345678" });
+    expect(r.error).toBe(true);
+    expect(r.texto).toMatch(/ELEVENLABS_API_KEY|KIE_API_KEY/);
+  });
+
+  it("D18 · personaje_video guarda las imágenes de la mascota (sólo de la galería de ESE cliente)", async () => {
+    const s = db.sqlite;
+    s.prepare("insert into estudio_archivos (id, owner_id, client_id, clave, tipo, mime) values (?,?,?,?,?,?)").run("masc1", JEFE, "bc", "clientes/bc/estudio/m.png", "imagen", "image/png");
+    s.prepare("insert into estudio_archivos (id, owner_id, client_id, clave, tipo, mime) values (?,?,?,?,?,?)").run("ajena", OTRO, "ajeno", "clientes/ajeno/estudio/m.png", "imagen", "image/png");
+    const mal = await llamar("personaje_video", { cliente: "Baby Caleb", imagenes: { saluda: "ajena" } });
+    expect(mal.error).toBe(true);
+    const bien = await llamar("personaje_video", { cliente: "Baby Caleb", imagenes: { saluda: "masc1" } });
+    expect(bien.error).toBe(false);
+    expect(bien.texto).toMatch(/Mascota propia.*saluda → masc1/);
+    const { kitDe } = await import("../../worker/lib/estudio/kit.js");
+    expect(kitDe(s.prepare("select * from clients where id = 'bc'").get()).personajeVideo.imagenes).toEqual({ saluda: "masc1" });
+  });
+});

@@ -108,6 +108,8 @@ export const escribirGuionCorto = (clienteId, datos) => pedir(`${base(clienteId)
 
 /** Guarda el kit de marca (paleta, tipografía, estilo, presets, logo). Devuelve `{ kit }`. */
 export const guardarKit = (clienteId, kit) => pedir(`${base(clienteId)}/kit`, { method: "PUT", body: JSON.stringify({ kit }) });
+/** El léxico de la marca (src/lib/lexico.js), por su ruta: el PUT del kit entero lo conserva. */
+export const guardarLexico = (clienteId, lexico) => pedir(`${base(clienteId)}/kit/lexico`, { method: "PUT", body: JSON.stringify({ lexico }) });
 
 /** La IA PROPONE el kit desde el cerebro del cliente: `{ kit, dudas, conCerebro }`. No guarda. */
 export const prepararKit = (clienteId) => pedir(`${base(clienteId)}/kit/preparar`, post());

@@ -1,12 +1,13 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
-import { validarGuion, lineaDeTiempo } from "./videoEscenas.js";
+import { validarGuion, lineaDeTiempo, zonaMasCercana, archivosDelGuion } from "./videoEscenas.js";
+import { imagenDePose } from "./personajeVideo.js";
 import {
   dibujarFrame, paletaDelKit, paletaDelGuion, colorDe, contraste, centroDe, estadoDeCapa, encajarTexto, escenaEn,
   ruidoDeGrano, semilla, aleatorio, COMPONENTES_LISTOS, framesDe, areaSegura, bandaDeSubtitulos, cajasDeEscena,
   tiemposDeEscena, medirCapa, razonDeContraste, ZONA_SEGURA, PRIMERO_ANTES_DE, colorLegible, partirEquilibrado,
   cajaOpaca, textoPrincipal, capasDe, MIN_LOGO_CIERRE, DESPUES_DEL_GANCHO,
-  ANCHO_COLUMNA_APAISADO, CRECER_POR_FORMATO, CRECER_MAX, videosEnInstante, usosDeVideo, esVideoCompleto,
+  ANCHO_COLUMNA_APAISADO, CRECER_POR_FORMATO, CRECER_MAX, videosEnInstante, usosDeVideo, esVideoCompleto, repiteUnaCifra,
 } from "./motorVideo.js";
 
 // ============================================================
@@ -624,5 +625,40 @@ describe("los CLIPS de video (capas `video`)", () => {
 
   it("el componente está en la lista de los que se dibujan", () => {
     expect(COMPONENTES_LISTOS).toContain("video");
+  });
+});
+
+describe("las reglas del método de agencia en el video animado", () => {
+  it("D17 · con dos capas o más que se reparten, las coordenadas pasan a la zona más cercana (y se dice); el logo, el sello y una capa sola las conservan", () => {
+    const v = validarGuion({ escenas: [{ tipo: "producto", habla: QUINCE, capas: [
+      { tipo: "texto", id: "t", texto: "Un titular", pos: { x: 0.5, y: 0.1 } },
+      { tipo: "icono", id: "i", nombre: "check", pos: { x: 0.8, y: 0.9 } },
+      { tipo: "logo", id: "l", pos: { x: 0.1, y: 0.1 } },
+    ] }] });
+    const c = v.guion.escenas[0].capas;
+    expect(c.map((x) => x.pos)).toEqual(["arriba", "abajo-der", { x: 0.1, y: 0.1 }]);
+    expect(v.avisos.filter((a) => /se pasaron a/.test(a.mensaje))).toHaveLength(2);
+    const sola = validarGuion({ escenas: [{ tipo: "producto", habla: QUINCE, capas: [{ tipo: "texto", id: "t", texto: "Uno", pos: { x: 0.5, y: 0.1 } }, { tipo: "sello", id: "s", texto: "Ya", pos: { x: 0.2, y: 0.8 } }] }] });
+    expect(sola.guion.escenas[0].capas.map((x) => x.pos)).toEqual([{ x: 0.5, y: 0.1 }, { x: 0.2, y: 0.8 }]);
+    expect(zonaMasCercana({ x: 0.5, y: 0.5 })).toBe("centro");
+  });
+
+  it("D18 · con la mascota de la marca en el kit (una imagen por pose), la pieza «personaje» la dibuja en vez de la figura", () => {
+    const guion = validarGuion({ estilo: { personaje: { imagenes: { saluda: "m-saluda", "de-pie": "m-pie" } } }, escenas: [{ tipo: "gancho", habla: QUINCE, capas: [{ tipo: "personaje", id: "p", pose: "saluda" }] }] }).guion;
+    expect(guion.estilo.personaje.imagenes).toEqual({ "de-pie": "m-pie", saluda: "m-saluda" });
+    expect(archivosDelGuion(guion)).toEqual(expect.arrayContaining(["m-saluda", "m-pie"]));
+    const img = { width: 400, height: 500, nombre: "mascota" };
+    const pedidas = [];
+    const log = pintar(guion, 2, { recursos: { imagen: (id) => { pedidas.push(id); return id === "m-saluda" ? img : null; } } });
+    expect(pedidas).toContain("m-saluda");
+    expect(log.some(([m, a]) => m === "drawImage" && a === img)).toBe(true);
+    expect(imagenDePose({ imagenes: { "de-pie": "x" } }, "celebra")).toBe("x");
+  });
+
+  it("D19 · el texto en pantalla no se pinta como titular si repite el número de una cifra", () => {
+    const escena = { id: "e", pantalla: "Solo $45 hoy", capas: [{ tipo: "cifra", id: "c", valor: 45 }] };
+    expect(capasDe(escena).map((c) => c.id)).toEqual(["c"]);
+    expect(capasDe({ ...escena, pantalla: "La caja grande" }).map((c) => c.id)).toEqual(["e-pantalla", "c"]);
+    expect(repiteUnaCifra("Hace 15 años", [{ tipo: "cifra", valor: 5 }])).toBe(false);
   });
 });

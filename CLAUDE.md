@@ -5820,6 +5820,50 @@ son del servidor.
   · El video recuerda con qué estilo se hizo (`origen.estiloId`); un estilo sin efectos crea el video con `sonido.efectos: false`.
   · Claude: `estilos_video`, `guardar_estilo_video`, `aplicar_estilo_video` (una versión nueva en borrador) y `estilo_id` en
   `video_con_cancion` y `crear_video`. **Nada de esto se ha probado contra Anthropic real**: los tests usan un `fetch` de mentira.
+- **Las reglas del MÉTODO DE AGENCIA para video, hechas código** (la primera prueba completa de un video animado y un reel
+  por planos dejó 25 reglas; las que el código puede cumplir solo, aplicadas para todos los clientes; no cambian cómo se ve
+  un video que ya salía bien). Lo que no se ve en la pantalla:
+  · **La VOZ manda en lo que dura una escena con habla** (`lineaDeTiempo`): ni el `hasta` de un clip ni el `dura` de una
+    imagen la alargan, porque eso metía silencio a mitad de una oración (el reel de prueba bajó de 29,9 a 24,6 s con la
+    misma voz). El silencio sólo va donde hay `pausa`, o tras una escena demasiado corta que CIERRA una oración
+    (`cierraOracion`). Sin habla, lo de siempre. Si la frase dura más que su clip, la revisión avisa `clip_corto` (grave).
+  · **El MONTAJE de un reel no pierde ninguna frase** (`guionDeMontaje`): un plano sin clip (no salió, o su toma es «fija»)
+    va con su FOTOGRAMA revisado a sangre y un movimiento suave (`fuente.fotogramas`); sin fotograma, con su texto sobre el
+    fondo. La frase que no cabe en su clip (clip − `MARGEN_CLIP`, 0,5 s) se PARTE por palabras (`partirEscenasLargas`, la
+    segunda parte con el fotograma y, en el cierre, el logo y el llamado), primero con los tiempos estimados y, tras la
+    voz, con los de verdad (fase «ajustar» del montaje: guarda, vuelve a aprobar y la voz sigue valiendo porque lo que se
+    dice no cambia). Con un solo video, el video corre SEGUIDO (`ajustarMontaje` con `continuo`). `comprobarMontaje`
+    exige que el montaje diga TODO lo del reel y lleve el gancho: si no, error grave y no se sigue. Los efectos de
+    transición van apagados sobre clips reales (y la música de la marca se queda: `crearProyecto` funde el sonido pedido
+    sobre el de siempre).
+  · **El reel por planos es barato por defecto**: 4 planos hasta 20 s y 6 en 30 s (`planosPorDefecto`; `planos` pide más);
+    la IA marca la `toma` de cada plano («fija»: producto, beneficio, cierre; «movimiento»: personas o acción) y, con
+    montaje, la fija NO paga clip (`clip.fase` «omitido»); los clips van con Veo 3.1 Lite por Kie (`PREFERIDOS_CLIPS`,
+    `CLIPS_POR_DEFECTO`: con su llave toda duración va por clips y montaje). El producto «malo» del problema se pide
+    genérico, de otro color y sin nada de la marca. `crear_reel` se PARA tras el storyboard por defecto (`revisar` true).
+    El plan dice lo que se ahorra frente a la opción cara (`textoDelAhorro`) y, si va por Kie, compara con su SALDO
+    (`saldoKie`, `GET /api/v1/chat/credit`, no gasta): si no alcanza no se crea nada, y un 402 de Kie dice el saldo y de
+    qué cuenta es la llave (sus últimos 4). `estado_reel` dice qué clips no salieron y por qué (`lineaDeClips`).
+  · **Fiel a la marca**: el guion del video animado recibe SÓLO el producto del video (`catalogoConFotos(…, soloIds)`, el
+    de la publicación o el pedido) y un precio que no es suyo ni de la idea es un error que corrige la segunda vuelta
+    (`erroresDePrecio`, src/lib/fidelidad.js; `cantidadesDe` vive ahí y revisionMes.js la reexporta). El LÉXICO de la
+    marca (`kit.lexico`, src/lib/lexico.js: «fibras de bambú ← bambú») lo aplica el CÓDIGO a lo que se dice y se lee: al
+    guardar un video animado (`guionConLexico` en crearProyecto y guardarProyecto; en un video con canción sólo a lo que se
+    lee; si un texto pasaría de su tope, no se toca y se avisa) y al escribir el reel (`aplicarLexicoAlReel`). Sólo lo
+    cambia su ruta (`PUT …/kit/lexico`, `guardarLexico`, Marca → Kit y voz) o `lexico_de_marca`: el PUT del kit lo conserva.
+    `voz_de_marca` fija la voz de la marca por MCP y `voz` en crear_reel, continuar_reel y montar_reel la cambia para uno.
+  · **El video animado**: con dos capas o más que se reparten, unas x/y pasan a la zona más cercana (`zonaMasCercana`, con
+    aviso; el logo, el sello, el dibujo, la forma y lo que va a sangre las conservan). La MASCOTA de la marca
+    (`kit.personajeVideo.imagenes`, una imagen por pose; `personaje_video` con `imagenes`) se dibuja en vez de la figura de
+    la casa (`imagenDePose`; `archivosDelGuion` la carga). El texto en pantalla no se pinta como titular si repite el número
+    de una cifra (`repiteUnaCifra`). La revisión avisa además `producto_pequeno`, `logo_sobre_cara` (el logo sobre el
+    personaje o una foto de una persona), `textos_repetidos` y `escena_cargada` (producto, precio y logo juntos).
+  · **El render y la vista previa**: un render que el Container corta («signal 15») se repite UNA vez con los clips subidos
+    otra vez (`esCorteDelContainer`); subir un clip o una imagen al Container se reintenta una vez tras 1 s (no sale como
+    faltante algo que está en la galería); y el cuadro de un clip pegado a su final, si ffmpeg no lo encuentra, se pide
+    un poco antes (`cuadroDe`).
+  · **Lo que se dejó fuera**: el «banco de tomas» (reutilizar clips y fotogramas aprobados entre reels) y llenar el cerebro
+    desde el repositorio de la agencia sin pasos manuales.
 - **`wrangler d1 migrations apply` pinta la tabla ENTERA de migraciones tras cada una**: su salida crece con el cuadrado de
   cuántas hay, y con la 0076 (72 migraciones) pasó del 1 MB que `execFile` admite por defecto. `npm run test:vivo` moría con
   «stdout maxBuffer length exceeded» antes de arrancar el Worker, con el SQL perfecto. `tests/vivo/espacio.js` le da 64 MB.

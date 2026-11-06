@@ -12,12 +12,18 @@ import { difundir } from "../vivo.js";
 import { crearProyecto } from "../videosProyectos.js";
 import { kitDe } from "./kit.js";
 import { cambiarPublicacion } from "./ponerEnPost.js";
-import { guionDeMontaje, sePuedeMontar, textoDelGuionReel } from "../../../src/lib/montajeReel.js";
+import { guionDeMontaje, sePuedeMontar, textoDelGuionReel, comprobarMontaje } from "../../../src/lib/montajeReel.js";
 import { rellenarVacios } from "../../../src/lib/resultadoEnPost.js";
 
 const SISTEMA = { userId: "sistema", nombre: "Estudio", color: "", tab: null };
 
-/** Lo que se monta de un encargo de reel: el video con todo, o los clips de cada plano (en el orden de los planos). Pura. */
+/** El fotograma FINAL de un paso del storyboard (el que la persona corrigió manda). */
+const finalDe = (p) => (p?.fase === "hecho" ? (p.finales?.[0] ?? p.opciones?.[0]?.id ?? null) : null);
+
+/**
+ * Lo que se monta de un encargo de reel: el video con todo, o los clips de cada plano (en el orden de los planos), con
+ * el FOTOGRAMA revisado de cada plano: el plano cuyo clip no salió, o de toma fija, se monta con él. Pura.
+ */
 export function fuenteDelEncargo(datos = {}, pasos = []) {
   if (datos.salida === "uno") {
     const v = datos.video ?? {};
@@ -26,6 +32,7 @@ export function fuenteDelEncargo(datos = {}, pasos = []) {
   return {
     tipo: "clips",
     clips: pasos.map((p) => (p.clip?.fase === "hecho" && p.clip.archivoId ? { archivoId: p.clip.archivoId, duracion: Number(p.clip.segundos) || 0 } : null)),
+    fotogramas: pasos.map(finalDe),
   };
 }
 
@@ -49,11 +56,16 @@ export async function crearMontaje(env, acceso, cliente, { encargo, pasos, datos
     sonidoClip: fuente.tipo === "uno" && datos.video?.sinVoz === true,
     voz: datos.montaje?.conVoz !== false,
   });
+  // Nada de lo que dice el reel se salta al montar (el gancho, la marca, el producto): si faltara algo, no se sigue.
+  const graves = comprobarMontaje(reel, guion, { voz: datos.montaje?.conVoz !== false });
+  if (graves.length) throw Object.assign(new Error(`Error grave del montaje: ${graves.join(" ")}`), { estado: 500 });
   const r = await crearProyecto(acceso, cliente, {
     guion, titulo: encargo.titulo || guion.titulo, calendarId: datos.calendarId ?? null, postId: datos.postId ?? null, usuario,
     origen: { tipo: "reel", encargoId: encargo.id },
     // La estructura de guion que siguió la voz del reel (la dijo su guion): la recuerda también el montaje.
     estructuraId: reel.estructuraId ?? "",
+    // Sobre clips reales los efectos de transición (whoosh, pop) sobran: la música de la marca, sí.
+    ...(fuente.tipo === "clips" ? { sonido: { efectos: false } } : {}),
   });
   difundir(env, acceso.ownerId, { tipo: "videos", clienteId: cliente.id, id: r.video.id, por });
   // Los textos de la publicación (sólo si están vacíos): el caption, el guion por tramos y la portada.

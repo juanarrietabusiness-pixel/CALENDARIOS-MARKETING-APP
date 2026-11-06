@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { SIN_TEXTO_VIDEO } from "./videoLimpio.js";
-import { pedidoDeReel, leerReel, repartirTiempos, pedidoDeFotograma, fotogramasParaVideo, promptDeReel, promptDeTramo, tramo, ajustarDuracion, locucionQueCabe, DURACIONES_REEL } from "./reel";
+import { pedidoDeReel, leerReel, repartirTiempos, pedidoDeFotograma, fotogramasParaVideo, promptDeReel, promptDeTramo, tramo, ajustarDuracion, locucionQueCabe, DURACIONES_REEL, planosPorDefecto, planosPedidos, esTomaFija } from "./reel";
+import { PREFERIDOS_CLIPS } from "./reelPedidos";
 import { modelosParaReel, modeloRecomendadoParaReel, pedidoDeVideo, modeloParaTramo } from "./reelEstudio";
 import { modeloPorId, costoDePieza } from "./estudioCatalogo";
 
@@ -9,7 +10,7 @@ describe("el reel con IA: el guion por planos", () => {
     const p = pedidoDeReel({ marca: "Baby Caleb", idea: "Caja grande de wipes: 960 por $45", producto: "Wipes Nateen · $45", personajes: ["Mamá"], tipo: "Anuncio" });
     expect(p).toMatch(/reel vertical \(9:16\) de 10 segundos para Baby Caleb/);
     expect(p).toMatch(/LA IDEA CENTRAL: Caja grande de wipes: 960 por \$45/);
-    expect(p).toMatch(/de 4 a 8 planos que sumen 10 s/);
+    expect(p).toMatch(/Reglas: 4 planos que sumen 10 s/);
     expect(p).toMatch(/ningún plano lleva texto, letras ni subtítulos/);
     expect(p).toMatch(/el logo y el llamado no los dibuja el modelo/);
     expect(p).toMatch(/"planos":\[\{"desde":0,"hasta":2,"escena":"[^"]*","camara"/);
@@ -161,7 +162,34 @@ describe("un clip limpio por fotograma (para CapCut)", () => {
     expect(c.prompt).toContain("Sin voz ni música");
     expect(c.prompt).toContain(SIN_TEXTO_VIDEO);
     expect(c.ajustes).toMatchObject({ duration: "5", sonido: "no", aspectRatio: "9:16" });
-    expect(modeloParaClips({ kie: true }).id).toBe("kling-3-kie");
+    // B7 · el de por defecto es Veo 3.1 Lite por Kie (el más barato que deja el producto fiel); sin él, Kling 3.0.
+    expect(modeloParaClips({ kie: true }).id).toBe("veo-3-1-lite-kie");
+    expect(PREFERIDOS_CLIPS[1]).toBe("kling-3-kie");
+  });
+});
+
+describe("las reglas del método de agencia en el guion por planos", () => {
+  it("C13 · por defecto 4 planos hasta 20 s y 6 en 30 s; la persona puede pedir más, hasta el tope", () => {
+    expect([10, 15, 20, 30].map((s) => planosPorDefecto(s))).toEqual([4, 4, 4, 6]);
+    expect(pedidoDeReel({ segundos: 30, montaje: true })).toMatch(/Reglas: 6 planos que sumen 30 s/);
+    expect(pedidoDeReel({ segundos: 30, montaje: true, planos: 10 })).toMatch(/Reglas: 10 planos que sumen 30 s/);
+    expect(planosPedidos(30, 99)).toBeLessThanOrEqual(12);
+  });
+  it("B10 · el producto «malo» del problema es siempre genérico, de otro color y sin nada de la marca", () => {
+    const p = pedidoDeReel({ marca: "Marca X", idea: "Lo que irrita frente a lo que cuida" });
+    expect(p).toMatch(/producto «malo».*SIEMPRE genérico e inconfundible: de otro color, sin logo ni nada de la marca de Marca X/);
+    expect(p).toMatch(/Dilo también en «hilo»/);
+  });
+  it("B9/C12 · cada plano del montaje dice su toma: «fija» (producto, beneficio, cierre: con su fotograma) o «movimiento»", () => {
+    const p = pedidoDeReel({ segundos: 30, montaje: true });
+    expect(p).toMatch(/«toma» de cada plano/);
+    expect(p).toContain('"toma":"movimiento|fija"');
+    const r = leerReel(JSON.stringify({ planos: [{ desde: 0, escena: "Una mamá carga al bebé", toma: "movimiento" }, { desde: 5, escena: "El paquete sobre la mesa", toma: "fija" }, { desde: 8, escena: "Otro", toma: "rara" }] }), 10);
+    expect(r.planos.map((x) => x.toma)).toEqual(["movimiento", "fija", undefined]);
+    expect(r.planos.map(esTomaFija)).toEqual([false, true, false]);
+  });
+  it("E23 · el léxico de la marca va en el pedido", () => {
+    expect(pedidoDeReel({ lexico: "LÉXICO DE LA MARCA: di «fibras de bambú», nunca «bambú» a secas." })).toMatch(/LÉXICO DE LA MARCA/);
   });
 });
 

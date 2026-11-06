@@ -48,12 +48,12 @@ import {
 } from "../videosProyectos.js";
 import { sonidosDelCliente, sonidosDeLaAgencia } from "./sonidos.js";
 import { textoDePista } from "../../../src/lib/bibliotecaSonido.js";
-import { kitDe, guardarKit } from "./kit.js";
+import { kitDe, guardarKit, guardarLexico } from "./kit.js";
 import {
-  ACCESORIOS_PERSONAJE, EXPRESIONES_PERSONAJE, TOKENS_ROPA, ASPECTO_POR_DEFECTO, limpiarPersonaje, tieneAspecto,
+  ACCESORIOS_PERSONAJE, EXPRESIONES_PERSONAJE, TOKENS_ROPA, ASPECTO_POR_DEFECTO, limpiarPersonaje, tieneAspecto, POSES_PERSONAJE, imagenesDePoses,
 } from "../../../src/lib/personajeVideo.js";
 import { VOLUMEN_MUSICA } from "../../../src/lib/sonidoVideo.js";
-import { locucionAlDia } from "./locucion.js";
+import { locucionAlDia, fijarVozDeMarca } from "./locucion.js";
 import { lineaDeTiempo, NOMBRE_ESTADO_VIDEO, NOMBRE_TIPO_ESCENA, puedeGenerarVoz, sinEtiquetas, palabrasMudas, palabrasDe, textoDeLocucion, tieneHabla } from "../../../src/lib/videoEscenas.js";
 import { formatoParaLaIA } from "../../../src/lib/videoFormatoIA.js";
 import { textoDeSubtitulo } from "../../../src/lib/subtitulos.js";
@@ -235,6 +235,36 @@ export const DEFINICIONES_VIDEO = Object.freeze([
         ropa: { type: "string", description: "Un token de la marca o #RRGGBB" },
         accesorio: { type: "string", enum: [...ACCESORIOS_PERSONAJE] },
         nombre: { type: "string", description: "Cómo lo llama la marca (≤ 40)" },
+        imagenes: {
+          type: "object",
+          description: `La MASCOTA propia de la marca (si la tiene: no la figura genérica): una imagen de su galería por pose (${POSES_PERSONAJE.join(", ")}), { pose: id de ver_estudio }. Con ellas, la pieza «personaje» dibuja la mascota en esa pose (o la de pie). Créalas antes con crear_en_estudio (el logo de referencia, sin_logo, fondo liso) y revisa cada una: sin texto inventado. Una pose con "" la quita.`,
+        },
+      },
+    },
+  },
+  {
+    name: "voz_de_marca",
+    description: "La VOZ de la marca en sus videos (la de ElevenLabs con que se generan las locuciones y el montaje de los reels): sin «voz», dice cuál es; con «voz» (un id de listar_voces) y el modelo, la cambia en el kit del cliente para TODOS sus videos. Para un solo video, pasa «voz» a generar_locucion, crear_reel, continuar_reel o montar_reel. No gasta nada.",
+    input_schema: {
+      type: "object",
+      properties: {
+        ...clienteParam,
+        voz: { type: "string", description: "El id de la voz (de listar_voces)." },
+        modelo: { type: "string", enum: ["v4", "v3", "v2"], description: "El modelo de voz (si se omite, el que tenía)." },
+      },
+    },
+  },
+  {
+    name: "lexico_de_marca",
+    description: "El LÉXICO de la marca: cómo se dice algo («fibras de bambú») y qué no se dice nunca («bambú» a secas). La aplicación lo aplica SOLA a lo que se dice y a lo que se lee en todos sus videos (el guion del video animado al guardarse, el del reel al escribirse) y se lo dice a la IA que escribe. Sin «reglas», dice las que hay; con «reglas», las REEMPLAZA todas (lista vacía: las quita). Una regla sin «di» es una palabra prohibida sin reemplazo: no se cambia sola, se avisa. No gasta nada.",
+    input_schema: {
+      type: "object",
+      properties: {
+        ...clienteParam,
+        reglas: {
+          type: "array", description: "Hasta 20: { di: cómo se dice (opcional), nunca: [lo que no se dice] }.",
+          items: { type: "object", properties: { di: { type: "string" }, nunca: { type: "array", items: { type: "string" } } }, required: ["nunca"] },
+        },
       },
     },
   },
@@ -341,7 +371,7 @@ export const DEFINICIONES_VIDEO = Object.freeze([
 ]);
 
 /** Las que escriben (en el MCP van como escritura; las demás, de sólo lectura). */
-export const ESCRIBEN_VIDEO = Object.freeze(["guardar_estilo_video", "aplicar_estilo_video", "fondos_video", "video_con_cancion", "publicar_con_musica", "crear_video", "guardar_video", "editar_escena", "aprobar_video", "renderizar_video", "ligar_video", "sonido_video", "volver_a_version", "personaje_video"]);
+export const ESCRIBEN_VIDEO = Object.freeze(["voz_de_marca", "lexico_de_marca", "guardar_estilo_video", "aplicar_estilo_video", "fondos_video", "video_con_cancion", "publicar_con_musica", "crear_video", "guardar_video", "editar_escena", "aprobar_video", "renderizar_video", "ligar_video", "sonido_video", "volver_a_version", "personaje_video"]);
 
 /** Lo que falta para el siguiente paso, en una frase para el modelo. Pura. */
 /** ¿La locución es de la versión aprobada? (un video «aprobado» con voz de esa versión ya no la necesita otra vez). */
@@ -739,13 +769,53 @@ export function crearHerramientasVideo({ env, acceso, resolverCliente, usuario, 
     async personaje_video({ cliente, ...cambios }) {
       const c = await resolverCliente(cliente);
       const kit = kitDe(c);
-      const describir = (p, guardado) => `${guardado ? "Guardado en el kit de" : "El personaje de"} ${c.name}${p.nombre ? ` («${p.nombre}»)` : ""}: piel ${p.piel}, ${p.pelo ? `pelo ${p.pelo}` : "sin pelo"}, ropa ${p.ropa}, accesorio ${p.accesorio}.${guardado ? " Sale así en todos sus videos (salvo un guion que traiga estilo.personaje propio)." : ""}`;
-      const campos = ["piel", "pelo", "ropa", "accesorio", "nombre"].filter((k) => cambios[k] !== undefined);
+      const mascota = (p) => (p.imagenes ? ` Mascota propia (imagen por pose): ${Object.entries(p.imagenes).map(([pose, id]) => `${pose} → ${id}`).join(", ")}.` : "");
+      const describir = (p, guardado) => `${guardado ? "Guardado en el kit de" : "El personaje de"} ${c.name}${p.nombre ? ` («${p.nombre}»)` : ""}: piel ${p.piel}, ${p.pelo ? `pelo ${p.pelo}` : "sin pelo"}, ropa ${p.ropa}, accesorio ${p.accesorio}.${mascota(p)}${guardado ? " Sale así en todos sus videos (salvo un guion que traiga estilo.personaje propio)." : ""}`;
+      const campos = ["piel", "pelo", "ropa", "accesorio", "nombre", "imagenes"].filter((k) => cambios[k] !== undefined);
       if (!campos.length) return tieneAspecto(kit.personajeVideo) ? describir(limpiarPersonaje(kit.personajeVideo), false) : `${c.name} no tiene personaje propio: se dibuja con el aspecto de partida (${describir(ASPECTO_POR_DEFECTO, false).split(": ")[1]})`;
+      // Las imágenes de la mascota: sólo de la galería de ESTE cliente, y sólo imágenes (se suman a las que había).
+      if (cambios.imagenes !== undefined) {
+        const pedidas = cambios.imagenes && typeof cambios.imagenes === "object" ? cambios.imagenes : {};
+        const ids = Object.values(imagenesDePoses(pedidas));
+        const hay = ids.length ? await acceso.leerVarios("estudio_archivos", ["id", "mime", "borrado_at"], "id", ids, { client_id: c.id }) : [];
+        const buenas = new Set(hay.filter((f) => !f.borrado_at && String(f.mime).startsWith("image/")).map((f) => f.id));
+        const malas = ids.filter((id) => !buenas.has(id));
+        if (malas.length) throw new Fallo(`Esas imágenes no son de la galería de ${c.name}: ${malas.join(", ")} (usa los IDs de ver_estudio).`);
+        const antes = kit.personajeVideo?.imagenes ?? {};
+        const todas = { ...antes, ...Object.fromEntries(Object.entries(pedidas).map(([k, v]) => [k, String(v ?? "")])) };
+        cambios = { ...cambios, imagenes: imagenesDePoses(todas) };
+      }
       const nuevo = limpiarPersonaje({ ...(kit.personajeVideo ?? {}), ...Object.fromEntries(campos.map((k) => [k, cambios[k]])) });
       try {
         const guardado = await guardarKit(env, acceso, c, { ...kit, personajeVideo: nuevo });
         return describir(guardado.personajeVideo ?? nuevo, true);
+      } catch (e) {
+        throw new Fallo(e.message);
+      }
+    },
+
+    async voz_de_marca({ cliente, voz = "", modelo }) {
+      const c = await resolverCliente(cliente);
+      const loc = kitDe(c).locucion ?? {};
+      if (!voz && !modelo) {
+        return loc.voz ? `La voz de ${c.name} es ${loc.voz} (modelo ${loc.modelo || "v4"}): con ella salen sus locuciones y el montaje de sus reels. Para cambiarla, voz_de_marca con «voz» (de listar_voces).` : `${c.name} no tiene voz fijada: se usa la de partida. Escoge una con listar_voces y fíjala con voz_de_marca.`;
+      }
+      try {
+        const r = await fijarVozDeMarca(env, acceso, c, { vozId: voz || loc.voz || "", modelo });
+        return `Voz de ${c.name}: ${r.voz ? `${r.voz.nombre} (${r.voz.id})` : "la de partida"}, modelo ${r.modelo}. Desde ahora sale en todos sus videos (los ya generados no cambian: su locución es la de antes).`;
+      } catch (e) {
+        throw new Fallo(e.message);
+      }
+    },
+
+    async lexico_de_marca({ cliente, reglas }) {
+      const c = await resolverCliente(cliente);
+      const actual = kitDe(c).lexico ?? [];
+      const listar = (l) => (l.length ? l.map((r) => (r.di ? `· di «${r.di}», nunca ${r.nunca.map((n) => `«${n}»`).join(" ni ")}` : `· nunca ${r.nunca.map((n) => `«${n}»`).join(" ni ")} (se avisa; no se cambia sola)`)).join("\n") : "· (ninguna)");
+      if (reglas === undefined) return `Léxico de ${c.name}:\n${listar(actual)}`;
+      try {
+        const kit = await guardarLexico(env, acceso, c, Array.isArray(reglas) ? reglas : []);
+        return `Léxico de ${c.name} guardado:\n${listar(kit.lexico ?? [])}\nSe aplica solo a lo que se dice y se lee en sus videos (los guardados cambian la próxima vez que se guarden).`;
       } catch (e) {
         throw new Fallo(e.message);
       }

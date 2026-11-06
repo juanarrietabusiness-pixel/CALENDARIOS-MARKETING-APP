@@ -159,22 +159,33 @@ export async function subirClips(env, clips, pedir) {
   return subirPorFlujo(env, clips, pedir, "clip");
 }
 
+/** Lo que se espera antes del segundo intento de subir un clip o una imagen al Container. */
+export const ESPERA_REINTENTO_MS = 1000;
+
 /** Sube por flujo desde R2 cada `{ id, clave }` a `/<ruta>/<id>` si el Container no lo tiene ya. → los que fallaron. */
 async function subirPorFlujo(env, lista, pedir, ruta) {
   const fallaron = [];
-  for (const c of lista ?? []) {
+  // Uno. → "ok", "no_esta" (no existe en R2: no se reintenta) o "fallo".
+  const subirUno = async (c) => {
     try {
       const h = await pedir(`/${ruta}/${c.id}`, { method: "HEAD" });
-      if (h.ok) continue;
+      if (h.ok) return "ok";
       const obj = await env.MEDIA.get(c.clave);
-      if (!obj) { fallaron.push(c.id); continue; }
+      if (!obj) return "no_esta";
       const r = await pedir(`/${ruta}/${c.id}`, { method: "PUT", body: obj.body, duplex: "half", headers: { "Content-Length": String(obj.size) } });
-      if (!r.ok) fallaron.push(c.id);
       await r.body?.cancel?.().catch(() => {});
+      return r.ok ? "ok" : "fallo";
     } catch (e) {
       console.error(`subir ${ruta}:`, e?.message ?? e);
-      fallaron.push(c.id);
+      return "fallo";
     }
+  };
+  for (const c of lista ?? []) {
+    let r = await subirUno(c);
+    // Un fallo pasajero (el Container recién despertado) no deja un clip o una imagen «faltante» que SÍ está en la
+    // galería: se espera un momento y se intenta otra vez.
+    if (r === "fallo") { await new Promise((ok) => setTimeout(ok, ESPERA_REINTENTO_MS)); r = await subirUno(c); }
+    if (r !== "ok") fallaron.push(c.id);
   }
   return fallaron;
 }

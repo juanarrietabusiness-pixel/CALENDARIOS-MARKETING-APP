@@ -1,7 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { repartirLocucion, hablaDePlanos, ganchoDe, llamadoDe, guionDeMontaje, sePuedeMontar, textoDelGuionReel, LLAMADO_POR_DEFECTO } from "./montajeReel.js";
-import { validarGuion, tieneHabla, lineaDeTiempo } from "./videoEscenas.js";
-import { duracionesDeReel, duracionDeClip, haceDuracion, rutaDeDuracion, DURACIONES_OBJETIVO } from "./duracionesVideo.js";
+import { repartirLocucion, hablaDePlanos, ganchoDe, llamadoDe, guionDeMontaje, sePuedeMontar, textoDelGuionReel, LLAMADO_POR_DEFECTO, comprobarMontaje, partirEscenasLargas, fotosDeEscenas, MARGEN_CLIP } from "./montajeReel.js";
+import { validarGuion, tieneHabla, lineaDeTiempo, palabrasDe, textoDeLocucion } from "./videoEscenas.js";
+
+const palabrasDeLocucion = (g) => palabrasDe(textoDeLocucion(g));
+import { duracionesDeReel, duracionDeClip, haceDuracion, rutaDeDuracion, DURACIONES_OBJETIVO, CLIPS_POR_DEFECTO } from "./duracionesVideo.js";
 import { modeloPorId } from "./estudioCatalogo.js";
 import { rellenarVacios, conVideoEnPost } from "./resultadoEnPost.js";
 import { pedidoDeVideo, pedidoDeFotogramaReel } from "./reelPedidos.js";
@@ -99,17 +101,66 @@ describe("el guion del montaje", () => {
     expect(tieneHabla(g)).toBe(true);
     expect(lineaDeTiempo(g).total).toBeGreaterThanOrEqual(5);
   });
-  it("con un solo video: cada escena con SU tramo del mismo archivo", () => {
+  it("con un solo video: corre SEGUIDO bajo todas las escenas (cada una lo arranca donde va la voz), sin saltos ni repetidos", () => {
     const g = guionDeMontaje({ reel, fuente: { tipo: "uno", archivoId: "v1", duracion: 10 }, sonidoClip: true });
     expect(validarGuion(g).ok).toBe(true);
-    expect(g.escenas.map((e) => [e.capas[0].desde, e.capas[0].hasta])).toEqual([[0, 3], [3, 6], [6, 10]]);
+    const l = lineaDeTiempo(g);
+    expect(g.escenas.map((e) => e.capas[0].desde)).toEqual(l.escenas.map((e) => e.desde));
+    expect(g.escenas.every((e) => e.capas[0].hasta === 10)).toBe(true);
     expect(g.escenas[0].capas[0]).toMatchObject({ archivo: "v1", sonido: true });
   });
-  it("sin logo en el kit, el cierre sólo lleva el llamado; un plano sin clip se salta", () => {
-    const g = guionDeMontaje({ reel, conLogo: false, fuente: { tipo: "clips", clips: [{ archivoId: "a1" }, null, { archivoId: "a3" }] } });
-    expect(g.escenas).toHaveLength(2);
-    expect(g.escenas[1].capas.map((c) => c.tipo)).toEqual(["video", "llamado"]);
+  it("sin logo en el kit, el cierre sólo lleva el llamado", () => {
+    const g = guionDeMontaje({ reel, conLogo: false, fuente: { tipo: "clips", clips: [{ archivoId: "a1" }, { archivoId: "a2" }, { archivoId: "a3" }] } });
+    expect(g.escenas.at(-1).capas.map((c) => c.tipo)).toEqual(["video", "llamado"]);
     expect(validarGuion(g).ok).toBe(true);
+  });
+  it("B8 · un clip que no salió: su plano va con su FOTOGRAMA a sangre y su frase NO se pierde", () => {
+    const g = guionDeMontaje({ reel, fuente: { tipo: "clips", clips: [{ archivoId: "a1", duracion: 8 }, null, { archivoId: "a3", duracion: 8 }], fotogramas: ["f1", "f2", "f3"] } });
+    expect(validarGuion(g).ok).toBe(true);
+    expect(g.escenas.map((e) => e.capas[0].tipo)).toEqual(["video", "imagen", "video"]);
+    expect(g.escenas[1].capas[0]).toMatchObject({ archivo: "f2", encuadre: "completo", movimiento: expect.stringMatching(/acercar|paneo|alejar/) });
+    expect(g.escenas.map((e) => e.habla).join(" ")).toBe(LOCUCION);
+    expect(comprobarMontaje(reel, g)).toEqual([]);
+    // Sin fotograma ni clip, la frase sigue: va sobre el fondo (antes, el plano y su frase se saltaban).
+    const sin = guionDeMontaje({ reel, fuente: { tipo: "clips", clips: [{ archivoId: "a1", duracion: 8 }, null, { archivoId: "a3", duracion: 8 }] } });
+    expect(sin.escenas.map((e) => e.habla).join(" ")).toBe(LOCUCION);
+    expect(validarGuion(sin).ok).toBe(true);
+  });
+  it("B9/C12 · un plano de toma «fija» (producto, beneficio, cierre) se monta con su fotograma aunque tenga clip", () => {
+    const fijo = { ...reel, planos: PLANOS.map((p, i) => (i === 2 ? { ...p, toma: "fija" } : { ...p, toma: "movimiento" })) };
+    const g = guionDeMontaje({ reel: fijo, fuente: { tipo: "clips", clips: [{ archivoId: "a1", duracion: 8 }, { archivoId: "a2", duracion: 8 }, null], fotogramas: ["f1", "f2", "f3"] } });
+    expect(g.escenas.at(-1).capas.map((c) => c.tipo)).toEqual(["imagen", "logo", "llamado"]);
+    expect(g.escenas.at(-1).capas[0].archivo).toBe("f3");
+  });
+  it("A2 · una frase más larga que su clip se parte por palabras: el clip hasta donde llega y el resto con el fotograma; nada se congela", () => {
+    const larga = { planos: [{ n: 1, desde: 0, hasta: 5, escena: "La mamá abre la caja" }, { n: 2, desde: 5, hasta: 10, escena: "El bebé sonríe" }],
+      locucion: "Tu bebé merece lo mejor desde el primer día de su vida, por eso cuidamos cada detalle de su piel. Escríbenos hoy y pídelos ya.", gancho: "Lo mejor", llamado: "Pídelos" };
+    const g = guionDeMontaje({ reel: larga, fuente: { tipo: "clips", clips: [{ archivoId: "a1", duracion: 4 }, { archivoId: "a2", duracion: 4 }], fotogramas: ["f1", "f2"] } });
+    expect(validarGuion(g).errores).toEqual([]);
+    // Lo que se dice no cambió (la locución ya pagada sigue valiendo).
+    expect(g.escenas.map((e) => e.habla).join(" ")).toBe(larga.locucion);
+    expect(comprobarMontaje(larga, g)).toEqual([]);
+    const l = lineaDeTiempo(g);
+    expect(l.silencios.every((x) => x.dur <= 1)).toBe(true);
+    g.escenas.forEach((e, k) => {
+      const clip = e.capas.find((c) => c.tipo === "video");
+      if (clip) expect(l.escenas[k].hasta - l.escenas[k].desde).toBeLessThanOrEqual(clip.hasta - clip.desde - MARGEN_CLIP + 0.01);
+    });
+    expect(g.escenas.some((e) => e.id.endsWith("b") && e.capas[0].tipo === "imagen")).toBe(true);
+    // El cierre se lleva el logo y el llamado a su segunda parte.
+    expect(g.escenas.at(-1).capas.map((c) => c.tipo)).toEqual(["imagen", "logo", "llamado"]);
+    // Con los tiempos de verdad de la voz (más lenta), se vuelve a partir sin tocar lo que se dice.
+    const lenta = lineaDeTiempo(g, palabrasDeLocucion(g).map((_, i) => ({ desde: i * 0.6, hasta: i * 0.6 + 0.5 })));
+    const r = partirEscenasLargas(g, lenta, fotosDeEscenas(larga, { fotogramas: ["f1", "f2"] }));
+    expect(r.guion.escenas.map((e) => e.habla).join(" ")).toBe(larga.locucion);
+  });
+  it("B11 · si al montar faltara lo que se dice o el gancho, es un error grave", () => {
+    const g = guionDeMontaje({ reel, fuente: { tipo: "clips", clips: [{ archivoId: "a1", duracion: 8 }, { archivoId: "a2", duracion: 8 }, { archivoId: "a3", duracion: 8 }] } });
+    expect(comprobarMontaje(reel, g)).toEqual([]);
+    const sinUna = { ...g, escenas: g.escenas.filter((_, i) => i !== 1) };
+    expect(comprobarMontaje(reel, sinUna)[0]).toMatch(/se perdió parte de lo que se dice/);
+    const sinGancho = { ...g, escenas: [{ ...g.escenas[0], capas: g.escenas[0].capas.filter((c) => c.tipo !== "texto") }, ...g.escenas.slice(1)] };
+    expect(comprobarMontaje(reel, sinGancho)[0]).toMatch(/gancho/);
   });
   it("un montaje SIN voz: sin habla ni subtítulos (se renderiza sin locución)", () => {
     const g = guionDeMontaje({ reel, voz: false, fuente: { tipo: "clips", clips: [{ archivoId: "a1", duracion: 5 }, { archivoId: "a2", duracion: 5 }] } });
@@ -130,15 +181,20 @@ describe("el guion del montaje", () => {
 });
 
 describe("las duraciones por ruta, con las llaves que hay", () => {
-  it("con Kie: 10 s en UN video (Omni), 30 s también (Seedance 2.5), 45 y 60 s por clips y montaje", () => {
+  it("B7 · con Kie, toda duración va por defecto por CLIPS con Veo 3.1 Lite (barato y fiel al producto) y el montaje", () => {
     const lista = duracionesDeReel({ kie: true });
+    expect(lista.map((d) => d.segundos)).toEqual(DURACIONES_OBJETIVO);
+    for (const d of lista) expect(d).toMatchObject({ ruta: "clips", modelos: expect.arrayContaining(["veo-3-1-lite-kie"]) });
+    expect(lista.every((d) => d.modelos[0] === CLIPS_POR_DEFECTO)).toBe(true);
+    // Los demás de clips siguen detrás, para escogerlos.
+    expect(lista[0].modelos).toContain("kling-3-kie");
+  });
+  it("sin Veo 3.1 Lite, lo que un modelo hace en un video sale en UNO y lo demás por clips", () => {
+    const lista = duracionesDeReel({ gemini: true });
     const de = (s) => lista.find((d) => d.segundos === s);
     expect(de(10)).toMatchObject({ ruta: "uno" });
-    expect(de(10).modelos[0]).toBe("gemini-omni-kie");
-    expect(de(30)).toMatchObject({ ruta: "uno" });
-    expect(de(30).modelos).toContain("seedance-2-5-kie");
-    expect(de(45)).toMatchObject({ ruta: "clips" });
-    expect(de(60).modelos[0]).toBe("kling-3-kie");
+    expect(de(10).modelos[0]).toBe("gemini-omni-flash");
+    expect(de(30)).toMatchObject({ ruta: "clips" });
   });
   it("nunca un guion de 30 s con un modelo que hace 10: cada modelo de «uno» hace esa duración exacta", () => {
     for (const d of duracionesDeReel({ kie: true, gemini: true })) {

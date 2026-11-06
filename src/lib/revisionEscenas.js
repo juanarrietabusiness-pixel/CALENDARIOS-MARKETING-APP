@@ -210,11 +210,12 @@ export function revisarEscenas(ctx, { guion, linea, formato, recursos = {}, fuen
       }
     }
 
-    // 4. Dos capas encimadas que se ven a la vez.
+    // 4. Dos capas encimadas que se ven a la vez (el logo sobre una persona tiene su propio aviso, más abajo).
     for (let a = 0; a < delante.length; a++) {
       for (let b = a + 1; b < delante.length; b++) {
         const p = delante[a]; const q = delante[b];
         if (!seVenALaVez(p.cuando, q.cuando)) continue;
+        if (logoSobrePersona(p, q, porId)) continue;
         const menor = Math.min(p.w * p.h, q.w * q.h) || 1;
         if (cruce(p, q) / menor > CRUCE_MINIMO) {
           de(q, "encimadas", `«${q.id}» queda encima de «${p.id}» mientras se ven las dos. Que una salga antes de que entre la otra, o ponlas en zonas distintas.`);
@@ -293,8 +294,78 @@ export function revisarEscenas(ctx, { guion, linea, formato, recursos = {}, fuen
         de(enEscena, "desequilibrio", `La escena carga todo a la ${dx < 0 ? "izquierda" : "derecha"}. Equilíbrala con algo al otro lado o céntrala.`, false);
       }
     }
+
+    // 7. Un CLIP que se quedaría quieto: con habla, la escena dura lo que su voz, y si dura más que el clip (menos medio
+    //    segundo), el clip se congela en su último cuadro.
+    const durEscena = (linea.escenas[i]?.hasta ?? 0) - (linea.escenas[i]?.desde ?? 0);
+    if (String(escena.habla ?? "").trim()) {
+      for (const v of capas.filter((c) => c.tipo === "video")) {
+        const info = recursos?.videoInfo?.(v.archivo);
+        const tramo = Number(v.hasta) > Number(v.desde ?? 0) ? Number(v.hasta) - Number(v.desde ?? 0) : Math.max(0, (Number(info?.duracion) || 0) - (Number(v.desde) || 0));
+        if (tramo > 0 && durEscena > tramo - MARGEN_CLIP + 0.01) {
+          de({ id: v.id, cuando: { desde: linea.escenas[i]?.desde ?? 0 } }, "clip_corto", `La voz de esta escena dura ${durEscena.toFixed(1)} s y el clip «${v.id}» sólo ${tramo.toFixed(1)} s: se quedaría quieto en su último cuadro. Parte la frase en dos escenas (la del clip, como mucho ${Math.max(0, tramo - MARGEN_CLIP).toFixed(1)} s) o pon la otra parte sobre una imagen con movimiento.`);
+        }
+      }
+    }
+
+    // 8. El producto se ve pequeño (una imagen de producto en su caja, no a sangre).
+    for (const caja of delante) {
+      const capa = porId.get(caja.id);
+      if (capa?.tipo !== "imagen" || capa.encuadre === "completo" || (capa.rol ?? "producto") !== "producto") continue;
+      const parte = (caja.w * caja.h) / (ancho * alto);
+      if (parte < PRODUCTO_MINIMO) {
+        de(caja, "producto_pequeno", `El producto «${caja.id}» ocupa el ${Math.round(parte * 100)} % del cuadro: se ve pequeño. Dale más tamaño (tam) o quítale capas a la escena (el logo y el llamado, a la de cierre).`, false);
+      }
+    }
+
+    // 9. El logo encima de una persona (la figura, la mascota o una foto de una persona).
+    for (const p of delante) {
+      for (const q of delante) {
+        if (p === q || !logoSobrePersona(p, q, porId) || porId.get(p.id)?.tipo !== "logo") continue;
+        if (!seVenALaVez(p.cuando, q.cuando) || cruce(p, q) <= 0) continue;
+        de(p, "logo_sobre_cara", `El logo «${p.id}» queda encima de «${q.id}» (una persona): le tapa la cara o el cuerpo. Ponlo en otra zona o en la escena de cierre.`, false);
+      }
+    }
+
+    // 10. Dos textos que dicen lo mismo en la misma escena.
+    const conTexto = capas.filter((c) => ["texto", "sello", "llamado"].includes(c.tipo) && String(c.texto ?? "").trim());
+    for (let a = 0; a < conTexto.length; a++) {
+      for (let b = a + 1; b < conTexto.length; b++) {
+        if (dicenLoMismo(conTexto[a].texto, conTexto[b].texto)) {
+          de({ id: conTexto[b].id, cuando: { desde: linea.escenas[i]?.desde ?? 0 } }, "textos_repetidos", `«${conTexto[a].id}» y «${conTexto[b].id}» dicen lo mismo en la misma escena. Deja uno, o que el otro diga otra cosa.`, false);
+        }
+      }
+    }
+
+    // 11. El producto grande, el precio y el logo juntos: la escena se satura (el logo y el llamado van en la de cierre).
+    const tipos = new Set(capas.map((c) => (c.tipo === "imagen" && c.encuadre !== "completo" && (c.rol ?? "producto") === "producto" ? "producto" : c.tipo)));
+    if (tipos.has("producto") && tipos.has("cifra") && tipos.has("logo")) {
+      de({ id: capas.find((c) => c.tipo === "logo").id, cuando: { desde: linea.escenas[i]?.desde ?? 0 } }, "escena_cargada", "En esta escena van juntos el producto, el precio y el logo: el motor les reserva sitio a todos y el producto se encoge. Deja el producto con su precio aquí y el logo y el llamado en la escena de cierre.", false);
+    }
   });
   return problemas;
+}
+
+/** Lo que se espera que ocupe una imagen de PRODUCTO, como poco (de todo el cuadro). */
+const PRODUCTO_MINIMO = 0.08;
+/** Un clip se ve hasta medio segundo antes de su final (si no, se congela). */
+const MARGEN_CLIP = 0.5;
+
+/** ¿Una de las dos cajas es el logo y la otra una persona (el personaje, la mascota o una foto de una persona)? */
+function logoSobrePersona(p, q, porId) {
+  const a = porId.get(p.id); const b = porId.get(q.id);
+  const esPersona = (c) => c?.tipo === "personaje" || (c?.tipo === "imagen" && c.rol === "persona");
+  return (a?.tipo === "logo" && esPersona(b)) || (b?.tipo === "logo" && esPersona(a));
+}
+
+/** ¿Dos textos dicen lo mismo? (iguales sin mayúsculas ni signos, o uno contiene al otro con dos palabras o más). */
+function dicenLoMismo(x, y) {
+  const n = (t) => String(t ?? "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+  const a = n(x); const b = n(y);
+  if (!a || !b) return false;
+  if (a === b) return true;
+  const corto = a.length < b.length ? a : b; const largo = a.length < b.length ? b : a;
+  return corto.split(" ").length >= 2 && ` ${largo} `.includes(` ${corto} `);
 }
 
 /** Los problemas dichos en texto, para el modelo o para la pantalla: los graves primero. Pura. */

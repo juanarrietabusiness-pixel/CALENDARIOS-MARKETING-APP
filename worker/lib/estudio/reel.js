@@ -14,6 +14,7 @@ import { kitDe } from "./kit.js";
 import { estructuraATexto } from "../../../src/lib/estudioMercado.js";
 import { nombreDePreset, lineaDeEstilo, estiloDeLaPieza, bloqueDeMarca } from "../../../src/lib/kitMarca.js";
 import { pedidoDeReel, leerReel } from "../../../src/lib/reel.js";
+import { lineaDeLexico, aplicarLexicoAlReel } from "../../../src/lib/lexico.js";
 import { DURACIONES_OBJETIVO } from "../../../src/lib/duracionesVideo.js";
 import { contextoDeGuion } from "./guionVideo.js";
 import { estructuraDeVoz, usadaEn, ErrorEstructura } from "../estructurasGuion.js";
@@ -77,13 +78,16 @@ export async function guionDeReel(env, acceso, cliente, datos = {}) {
       // El criterio comercial de la agencia va en TODO guion de video (lib/directorVideo.js).
       criterio: ctx.criterio, guionPost: ctx.guionPost, montaje: datos.montaje !== false,
       estructuraGuion: eleccion.texto, campoEstructura: !eleccion.elegida && Boolean(eleccion.texto),
+      // Cuántos planos (por defecto, pocos: menos clips que pagar) y el léxico de la marca.
+      planos: Number(datos.planos) || 0, lexico: lineaDeLexico(kit.lexico),
     }),
     salida: segundos > 10 ? 2400 + segundos * 140 : 2600,
     funcion: "guion de video",
   });
   const leido = leerReel(r.texto, segundos);
   if (!leido) throw Object.assign(new Error("La IA no devolvió un guion que se pueda leer. Inténtalo otra vez."), { estado: 502 });
-  const { estructura: nombre = "", ...guion } = leido;
+  // El léxico de la marca lo aplica el código (la IA lo olvida): a lo que dice la voz, a lo que se lee y al caption.
+  const { estructura: nombre = "", ...guion } = aplicarLexicoAlReel(leido, kit.lexico).reel;
   const usada = usadaEn(eleccion, nombre);
   return {
     ...guion, segundos, modelo: r.modelo, aviso: r.aviso ?? null,

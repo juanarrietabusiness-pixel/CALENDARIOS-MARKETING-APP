@@ -5,7 +5,7 @@ import { COOKIE } from "../../worker/lib/sesion.js";
 import { sha256 } from "../../worker/lib/ids.js";
 import { crearAcceso } from "../../worker/lib/acceso.js";
 import { crearHerramientasMCP } from "../../worker/lib/mcp.js";
-import { ejecutarRender } from "../../worker/lib/estudio/render.js";
+import { ejecutarRender, esCorteDelContainer } from "../../worker/lib/estudio/render.js";
 import { RenderVideo } from "../../worker/contenedor.js";
 import { EJEMPLO_GUION } from "../../src/lib/videoFormatoIA.js";
 import { PLAZO_RENDER_MS } from "../../src/lib/renderVideo.js";
@@ -175,6 +175,24 @@ describe("hacer el render (la alarma del objeto)", () => {
     } finally {
       delete globalThis.FixedLengthStream;
     }
+  });
+
+  it("A5 · si el Container se reinicia a mitad (ffmpeg «signal 15»), el render se repite UNA vez en vez de fallar", async () => {
+    const { id, encargo } = await encargado();
+    const recibidos = [];
+    const bien = container(recibidos);
+    let llamadas = 0;
+    const cortado = async (ruta, cuerpo) => (++llamadas === 1 ? Response.json({ error: "ffmpeg terminó con signal 15" }, { status: 500 }) : bien(ruta, cuerpo));
+    const r = await ejecutarRender(env, encargo, cortado);
+    expect(llamadas).toBe(2);
+    expect(r.estado).toBe("listo");
+    expect(JSON.parse(fila(id).render).estado).toBe("listo");
+    // Un error del video (no del Container) no se repite.
+    const otro = await encargado();
+    let n = 0;
+    expect(await ejecutarRender(env, otro.encargo, async () => { n++; return Response.json({ error: "El guion no tiene escenas." }, { status: 400 }); })).toBeNull();
+    expect(n).toBe(1);
+    expect(esCorteDelContainer(new Error("ffmpeg: signal 15"))).toBe(true);
   });
 
   it("manda la voz y lo del cliente; el mp4 va a R2, a la galería y a su publicación (primero)", async () => {
@@ -508,6 +526,20 @@ describe("un MONTAJE de clips (capas `video`)", () => {
     expect(listo.estado).toBe("listo");
     expect(recibidos[0].cuerpo.videos).toEqual([]);
     expect(listo.aviso).toMatch(/clip de video.*cuadro de espera/);
+  });
+
+  it("F24 · un fallo pasajero al subir el clip (el Container recién despertado) se reintenta: el clip no sale como faltante", async () => {
+    const id = await montaje();
+    await renderizar(id);
+    const recibidos = [];
+    let puts = 0;
+    const clips = new Map();
+    const deMentira = conClips([], clips);
+    const tarda = async (ruta, init) => (init.method === "PUT" && ++puts === 1 ? new Response(null, { status: 503 }) : deMentira(ruta, init));
+    const listo = await ejecutarRender(env, encargos.at(-1).cuerpo, container(recibidos), tarda);
+    expect(puts).toBe(2);
+    expect(recibidos[0].cuerpo.videos).toEqual(["clip1"]);
+    expect(listo.aviso).toBeNull();
   });
 
   it("un id que no es un video de ESE cliente no se sube (sale en faltan)", async () => {
