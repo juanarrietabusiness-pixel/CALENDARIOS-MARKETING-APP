@@ -23,6 +23,7 @@
 // ============================================================
 
 import { faltaParaEnviar } from "./completitud";
+import { cantidadesDe } from "./fidelidad.js";
 import { vaAPauta, revisarPauta, resumenPauta, aplicarArregloPauta } from "./pauta.js";
 
 export { faltaParaEnviar, revisarPauta, resumenPauta, aplicarArregloPauta };
@@ -42,16 +43,8 @@ const CTA = /(escr[ií]b|whats|wa\.me|link|enlace|agend|reserv|compr|ped[ií]|pi
 const PROMO = /(descuento|oferta|promo|rebaja|\d+\s?%|2x1|3x2|gratis|liquidaci[oó]n|black friday|cyber)/i;
 const MAX_HASHTAGS = 30;
 
-/** Las cantidades de dinero de un texto, normalizadas («$45», «B/. 45.00», «45 dólares» → «45»). */
-export function cantidadesDe(texto) {
-  const t = String(texto ?? "");
-  const salida = new Set();
-  const norma = (n) => String(Number(String(n).replace(/,(?=\d{3}\b)/g, "").replace(",", ".")));
-  for (const m of t.matchAll(/(?:\$|B\/\.?|USD)\s?(\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{1,2})?|\d+(?:[.,]\d{1,2})?)/gi)) salida.add(norma(m[1]));
-  for (const m of t.matchAll(/(\d+(?:[.,]\d{1,2})?)\s?(?:d[oó]lares|balboas|usd)\b/gi)) salida.add(norma(m[1]));
-  for (const m of t.matchAll(/(\d{1,3})\s?%/g)) salida.add(`${Number(m[1])}%`);
-  return [...salida].filter((x) => x !== "NaN");
-}
+// Las cantidades de dinero de un texto viven en fidelidad.js (las lee también el Worker): aquí se reexportan.
+export { cantidadesDe };
 
 /** Las cantidades que el catálogo sí dice (precios y ofertas). Pura. */
 export function cantidadesDelCatalogo(catalogo = []) {

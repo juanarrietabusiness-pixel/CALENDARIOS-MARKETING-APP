@@ -23,6 +23,7 @@ import { validarGuion, lineaDeTiempo, estadoTrasEditar, NOMBRE_ESTADO_VIDEO } fr
 import { textoParaVoz } from "../../src/lib/voces.js";
 import { esCancion, conPalabrasDeCancion, estadoDeCancion } from "../../src/lib/videoCancion.js";
 import { limpiarSonido, SITIOS_EFECTO } from "../../src/lib/sonidoVideo.js";
+import { aplicarLexicoAlGuion } from "../../src/lib/lexico.js";
 import { sonidoParaVideo, musicaDeLaMarca } from "./estudio/sonidos.js";
 
 export const ID_VIDEO = /^[\w-]{1,80}$/;
@@ -72,6 +73,25 @@ export function guionValido(entrada) {
   return { guion: v.guion, avisos: v.avisos };
 }
 
+/**
+ * El guion válido con el LÉXICO de la marca aplicado (src/lib/lexico.js: «fibras de bambú», nunca «bambú» a secas) a lo
+ * que se dice y se lee. Lo hace el código, no la IA: vale para lo que escriba Claude, la pantalla o el montaje. Si al
+ * cambiar una palabra un texto pasara de su tope, ese guion se queda como venía y se dice. → { guion, avisos }.
+ */
+export function guionConLexico(entrada, cliente) {
+  const r = guionValido(entrada);
+  const kit = leerJSON(cliente?.kit_marca, {});
+  const lexico = kit && typeof kit === "object" ? kit.lexico : null;
+  if (!Array.isArray(lexico) || !lexico.length) return r;
+  const l = aplicarLexicoAlGuion(r.guion, lexico);
+  const avisos = [...r.avisos, ...l.prohibidas.map((p) => ({ donde: "léxico", mensaje: `«${p}» es una palabra que la marca no usa: cámbiala.` }))];
+  if (!l.cambios.length) return { guion: r.guion, avisos };
+  const v = validarGuion(l.guion);
+  if (!v.ok) return { guion: r.guion, avisos: [...avisos, { donde: "léxico", mensaje: "El léxico de la marca no se pudo aplicar: algún texto pasaría de su tope. Acórtalo." }] };
+  const de = [...new Set(l.cambios.map((c) => `«${c.de}» → «${c.a}»`))].slice(0, 6).join(", ");
+  return { guion: v.guion, avisos: [...avisos, { donde: "léxico", mensaje: `Léxico de la marca aplicado: ${de}.` }] };
+}
+
 /** Los proyectos de un cliente, del más reciente al más viejo (sin el guion: puede pesar). */
 export async function listarProyectos(acceso, clienteId) {
   const filas = await acceso.leerColumnas("videos_proyectos", COLUMNAS_LISTA, { client_id: clienteId }, "updated_at desc", MAX_PROYECTOS);
@@ -118,7 +138,7 @@ function origenLimpio(origen, estructuraId) {
  * llama: `estructuraExistente`), que queda en `origen.estructuraId`. → { video, avisos }.
  */
 export async function crearProyecto(acceso, cliente, { guion: entrada, titulo, calendarId = null, postId = null, usuario, origen = null, estructuraId = "", locucion = null, sonido: sonidoPedido = null }) {
-  const { guion, avisos } = guionValido(entrada);
+  const { guion, avisos } = guionConLexico(entrada, cliente);
   let cal = null;
   if (calendarId) {
     cal = await acceso.leerUno("calendars", { id: String(calendarId), client_id: cliente.id });
@@ -128,8 +148,10 @@ export async function crearProyecto(acceso, cliente, { guion: entrada, titulo, c
     throw new ErrorVideo(`Como mucho ${MAX_PROYECTOS} videos por cliente: borra los que ya no sirvan.`, 409);
   }
   const momento = ahora();
-  // El sonido con que nace: el que pide quien crea (un estilo sin efectos), o el de siempre.
-  const sonido = sonidoPedido ? limpiarSonido(sonidoPedido) : await sonidoInicial(acceso, cliente.id, guion);
+  // El sonido con que nace: el de siempre (la música de la marca) con lo que pida quien crea ENCIMA (un estilo o un reel
+  // montado sin efectos: `{ efectos: false }` no se lleva la música de la marca).
+  const base = await sonidoInicial(acceso, cliente.id, guion);
+  const sonido = sonidoPedido ? limpiarSonido({ ...(base ?? {}), ...sonidoPedido }) : base;
   const fila = await acceso.insertar("videos_proyectos", {
     ...(sonido ? { sonido: JSON.stringify(sonido) } : {}),
     id: uuid(), client_id: cliente.id, calendar_id: cal?.id ?? null,
@@ -177,7 +199,7 @@ export async function guardarProyecto(acceso, cliente, fila, { guion: entrada, t
   const cambios = {};
   let avisos = [];
   if (entrada !== undefined) {
-    const r = guionValido(conLaCancionGuardada(entrada, fila));
+    const r = guionConLexico(conLaCancionGuardada(entrada, fila), cliente);
     avisos = r.avisos;
     if (JSON.stringify(r.guion) !== fila.guion) {
       const estado = estadoTrasEditar(fila.estado);

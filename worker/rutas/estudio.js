@@ -53,6 +53,7 @@
 //   GET    /<cliente>/voz/<voz>                    la muestra de una voz de Google (audio/wav; se pide una vez y queda en R2)
 //   POST   /<cliente>/kit/fuente                   multipart «archivo»: la fuente de la marca (TTF, OTF, WOFF, WOFF2) → { clave }
 //   POST   /<cliente>/kit/reglas                   { regla } → se suma a «Reglas que no se rompen» del kit
+//   PUT    /<cliente>/kit/lexico                   { lexico } → el léxico de la marca (cómo se dice algo, qué nunca)
 //   POST   /<cliente>/kit/plantillas               { archivoId, nombre?, uso? }: «Guardar como plantilla» (la IA saca su sistema)
 //   DELETE /<cliente>/kit/plantillas/<id>          quita una plantilla del kit (la imagen se queda en la galería)
 //   POST   /<cliente>/carpetas                     { nombre, tipo? } (tipo «carrusel» | «reel»: la galería la agrupa)
@@ -76,7 +77,7 @@ import { estadoMotores } from "../lib/estudio/motores.js";
 import { mejorarIdea, versionesDeIdea } from "../lib/estudio/prompt.js";
 import { fichasDeDiseno } from "../lib/estudio/fichas.js";
 import { guionCorto, guionDeVideoProducto } from "../lib/estudio/guionCorto.js";
-import { kitDe, guardarKit, prepararKit, revisarPieza, subirFuente } from "../lib/estudio/kit.js";
+import { kitDe, guardarKit, guardarLexico, prepararKit, revisarPieza, subirFuente } from "../lib/estudio/kit.js";
 import { guardarPlantilla, quitarPlantilla } from "../lib/estudio/plantillas.js";
 import { revisarVideo } from "../lib/estudio/revisionVideo.js";
 import { revisarSerie } from "../lib/estudio/serie.js";
@@ -199,6 +200,14 @@ export async function rutasEstudio(req, env, { acceso, usuario, partes, metodo }
         }
         avisar();
         return json({ quitadas: perdidas.size, kit });
+      }
+      // El LÉXICO de la marca (src/lib/lexico.js): sólo por aquí (el PUT del kit lo conserva), sobre el kit GUARDADO.
+      if (c === "lexico" && !d && metodo === "PUT") {
+        const datos = await cuerpo(req);
+        if (!Array.isArray(datos?.lexico)) return error("Falta el léxico (una lista de reglas).");
+        const kit = await guardarLexico(env, acceso, cliente, datos.lexico);
+        avisar();
+        return json({ kit });
       }
       // «Guardar como regla»: una corrección que se repite pasa a las reglas del kit (sobre el kit GUARDADO, no el que
       // tenga abierto la pantalla: así no pisa lo que otra persona cambió).

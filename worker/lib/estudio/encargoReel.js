@@ -25,16 +25,17 @@
 import { crearTrabajo, ErrorEstudio } from "./trabajos.js";
 import { marcarUso } from "./galeria.js";
 import { cambiarPublicacion } from "./ponerEnPost.js";
-import { crearMontaje } from "./montaje.js";
-import { aprobarProyecto, ErrorVideo } from "../videosProyectos.js";
+import { crearMontaje, fuenteDelEncargo } from "./montaje.js";
+import { aprobarProyecto, guardarProyecto, ErrorVideo } from "../videosProyectos.js";
 import { pedirLocucion, ErrorVoz } from "./locucion.js";
 import { pedirRender, renderAlDia } from "./render.js";
 import { modeloPorId, estaVivo, textoCosto } from "../../../src/lib/estudioCatalogo.js";
 import { pedidoDeFotogramaReel, pedidoDeVideo, pedidoDeClip } from "../../../src/lib/reelPedidos.js";
-import { repartirTiempos, sinVozPropia } from "../../../src/lib/reel.js";
+import { repartirTiempos, sinVozPropia, TOMAS_PLANO, esTomaFija } from "../../../src/lib/reel.js";
 import { duracionDeClip, duracionesDe, haceDuracion } from "../../../src/lib/duracionesVideo.js";
 import { conVideoEnPost, rellenarVacios } from "../../../src/lib/resultadoEnPost.js";
-import { textoDelGuionReel } from "../../../src/lib/montajeReel.js";
+import { textoDelGuionReel, ajustarMontaje, fotosDeEscenas } from "../../../src/lib/montajeReel.js";
+import { lineaDeTiempo } from "../../../src/lib/videoEscenas.js";
 import { SALIDAS_REEL, FIN_MONTAJE, PLANOS_REEL_MAX } from "../../../src/lib/encargoReelPuro.js";
 
 export { SALIDAS_REEL, FIN_MONTAJE };
@@ -56,6 +57,8 @@ export function limpiarGuionReel(r = {}) {
   const segundos = Math.max(4, Math.min(120, Math.round(Number(r.segundos)) || 10));
   const planos = (Array.isArray(r.planos) ? r.planos : []).slice(0, PLANOS_REEL_MAX).map((p) => ({
     desde: Number(p?.desde) || 0, escena: texto(p?.escena, 300), camara: texto(p?.camara, 160), dice: texto(p?.dice, 400), pantalla: texto(p?.pantalla, 80),
+    // La toma del plano: «fija» se monta con su fotograma (sin clip que pagar); «movimiento», con su clip.
+    ...(TOMAS_PLANO.includes(p?.toma) ? { toma: p.toma } : {}),
   })).filter((p) => p.escena);
   if (!planos.length) return null;
   return {
@@ -88,7 +91,11 @@ function limpiarVideo(v = {}) {
 /** Lo que pide el montaje: automático (aprobar, la voz y el render) o sólo crear el proyecto para revisarlo. */
 export function limpiarMontaje(m) {
   if (!m || typeof m !== "object") return null;
-  return { fase: "nuevo", automatico: m.automatico === true, confirmadoVoz: m.confirmadoVoz === true, conVoz: m.conVoz !== false };
+  return {
+    fase: "nuevo", automatico: m.automatico === true, confirmadoVoz: m.confirmadoVoz === true, conVoz: m.conVoz !== false,
+    // Otra voz para ESTE montaje (un id de ElevenLabs); sin ella, la de la marca.
+    ...(/^[\w-]{8,64}$/.test(String(m.vozId ?? "")) ? { vozId: String(m.vozId) } : {}),
+  };
 }
 
 /**
@@ -254,11 +261,12 @@ function videoTerminado(datos, pasos) {
   const v = datos.video ?? {};
   if (datos.salida === "fotogramas" || v.fase === "espera") return true;
   if (datos.salida === "uno") return v.fase === "hecho" || v.fase === "fallido";
-  return pasos.every((p) => p.fase !== "hecho" || p.clip?.fase === "hecho" || p.clip?.fase === "fallido");
+  return pasos.every((p) => p.fase !== "hecho" || ["hecho", "fallido", "omitido"].includes(p.clip?.fase));
 }
 
-/** ¿Hay material para montar? (el video, o al menos un clip). */
-const hayMaterial = (datos, pasos) => (datos.salida === "uno" ? datos.video?.fase === "hecho" : pasos.some((p) => p.clip?.fase === "hecho"));
+/** ¿Hay material para montar? (el video; o un clip, o un fotograma: el plano sin clip se monta con su fotograma). */
+const hayMaterial = (datos, pasos) => (datos.salida === "uno" ? datos.video?.fase === "hecho"
+  : pasos.some((p) => p.clip?.fase === "hecho") || (Boolean(datos.montaje) && pasos.some((p) => p.fase === "hecho")));
 
 /** ¿Ya no queda nada que hacer en el reel? (lo que llama encargos.js para cerrarlo). Pura. */
 export function reelTerminado(datos = {}, pasos = []) {
@@ -275,7 +283,8 @@ export function estadoDelReel(datos = {}, pasos = []) {
   if (!pasos.some((p) => p.fase === "hecho")) return { estado: "fallido", error: pasos.find((p) => p.error)?.error || "No salió ningún fotograma." };
   const v = datos.video ?? {};
   if (datos.salida === "uno" && v.fase === "fallido") return { estado: "fallido", error: v.error || "El video no salió." };
-  if (datos.salida === "clips" && v.fase !== "espera" && !pasos.some((p) => p.clip?.fase === "hecho")) {
+  // Con montaje, un plano sin clip se monta con su fotograma: los clips que no salieron no tumban el reel.
+  if (datos.salida === "clips" && v.fase !== "espera" && !datos.montaje && !pasos.some((p) => p.clip?.fase === "hecho")) {
     return { estado: "fallido", error: pasos.find((p) => p.clip?.error)?.clip.error || "No salió ningún clip." };
   }
   return { estado: "hecho" };
@@ -291,16 +300,18 @@ export function notaDelReel(datos = {}, pasos = []) {
   if (datos.salida === "uno" && v.fase === "generando") return "Creando el video: tarda unos minutos.";
   if (datos.salida === "uno" && v.fase === "fallido") return `El video no salió: ${v.error ?? ""}`.trim();
   if (datos.salida === "clips") {
-    const con = pasos.filter((p) => p.clip);
+    const con = pasos.filter((p) => p.clip && p.clip.fase !== "omitido");
     const listos = con.filter((p) => p.clip.fase === "hecho").length;
-    if (con.some((p) => p.clip.fase !== "hecho" && p.clip.fase !== "fallido")) return `Clips: ${listos} de ${con.length}.`;
+    const fijos = pasos.filter((p) => p.clip?.fase === "omitido").length;
+    const conFijos = fijos ? ` (${fijos} con su fotograma, sin clip)` : "";
+    if (con.some((p) => p.clip.fase !== "hecho" && p.clip.fase !== "fallido")) return `Clips: ${listos} de ${con.length}${conFijos}.`;
     if (!datos.montaje) return `Clips listos: ${listos} de ${con.length}. Móntalos aquí o descárgalos para editarlos.`;
   }
   const m = datos.montaje;
   if (m) {
     const NOTA = {
       nuevo: "Montando: el texto, los subtítulos, el logo y la música.",
-      voz: "Pidiendo la voz de la marca…", esperaVoz: "Generando la voz de la marca…",
+      voz: "Pidiendo la voz de la marca…", esperaVoz: "Generando la voz de la marca…", ajustar: "Ajustando las escenas a la voz…",
       confirmar: `Montado. Falta confirmar la voz${m.costoTexto ? ` (${m.costoTexto})` : ""} para terminarlo.`,
       render: "Renderizando el mp4…", renderizando: "Renderizando el mp4…",
       espera: m.nota || "Montado: termínalo desde el video animado.",
@@ -352,6 +363,10 @@ export async function pasoReel(ctx, fila) {
       p.clip = r.error ? { ...p.clip, fase: "fallido", error: r.error } : { ...p.clip, fase: "hecho", archivoId: r.archivoId };
       cambio = true;
     }
+    // Con montaje, la toma FIJA (el producto, un beneficio, el cierre) se monta con su fotograma: ese clip no se paga.
+    if (datos.montaje) {
+      for (const p of hechos) if (!p.clip && esTomaFija(p.plano)) { p.clip = { fase: "omitido", nota: "Toma fija: se monta con su fotograma." }; cambio = true; }
+    }
     const siguiente = hechos.find((p) => !p.clip || p.clip.fase === "nuevo");
     if (siguiente) {
       const f = finales.get(finalDe(siguiente));
@@ -395,7 +410,7 @@ async function pasoMontaje(ctx, fila) {
     try {
       const ap = proyecto.estado === "borrador" ? (await aprobarProyecto(acceso, cliente, proyecto, { version: proyecto.version, usuario })).video : { estado: proyecto.estado };
       const habla = await tieneVoz(acceso, cliente.id, m.videoId);
-      m.fase = ap.estado === "renderizado" ? "hecho" : ap.estado === "con_voz" || !habla ? "render" : "voz";
+      m.fase = ap.estado === "renderizado" ? "hecho" : !habla ? "render" : ap.estado === "con_voz" ? "ajustar" : "voz";
     } catch (e) {
       Object.assign(m, { fase: "espera", nota: `Montado, pero no se pudo aprobar solo: ${e?.message ?? e}. Termínalo desde el video animado.` });
     }
@@ -403,7 +418,7 @@ async function pasoMontaje(ctx, fila) {
   }
   if (m.fase === "voz") {
     try {
-      await pedirLocucion(env, acceso, cliente, proyecto, { confirmado: m.confirmadoVoz === true, usuario, origen: "persona", por: SISTEMA });
+      await pedirLocucion(env, acceso, cliente, proyecto, { confirmado: m.confirmadoVoz === true, usuario, origen: "persona", por: SISTEMA, ...(m.vozId ? { vozId: m.vozId } : {}) });
       m.fase = "esperaVoz";
     } catch (e) {
       if (e instanceof ErrorVoz && e.codigo === "confirmar") Object.assign(m, { fase: "confirmar", costo: e.costo ?? null, costoTexto: textoCosto(Number(e.costo) || 0) });
@@ -413,12 +428,26 @@ async function pasoMontaje(ctx, fila) {
   }
   if (m.fase === "esperaVoz") {
     const loc = leerJSON(proyecto.locucion, {});
-    if (proyecto.estado === "con_voz") { m.fase = "render"; return { hizo: true }; }
+    if (proyecto.estado === "con_voz") { m.fase = "ajustar"; return { hizo: true }; }
     if (loc.estado === "generando") {
       const t = await acceso.leerUno("estudio_trabajos", { id: loc.trabajoId }).catch(() => null);
       if (t && !estaVivo(t.estado) && t.estado !== "hecho") { Object.assign(m, { fase: "fallido", error: t.error || "La voz no salió." }); return { hizo: true }; }
     }
     return { hizo: false };
+  }
+  if (m.fase === "ajustar") {
+    // Con los tiempos DE VERDAD de la voz: la escena con clip cuya frase dura más que el clip se parte (el resto, con su
+    // fotograma), y con un solo video cada escena lo arranca donde va la voz. Lo que se dice no cambia: la voz sigue valiendo.
+    try {
+      const r = await ajustarConLaVoz(ctx, proyecto);
+      m.fase = "render";
+      if (r.partidas) m.nota = `${r.partidas} frase${r.partidas === 1 ? "" : "s"} más larga${r.partidas === 1 ? "" : "s"} que su clip: el resto va con el fotograma del plano.`;
+    } catch (e) {
+      // Si no se pudo ajustar, se renderiza como está (antes era así siempre); si ya se guardó, lo termina una persona.
+      if (e?.guardado) Object.assign(m, { fase: "espera", nota: `Se ajustaron las escenas a la voz, pero ${e.message} Termínalo desde el video animado.` });
+      else Object.assign(m, { fase: "render", nota: `No se pudieron ajustar las escenas a la voz (${e?.message ?? e}): se renderiza como está.` });
+    }
+    return { hizo: true };
   }
   if (m.fase === "render") {
     try {
@@ -436,6 +465,25 @@ async function pasoMontaje(ctx, fila) {
     return { hizo: false };
   }
   return null;
+}
+
+/**
+ * El montaje ajustado a los tiempos de la locución ya hecha (`ajustarMontaje`). Si cambió, se guarda (versión nueva) y se
+ * aprueba otra vez: como lo que se dice es lo mismo, la locución sigue valiendo y vuelve a «Con voz» sin pagar otra.
+ */
+async function ajustarConLaVoz(ctx, proyecto) {
+  const { acceso, cliente, datos, pasos, usuario } = ctx;
+  const guion = leerJSON(proyecto.guion, null);
+  const loc = leerJSON(proyecto.locucion, {});
+  if (!guion || !Array.isArray(loc.palabras) || !loc.palabras.length) return { partidas: 0 };
+  const fuente = fuenteDelEncargo(datos, pasos);
+  const r = ajustarMontaje(guion, lineaDeTiempo(guion, loc.palabras), { fotos: fotosDeEscenas(datos.reel ?? {}, fuente), continuo: fuente.tipo === "uno" });
+  if (!r.cambio) return r;
+  const g = await guardarProyecto(acceso, cliente, proyecto, { guion: r.guion, version: proyecto.version, por: SISTEMA });
+  const fila = await acceso.leerUno("videos_proyectos", { id: proyecto.id, client_id: cliente.id });
+  const ap = await aprobarProyecto(acceso, cliente, fila, { version: g.video.version, usuario });
+  if (!ap.vozReutilizada) throw Object.assign(new Error("la voz dejó de valer al partir las escenas."), { guardado: true });
+  return r;
 }
 
 /** ¿El proyecto dice algo? (un montaje sin locución no pide voz). */
@@ -552,9 +600,10 @@ export async function montarReel(env, acceso, cliente, fila, cuerpo = {}) {
   if (m && !FIN_MONTAJE.includes(m.fase)) throw new ErrorEstudio("Ya se está montando.", 409);
   const permiso = await reservar(acceso, fila);
   if (!permiso) return { ocupado: true };
+  const vozId = /^[\w-]{8,64}$/.test(String(cuerpo.vozId ?? "")) ? String(cuerpo.vozId) : "";
   datos.montaje = seguirConLaVoz
-    ? { ...m, fase: "voz", confirmadoVoz: true }
-    : { ...limpiarMontaje({ automatico: cuerpo.automatico === true, confirmadoVoz: cuerpo.confirmadoVoz === true, conVoz: cuerpo.conVoz }), ...(cuerpo.otraVez !== true && m?.videoId ? { videoId: m.videoId } : {}) };
+    ? { ...m, fase: "voz", confirmadoVoz: true, ...(vozId ? { vozId } : {}) }
+    : { ...limpiarMontaje({ automatico: cuerpo.automatico === true, confirmadoVoz: cuerpo.confirmadoVoz === true, conVoz: cuerpo.conVoz, vozId: vozId || m?.vozId }), ...(cuerpo.otraVez !== true && m?.videoId ? { videoId: m.videoId } : {}) };
   // Un montaje que ya tiene su proyecto (y no se pidió otro): sólo sigue con lo que falte.
   if (!seguirConLaVoz && datos.montaje.videoId) datos.montaje.fase = datos.montaje.automatico ? "aprobar" : "hecho";
   // Sin nada que hacer (montar otra vez lo que ya está montado, sin automático): no se reabre.

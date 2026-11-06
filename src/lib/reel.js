@@ -53,14 +53,37 @@ export const maxPlanos = (segundos = 10) => (soloFlow(segundos)
   ? Math.min(20, Math.ceil(segundos / SEGUNDOS_POR_CLIP) * 5)
   : Math.max(MAX_PLANOS, Math.min(12, Math.ceil(Number(segundos) / 2.5))));
 
+/**
+ * Los planos que se piden POR DEFECTO (método de agencia: menos planos, menos clips que pagar): 4 hasta 20 s, 6 en 30 s y
+ * uno cada 5 s en lo más largo. La persona puede pedir más (`planos`), hasta `maxPlanos`. Pura.
+ */
+export function planosPorDefecto(segundos = 10) {
+  const s = Number(segundos) || 10;
+  return s <= 20 ? 4 : s <= 30 ? 6 : Math.min(maxPlanos(s), Math.ceil(s / 5));
+}
+/** Cuántos planos se piden: los que pidió la persona (entre el mínimo y el tope) o los de por defecto. Pura. */
+export const planosPedidos = (segundos = 10, pedidos = 0) => (Number(pedidos) > 0
+  ? Math.max(MIN_PLANOS, Math.min(maxPlanos(segundos), Math.round(Number(pedidos))))
+  : planosPorDefecto(segundos));
+
+/**
+ * La TOMA de cada plano, la escribe la IA: «movimiento» (personas o una acción que se mueve: se paga un clip) o «fija»
+ * (el producto, un beneficio, un detalle, el cierre: se monta con su fotograma revisado y un movimiento de cámara suave;
+ * sin clip no se paga y el modelo de video no transforma el empaque). Un plano sin toma se trata como antes (con clip).
+ */
+export const TOMAS_PLANO = Object.freeze(["movimiento", "fija"]);
+/** ¿Este plano va con su fotograma (sin clip)? Pura. */
+export const esTomaFija = (plano) => plano?.toma === "fija";
+
 /** ¿Este modelo inventa la voz (mal, en español)? Seedance y Wan van SIN voz: música y efectos. Pura. */
 export const sinVozPropia = (modelo) => /^(seedance|wan)/.test(String(modelo?.id ?? modelo ?? ""));
 
 const corto = (t, n) => String(t ?? "").replace(/\s+/g, " ").trim().slice(0, n);
 
 /** Lo que se le pide a la IA para el guion por planos. Pura. */
-export function pedidoDeReel({ marca = "la marca", rubro = "", idea = "", segundos = 10, tipo = "", estilo = "", producto = "", personajes = [], identidad = "", contexto = "", musica = "", locucion = "", estructura = "", criterio = "", guionPost = "", montaje = false, estructuraGuion = "", campoEstructura = false }) {
+export function pedidoDeReel({ marca = "la marca", rubro = "", idea = "", segundos = 10, tipo = "", estilo = "", producto = "", personajes = [], identidad = "", contexto = "", musica = "", locucion = "", estructura = "", criterio = "", guionPost = "", montaje = false, estructuraGuion = "", campoEstructura = false, planos: pedidos = 0, lexico = "" }) {
   const clips = Math.ceil(segundos / SEGUNDOS_POR_CLIP);
+  const nPlanos = planosPedidos(segundos, pedidos);
   return [
     `Eres director creativo de reels. Escribe el guion de UN reel vertical (9:16) de ${segundos} segundos para ${marca}${rubro ? ` (${rubro})` : ""}, para generarlo con un modelo de video con IA que hace varios planos con cortes en una sola pieza.`,
     `LA IDEA CENTRAL: ${corto(idea, 1200) || "propón una a partir de lo que sabemos de la marca"}`,
@@ -82,12 +105,17 @@ export function pedidoDeReel({ marca = "la marca", rubro = "", idea = "", segund
     lineaDelGuionPost(guionPost),
     // Con montaje, cada plano es un clip aparte (o un tramo) y lo que se dice y se lee lo pone la aplicación encima.
     montaje ? "Después se MONTA en la aplicación: la voz de la marca dice lo de cada plano («dice»), el texto del gancho se escribe encima en los primeros segundos («gancho», como mucho 6 palabras), lo que se lee en un plano va en «pantalla» (opcional, como mucho 6 palabras) y el cierre lleva el logo y el llamado («llamado», como mucho 4 palabras). Cada plano es una toma continua, sin cortes dentro." : "",
+    // Sólo se paga clip donde hay movimiento de verdad; el producto, sin clip (el modelo de video transforma el empaque).
+    montaje ? "«toma» de cada plano: «movimiento» SÓLO si hay una persona o una acción que se mueve (manos que usan algo, gente, algo que pasa); «fija» para el producto, un beneficio, un detalle o el cierre: esos se montan con su fotograma y un movimiento de cámara suave, y el producto sale perfecto." : "",
+    // El producto «malo» no se puede confundir con el que se vende.
+    `Si un plano enseña un producto «malo» (el de la competencia, el que causa el problema, lo de antes), es SIEMPRE genérico e inconfundible: de otro color, sin logo ni nada de la marca de ${marca}. Dilo también en «hilo».`,
+    lexico ? String(lexico).trim() : "",
     !montaje && soloFlow(segundos) ? `Es un video LARGO que se hará en ${clips} clips de ${SEGUNDOS_POR_CLIP} s que se pegan uno tras otro: ningún plano cruza un múltiplo de ${SEGUNDOS_POR_CLIP} s (cada clip empieza en un plano nuevo), cada clip termina en un momento que enlaza con el siguiente, el gancho va en el primero y el cierre con el llamado en el último. Los personajes, la ropa, el lugar y la luz son los MISMOS en todos.` : "",
     "",
-    `Reglas: de ${MIN_PLANOS + 1} a ${maxPlanos(segundos)} planos que sumen ${segundos} s exactos, contiguos desde 0. El primero detiene el scroll (gancho); el del medio muestra el producto o el resultado; el último cierra con el producto o el resultado y deja ganas de escribir (el logo y el llamado no los dibuja el modelo de video: los modelos los deforman). El video va LIMPIO: ningún plano lleva texto, letras ni subtítulos en pantalla. Nada de reseñas, cifras ni urgencias inventadas. La locución (voz en off) dura lo que el video: como mucho ${Math.floor(segundos * PALABRAS_POR_SEGUNDO)} palabras, en español latino neutro, o vacía si el reel va sólo con música.`,
+    `Reglas: ${nPlanos} planos que sumen ${segundos} s exactos, contiguos desde 0. El primero detiene el scroll (gancho); el del medio muestra el producto o el resultado; el último cierra con el producto o el resultado y deja ganas de escribir (el logo y el llamado no los dibuja el modelo de video: los modelos los deforman). El video va LIMPIO: ningún plano lleva texto, letras ni subtítulos en pantalla. Nada de reseñas, cifras ni urgencias inventadas. La locución (voz en off) dura lo que el video: como mucho ${Math.floor(segundos * PALABRAS_POR_SEGUNDO)} palabras, en español latino neutro, o vacía si el reel va sólo con música.`,
     "",
     (montaje
-      ? 'Responde SOLO con JSON: {"hilo":"lo que comparten todos los planos (personaje, luz, paleta, lugar), en una frase","gancho":"el texto del gancho","llamado":"el llamado del cierre","planos":[{"desde":0,"hasta":2,"escena":"qué se ve (sujeto, acción, lugar, luz)","camara":"movimiento de cámara","dice":"lo que dice la voz en este plano, o vacío","pantalla":"lo que se lee en este plano, o vacío"}],"musica":"estilo, ritmo y ánimo de la música","locucion":"todo lo que dice la voz, junto","efectos":"sonido ambiente o efectos, o vacío","descripcion":"el texto del post, de 2 a 4 frases, sin hashtags"}'
+      ? 'Responde SOLO con JSON: {"hilo":"lo que comparten todos los planos (personaje, luz, paleta, lugar), en una frase","gancho":"el texto del gancho","llamado":"el llamado del cierre","planos":[{"desde":0,"hasta":2,"escena":"qué se ve (sujeto, acción, lugar, luz)","camara":"movimiento de cámara","toma":"movimiento|fija","dice":"lo que dice la voz en este plano, o vacío","pantalla":"lo que se lee en este plano, o vacío"}],"musica":"estilo, ritmo y ánimo de la música","locucion":"todo lo que dice la voz, junto","efectos":"sonido ambiente o efectos, o vacío","descripcion":"el texto del post, de 2 a 4 frases, sin hashtags"}'
       : 'Responde SOLO con JSON: {"hilo":"lo que comparten todos los planos (personaje, luz, paleta, lugar), en una frase","planos":[{"desde":0,"hasta":2,"escena":"qué se ve (sujeto, acción, lugar, luz)","camara":"movimiento de cámara"}],"musica":"estilo, ritmo y ánimo de la música","locucion":"lo que dice la voz en off, o vacío","efectos":"sonido ambiente o efectos, o vacío","descripcion":"el texto del post, de 2 a 4 frases, sin hashtags"}')
       // Cuando la IA escoge la estructura de guion, dice cuál en el mismo JSON.
       .replace(/\}$/, campoEstructura ? ',"estructura":"el nombre exacto de la estructura de guion que seguiste"}' : "}"),
@@ -110,6 +138,7 @@ export function leerReel(texto, segundos = 10) {
       desde: Number(p?.desde) || 0, escena: corto(p?.escena, MAX_ESCENA), texto: corto(p?.texto, MAX_TEXTO), camara: corto(p?.camara, 160),
       // Para el montaje: lo que se dice en el plano y lo que se lee (un guion de antes traía «texto»).
       dice: corto(p?.dice, 400), pantalla: corto(p?.pantalla ?? p?.texto, 80),
+      ...(TOMAS_PLANO.includes(p?.toma) ? { toma: p.toma } : {}),
     }))
     .filter((p) => p.escena)
     .sort((a, b) => a.desde - b.desde)

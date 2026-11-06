@@ -26,7 +26,7 @@
 //     después, y la vista previa no se rompe.
 // ============================================================
 
-import { dibujarPersonaje, expresionDe, PROPORCION_PERSONAJE } from "./personajeVideo.js";
+import { dibujarPersonaje, expresionDe, PROPORCION_PERSONAJE, imagenDePose } from "./personajeVideo.js";
 import { FORMATOS_VIDEO, FPS, tiempoDeCapa, segundoDelClip } from "./videoEscenas.js";
 import { gruposDeSubtitulos, grupoEn, estadoDePalabras } from "./subtitulos.js";
 import {
@@ -1202,6 +1202,14 @@ function dibujarCapa(ctx, capa, estado, c, ancho = capa.tam * c.lado) {
       return { w: s, h: s };
     }
     case "personaje": {
+      // La MASCOTA de la marca (una imagen por pose en su kit): su imagen, entera, en vez de la figura de la casa.
+      const mascota = imagenDePose(c.personaje, capa.pose);
+      const img = mascota ? recursos?.imagen?.(mascota) ?? null : null;
+      if (img) {
+        const { w: iw, h: ih } = cajaDeImagen(img, w, maxAlto, "contener");
+        dibujarImagenEn(ctx, img, iw, ih, "contener");
+        return { w: iw, h: ih };
+      }
       // La figura de la casa con el aspecto del cliente (src/lib/personajeVideo.js): alto = 1,2 × ancho.
       let pw = w;
       if (pw * PROPORCION_PERSONAJE > maxAlto) pw = maxAlto / PROPORCION_PERSONAJE;
@@ -1322,6 +1330,19 @@ function dibujarGrano(ctx, tile, intensidad, frame, ancho, alto) {
   ctx.restore();
 }
 
+/** Los números de un texto, sin sus separadores («$12,99 y 3» → ["1299", "3"]), para ver si dos cosas dicen la misma cifra. */
+const numerosDe = (t) => (String(t ?? "").match(/\d(?:[\d.,]*\d)?/g) ?? []).map((n) => n.replace(/\D+/g, ""));
+
+/**
+ * ¿El texto en pantalla repite el número que ya enseña una `cifra` de la escena? («$12,99 hoy» con una cifra de 12,99):
+ * pintarlo como titular encima del número gigante diría lo mismo dos veces. Pura.
+ */
+export function repiteUnaCifra(pantalla, capas = []) {
+  const enPantalla = numerosDe(pantalla);
+  if (!enPantalla.length) return false;
+  return capas.some((c) => c?.tipo === "cifra" && Number(c.valor) !== 0 && enPantalla.includes(numerosDe(String(c.valor))[0] ?? "-"));
+}
+
 /**
  * Las capas de una escena. Si ninguna dice algo con letras (texto, sello o llamado) y la escena tiene `pantalla`, se
  * añade como titular, la PRIMERA y arriba: el texto en pantalla del guion es el mensaje de la escena, y una escena con
@@ -1330,7 +1351,7 @@ function dibujarGrano(ctx, tile, intensidad, frame, ancho, alto) {
 export function capasDe(escena) {
   const propias = escena.capas ?? [];
   const conLetras = propias.some((c) => ["texto", "sello", "llamado"].includes(c.tipo));
-  if (conLetras || !escena.pantalla) return propias;
+  if (conLetras || !escena.pantalla || repiteUnaCifra(escena.pantalla, propias)) return propias;
   return [{
     id: `${escena.id}-pantalla`, tipo: "texto", texto: escena.pantalla, rol: "titular", color: "texto", placa: "",
     alinear: "centro", pos: "arriba", tam: 0.84, entra: { s: 0 }, sale: null,

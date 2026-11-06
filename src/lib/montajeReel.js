@@ -14,8 +14,8 @@
 // EL TEXTO LO ESCRIBE EL CÓDIGO, no el modelo de video: sale sin faltas. Y luego, el render de siempre a mp4.
 // ============================================================
 
-import { palabrasDe, MAX_HABLA, MAX_PANTALLA, MAX_SEGUNDOS, MIN_SEGUNDOS } from "./videoEscenas.js";
-import { PALABRAS_POR_SEGUNDO, tramo } from "./reel.js";
+import { palabrasDe, lineaDeTiempo, MAX_HABLA, MAX_PANTALLA, MAX_SEGUNDOS, MIN_SEGUNDOS } from "./videoEscenas.js";
+import { tramo, esTomaFija } from "./reel.js";
 
 /** Lo más que dice un llamado (la capa `llamado` admite 30). */
 export const MAX_LLAMADO = 30;
@@ -85,10 +85,42 @@ export const llamadoDe = (reel = {}) => cortarPalabras(reel.llamado, MAX_LLAMADO
 const TIPOS_MEDIO = ["producto", "beneficio", "solucion", "explicacion", "prueba"];
 const tipoDeEscena = (i, n) => (i === 0 ? "gancho" : i === n - 1 && n > 1 ? "cierre" : TIPOS_MEDIO[(i - 1) % TIPOS_MEDIO.length]);
 
+/** Un clip se ve como mucho hasta este margen antes de su final: si la frase dura más, se quedaría quieto en su último cuadro. */
+export const MARGEN_CLIP = 0.5;
+/** Cómo se mueven los fotogramas fijos, por turnos (un movimiento de cámara suave). */
+const MOVIMIENTOS_FOTO = ["acercar", "paneo", "alejar"];
+/** El id de la escena de un plano. */
+const idDeEscena = (p, i) => `p${p?.n ?? i + 1}`;
+
+/**
+ * El FOTOGRAMA (ya revisado) de cada escena del montaje, por su id: `fuente.fotogramas` trae el id de la galería del
+ * fotograma de cada plano, en el orden de los planos. Lo usan los planos sin clip y la segunda mitad de una frase larga. Pura.
+ */
+export function fotosDeEscenas(reel = {}, fuente = {}) {
+  const planos = (reel.planos ?? []).filter((p) => p && corto(p.escena, 10));
+  const fotos = {};
+  planos.forEach((p, i) => { const f = fuente.fotogramas?.[i]; if (f) fotos[idDeEscena(p, i)] = f; });
+  return fotos;
+}
+
+/** La capa del fotograma a sangre, con un movimiento de cámara suave (y lo que dura en un montaje sin voz). */
+const capaDeFoto = (archivo, k, oscurecer, dura = 0) => ({
+  tipo: "imagen", id: "foto", archivo, rol: "foto", encuadre: "completo", recorte: "cubrir",
+  movimiento: MOVIMIENTOS_FOTO[k % MOVIMIENTOS_FOTO.length], oscurecer,
+  ...(dura > 0 ? { dura: Math.round(dura * 100) / 100 } : {}),
+});
+
 /**
  * El guion del montaje (formato de escenas v1). `fuente`:
- *   { tipo: "clips", clips: [{ archivoId, duracion } | null] }  un clip por plano (el que no salió se salta);
- *   { tipo: "uno", archivoId, duracion }                        el mismo video, cada escena con su tramo.
+ *   { tipo: "clips", clips: [{ archivoId, duracion } | null], fotogramas: [archivoId | null] }  un clip por plano;
+ *   { tipo: "uno", archivoId, duracion }                                                       el mismo video, seguido.
+ * Reglas del método de agencia (ninguna toca cómo se ve un montaje que ya salía bien):
+ *   · NINGÚN PLANO PIERDE SU FRASE: el que no tiene clip (no salió, o su toma es «fija»: el producto, un beneficio, el
+ *     cierre) va con su FOTOGRAMA a sangre y un movimiento suave; sin fotograma, con su texto sobre el fondo.
+ *   · La VOZ manda en lo que dura cada escena (los clips no la alargan con silencios: `lineaDeTiempo`), y una frase que
+ *     dura más que su clip se PARTE por palabras: la segunda parte va con el fotograma (`partirEscenasLargas`). Un clip
+ *     nunca se queda quieto en su último cuadro.
+ *   · Con un solo video, corre SEGUIDO bajo todas las escenas (cada una arranca donde va la voz): sin saltos ni repetidos.
  * `conLogo`: el kit tiene logo (va en el cierre). `sonidoClip`: el clip trae música o ambiente que vale oír (con voz,
  * bajito). `voz`: false para un montaje SIN locución (sólo los clips y la música). Pura.
  */
@@ -96,38 +128,39 @@ export function guionDeMontaje({ reel = {}, fuente = {}, titulo = "", conLogo = 
   const planos = (reel.planos ?? []).filter((p) => p && corto(p.escena, 10));
   const habla = voz ? hablaDePlanos({ ...reel, planos }) : planos.map(() => "");
   const uno = fuente.tipo === "uno";
-  // Los planos que tienen su video (en «uno», todos: el mismo archivo con su tramo).
-  const filas = planos.map((p, i) => ({ p, i, clip: uno ? (fuente.archivoId ? { archivoId: fuente.archivoId, duracion: Number(fuente.duracion) || 0 } : null) : fuente.clips?.[i] ?? null }))
-    .filter((f) => f.clip?.archivoId);
+  const fotos = fotosDeEscenas(reel, fuente);
+  const filas = planos.map((p, i) => {
+    const foto = fotos[idDeEscena(p, i)] ?? null;
+    const bruto = uno ? (fuente.archivoId ? { archivoId: fuente.archivoId, duracion: Number(fuente.duracion) || 0 } : null) : fuente.clips?.[i] ?? null;
+    // Una toma fija se monta con su fotograma (aunque tenga clip): el modelo de video transforma el empaque al avanzar.
+    const clip = bruto?.archivoId && !(!uno && esTomaFija(p) && foto) ? bruto : null;
+    return { p, i, clip, foto };
+  }).filter((f) => f.clip || f.foto || palabrasDe(habla[f.i]).length);
   const n = filas.length;
   const gancho = ganchoDe(reel);
   const llamado = llamadoDe(reel);
   const conHabla = habla.some((h) => palabrasDe(h).length);
-  const escenas = filas.map(({ p, i, clip }, k) => {
+  const escenas = filas.map(({ p, i, clip, foto }, k) => {
     const dura = Math.max(1, (Number(p.hasta) || 0) - (Number(p.desde) || 0));
     const dice = habla[i] ?? "";
-    // Lo que dura la escena: lo del plano o lo que tarda en decirse (a 2,5 palabras por segundo), sin pasar del clip.
-    const deseado = Math.max(dura, palabrasDe(dice).length / PALABRAS_POR_SEGUNDO + 0.3);
-    let desde = 0;
-    let hasta;
-    if (uno) {
-      desde = Number(p.desde) || 0;
-      const fin = clip.duracion > 0 ? Math.min(clip.duracion, Number(p.hasta) || desde + dura) : Number(p.hasta) || desde + dura;
-      hasta = Math.max(desde + 0.5, fin);
-    } else {
-      hasta = clip.duracion > 0 ? Math.min(clip.duracion, deseado) : deseado;
-    }
     const cierre = k === n - 1 && n > 1;
     const primera = k === 0;
     const texto = primera ? gancho : cierre ? "" : corto(p.pantalla, MAX_PANTALLA);
-    const capas = [
-      {
+    const oscurecer = cierre ? 0.5 : primera ? 0.3 : texto ? 0.25 : 0.12;
+    const capas = [];
+    if (clip) {
+      // Si la escena habla, el clip ENTERO (la voz decide cuánto se ve); si no, lo que dura su plano (lo que dura la escena).
+      const desde = uno ? Number(p.desde) || 0 : 0;
+      const fin = uno ? (clip.duracion > 0 ? clip.duracion : Number(p.hasta) || desde + dura)
+        : clip.duracion > 0 ? (palabrasDe(dice).length ? clip.duracion : Math.min(clip.duracion, dura)) : dura;
+      capas.push({
         tipo: "video", id: "clip", archivo: clip.archivoId, encuadre: "completo", recorte: "cubrir",
-        desde: Math.round(desde * 100) / 100, hasta: Math.round(hasta * 100) / 100,
-        sonido: Boolean(sonidoClip), volumen: conHabla ? VOLUMEN_CLIP_CON_VOZ : 1,
-        oscurecer: cierre ? 0.5 : primera ? 0.3 : texto ? 0.25 : 0.12,
-      },
-    ];
+        desde: Math.round(desde * 100) / 100, hasta: Math.round(Math.max(desde + 0.5, fin) * 100) / 100,
+        sonido: Boolean(sonidoClip), volumen: conHabla ? VOLUMEN_CLIP_CON_VOZ : 1, oscurecer,
+      });
+    } else if (foto) {
+      capas.push(capaDeFoto(foto, k, oscurecer, dura));
+    }
     if (texto) {
       capas.push({
         tipo: "texto", id: primera ? "gancho" : "texto", texto: cortarPalabras(texto, MAX_PANTALLA), rol: primera ? "titular" : "apoyo",
@@ -139,16 +172,16 @@ export function guionDeMontaje({ reel = {}, fuente = {}, titulo = "", conLogo = 
       capas.push({ tipo: "llamado", id: "cta", texto: llamado, pos: "abajo", tam: 0.8, animacion: { entrada: "sube", bucle: "late" } });
     }
     return {
-      id: `p${p.n ?? i + 1}`, tipo: tipoDeEscena(k, n), habla: dice,
+      id: idDeEscena(p, i), tipo: tipoDeEscena(k, n), habla: dice,
       pantalla: cortarPalabras(primera ? gancho : cierre ? llamado : texto, MAX_PANTALLA),
-      // Un cierre con el logo se queda un poco después de la última palabra.
-      pausa: cierre ? 1 : 0,
+      // Un cierre con el logo se queda un poco después de la última palabra; una escena muda sin clip ni foto, lo de su plano.
+      pausa: cierre ? 1 : !clip && !foto && !palabrasDe(dice).length ? dura : 0,
       fondo: { tipo: "plano", color: "oscuro" },
       transicion: { tipo: k === 0 ? "corte" : cierre ? "fundido" : "corte", dur: cierre ? 0.25 : 0 },
       capas,
     };
   });
-  return {
+  const guion = {
     version: 1,
     titulo: corto(titulo || reel.titulo || gancho || "Reel montado", 120),
     formatos: [formato],
@@ -158,18 +191,114 @@ export function guionDeMontaje({ reel = {}, fuente = {}, titulo = "", conLogo = 
     musica: corto(reel.musica, 300) ? { estilo: corto(reel.musica, 300), instrumental: true } : null,
     escenas,
   };
+  if (!conHabla) return guion;
+  // Con los tiempos estimados de la voz (2,5 palabras por segundo); tras generarla, otra vez con los de verdad.
+  return ajustarMontaje(guion, lineaDeTiempo(guion), { fotos, continuo: uno }).guion;
 }
 
-/** ¿Hay con qué montar? (al menos un clip, o el video). Pura. */
-export const sePuedeMontar = (fuente = {}) => (fuente.tipo === "uno" ? Boolean(fuente.archivoId) : (fuente.clips ?? []).some((c) => c?.archivoId));
+/**
+ * El montaje AJUSTADO a la voz (`linea`: `lineaDeTiempo` con los tiempos estimados o los de la locución). Con un solo
+ * video (`continuo`), cada escena arranca el video donde va la voz: corre seguido, sin saltos ni repetidos. Con clips,
+ * `partirEscenasLargas`. Lo que se DICE no cambia nunca: la locución ya pagada sigue valiendo. → { guion, cambio, partidas }. Pura.
+ */
+export function ajustarMontaje(guion, linea, { fotos = {}, continuo = false } = {}) {
+  if (!continuo) return partirEscenasLargas(guion, linea, fotos);
+  let cambio = false;
+  const escenas = (guion?.escenas ?? []).map((e, k) => {
+    const l = linea?.escenas?.[k];
+    if (!l) return e;
+    const capas = (e.capas ?? []).map((c) => {
+      if (c.tipo !== "video" || c.encuadre !== "completo") return c;
+      const fin = Number(c.hasta) || 0;
+      const desde = Math.round(Math.max(0, fin > 0 ? Math.min(l.desde, fin - 0.5) : l.desde) * 100) / 100;
+      if (desde === c.desde) return c;
+      cambio = true;
+      return { ...c, desde };
+    });
+    return { ...e, capas };
+  });
+  return { guion: { ...guion, escenas }, cambio, partidas: 0 };
+}
+
+/**
+ * Las escenas con CLIP cuya voz dura más que el clip (menos `MARGEN_CLIP`) se parten en dos por palabras, sin cambiar lo
+ * que se dice: la primera con el clip (hasta donde llega) y la segunda con el FOTOGRAMA de ese plano y un movimiento
+ * suave. Corta, si puede, en una coma o un punto a dos palabras o menos. El cierre se lleva el logo y el llamado a la
+ * segunda parte. Sin fotograma, o con etiquetas de emoción en el habla, no se parte. → { guion, cambio, partidas }. Pura.
+ */
+export function partirEscenasLargas(guion, linea, fotos = {}) {
+  const ids = new Set((guion?.escenas ?? []).map((e) => e.id));
+  const escenas = [];
+  let partidas = 0;
+  (guion?.escenas ?? []).forEach((e, k) => {
+    const l = linea?.escenas?.[k];
+    const clip = (e.capas ?? []).find((c) => c.tipo === "video" && c.encuadre === "completo");
+    const foto = fotos[e.id];
+    const tramoClip = clip ? (Number(clip.hasta) || 0) - (Number(clip.desde) || 0) : 0;
+    const tokens = String(e.habla ?? "").split(" ").filter(Boolean);
+    const palabras = l?.palabras ?? [];
+    if (!clip || !foto || !l || tramoClip <= 0 || /\[[^\]]*\]/.test(e.habla ?? "") || palabras.length < 2
+      || l.hasta - l.desde <= tramoClip - MARGEN_CLIP) { escenas.push(e); return; }
+    // La segunda parte dice al menos dos palabras: una sola palabra en su propia escena sería un destello.
+    if (palabras.length < 3) { escenas.push(e); return; }
+    const limite = l.desde + Math.max(0.2, tramoClip - MARGEN_CLIP);
+    let j = Math.max(1, Math.min(palabras.length - 2, palabras.filter((w) => w.hasta <= limite).length));
+    // Mejor donde termina una frase o una coma, si está cerca.
+    const esPalabra = (t) => /[\p{L}\p{N}]/u.test(t);
+    const fin = (w) => { let cuenta = 0; for (let t = 0; t < tokens.length; t++) { if (esPalabra(tokens[t])) cuenta++; if (cuenta === w) return t; } return tokens.length - 1; };
+    for (let d = 0; d <= 2; d++) if (j - d >= 1 && /[.,;:!?…]$/.test(tokens[fin(j - d)])) { j -= d; break; }
+    // (Partirla así no cambia lo que se dice: la locución sigue valiendo.)
+    const corte = fin(j) + 1;
+    const a = tokens.slice(0, corte).join(" ");
+    const b = tokens.slice(corte).join(" ");
+    if (!b || !palabrasDe(b).length) { escenas.push(e); return; }
+    let id = `${e.id}b`;
+    while (ids.has(id)) id += "b";
+    ids.add(id);
+    const cierre = (e.capas ?? []).filter((c) => c.tipo === "logo" || c.tipo === "llamado");
+    const restoA = (e.capas ?? []).filter((c) => c.tipo !== "logo" && c.tipo !== "llamado");
+    escenas.push({ ...e, habla: a, pausa: 0, capas: restoA });
+    escenas.push({
+      ...e, id, habla: b, pantalla: cierre.length ? e.pantalla : "",
+      transicion: { tipo: "corte", dur: 0 },
+      capas: [capaDeFoto(foto, k + 1, Number(clip.oscurecer) || 0.12), ...cierre],
+    });
+    partidas++;
+  });
+  return { guion: { ...guion, escenas }, cambio: partidas > 0, partidas };
+}
+
+/**
+ * ¿El montaje dice TODO lo del reel? Lo que se dice tiene que ser, palabra por palabra, lo que el reel reparte entre
+ * sus planos (el gancho, la marca, el producto: nada se salta), y el gancho tiene que estar escrito en la primera
+ * escena. → [errores graves] (vacío si está bien). Pura.
+ */
+export function comprobarMontaje(reel = {}, guion = {}, { voz = true } = {}) {
+  const errores = [];
+  const planos = (reel.planos ?? []).filter((p) => p && corto(p.escena, 10));
+  const norm = (t) => palabrasDe(t).map((w) => w.toLowerCase().replace(/[^\p{L}\p{N}]/gu, ""));
+  if (voz) {
+    const esperado = norm(hablaDePlanos({ ...reel, planos }).join(" "));
+    const dicho = norm((guion.escenas ?? []).map((e) => e.habla ?? "").join(" "));
+    const falta = esperado.filter((w, i) => dicho[i] !== w);
+    if (esperado.join(" ") !== dicho.join(" ")) {
+      errores.push(`Al montar se perdió parte de lo que se dice (${falta.length ? `«${esperado.slice(0, 12).join(" ")}…»` : "el orden cambió"}): el montaje tiene que decir todo lo del guion del reel.`);
+    }
+  }
+  const gancho = ganchoDe(reel);
+  const primera = guion.escenas?.[0];
+  if (gancho && !(primera?.capas ?? []).some((c) => c.tipo === "texto" && c.texto)) errores.push("Al montar se perdió el gancho escrito de la primera escena.");
+  return errores;
+}
+
+/** ¿Hay con qué montar? (al menos un clip o un fotograma, o el video). Pura. */
+export const sePuedeMontar = (fuente = {}) => (fuente.tipo === "uno" ? Boolean(fuente.archivoId)
+  : (fuente.clips ?? []).some((c) => c?.archivoId) || (fuente.fotogramas ?? []).some(Boolean));
 
 /** Lo que dura el montaje a ojo (para decir el costo de la voz y no pasar de lo que admite el formato). Pura. */
 export function segundosDeMontaje(guion) {
-  const s = (guion?.escenas ?? []).reduce((t, e) => {
-    const v = (e.capas ?? []).find((c) => c.tipo === "video");
-    const clip = v ? Math.max(0, (Number(v.hasta) || 0) - (Number(v.desde) || 0)) : 0;
-    return t + Math.max(clip, palabrasDe(e.habla).length / PALABRAS_POR_SEGUNDO) + (Number(e.pausa) || 0);
-  }, 0);
+  // La misma cuenta que el render (la voz manda en las escenas que hablan), con los tiempos estimados.
+  const s = (guion?.escenas ?? []).length ? lineaDeTiempo(guion).total : 0;
   return Math.max(MIN_SEGUNDOS, Math.min(MAX_SEGUNDOS, Math.round(s * 10) / 10));
 }
 

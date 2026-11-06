@@ -114,10 +114,11 @@ describe("la revisión de las escenas", () => {
     expect(p.mensaje).toMatch(/px/);
     expect(p.grave).toBe(false);
     expect(sola.filter((p) => ["texto_pequeno", "espacio_vacio"].includes(p.tipo)).every((p) => !p.grave)).toBe(true);
-    // Todo puesto arriba con coordenadas: carga la escena arriba.
+    // Todo puesto arriba con coordenadas: carga la escena arriba. (Una capa que se reparte y el logo: las coordenadas se
+    // quedan; con dos que se reparten, se pasarían a zonas y el motor las repartiría.)
     const arriba = revisar(una([
       { tipo: "texto", id: "t", texto: "Un titular", rol: "titular", pos: { x: 0.5, y: 0.2 } },
-      { tipo: "cifra", id: "c", valor: 90, sufijo: "%", pos: { x: 0.5, y: 0.33 } },
+      { tipo: "logo", id: "c", pos: { x: 0.5, y: 0.33 } },
     ]));
     const d = arriba.find((p) => p.tipo === "desequilibrio");
     expect(d.mensaje).toMatch(/arriba/);
@@ -170,7 +171,8 @@ describe("la revisión de las escenas", () => {
     const g = con((x) => { x.escenas[1].capas[1] = { tipo: "texto", id: "l", texto: "El precio", rol: "titular", pos: "abajo" }; });
     expect(revisar(g).filter((p) => p.tipo === "zona_esencial" && p.capa === "l")).toEqual([]);
     // Alineado a la derecha y con x/y pegado al borde sí se sale (lo tapan los botones de la red).
-    const der = con((x) => { x.escenas[1].capas[1] = { tipo: "texto", id: "l", texto: "El precio", rol: "titular", alinear: "der", pos: { x: 0.6, y: 0.5 } }; });
+    // (Sola con el sello: con otra capa que se reparte, sus coordenadas se pasarían a una zona.)
+    const der = con((x) => { x.escenas[1].capas[1] = { tipo: "texto", id: "l", texto: "El precio", rol: "titular", alinear: "der", pos: { x: 0.6, y: 0.5 } }; x.escenas[1].capas.splice(2, 1); });
     expect(revisar(der).some((p) => (p.tipo === "zona_esencial" || p.tipo === "zona_segura") && p.capa === "l")).toBe(true);
   });
 });
@@ -210,5 +212,34 @@ describe("la revisión con un video a sangre", () => {
 
   it("una escena con su video a sangre no se ve «vacía» aunque sólo lleve un texto", () => {
     expect(revisar(conClip(0.4)).filter((p) => p.escena === "e1" && p.tipo === "espacio_vacio")).toEqual([]);
+  });
+
+  it("D20 · avisa del producto pequeño, del logo encima de una persona y de dos textos que dicen lo mismo", () => {
+    const una = (capas, habla = "uno dos tres cuatro cinco seis siete ocho nueve diez once doce trece catorce quince") => {
+      const v = validarGuion({ escenas: [{ tipo: "producto", habla, capas }] });
+      expect(v.errores).toEqual([]);
+      return v.guion;
+    };
+    const chico = revisar(una([{ tipo: "imagen", id: "p", archivo: "a1", tam: 0.15 }, { tipo: "texto", id: "t", texto: "Nuevo", pos: "arriba" }]));
+    expect(tipos(chico)).toContain("producto_pequeno");
+    const logo = revisar(una([{ tipo: "personaje", id: "bebe", pos: { x: 0.5, y: 0.5 }, tam: 0.6 }, { tipo: "logo", id: "l", pos: { x: 0.5, y: 0.5 }, tam: 0.3 }]));
+    expect(logo.find((p) => p.tipo === "logo_sobre_cara")).toMatchObject({ capa: "l", grave: false });
+    expect(tipos(logo)).not.toContain("encimadas");
+    const dos = revisar(una([{ tipo: "texto", id: "a", texto: "Envío gratis hoy", pos: "arriba" }, { tipo: "sello", id: "b", texto: "¡Envío gratis!", pos: "abajo" }]));
+    expect(tipos(dos)).toContain("textos_repetidos");
+  });
+
+  it("D19 · el producto, el precio y el logo juntos saturan la escena: el logo y el llamado, al cierre", () => {
+    const v = validarGuion({ escenas: [{ tipo: "producto", habla: "uno dos tres cuatro cinco seis siete ocho nueve diez once doce trece catorce quince", capas: [
+      { tipo: "imagen", id: "p", archivo: "a1" }, { tipo: "cifra", id: "c", valor: 45, prefijo: "$" }, { tipo: "logo", id: "l" }] }] });
+    expect(tipos(revisar(v.guion))).toContain("escena_cargada");
+  });
+
+  it("A2 · un clip más corto que la voz de su escena se quedaría quieto: se avisa como grave", () => {
+    const v = validarGuion({ escenas: [{ tipo: "gancho", habla: "uno dos tres cuatro cinco seis siete ocho nueve diez once doce trece catorce quince", capas: [
+      { tipo: "video", id: "clip", archivo: "v1", encuadre: "completo", desde: 0, hasta: 4, oscurecer: 0.3 }] }] });
+    const p = revisar(v.guion).find((x) => x.tipo === "clip_corto");
+    expect(p).toMatchObject({ grave: true, capa: "clip" });
+    expect(p.mensaje).toMatch(/se quedaría quieto/);
   });
 });

@@ -186,11 +186,26 @@ describe("la línea de tiempo", () => {
     expect(t.escenas[2].palabras[0].desde).toBe(5); // 2 s de audio + 3 s de silencios
   });
 
-  it("una escena muy corta se alarga con silencio hasta el mínimo", () => {
-    const g = validarGuion(minimo([escena("Hola"), escena(DIEZ)])).guion;
+  it("una escena muy corta que CIERRA una oración se alarga con silencio hasta el mínimo", () => {
+    const g = validarGuion(minimo([escena("Hola."), escena(DIEZ)])).guion;
     const t = lineaDeTiempo(g);
     expect(t.escenas[0].hasta - t.escenas[0].desde).toBeCloseTo(MIN_ESCENA, 3);
     expect(t.silencios[0]).toEqual({ en: 0.4, dur: 0.2 });
+  });
+
+  it("A1 · la voz nunca se traba: ni un clip ni una imagen alargan una escena con habla, ni se mete silencio a mitad de una oración", () => {
+    const clip = { tipo: "video", id: "v", archivo: "a1", encuadre: "completo", desde: 0, hasta: 4 };
+    const foto = { tipo: "imagen", id: "f", archivo: "a2", encuadre: "completo", dura: 5 };
+    // Una oración partida en tres escenas: la del medio, corta y sin signo, y las capas que antes las alargaban.
+    const g = validarGuion(minimo([escena("Esta crema", { capas: [clip] }), escena("no", { capas: [foto] }), escena("irrita la piel de tu bebé: cámbiate hoy a la crema suave que sí lo cuida.")])).guion;
+    const t = lineaDeTiempo(g);
+    expect(t.silencios).toEqual([]);
+    // Lo que dura cada escena es lo que tarda en decirse (estimado a 2,5 palabras por segundo).
+    expect(t.escenas[0].hasta - t.escenas[0].desde).toBeCloseTo(0.8, 3);
+    expect(t.escenas[1].hasta - t.escenas[1].desde).toBeCloseTo(0.4, 3);
+    // Sin habla, el clip y la imagen siguen marcando lo que dura su escena (un montaje mudo, una foto con música).
+    const mudo = lineaDeTiempo(validarGuion(minimo([escena("", { capas: [clip] }), escena("", { capas: [foto] })])).guion);
+    expect(mudo.escenas.map((e) => e.hasta - e.desde)).toEqual([4, 5]);
   });
 
   it("una capa anclada a una palabra la sigue al cambiar la voz", () => {

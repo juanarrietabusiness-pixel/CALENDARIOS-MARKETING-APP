@@ -23,6 +23,11 @@ import { validarGuion } from "../../../src/lib/videoEscenas.js";
 import { pedidoDeGuionAnimado, leerGuionAnimado, textoDePublicacion, duracionAnimado, MAX_IDEA_ANIMADO, pedidoDeGuionCancion } from "../../../src/lib/guionAnimadoIA.js";
 import { conLaCancion, comprobarLetra } from "../../../src/lib/videoCancion.js";
 import { estructuraDeVoz, usadaEn, ErrorEstructura } from "../estructurasGuion.js";
+import { lineaDeLexico } from "../../../src/lib/lexico.js";
+import { preciosPermitidos, erroresDePrecio } from "../../../src/lib/fidelidad.js";
+
+/** Lo de la marca para el guion con su LÉXICO detrás (cómo se dice algo; el código lo aplica además al guardar). */
+const conLexico = (marcaVideo, kit) => [marcaVideo, lineaDeLexico(kit?.lexico)].filter(Boolean).join("\n");
 
 /** Un error de lo pedido, con su estado HTTP. */
 export class ErrorGuion extends Error {
@@ -32,22 +37,37 @@ export class ErrorGuion extends Error {
   }
 }
 
-/** El catálogo con los IDs de la galería de las fotos de cada producto (las que se pueden poner en una capa «imagen»). */
-async function catalogoConFotos(acceso, clienteId) {
+/**
+ * El catálogo con los IDs de la galería de las fotos de cada producto (las que se pueden poner en una capa «imagen»).
+ * Con `soloIds` (el producto o los productos del VIDEO), sólo esos: sus beneficios, claims y precios no se mezclan con
+ * los de otro producto de la misma marca. → { texto, productos } (los productos que van, para comprobar sus precios).
+ */
+async function catalogoConFotos(acceso, clienteId, soloIds = []) {
   try {
     const { catalogo, inventario } = await leerMercado(acceso, clienteId);
     const activos = productosActivos(catalogo);
-    if (!activos.length) return "";
+    if (!activos.length) return { texto: "", productos: [] };
+    const del = soloIds.length ? activos.filter((p) => soloIds.includes(String(p.id))) : [];
+    const lista = del.length ? del : activos.slice(0, 20);
     const archivos = await acceso.leerColumnas("estudio_archivos", ["id", "clave", "mime", "borrado_at"], { client_id: clienteId });
     const idDe = new Map(archivos.filter((f) => !f.borrado_at && String(f.mime).startsWith("image/")).map((f) => [f.clave, f.id]));
-    return activos.slice(0, 20).map((p) => {
+    const lineas = lista.map((p) => {
       const ids = (p.fotos ?? []).map((k) => idDe.get(k)).filter(Boolean);
       return `${lineaDeProducto(p, { inventario })}${ids.length ? ` · fotos (archivo): ${ids.join(", ")}` : " · sin fotos"}`;
     }).join("\n");
+    const texto = del.length
+      ? `EL PRODUCTO DE ESTE VIDEO (sus beneficios, claims y precios salen SÓLO de aquí, nunca de otro producto de la marca):\n${lineas}`
+      : lineas;
+    return { texto, productos: lista };
   } catch {
-    return "";
+    return { texto: "", productos: [] };
   }
 }
+
+/** Los productos del video: el pedido, o los de su publicación. */
+const productosDelVideo = (datos = {}, post = null) => [...new Set([
+  datos.productoId, ...(Array.isArray(post?.productoIds) ? post.productoIds : []), post?.productoId,
+].filter(Boolean).map(String))];
 
 /**
  * Las imágenes de referencia del ESTILO del video (`kit.referenciasVideo`, de la galería de ESTE cliente): copias
@@ -140,7 +160,10 @@ export async function escribirGuion(env, acceso, cliente, datos = {}) {
   if (!idea && !delPost) throw new ErrorGuion("Di de qué va el video (o créalo desde una publicación del calendario).");
   const segundos = duracionAnimado(datos.segundos);
   const contexto = ctx.contexto;
-  const productos = await catalogoConFotos(acceso, cliente.id);
+  const catalogo = await catalogoConFotos(acceso, cliente.id, productosDelVideo(datos, post));
+  const productos = catalogo.texto;
+  // Los precios que puede decir: los de su producto (o del catálogo, si no se sabe cuál) y los de la idea escrita.
+  const permitidos = preciosPermitidos(catalogo.productos, [idea, delPost]);
   // Un ESTILO GUARDADO del cliente (src/lib/estilosVideo.js): la IA escribe el contenido y el código impone la forma.
   // Con fondos en el estilo, el video los lleva aunque no se marcara «Con imágenes de fondo».
   const estilo = datos.estilo ?? null;
@@ -151,7 +174,7 @@ export async function escribirGuion(env, acceso, cliente, datos = {}) {
 
   const base = {
     marca: cliente.name, idea, publicacion: delPost, segundos, formato: datos.formato, contexto, productos, personaje, criterio: ctx.criterio,
-    estructura: eleccion.texto, marcaVideo, conFondos, galeria, maxFondos,
+    estructura: eleccion.texto, marcaVideo: conLexico(marcaVideo, kit), conFondos, galeria, maxFondos,
     estiloGuardado: estilo ? lineaDeEstilo(estilo, { escenas: Math.round(segundos / 4) }) : "",
   };
   // Impone el estilo (si lo hay), valida y, con fondos, que no pida más imágenes de la cuenta (eso también se corrige
@@ -161,7 +184,10 @@ export async function escribirGuion(env, acceso, cliente, datos = {}) {
     const guion = estilo ? aplicarEstilo(crudo, estilo, { conFondos }).guion : crudo;
     const v = validarGuion(guion);
     const deFondos = conFondos && v.guion ? erroresDeFondos(v.guion, maxFondos ? { maxFondos } : {}) : [];
-    return deFondos.length ? { ...v, ok: false, errores: [...(v.errores ?? []), ...deFondos] } : v;
+    // Un precio que no es del producto del video es un error grave (se corrige en la segunda vuelta).
+    const dePrecio = v.guion ? erroresDePrecio(v.guion, permitidos) : [];
+    const extra = [...deFondos, ...dePrecio];
+    return extra.length ? { ...v, ok: false, errores: [...(v.errores ?? []), ...extra] } : v;
   };
   let r = await llamarConReferencias(env, acceso, cliente, { imagenes, texto: (n) => pedidoDeGuionAnimado({ ...base, referencias: n }), salida: 8000, funcion: "guion de video" });
   const refs = r.refs;
@@ -202,7 +228,7 @@ export async function escribirGuion(env, acceso, cliente, datos = {}) {
  */
 export async function escribirGuionCancion(env, acceso, cliente, { sincronia, lineas, huecos, formato = "9:16", titulo = "", postId = "", indicacion = "", conFondos = false, golpes = [], bpm = 0, estilo = null }) {
   const ctx = await contextoDeGuion(env, acceso, cliente, { postId: String(postId ?? ""), consulta: `${titulo || sincronia.nombre || ""} canción video animado`, presupuesto: 3000 });
-  const productos = await catalogoConFotos(acceso, cliente.id);
+  const productos = (await catalogoConFotos(acceso, cliente.id)).texto;
   // Con un ESTILO GUARDADO que lleva fondos, el video los lleva aunque no se marcara «Con imágenes de fondo».
   const fondos = conFondos === true || estilo?.fondo?.imagen === true;
   const maxFondos = estilo ? TOPE_FONDOS_ESTILO : undefined;
@@ -210,7 +236,7 @@ export async function escribirGuionCancion(env, acceso, cliente, { sincronia, li
   const personaje = kit.personajeVideo ?? null;
   const base = {
     marca: cliente.name, titulo, nombre: sincronia.nombre ?? "", duracion: sincronia.duracion, lineas, huecos, formato,
-    contexto: ctx.contexto, productos, personaje, indicacion, marcaVideo, conFondos: fondos, galeria, golpes, bpm, maxFondos,
+    contexto: ctx.contexto, productos, personaje, indicacion, marcaVideo: conLexico(marcaVideo, kit), conFondos: fondos, galeria, golpes, bpm, maxFondos,
     estiloGuardado: estilo ? lineaDeEstilo(estilo, { escenas: lineas.length + huecos.length, cancion: true }) : "",
   };
   const cancion = { archivo: sincronia.archivo, duracion: sincronia.duracion, nombre: sincronia.nombre ?? "" };

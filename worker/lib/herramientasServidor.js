@@ -489,7 +489,9 @@ export function describirUso(nombre, entrada = {}) {
     case "renderizar_video": return "Pidió el render a mp4 de un video animado";
     case "fondos_video": return entrada.confirmado === true ? "Pidió al director las imágenes de fondo de un video animado" : "Miró el costo de las imágenes de fondo de un video animado (sin crear nada)";
     case "ligar_video": return entrada.publicacion_id ? "Ligó un video animado a una publicación" : "Desligó un video animado de su publicación";
-    case "personaje_video": return ["piel", "pelo", "ropa", "accesorio", "nombre"].some((k) => entrada[k] !== undefined) ? "Cambió el personaje de los videos animados" : "Miró el personaje de los videos animados";
+    case "personaje_video": return ["piel", "pelo", "ropa", "accesorio", "nombre", "imagenes"].some((k) => entrada[k] !== undefined) ? "Cambió el personaje de los videos animados" : "Miró el personaje de los videos animados";
+    case "voz_de_marca": return entrada.voz || entrada.modelo ? "Cambió la voz de la marca en sus videos" : "Miró la voz de la marca";
+    case "lexico_de_marca": return entrada.reglas === undefined ? "Miró el léxico de la marca" : "Cambió el léxico de la marca";
     case "sonido_video": return entrada.efectos === undefined && entrada.musica_id === undefined && entrada.volumen === undefined ? "Miró el sonido de un video animado" : "Cambió el sonido de un video animado (efectos o música)";
     case "musicas": return `Miró las músicas de fondo${entrada.cliente ? ` de ${entrada.cliente}` : ""}`;
     case "video_con_cancion": return entrada.confirmado === true ? `Creó un video animado con una canción${entrada.disenar === true ? " (escenas de la IA)" : " (prueba de sincronía)"}` : "Miró el costo de sincronizar una canción (sin crear nada)";

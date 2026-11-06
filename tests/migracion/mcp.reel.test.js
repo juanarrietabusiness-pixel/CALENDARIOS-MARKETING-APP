@@ -1,8 +1,8 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { d1EnMemoria } from "../utils/d1Memoria.js";
 import { crearAcceso } from "../../worker/lib/acceso.js";
 import { crearHerramientasMCP, HERRAMIENTAS_MCP } from "../../worker/lib/mcp.js";
-import { planDeReel, modeloParaFotogramas } from "../../worker/lib/estudio/herramientasReel.js";
+import { planDeReel, modeloParaFotogramas, textoDelAhorro, lineaDeClips } from "../../worker/lib/estudio/herramientasReel.js";
 import { CON_VISTA } from "../../worker/lib/mcpVista/modelo.js";
 
 // ============================================================
@@ -67,6 +67,38 @@ describe("crear_reel", () => {
     expect(r.structuredContent).toBeTruthy();
   });
 
+  it("B6 · por defecto se PARA tras el storyboard: sólo cuesta lo de los fotogramas y el video se confirma después", async () => {
+    const t = textoDe(await mcp().llamar("crear_reel", { cliente: "Baby Caleb", guion: GUION }));
+    expect(t).toMatch(/se PARA a revisar el storyboard/);
+    await mcp().llamar("crear_reel", { cliente: "Baby Caleb", guion: GUION, confirmado: true });
+    const [e] = encargos();
+    expect(e.datos).toMatchObject({ revisar: true, video: { fase: "espera" } });
+    // Saltarse la revisión sólo si se pide.
+    const r2 = await mcp().llamar("crear_reel", { cliente: "Baby Caleb", guion: { ...GUION, titulo: "Otro reel" }, confirmado: true, revisar: false });
+    expect(textoDe(r2)).toMatch(/Reel en marcha/);
+    expect(encargos().some((x) => x.datos.revisar === false)).toBe(true);
+  });
+
+  it("E22 · otra voz para ESTE reel viaja al montaje", async () => {
+    await mcp().llamar("crear_reel", { cliente: "Baby Caleb", guion: GUION, confirmado: true, voz: "abcdefgh12345678" });
+    expect(encargos()[0].datos.montaje).toMatchObject({ vozId: "abcdefgh12345678" });
+  });
+
+  it("B7 · con Kie, el saldo que no alcanza se dice (con la cuenta de la llave) y no se gasta", async () => {
+    env.KIE_API_KEY = "kie-llave-1234abcd";
+    vi.stubGlobal("fetch", async (url) => {
+      if (String(url).includes("/api/v1/chat/credit")) return Response.json({ code: 200, msg: "success", data: 2 });
+      throw new Error(`fetch inesperado a ${url}`);
+    });
+    try {
+      const t = textoDe(await mcp().llamar("crear_reel", { cliente: "Baby Caleb", guion: GUION, revisar: false }));
+      expect(t).toMatch(/saldo de Kie NO alcanza.*Saldo: 2 créditos.*termina en abcd/s);
+      const r = await mcp().llamar("crear_reel", { cliente: "Baby Caleb", guion: GUION, revisar: false, confirmado: true });
+      expect(r.isError).toBe(true);
+      expect(encargos()).toHaveLength(0);
+    } finally { vi.unstubAllGlobals(); }
+  });
+
   it("una publicación que no existe no se liga a ciegas", async () => {
     const r = await mcp().llamar("crear_reel", { cliente: "Baby Caleb", guion: GUION, publicacion_id: "nada", confirmado: true });
     expect(r.isError).toBe(true);
@@ -94,6 +126,27 @@ describe("las demás del video por MCP", () => {
     expect(por.estado_reel.annotations.readOnlyHint).toBe(true);
     expect(por.crear_reel.description).toMatch(/sólo con su «sí»/);
     for (const n of ["crear_reel", "estado_reel"]) expect(CON_VISTA).toContain(n);
+  });
+  it("B7/B9/C12 · el plan: clips con Veo 3.1 Lite, sin pagar la toma fija, y lo que se ahorra frente a la opción cara", () => {
+    const guion = { ...GUION, segundos: 9, planos: GUION.planos.map((x, i) => ({ ...x, desde: i * 3, hasta: (i + 1) * 3, toma: i === 1 ? "fija" : "movimiento" })) };
+    const p = planDeReel({ guion, activos: { kie: true }, kit: {} });
+    expect(p).toMatchObject({ salida: "clips", clips: 2, fijos: 1 });
+    expect(p.video.id).toBe("veo-3-1-lite-kie");
+    expect(p.cara.ahorro).toBeGreaterThan(0);
+    expect(textoDelAhorro(p)).toMatch(/se ahorran unos/);
+    // Sin montaje (para descargar los clips), cada plano lleva su clip.
+    expect(planDeReel({ guion, activos: { kie: true }, kit: {}, montar: false }).clips).toBe(3);
+  });
+  it("B8 · estado_reel dice qué clips no salieron y por qué (y que se montan con su fotograma)", () => {
+    const pasos = [
+      { id: "f1", titulo: "Plano 1", clip: { fase: "hecho", archivoId: "a1" } },
+      { id: "f2", titulo: "Plano 2", clip: { fase: "fallido", error: "Veo rechazó el primer plano de la piel" } },
+      { id: "f3", titulo: "Plano 3", clip: { fase: "omitido" } },
+    ];
+    const t = lineaDeClips(pasos, true);
+    expect(t).toMatch(/Clips: 1 de 2 listos/);
+    expect(t).toMatch(/NO salieron: Plano 2 \(Veo rechazó el primer plano de la piel\)\. Se montan con su fotograma/);
+    expect(t).toMatch(/Toma fija, con su fotograma \(sin clip\): Plano 3/);
   });
   it("el plan: los fotogramas con un modelo que admite referencias; 60 s, por clips", () => {
     expect(modeloParaFotogramas({ kie: true }, {}).referencias).toBeGreaterThanOrEqual(2);

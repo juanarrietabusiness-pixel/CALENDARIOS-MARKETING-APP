@@ -84,10 +84,17 @@ export function modelosParaClips(activos = {}) {
   return porPrecio(MODELOS.filter((m) => m.tipo === "video" && m.inicial && !m.necesitaVideo && (m.motor === "prueba" || activos[m.motor])), activos);
 }
 
-/** El que se escoge si nadie escoge: Kling 3.0 (anima bien una imagen y es barato), luego los que le siguen. */
+/**
+ * El orden de los modelos para los CLIPS de un reel (cada uno arranca de su fotograma revisado). Primero Veo 3.1 Lite por
+ * Kie: en la prueba del método de agencia fue el más barato (~0,03 $/s) que deja el producto fiel. Luego Kling 3.0 y
+ * los que le siguen.
+ */
+export const PREFERIDOS_CLIPS = Object.freeze(["veo-3-1-lite-kie", "kling-3-kie", "seedance-2-5-kie", "seedance-2-kie", "wan-3-kie", "hailuo-2-3-kie", "minimax-h3-kie"]);
+
+/** El que se escoge si nadie escoge: el primero de `PREFERIDOS_CLIPS` con llave. */
 export function modeloParaClips(activos = {}) {
   const lista = modelosParaClips(activos);
-  return ["kling-3-kie", "seedance-2-5-kie", "seedance-2-kie", "wan-3-kie", "hailuo-2-3-kie"]
+  return PREFERIDOS_CLIPS
     .map((id) => lista.find((m) => m.id === id)).find(Boolean) ?? lista.find((m) => m.motor !== "prueba") ?? lista[0] ?? null;
 }
 

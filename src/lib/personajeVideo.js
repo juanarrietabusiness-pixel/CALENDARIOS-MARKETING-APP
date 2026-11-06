@@ -37,11 +37,31 @@ export function limpiarPersonaje(p) {
     ropa: TOKENS_ROPA.includes(o.ropa) ? o.ropa : hex(o.ropa, ASPECTO_POR_DEFECTO.ropa),
     accesorio: ACCESORIOS_PERSONAJE.includes(o.accesorio) ? o.accesorio : "ninguno",
     nombre: String(o.nombre ?? "").replace(/\s+/g, " ").trim().slice(0, 40),
+    // La MASCOTA de la marca: una imagen de la galería por pose (`imagenesDePoses`). Sólo si la hay.
+    ...(Object.keys(imagenesDePoses(o.imagenes)).length ? { imagenes: imagenesDePoses(o.imagenes) } : {}),
   };
 }
 
+/** Las poses de la pieza «personaje» (las mismas del formato de escenas). */
+export const POSES_PERSONAJE = Object.freeze(["de-pie", "saluda", "senala", "piensa", "celebra", "preocupado"]);
+
+/**
+ * Las imágenes de la MASCOTA de una marca (si la tiene: el bebé vikingo, un muñeco, un animal), una por pose: { pose: id
+ * de la galería }. Con ellas, la pieza «personaje» dibuja la mascota y no la figura genérica de la casa. Pura.
+ */
+export function imagenesDePoses(v) {
+  const o = v && typeof v === "object" && !Array.isArray(v) ? v : {};
+  return Object.fromEntries(POSES_PERSONAJE.map((p) => [p, String(o[p] ?? "").trim()]).filter(([, id]) => /^[\w-]{1,64}$/.test(id)));
+}
+
+/** La imagen de la mascota para una pose: la de esa pose, o la de pie, o la primera que haya. → id o null. Pura. */
+export function imagenDePose(aspecto, pose) {
+  const imgs = aspecto?.imagenes ?? {};
+  return imgs[pose] ?? imgs["de-pie"] ?? Object.values(imgs)[0] ?? null;
+}
+
 /** ¿Trae algo un aspecto? (para no guardar uno vacío). Pura. */
-export const tieneAspecto = (p) => Boolean(p && typeof p === "object" && ["piel", "pelo", "ropa", "accesorio", "nombre"].some((k) => p[k] !== undefined));
+export const tieneAspecto = (p) => Boolean(p && typeof p === "object" && ["piel", "pelo", "ropa", "accesorio", "nombre", "imagenes"].some((k) => p[k] !== undefined));
 
 /** El guion con el personaje del KIT del cliente si no trae uno propio (lo hacen la vista previa y el servidor). Pura. */
 export function conPersonajeDelKit(guion, kit) {

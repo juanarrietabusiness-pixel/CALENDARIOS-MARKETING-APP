@@ -174,7 +174,25 @@ export async function ejecutarRender(env, { ownerId, clienteId, videoId, intento
   const render = leerJSON(fila?.render, {});
   if (!fila || fila.estado !== "renderizando" || render.intento !== intento) return null;
   const inicio = Date.now();
-  try {
+  // Si el Container se reinicia a mitad (ffmpeg muere con «signal 15»: otro pedido lo despertó o lo reemplazó), el render
+  // se repite UNA vez desde el principio —con los clips subidos otra vez: un Container nuevo no los tiene— en vez de
+  // quedarse «fallido» por algo que no es del video.
+  for (let vuelta = 1; ; vuelta++) {
+    try {
+      return await renderUnaVez();
+    } catch (e) {
+      if (vuelta < 2 && esCorteDelContainer(e)) { console.error("render cortado, otra vez:", e?.message ?? e); continue; }
+      console.error("render:", e?.message ?? e);
+      const motivo = String(e?.message ?? e).slice(0, 400);
+      const fallido = { ...render, estado: "fallido", error: motivo, terminadoAt: ahora() };
+      const escrito = await terminar(acceso, clienteId, videoId, intento, "fallido", fallido).catch(() => false);
+      avisar(env, ownerId, clienteId, videoId);
+      if (escrito) await avisarRender(env, acceso, fila, fallido);
+      return null;
+    }
+  }
+
+  async function renderUnaVez() {
     const cliente = await acceso.leerUno("clients", { id: clienteId });
     if (!cliente) throw new Error("El cliente ya no existe.");
     const armado = await pedidoDelVideo(env, acceso, cliente, fila);
@@ -286,16 +304,11 @@ export async function ejecutarRender(env, { ownerId, clienteId, videoId, intento
     // A la campana de quien lo pidió: el render sigue aunque se cierre la aplicación, y si no, nadie se enteraba.
     if (escrito) await avisarRender(env, acceso, fila, listo);
     return listo;
-  } catch (e) {
-    console.error("render:", e?.message ?? e);
-    const motivo = String(e?.message ?? e).slice(0, 400);
-    const fallido = { ...render, estado: "fallido", error: motivo, terminadoAt: ahora() };
-    const escrito = await terminar(acceso, clienteId, videoId, intento, "fallido", fallido).catch(() => false);
-    avisar(env, ownerId, clienteId, videoId);
-    if (escrito) await avisarRender(env, acceso, fila, fallido);
-    return null;
   }
 }
+
+/** ¿El render se cortó porque el Container se reinició (no por el video)? «signal 15» / SIGTERM, o se cayó la conexión. */
+export const esCorteDelContainer = (e) => /signal 15|SIGTERM|SIGKILL|connection (reset|lost|closed)|Network connection lost|container (restarted|stopped|exited)/i.test(String(e?.message ?? e));
 
 /**
  * El mp4 que devuelve el Container, a R2 POR FLUJO (→ lo que pesa). Leerlo entero en memoria reventaba el Durable

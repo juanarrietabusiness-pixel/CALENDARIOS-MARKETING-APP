@@ -149,11 +149,15 @@ export async function cuadroDe(id, s) {
   const info = await infoDe(id);
   if (!info) return null;
   const m = medidaDeDecodificar(info);
-  const t = Math.max(0, Math.min(Number(s) || 0, Math.max(0, info.duracion - 0.05)));
-  const r = await correr(FFMPEG, argsDeCuadros(ruta(id), t, m, ["-frames:v", "1"]));
   const n = m.ancho * m.alto * 4;
-  if (r.codigo !== 0 || r.salida.length < n) return null;
-  return lienzoDe(r.salida, m.ancho, m.alto);
+  const t = Math.max(0, Math.min(Number(s) || 0, Math.max(0, info.duracion - 0.05)));
+  // Pegado al final, ffmpeg a veces no encuentra ningún cuadro (el último empieza un poco antes de lo que dura el clip) y
+  // la vista previa enseñaba el recuadro «Video» como si el clip faltara: se prueba un poco antes, y si no, el primero.
+  for (const en of [...new Set([t, Math.max(0, t - 0.5), 0])]) {
+    const r = await correr(FFMPEG, argsDeCuadros(ruta(id), en, m, ["-frames:v", "1"]));
+    if (r.codigo === 0 && r.salida.length >= n) return lienzoDe(r.salida, m.ancho, m.alto);
+  }
+  return null;
 }
 
 /**

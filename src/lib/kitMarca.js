@@ -40,6 +40,7 @@ import { posicionDelKit } from "./logoEncima.js";
 import { limpiarTiposArte } from "./tiposArte.js";
 import { limpiarCanciones } from "./cancionesInstagram.js";
 import { limpiarEstilosVideo } from "./estilosVideo.js";
+import { limpiarLexico } from "./lexico.js";
 
 /** Los presets, uno por tipo de contenido (los ids de `PILARES`, en pilares.js). `base`: la plantilla sin escribir. */
 export const TIPOS_PRESET = Object.freeze({
@@ -291,6 +292,9 @@ export function limpiarKit(guardado) {
     // Los ESTILOS DE VIDEO guardados de un video que salió bien (src/lib/estilosVideo.js): sus reglas, para que el
     // siguiente salga igual. Sólo los cambian sus rutas (el PUT del kit los conserva). Sólo si los hay.
     ...(limpiarEstilosVideo(g.estilosVideo).length ? { estilosVideo: limpiarEstilosVideo(g.estilosVideo) } : {}),
+    // El LÉXICO de la marca (src/lib/lexico.js): cómo se dice algo y qué no se dice nunca; el código lo aplica a lo que se
+    // dice y se lee en sus videos. Sólo lo cambia su ruta (el PUT del kit lo conserva). Sólo si lo hay.
+    ...(limpiarLexico(g.lexico).length ? { lexico: limpiarLexico(g.lexico) } : {}),
     ...(g.preparadoAt ? { preparadoAt: String(g.preparadoAt) } : {}),
   };
 }
@@ -751,7 +755,7 @@ export function fundirKit(guardado, propuesto, ahora = new Date().toISOString())
     aprendido: antes.aprendido, referencias: antes.referencias, modelos: antes.modelos, reglas: antes.reglas,
     logoModo: antes.logoModo, logoPosicion: antes.logoPosicion, fuente: antes.fuente, voz: antes.voz, locucion: antes.locucion, musica: antes.musica, ...(antes.personajeVideo ? { personajeVideo: antes.personajeVideo } : {}), plantillas: antes.plantillas, tiposArte: antes.tiposArte,
     // El estilo del video y sus referencias los escribe la agencia: la IA del kit no los toca.
-    estiloVideo: antes.estiloVideo, referenciasVideo: antes.referenciasVideo, estilosVideo: antes.estilosVideo, preparadoAt: ahora,
+    estiloVideo: antes.estiloVideo, referenciasVideo: antes.referenciasVideo, estilosVideo: antes.estilosVideo, lexico: antes.lexico, preparadoAt: ahora,
   });
 }
 

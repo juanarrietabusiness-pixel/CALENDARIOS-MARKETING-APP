@@ -113,6 +113,28 @@ describe("POST /api/videos/<c>/escribir", () => {
     expect(peticiones).toHaveLength(2);
   });
 
+  it("E21 · el catálogo es SÓLO el producto del video y un precio que no es suyo se corrige (o no se guarda)", async () => {
+    // Otro producto de la misma marca, con su precio: no tiene que llegar a un video de las toallitas.
+    db.sqlite.prepare("update mercado_clientes set catalogo = ? where id = 'm1'").run(JSON.stringify([
+      { id: "t1", nombre: "Toallitas", tipo: "producto", precio: "$4,50", beneficios: "sin alcohol", activo: true, fotos: ["clientes/bc/estudio/toallitas.png"] },
+      { id: "p2", nombre: "Pañales", tipo: "producto", precio: "$32,99", beneficios: "fibras de bambú", activo: true },
+    ]));
+    db.sqlite.prepare("update calendars set days = ? where id = 'cal1'").run(JSON.stringify([{ date: "2026-11-20", posts: [{ id: "p1", format: "reel", title: "Toallitas", idea: "La piel del bebé", productoId: "t1" }] }]));
+    const conPrecio = (precio) => ({ ...EJEMPLO_GUION, escenas: EJEMPLO_GUION.escenas.map((e, i) => (i === 0 ? { ...e, habla: `${e.habla} Por solo ${precio}.` } : e)) });
+    anthropic([JSON.stringify(conPrecio("$32,99")), JSON.stringify(conPrecio("$4,50"))]);
+    const r = await pedir("/videos/bc/escribir", { idea: "", postId: "p1" });
+    expect(r.status).toBe(200);
+    const j = await r.json();
+    expect(j.corregido).toBe(true);
+    const primero = textoPedido(peticiones[0]);
+    expect(primero).toMatch(/EL PRODUCTO DE ESTE VIDEO[\s\S]*Toallitas/);
+    expect(primero).not.toMatch(/Pañales|fibras de bambú/);
+    expect(textoPedido(peticiones[1])).toMatch(/\$32\.99.*no es el precio del producto de este video/);
+    // Con el precio de otro producto también en la corrección, no se da por bueno.
+    anthropic([JSON.stringify(conPrecio("$32,99")), JSON.stringify(conPrecio("$32,99"))]);
+    expect((await pedir("/videos/bc/escribir", { idea: "", postId: "p1" })).status).toBe(502);
+  });
+
   it("sin idea ni publicación, 400 sin llamar a la IA", async () => {
     anthropic([]);
     const r = await pedir("/videos/bc/escribir", { idea: "  " });
