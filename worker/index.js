@@ -38,6 +38,7 @@ import { rutaChat, rutaResumenChat, rutaTurnoChat } from "./rutas/chat.js";
 import { rutasConversaciones } from "./rutas/conversaciones.js";
 import { rutasBancoIdeas } from "./rutas/bancoIdeas.js";
 import { rutasFormulasUgc } from "./rutas/formulasUgc.js";
+import { rutasSonidos } from "./rutas/sonidos.js";
 import { rutasVideos } from "./rutas/videos.js";
 import { rutasInspiracion } from "./rutas/inspiracion.js";
 import { inspiracionPendiente } from "./lib/inspiracion.js";
@@ -415,6 +416,10 @@ export default {
       // Los videos animados de un cliente: el guion por escenas, su aprobación (la voz y el render, aparte).
       if (partes[0] === "videos") {
         return await rutasVideos(req, env, { acceso, usuario, partes, metodo });
+      }
+      // La biblioteca de sonido: la música y los efectos de cada cliente y los de la agencia (worker/rutas/sonidos.js).
+      if (partes[0] === "sonidos") {
+        return await rutasSonidos(req, env, { acceso, usuario, partes, metodo });
       }
       if (partes[0] === "ia" && partes[1] === "chat" && partes[2] === "turno" && metodo === "GET") {
         return await rutaTurnoChat(req, env, { acceso, partes });

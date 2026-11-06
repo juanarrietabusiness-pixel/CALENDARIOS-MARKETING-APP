@@ -9,7 +9,9 @@
 //   POST /cuadro    { …, t, ancho?, tipo? }  → la imagen del instante t (JPEG por defecto; X-Escena: su id)
 //   POST /hoja      { …, ancho? }            → una hoja con un cuadro de cada escena en su instante «lleno», numerados
 //   POST /revisar   { …, formatos? }         → JSON { problemas, texto }: la revisión con las fuentes reales
-//   POST /render    { …, audio? (base64), musica? { audio (base64), volumen }, efectos? (bool) }   → el MP4 entero (voz con los silencios, -14 LUFS, subtítulos), y en
+//   POST /render    { …, audio? (base64), musica? { audio (base64), volumen }, efectos? (bool), efectosPropios? { whoosh?,
+//                   pop? } (base64: los efectos de la biblioteca de sonido, en vez de los sintetizados) }
+//                                           → el MP4 entero (voz con los silencios, -14 LUFS, subtítulos), y en
 //                                              cabeceras lo que tardó, la duración y el volumen medido
 //   POST /miniatura { imagen (base64), lado? }  → JSON { datos (base64), mime, ancho, alto, original }: una COPIA
 //                                              reducida en JPEG (lado mayor ≤ `lado`, 768 por defecto) para que Claude
@@ -231,7 +233,12 @@ async function atender(ruta, p) {
     const musica = typeof p.musica?.audio === "string" && p.musica.audio
       ? { audio: Buffer.from(p.musica.audio, "base64"), volumen: Number(p.musica.volumen) || 0 } : null;
     const efectos = p.efectos === true;
-    const turno = renderEnCurso.then(() => renderizar(base, { audio, musica, efectos }));
+    // Los efectos de la biblioteca de sonido (sus bytes en base64), en vez del whoosh y del pop sintetizados.
+    const efectosPropios = {};
+    for (const tipo of ["whoosh", "pop"]) {
+      if (typeof p.efectosPropios?.[tipo] === "string" && p.efectosPropios[tipo]) efectosPropios[tipo] = Buffer.from(p.efectosPropios[tipo], "base64");
+    }
+    const turno = renderEnCurso.then(() => renderizar(base, { audio, musica, efectos, efectosPropios }));
     renderEnCurso = turno.catch(() => {});
     const r = await turno;
     return {

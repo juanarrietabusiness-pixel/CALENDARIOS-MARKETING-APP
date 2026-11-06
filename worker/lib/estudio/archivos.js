@@ -7,7 +7,7 @@
 const EXTENSIONES = Object.freeze({
   "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "image/svg+xml": "svg",
   "video/mp4": "mp4", "video/webm": "webm",
-  "audio/mpeg": "mp3", "audio/wav": "wav",
+  "audio/mpeg": "mp3", "audio/wav": "wav", "audio/mp4": "m4a",
 });
 
 /** La extensión de un tipo; nunca la que traiga el proveedor por su cuenta. */
@@ -81,7 +81,12 @@ export function tipoPorBytes(bytes) {
   if (b.length > 8 && b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) return "image/png";
   if (b.length > 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return "image/jpeg";
   if (b.length > 12 && b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46 && b[8] === 0x57 && b[9] === 0x45) return "image/webp";
-  if (b.length > 12 && b[4] === 0x66 && b[5] === 0x74 && b[6] === 0x79 && b[7] === 0x70) return "video/mp4";
+  // Un M4A (audio en el contenedor de MP4: notas de voz del iPhone, lo que exportan muchas apps) se dice por su marca
+  // («M4A », «M4B »); cualquier otro «ftyp» es un video.
+  if (b.length > 12 && b[4] === 0x66 && b[5] === 0x74 && b[6] === 0x79 && b[7] === 0x70) {
+    const marca = String.fromCharCode(b[8], b[9], b[10], b[11]);
+    return marca === "M4A " || marca === "M4B " ? "audio/mp4" : "video/mp4";
+  }
   if (b.length > 4 && b[0] === 0x1a && b[1] === 0x45 && b[2] === 0xdf && b[3] === 0xa3) return "video/webm";
   // Audio (la locución del video animado): MP3 con su etiqueta ID3 o empezando por un cuadro, y WAV.
   if (b.length > 3 && b[0] === 0x49 && b[1] === 0x44 && b[2] === 0x33) return "audio/mpeg";

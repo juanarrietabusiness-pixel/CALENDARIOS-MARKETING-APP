@@ -120,6 +120,9 @@ export const TABLAS_CON_DUENO = Object.freeze([
   "tendencias_videos",
   // Las plantillas de plan que la agencia cambió o creó (worker/rutas/plantillas.js).
   "plantillas_plan",
+  // La biblioteca de sonido de la AGENCIA (música y efectos para todos sus clientes; la de cada cliente vive en
+  // estudio_archivos): worker/lib/estudio/sonidos.js.
+  "biblioteca_sonidos",
   // Las recetas que la agencia cambió o creó y los pedidos de «Crear con Claude» (worker/rutas/recetas.js).
   "recetas",
   "handoffs",

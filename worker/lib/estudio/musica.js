@@ -10,6 +10,9 @@
 // queda puesta en su SONIDO (`videos_proyectos.sonido`, aparte del guion): no sube la versión ni pide otra voz, sólo
 // volver a renderizar. Si el video estaba renderizando o ya tenía otra música escogida DESPUÉS de pedirla, no se pisa.
 //
+// ANTES DE PAGAR: la cotización (409) trae también lo que ya hay en la BIBLIOTECA DE SONIDO que encaja con lo pedido
+// (`biblioteca`, worker/lib/estudio/sonidos.js): reutilizarla es gratis.
+//
 // QUÉ SE PIDE: lo que diga la persona manda. Para un video SIN estilo dicho, el pedido lo escribe el DIRECTOR MUSICAL
 // (worker/lib/estudio/directorMusical.js), que lee el video ya hecho y la música de la marca; el `guion.musica.estilo`
 // queda de pista para él. La cotización (409) ya trae su propuesta y la guarda: la confirmación pide lo MISMO. Sin
@@ -33,6 +36,8 @@ import { textoCosto } from "../../../src/lib/estudioCatalogo.js";
 import { limpiarMusicaDeMarca } from "../../../src/lib/kitMarca.js";
 import { kitDe } from "./kit.js";
 import { proponerMusica } from "./directorMusical.js";
+import { lasQueEncajan } from "./sonidos.js";
+import { bpmDelTexto } from "../../../src/lib/bibliotecaSonido.js";
 
 /** Lo más que pesa una pista (6 minutos en MP3 de 320 kbps son ~14 MB). */
 export const TOPE_MUSICA = 20 * 1024 * 1024;
@@ -82,11 +87,13 @@ export async function pedirMusica(env, acceso, cliente, { estilo, letra, instrum
   const dicho = String(estilo ?? "").trim();
   let propuesta = null;
   let aviso = null;
+  let biblioteca = null;
   // Un video sin estilo dicho: el director musical lo escucha (o se reusa lo que ya propuso para esta cotización).
   if (!dicho && video && g.valido) {
     const d = await proponerMusica(env, acceso, cliente, video, { reusar: true });
     propuesta = d.propuesta;
     aviso = d.aviso;
+    biblioteca = d.biblioteca;
   }
   // Sin video ni estilo: la música de la marca, si la agencia la escribió.
   const marca = !dicho && !propuesta ? limpiarMusicaDeMarca(kitDe(cliente).musica) : null;
@@ -102,9 +109,14 @@ export async function pedirMusica(env, acceso, cliente, { estilo, letra, instrum
   const costo = costoDeMusica();
   const director = delDirector(propuesta);
   if (confirmado !== true) {
+    // Antes de pagar: lo que YA hay en la biblioteca de sonido (del cliente y de la agencia) que encaja con lo pedido.
+    biblioteca ??= await lasQueEncajan(acceso, cliente.id, { estilo: p.estilo, bpm: bpmDelTexto(p.estilo) });
     throw new ErrorMusica(
       `La música «${p.titulo}» (${p.duracion} s, ${p.instrumental ? "instrumental" : "con voz"}, ${m.nombre}) cuesta ${textoCosto(costo.usd)} aproximadamente (${costo.creditos} ${costo.unidad}; Suno entrega dos versiones). Confírmalo para generarla.`,
-      409, { codigo: "confirmar", costo: costo.usd, creditos: costo.creditos, unidad: costo.unidad, pedido: p, ...(director ? { propuesta: director } : {}), ...(aviso ? { aviso } : {}) },
+      409, {
+        codigo: "confirmar", costo: costo.usd, creditos: costo.creditos, unidad: costo.unidad, pedido: p, ...(director ? { propuesta: director } : {}), ...(aviso ? { aviso } : {}),
+        ...(biblioteca?.length ? { biblioteca } : {}),
+      },
     );
   }
   const bloqueo = await bloqueoPorPresupuesto(acceso);

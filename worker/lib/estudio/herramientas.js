@@ -58,6 +58,7 @@ import { lineasDeReferencias } from "../../../src/lib/referencias.js";
 import { ajustarFicha, esFicha, textoDeLaFicha } from "../../../src/lib/director.js";
 import { listarVoces, pedirMuestra, pedirLocucion, ErrorVoz } from "./locucion.js";
 import { pedirMusica, ErrorMusica } from "./musica.js";
+import { textoDeLasQueEncajan } from "../../../src/lib/bibliotecaSonido.js";
 import { DURACION_MUSICA } from "../../../src/lib/musica.js";
 import { MODELOS_VOZ } from "../../../src/lib/voces.js";
 import { DEFINICIONES_VIDEO, crearHerramientasVideo } from "./herramientasVideo.js";
@@ -321,13 +322,15 @@ export function lineaDePieza(f, n) {
  * Qué música se pide y por qué, para el modelo: el estilo que va a Suno, lo que se evita y, si lo escribió el director
  * musical, su porqué (o que fue el respaldo). Pura.
  */
-function lineasDelPedido(pedido, propuesta, aviso) {
+function lineasDelPedido(pedido, propuesta, aviso, biblioteca = null) {
   if (!pedido) return [];
   const de = propuesta ? (propuesta.deRespaldo ? "Sin el director musical (respaldo)" : "El director musical escuchó el video y pide") : "Se pide";
   return [
     `${de}: «${pedido.estilo}»${pedido.evitar ? ` · evitar: ${pedido.evitar}` : ""}.`,
     propuesta?.porque ? `Por qué: ${propuesta.porque}` : "",
     aviso ? `Aviso: ${aviso}` : "",
+    // Lo que YA hay en la biblioteca de sonido que encaja: se ofrece antes de pagar.
+    textoDeLasQueEncajan(biblioteca),
   ].filter(Boolean);
 }
 
@@ -787,7 +790,7 @@ export function crearHerramientasEstudio({ env, acceso, resolverCliente, usuario
           if (e.codigo === "confirmar") {
             return [
               `NO SE CREÓ NADA. ${e.message.replace(/ Confírmalo para generarla\.$/, "")}.`,
-              ...lineasDelPedido(e.pedido, e.propuesta, e.aviso),
+              ...lineasDelPedido(e.pedido, e.propuesta, e.aviso, e.biblioteca),
               "Díselo al usuario con esa cifra (y qué música es) y pregúntale si lo hago. Sólo si responde que sí, vuelve a llamar con los MISMOS datos y confirmado=true: se pide exactamente esto.",
             ].join("\n");
           }

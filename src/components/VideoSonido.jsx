@@ -1,10 +1,11 @@
 // ============================================================
 // «Sonido» e «Historial» de un video animado (lazy: el chunk de VideoAnimado está en su tope)
 //
-//   · Sonido: los efectos (whoosh en las transiciones, pop en los sellos) y la MÚSICA de fondo de la galería del
-//     cliente, con su volumen. Va aparte del guion: cambiarlo no sube la versión ni pide otra voz; se oye al volver a
-//     renderizar (gratis). La música se puede GENERAR con Suno: el director musical escucha el video y propone el
-//     pedido (worker/lib/estudio/directorMusical.js), y «Me gusta» guarda una que funcionó como música de la marca.
+//   · Sonido: los efectos (whoosh en las transiciones, pop en los sellos, o un efecto de la BIBLIOTECA DE SONIDO para
+//     cada sitio) y la MÚSICA de fondo de la biblioteca del cliente o de la agencia, con su volumen. Va aparte del guion:
+//     cambiarlo no sube la versión ni pide otra voz; se oye al volver a renderizar (gratis). La música se puede GENERAR
+//     con Suno (GenerarMusica.jsx): el director musical escucha el video, propone el pedido y, si en la biblioteca ya hay
+//     una que encaja, la ofrece antes de pagar; «Me gusta» guarda una que funcionó como música de la marca.
 //   · Historial: las versiones de antes del guion; «Volver a esta» crea una versión nueva con ese guion, en borrador.
 // ============================================================
 
@@ -12,7 +13,8 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 import Icon from "./Icon";
 import { pedir } from "../lib/db";
 import { limpiarSonido, VOLUMEN_MUSICA } from "../lib/sonidoVideo";
-import { DURACION_MUSICA, TOPES_MUSICA } from "../lib/musica";
+import { conDuracion, avisarSonidos } from "../lib/sonidosApi";
+import GenerarMusica from "./GenerarMusica";
 
 const base = (c, id = "") => `/videos/${encodeURIComponent(c)}${id ? `/${encodeURIComponent(id)}` : ""}`;
 const avisar = (clienteId, id) => { try { window.dispatchEvent(new CustomEvent("videos", { detail: { local: true, clienteId, id } })); } catch { /* sin ventana */ } };
@@ -33,23 +35,41 @@ function Sonido({ client, video, onCambio }) {
   const [efectos, setEfectos] = useState(actual.efectos);
   const [musicaId, setMusicaId] = useState(actual.musica?.archivoId ?? "");
   const [volumen, setVolumen] = useState(actual.musica?.volumen ?? 0);
+  // Un efecto de la biblioteca para las transiciones y otro para los sellos y llamados ("" = el de la aplicación).
+  const [transicion, setTransicion] = useState(actual.efectosPropios?.transicion?.archivoId ?? "");
+  const [sello, setSello] = useState(actual.efectosPropios?.sello?.archivoId ?? "");
   const [musicas, setMusicas] = useState(null);
+  const [efectosLista, setEfectosLista] = useState([]);
   const [ocupado, setOcupado] = useState("");
   const [msg, setMsg] = useState(null);
   const archivo = useRef(null);
 
-  const cargar = useCallback(() => pedir(`${base(client.id)}/musicas`).then((r) => setMusicas(r?.musicas ?? [])).catch(() => setMusicas([])), [client.id]);
+  const cargar = useCallback(() => pedir(`${base(client.id)}/musicas`)
+    .then((r) => { setMusicas(r?.musicas ?? []); setEfectosLista(r?.efectos ?? []); })
+    .catch(() => setMusicas([])), [client.id]);
   useEffect(() => { cargar(); }, [cargar]);
+  // La biblioteca cambió (aquí, en Marca → Música y efectos, o en Ajustes): se relee la lista.
+  useEffect(() => {
+    const alCambiar = () => { cargar(); };
+    window.addEventListener("sonidos", alCambiar);
+    return () => window.removeEventListener("sonidos", alCambiar);
+  }, [cargar]);
   // Una música generada: se relee la lista y se escoge la primera versión (el servidor ya la puso en el video).
   const alLlegar = useCallback(async (id) => { await cargar(); if (id) setMusicaId(id); }, [cargar]);
+  // «Usar esta (gratis)»: una de la biblioteca que encaja con lo que propone el director.
+  const usar = (p) => { setMusicaId(p.id); setMsg({ texto: `Escogida «${p.nombre}»: guarda el sonido para usarla (no se paga nada).` }); };
 
-  const cambiado = efectos !== actual.efectos || musicaId !== (actual.musica?.archivoId ?? "") || (musicaId && volumen !== (actual.musica?.volumen ?? 0));
+  const cambiado = efectos !== actual.efectos || musicaId !== (actual.musica?.archivoId ?? "") || (musicaId && volumen !== (actual.musica?.volumen ?? 0))
+    || transicion !== (actual.efectosPropios?.transicion?.archivoId ?? "") || sello !== (actual.efectosPropios?.sello?.archivoId ?? "");
   const renderizando = video.estado === "renderizando";
 
   const guardar = async () => {
     setOcupado("guardar"); setMsg(null);
     try {
-      const r = await pedir(`${base(client.id, video.id)}/sonido`, { method: "PUT", body: JSON.stringify({ efectos, musica: musicaId ? { archivoId: musicaId, volumen } : null }) });
+      const r = await pedir(`${base(client.id, video.id)}/sonido`, {
+        method: "PUT",
+        body: JSON.stringify({ efectos, musica: musicaId ? { archivoId: musicaId, volumen } : null, efectosPropios: { transicion: transicion || null, sello: sello || null } }),
+      });
       onCambio(r.video); avisar(client.id, video.id);
       setMsg({ texto: video.render?.estado === "listo" ? "Guardado. El mp4 de ahora es de antes: vuelve a renderizar para oírlo (no gasta IA ni pide otra voz)." : "Guardado. Se oirá en el render." });
     } catch (e) { setMsg({ error: true, texto: e.message }); } finally { setOcupado(""); }
@@ -64,9 +84,12 @@ function Sonido({ client, video, onCambio }) {
       const form = new FormData();
       form.append("archivo", f);
       const r = await pedir(`${base(client.id)}/musicas`, { method: "POST", body: form });
+      // Lo que dura (de su dirección ya subida), para la biblioteca; y que la vea quien la tenga abierta.
+      if (r.pista) await conDuracion(client.id, r.pista);
+      avisarSonidos(client.id);
       await cargar();
       setMusicaId(r.musica.id);
-      setMsg({ texto: r.repetido ? "Esa música ya estaba en la galería: queda escogida." : "Música subida y escogida. Guarda el sonido para usarla." });
+      setMsg({ texto: r.repetido ? "Esa música ya estaba en la biblioteca: queda escogida." : "Música subida a la biblioteca del cliente y escogida. Guarda el sonido para usarla." });
     } catch (err) { setMsg({ error: true, texto: err.message }); } finally { setOcupado(""); }
   };
 
@@ -88,14 +111,23 @@ function Sonido({ client, video, onCambio }) {
         <input type="checkbox" checked={efectos} onChange={(e) => setEfectos(e.target.checked)} />
         Efectos de sonido bajitos (un whoosh en cada transición, un pop al entrar un sello o el llamado)
       </label>
+      {efectos && (
+        <>
+          <SelectorEfecto id={`${ids}-ef-t`} etiqueta="Efecto en las transiciones" porDefecto="El whoosh de la aplicación" valor={transicion}
+            onCambio={setTransicion} lista={efectosLista} antes={actual.efectosPropios?.transicion} />
+          <SelectorEfecto id={`${ids}-ef-s`} etiqueta="Efecto en los sellos y llamados" porDefecto="El pop de la aplicación" valor={sello}
+            onCambio={setSello} lista={efectosLista} antes={actual.efectosPropios?.sello} />
+          {!efectosLista.length && <p className="hint">Sube tus efectos (un whoosh, un ding…) en Marca → Música y efectos y escógelos aquí.</p>}
+        </>
+      )}
       <label htmlFor={`${ids}-musica`}>Música de fondo</label>
       <select id={`${ids}-musica`} className="input" value={musicaId} onChange={(e) => setMusicaId(e.target.value)} disabled={musicas === null}>
         <option value="">Sin música</option>
-        {(musicas ?? []).map((m) => <option key={m.id} value={m.id}>{m.nombre}</option>)}
+        <OpcionesDeSonido lista={musicas ?? []} cliente={client.name} />
         {musicaId && musicas && !escogida && <option value={musicaId}>{actual.musica?.nombre || "La de antes"} (ya no está)</option>}
       </select>
       {escogida && <audio controls preload="none" src={escogida.src} className="va-audio" aria-label={`Escuchar ${escogida.nombre}`} />}
-      {escogida?.estilo && (
+      {escogida?.estilo && escogida.de !== "agencia" && (
         <div className="va-acciones">
           <button type="button" className="btn btn-ghost btn-sm" disabled={Boolean(ocupado)} onClick={meGusta}>
             <Icon name="heart" /> {ocupado === "gusta" ? "Guardando…" : "Me gusta: que sea la música de la marca"}
@@ -114,172 +146,43 @@ function Sonido({ client, video, onCambio }) {
           {ocupado === "guardar" ? "Guardando…" : "Guardar el sonido"}
         </button>
         <button type="button" className="btn btn-ghost btn-sm" disabled={Boolean(ocupado)} onClick={() => archivo.current?.click()}>
-          <Icon name="upload" /> {ocupado === "subir" ? "Subiendo…" : "Subir música (MP3 o WAV)"}
+          <Icon name="upload" /> {ocupado === "subir" ? "Subiendo…" : "Subir música (MP3, WAV o M4A)"}
         </button>
-        <input ref={archivo} type="file" accept="audio/mpeg,audio/mp3,audio/wav,audio/x-wav,.mp3,.wav" hidden onChange={subir} aria-label="Subir música" />
+        <input ref={archivo} type="file" accept="audio/mpeg,audio/mp3,audio/wav,audio/x-wav,audio/mp4,audio/x-m4a,.mp3,.wav,.m4a" hidden onChange={subir} aria-label="Subir música" />
       </div>
       <p className="hint">Sólo música con derechos para usarla en redes (la de tendencia de Instagram no se puede poner aquí).</p>
       {msg && <p className={msg.error ? "va-msg va-error" : "va-msg"} role={msg.error ? "alert" : "status"}>{msg.texto}</p>}
-      <GenerarMusica client={client} video={video} onLista={alLlegar} onCambio={onCambio} />
+      <GenerarMusica client={client} video={video} onLista={alLlegar} onCambio={onCambio} onUsar={usar} />
     </details>
   );
 }
 
-/**
- * «Generar con IA (Suno)». Primero «Proponer la música para este video»: el DIRECTOR MUSICAL del servidor lee el video
- * guardado (escenas, cortes, silencios, el llamado, la voz) y la música de la marca, y escribe el pedido para Suno con
- * su porqué (es texto: no pide confirmación). El pedido se puede corregir; luego «Ver el costo» (el servidor contesta
- * 409 con el costo, no crea nada) y sólo con «Generar por …» se paga. Sin proponer y sin estilo, el servidor también se
- * lo pregunta al director: el 409 trae lo que pediría y aquí se enseña antes de pagar. Sigue el trabajo cada 6 s; al
- * terminar, las versiones salen en la lista y la primera queda puesta en el video.
- */
-function GenerarMusica({ client, video, onLista, onCambio }) {
-  const ids = useId();
-  const delGuion = video.guion?.musica ?? {};
-  const [estilo, setEstilo] = useState("");
-  const [evitar, setEvitar] = useState("");
-  const [titulo, setTitulo] = useState("");
-  const [instrumental, setInstrumental] = useState(delGuion.instrumental !== false);
-  const [letra, setLetra] = useState("");
-  const [duracion, setDuracion] = useState("");
-  const [propuesta, setPropuesta] = useState(null);
-  const [resumen, setResumen] = useState(null);
-  const [precio, setPrecio] = useState(null);
-  const [trabajo, setTrabajo] = useState(null);
-  const [ocupado, setOcupado] = useState("");
-  const [msg, setMsg] = useState(null);
-
-  const conVoz = video.locucion?.estado === "lista";
-  const datos = () => ({
-    ...(estilo.trim() ? { estilo } : {}), ...(evitar.trim() ? { evitar } : {}), ...(titulo.trim() ? { titulo } : {}), instrumental,
-    ...(instrumental ? {} : { letra }), ...(duracion ? { duracion: Number(duracion) } : {}), videoId: video.id,
-  });
-  const cambiar = (f) => (e) => { f(e.target.type === "checkbox" ? e.target.checked : e.target.value); setPrecio(null); };
-  // Lo que propuso el director (o lo que pediría el servidor) en los campos: es lo que se paga si no se cambia.
-  const poner = (pedido, por) => {
-    setEstilo(pedido.estilo ?? "");
-    setEvitar(pedido.evitar ?? "");
-    setTitulo(pedido.titulo ?? "");
-    setInstrumental(pedido.instrumental !== false);
-    if (pedido.duracion) setDuracion(String(pedido.duracion));
-    if (por) setPropuesta(por);
-  };
-
-  const proponer = async () => {
-    setOcupado("proponer"); setMsg(null); setPrecio(null);
-    try {
-      const r = await pedir(`${base(client.id, video.id)}/musica`, { method: "POST" });
-      poner(r.propuesta, r.propuesta);
-      setResumen(r.video ?? null);
-      if (r.aviso) setMsg({ texto: r.aviso });
-    } catch (e) { setMsg({ error: true, texto: e.message }); } finally { setOcupado(""); }
-  };
-
-  const pedirla = async (confirmado) => {
-    setOcupado(confirmado ? "generar" : "cotizar"); setMsg(null);
-    try {
-      const r = await pedir(`${base(client.id)}/musicas/generar`, { method: "POST", body: JSON.stringify({ ...datos(), confirmado }) });
-      setPrecio(null);
-      setTrabajo({ id: r.trabajoId, estado: "en_cola", nota: "" });
-    } catch (e) {
-      if (e.estado === 409 && e.datos?.codigo === "confirmar") {
-        // Sin estilo, el servidor se lo preguntó al director: se enseña lo que pediría antes de pagar.
-        if (!estilo.trim() && e.datos.pedido) poner(e.datos.pedido, e.datos.propuesta ?? null);
-        if (e.datos.aviso) setMsg({ texto: e.datos.aviso });
-        setPrecio(e.datos);
-      } else setMsg({ error: true, texto: e.message });
-    } finally { setOcupado(""); }
-  };
-
-  // Seguir el trabajo mientras está vivo.
-  useEffect(() => {
-    if (!trabajo || !["en_cola", "en_marcha"].includes(trabajo.estado)) return undefined;
-    let vivo = true;
-    const t = setTimeout(async () => {
-      try {
-        const r = await pedir(`/estudio/${encodeURIComponent(client.id)}/trabajos/${encodeURIComponent(trabajo.id)}`);
-        if (!vivo) return;
-        const tr = r.trabajo;
-        if (tr.estado === "hecho") {
-          await onLista(tr.archivos?.[0] ?? null);
-          const v = await pedir(base(client.id, video.id)).catch(() => null);
-          if (v?.video) onCambio(v.video);
-          setMsg({ texto: `${tr.nota || "Música lista."} Si te gusta cómo quedó, márcala con «Me gusta» arriba: el próximo video saldrá en esa línea.` });
-        } else if (tr.estado === "fallido" || tr.estado === "cancelado") setMsg({ error: true, texto: tr.error || "La música no se pudo generar." });
-        setTrabajo({ id: tr.id, estado: tr.estado, nota: tr.nota });
-      } catch { if (vivo) setTrabajo((x) => (x ? { ...x } : x)); }
-    }, 6000);
-    return () => { vivo = false; clearTimeout(t); };
-  }, [trabajo, client.id, video.id, onLista, onCambio]);
-
-  const enCurso = trabajo && ["en_cola", "en_marcha"].includes(trabajo.estado);
-  const cifra = (n) => n.toLocaleString("es-PA", { minimumFractionDigits: 0, maximumFractionDigits: 1 });
+/** Las pistas de la biblioteca como opciones: las del cliente y las de la agencia, cada una en su grupo. */
+function OpcionesDeSonido({ lista, cliente }) {
+  const suyas = lista.filter((p) => p.de !== "agencia");
+  const agencia = lista.filter((p) => p.de === "agencia");
+  const nombre = (p) => `${p.favorita && p.categoria === "musica" ? "★ " : ""}${p.nombre}${p.bpm ? ` · ${p.bpm} BPM` : ""}${p.etiquetas?.length ? ` · ${p.etiquetas.slice(0, 2).join(", ")}` : ""}`;
   return (
-    <details className="va-generar">
-      <summary>Generar la música con IA (Suno)</summary>
-      <p className="hint">
-        El director musical escucha este video (escenas, cortes, silencios, el llamado y la voz) y la música de la marca, y
-        escribe el pedido para Suno. {conVoz ? "Ya tiene la voz: sabe lo que dura de verdad." : "Aún no tiene la voz: usa la duración estimada (mejor después de la locución)."} Proponer
-        es texto (céntimos, sin confirmar); Suno entrega dos versiones y siempre ves su costo antes.
-      </p>
-      <div className="va-acciones">
-        <button type="button" className="btn btn-secondary btn-sm" disabled={Boolean(ocupado) || enCurso} onClick={proponer}>
-          <Icon name="sparkles" /> {ocupado === "proponer" ? "Escuchando el video…" : propuesta ? "Proponer otra" : "Proponer la música para este video"}
-        </button>
-      </div>
-      <div aria-live="polite">
-        {propuesta && (
-          <div className="va-propuesta">
-            <strong>{propuesta.deRespaldo ? "Propuesta sin el director (no respondió)" : "Lo que propone el director musical"}</strong>
-            {(propuesta.genero || propuesta.bpm) && (
-              <span>{[propuesta.genero, propuesta.bpm ? `${propuesta.bpm} BPM` : "", propuesta.instrumentos].filter(Boolean).join(" · ")}</span>
-            )}
-            {propuesta.energia && <span className="hint">{propuesta.energia}</span>}
-            {propuesta.porque && <span className="hint">Por qué: {propuesta.porque}</span>}
-            {resumen && (
-              <span className="hint">
-                El video: {cifra(resumen.segundos)} s {resumen.conVoz ? "(con la voz)" : "(estimado)"}, {resumen.escenas} escenas, una cada {cifra(resumen.segundosPorEscena)} s.
-              </span>
-            )}
-          </div>
-        )}
-      </div>
-      <label htmlFor={`${ids}-estilo`}>Estilo para Suno (vacío: lo escribe el director musical)</label>
-      <textarea id={`${ids}-estilo`} className="input" rows={3} maxLength={TOPES_MUSICA.estilo} value={estilo} onChange={cambiar(setEstilo)}
-        placeholder="warm acoustic folk, ukulele, soft claps, 100 BPM, builds at 0:08" />
-      <label htmlFor={`${ids}-evitar`}>Que no lleve</label>
-      <input id={`${ids}-evitar`} className="input" maxLength={TOPES_MUSICA.evitar} value={evitar} onChange={cambiar(setEvitar)} placeholder="heavy distortion, aggressive drops" />
-      <label htmlFor={`${ids}-titulo`}>Nombre en la galería</label>
-      <input id={`${ids}-titulo`} className="input" maxLength={TOPES_MUSICA.titulo} value={titulo} onChange={cambiar(setTitulo)} />
-      <label className="va-check">
-        <input type="checkbox" checked={instrumental} onChange={cambiar(setInstrumental)} /> Instrumental (sin voz cantada: no compite con la locución)
-      </label>
-      {!instrumental && (
-        <>
-          <label htmlFor={`${ids}-letra`}>Letra</label>
-          <textarea id={`${ids}-letra`} className="input" rows={3} maxLength={TOPES_MUSICA.letra} value={letra} onChange={cambiar(setLetra)} placeholder="[Verse] …" />
-        </>
-      )}
-      <label htmlFor={`${ids}-dur`}>Duración en segundos (vacío: lo que dura el video)</label>
-      <input id={`${ids}-dur`} className="input" type="number" inputMode="numeric" min={DURACION_MUSICA.min} max={DURACION_MUSICA.max} value={duracion} onChange={cambiar(setDuracion)} />
-      <div className="va-acciones">
-        {precio ? (
-          <>
-            <button type="button" className="btn btn-primary btn-sm" disabled={Boolean(ocupado)} onClick={() => pedirla(true)}>
-              {ocupado === "generar" ? "Pidiendo…" : `Generar por ${precio.costo < 0.01 ? "menos de 1 ¢" : `${precio.costo.toLocaleString("es-PA", { minimumFractionDigits: 2, maximumFractionDigits: 3 })} $`} (aprox.)`}
-            </button>
-            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setPrecio(null)}>Cancelar</button>
-          </>
-        ) : (
-          <button type="button" className="btn btn-ghost btn-sm" disabled={Boolean(ocupado) || enCurso} onClick={() => pedirla(false)}>
-            {ocupado === "cotizar" ? (estilo.trim() ? "Cotizando…" : "El director escucha el video…") : "Ver el costo"}
-          </button>
-        )}
-      </div>
-      {precio && <p className="va-msg" role="status">{precio.error}</p>}
-      {enCurso && <p className="va-msg" role="status">Generando la música… {trabajo.nota || "Suele tardar de uno a tres minutos; sigue aunque cierres."}</p>}
-      {msg && <p className={msg.error ? "va-msg va-error" : "va-msg"} role={msg.error ? "alert" : "status"}>{msg.texto}</p>}
-    </details>
+    <>
+      {suyas.length > 0 && <optgroup label={`De ${cliente}`}>{suyas.map((p) => <option key={p.id} value={p.id}>{nombre(p)}</option>)}</optgroup>}
+      {agencia.length > 0 && <optgroup label="De la agencia">{agencia.map((p) => <option key={p.id} value={p.id}>{nombre(p)}</option>)}</optgroup>}
+    </>
+  );
+}
+
+/** Un efecto de la biblioteca para un sitio (o el de la aplicación), con su muestra. */
+function SelectorEfecto({ id, etiqueta, porDefecto, valor, onCambio, lista, antes }) {
+  const escogido = lista.find((p) => p.id === valor) ?? null;
+  return (
+    <>
+      <label htmlFor={id}>{etiqueta}</label>
+      <select id={id} className="input" value={valor} onChange={(e) => onCambio(e.target.value)}>
+        <option value="">{porDefecto}</option>
+        <OpcionesDeSonido lista={lista} cliente="este cliente" />
+        {valor && !escogido && <option value={valor}>{antes?.nombre || "El de antes"} (ya no está)</option>}
+      </select>
+      {escogido && <audio controls preload="none" src={escogido.src} className="va-audio" aria-label={`Escuchar ${escogido.nombre}`} />}
+    </>
   );
 }
 
