@@ -64,6 +64,7 @@ import { rutasRecetas } from "./rutas/recetas.js";
 import { rutasAnuncios } from "./rutas/anuncios.js";
 import { rutasHistoriasAuto } from "./rutas/historiasAuto.js";
 import { rutasVentas, rutaVentasPublica } from "./rutas/ventas.js";
+import { rutasWhatsApp, rutaVozPublica } from "./rutas/whatsapp.js";
 import { rutasTrozos } from "./rutas/trozos.js";
 import { avanzarPendientes } from "./lib/estudio/trabajos.js";
 import { rutasMCP, rutasMCPPublicas } from "./rutas/mcp.js";
@@ -269,6 +270,8 @@ export default {
       // «Tus ventas de la semana»: el enlace fijo de cada cliente, sin sesión.
       // Lee y escribe sólo SUS semanas (la actual y las dos anteriores).
       if (partes[0] === "publico-ventas") return await rutaVentasPublica(req, env, { partes, metodo });
+      // «La voz de tus clientes»: la encuesta que el cliente reenvía a sus clientes, sin sesión.
+      if (partes[0] === "publico-voz") return await rutaVozPublica(req, env, { partes, metodo });
 
       // La auditoría de perfil que se le manda a un cliente o a un
       // prospecto: igual que el informe, sin sesión y sólo si se compartió.
@@ -460,6 +463,8 @@ export default {
       if (partes[0] === "historias-auto") return await rutasHistoriasAuto(req, env, { acceso, partes, metodo });
       // Las ventas de cada semana que apunta el cliente (o la agencia), con la tasa de cierre medida y el ROAS real.
       if (partes[0] === "ventas") return await rutasVentas(req, env, { acceso, usuario, partes, metodo });
+      // El kit de WhatsApp Business de cada cliente y la voz de sus clientes (curso de campañas, entrega 8).
+      if (partes[0] === "whatsapp") return await rutasWhatsApp(req, env, { acceso, usuario, partes, metodo });
 
       // ---------- Medios ----------
       //

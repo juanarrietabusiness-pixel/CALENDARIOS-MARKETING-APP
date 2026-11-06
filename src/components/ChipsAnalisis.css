@@ -1,0 +1,24 @@
+/* Las preguntas del curso sobre un anuncio, en chips (ChipsAnalisis.jsx). Van con su chunk. */
+.chips-analisis {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1);
+}
+.chips-analisis > li {
+  max-width: 100%;
+  padding: 2px var(--sp-2);
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-normal);
+  overflow-wrap: anywhere;
+}
+/* Los textos largos (el problema, la oferta) no caben en una píldora: van en una caja con su radio normal. */
+.chips-analisis > li[data-clave="problema"],
+.chips-analisis > li[data-clave="oferta"],
+.chips-analisis > li[data-clave="llamado"] { border-radius: var(--radius-sm); }
+.chips-analisis-etiqueta { color: var(--text-dim); font-weight: 600; }

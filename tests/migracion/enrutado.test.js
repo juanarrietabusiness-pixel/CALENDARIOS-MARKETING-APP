@@ -510,6 +510,27 @@ describe("la puerta, en general", () => {
     expect((await worker.fetch(conSesion("/api/ventas/cliente-ajeno"), env)).status).toBe(404);
   });
 
+  it("la voz del cliente va ANTES de la sesión (404 con un testigo que no existe, nunca 401) y el kit de WhatsApp después", async () => {
+    // Quien responde la encuesta es un cliente del cliente: no tiene cuenta. Detrás de la sesión vería «No autenticado».
+    const env = await entorno();
+    const testigo = "b".repeat(48);
+    const leer = await worker.fetch(new Request(`https://calendarios.test/api/publico-voz/${testigo}`), env);
+    expect(leer.status).toBe(404);
+    expect(leer.headers.get("content-type")).toContain("application/json");
+    const escribir = await worker.fetch(new Request(`https://calendarios.test/api/publico-voz/${testigo}`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ respuestas: { porque: "x" } }),
+    }), env);
+    expect(escribir.status).toBe(404);
+    const pagina = await worker.fetch(new Request(`https://calendarios.test/voz?t=${testigo}`), env);
+    expect(pagina.headers.get("content-type")).toContain("text/html");
+    const marca = await worker.fetch(new Request("https://calendarios.test/cliente/baby-caleb/marca/whatsapp"), env);
+    expect(marca.headers.get("content-type")).toContain("text/html");
+    // El kit es con sesión: sin ella, 401; con ella, un cliente que no es del espacio no existe.
+    expect((await worker.fetch(new Request("https://calendarios.test/api/whatsapp/cliente-1"), env)).status).toBe(401);
+    expect((await worker.fetch(conSesion("/api/whatsapp/cliente-ajeno"), env)).status).toBe(404);
+    expect((await worker.fetch(conSesion("/api/whatsapp/cliente-ajeno/voz"), env)).status).toBe(404);
+  });
+
   it("/api/live sin cabecera de Upgrade es 426, no un socket a medias", async () => {
     const env = await entorno();
     const res = await worker.fetch(conSesion("/api/live"), env);

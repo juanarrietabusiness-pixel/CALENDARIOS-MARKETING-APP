@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { semaforoDelKit, resumenSemaforo, loCritico, avisoDeLaPieza, kitConMarca, MIN_GUSTOS } from "./semaforoKit.js";
+import { semaforoDelKit, resumenSemaforo, loCritico, avisoDeLaPieza, kitConMarca, MIN_GUSTOS, puntoDelEstudio, DIAS_REVISAR_ESTUDIO } from "./semaforoKit.js";
 import { idDePestana, idDelPanel, indicePorTecla } from "./pestanas.js";
 
 // ============================================================
@@ -113,5 +113,27 @@ describe("las barras de pestañas", () => {
     expect(indicePorTecla(2, 5, "End")).toBe(4);
     expect(indicePorTecla(2, 5, "Enter")).toBe(-1);
     expect(indicePorTecla(-1, 5, "ArrowRight"), "sin foco en ninguna, no se mueve nada").toBe(-1);
+  });
+});
+
+describe("el estudio de mercado, revisado cada mes (curso de campañas, entrega 8)", () => {
+  const ahora = Date.parse("2026-11-06T15:00:00Z");
+  it("sin `estudioMercado` en la respuesta, no sale (no se sabe)", () => {
+    expect(semaforoDelKit({ estudio: estudioCompleto }).some((p) => p.id === "mercado")).toBe(false);
+  });
+  it("sin estudio aprobado: ámbar, y el arreglo abre el estudio en Marca → Cerebro", () => {
+    const p = puntoDelEstudio({ aprobadoAt: null, conBorrador: false }, ahora);
+    expect(p).toMatchObject({ id: "mercado", estado: "ambar", arreglo: { ir: ["marca", "cerebro"], mercado: "estudio" } });
+    expect(puntoDelEstudio({ aprobadoAt: null, conBorrador: true }, ahora).texto).toMatch(/borrador sin aprobar/);
+  });
+  it(`aprobado hace más de ${DIAS_REVISAR_ESTUDIO} días: ámbar; antes, verde`, () => {
+    expect(puntoDelEstudio({ aprobadoAt: "2026-09-30T15:00:00Z" }, ahora)).toMatchObject({ estado: "ambar", texto: expect.stringContaining("hace 37 días") });
+    expect(puntoDelEstudio({ aprobadoAt: "2026-10-20T15:00:00Z" }, ahora)).toMatchObject({ estado: "verde", texto: expect.stringContaining("hace 17 días") });
+    expect(puntoDelEstudio({ aprobadoAt: "2026-11-06T10:00:00Z" }, ahora).texto).toBe("Aprobado hoy.");
+  });
+  it("va en el semáforo de Marca, pero no en el aviso corto de Crear (sólo lo rojo)", () => {
+    const puntos = semaforoDelKit({ estudio: { ...estudioCompleto, estudioMercado: { aprobadoAt: null } }, ahora });
+    expect(puntos.find((p) => p.id === "mercado").estado).toBe("ambar");
+    expect(loCritico(puntos).some((p) => p.id === "mercado")).toBe(false);
   });
 });

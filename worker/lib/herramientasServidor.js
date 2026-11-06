@@ -11,6 +11,8 @@
 //     siempre por la capa de acceso —el espacio de la sesión—.
 //   · ver_resultados: cómo le fue en redes (las fotos diarias de
 //     métricas), con las MISMAS cuentas que la pestaña Resultados.
+//   · kit_whatsapp: el kit de WhatsApp Business que guardó la agencia
+//     (bienvenida, respuestas rápidas, etiquetas, guiones de ventas).
 //   · buscar_cerebro y leer_nota_cerebro: las notas del cerebro del cliente
 //     (su ficha, sus documentos, lo que se le ha ido añadiendo). Las cortas
 //     llegan enteras; de las largas, sus pasajes, y la nota completa se pide
@@ -35,6 +37,7 @@ import { vaAPauta, describirPauta, limpiarAnuncio } from "../../src/lib/pauta.js
 import { buscar as buscarCerebro, leerNota } from "./cerebro/cerebro.js";
 import { pack } from "./cerebro/memoria.js";
 import { lineaDeIdea, ideaDeFila as publicaIdea } from "../../src/lib/bancoIdeas.js";
+import { limpiarKitWhatsApp, kitATexto } from "../../src/lib/kitWhatsApp.js";
 import { DEFINICIONES_ESTUDIO, crearHerramientasEstudio } from "./estudio/herramientas.js";
 import { DEFINICIONES_RECETAS, crearHerramientasRecetas } from "./estudio/herramientasRecetas.js";
 import {
@@ -139,6 +142,14 @@ export const DEFINICIONES_DE_LECTURA = Object.freeze([
         dias: { type: "integer", description: "Días hacia atrás (7 a 90). Por defecto, 30." },
       },
     },
+  },
+  {
+    name: "kit_whatsapp",
+    description: "El kit de WhatsApp Business de un cliente tal como lo guardó la agencia: el mensaje de bienvenida y el de " +
+      "ausencia, las respuestas rápidas con su atajo (precio, envío, horario, ubicación, pago y las objeciones del estudio de " +
+      "mercado), las etiquetas con su etapa del ciclo de ventas y un guion de ventas por producto. Sólo lectura. Úsala antes " +
+      "de escribir mensajes de WhatsApp para un cliente o si preguntan cómo responderle a alguien.",
+    input_schema: { type: "object", properties: { ...clienteOpcional } },
   },
 ]);
 
@@ -338,6 +349,13 @@ export function crearEjecutor({ env, acceso, clienteActual = null, estudio = nul
     return lineas.join("\n");
   };
 
+  acciones.kit_whatsapp = async ({ cliente }) => {
+    const c = await resolverCliente(cliente);
+    const fila = await acceso.leerUno("anuncios_clientes", { client_id: c.id });
+    const texto = kitATexto(limpiarKitWhatsApp(JSON_SEGURO(fila?.kit_whatsapp, {})), { marca: c.name });
+    return texto || `${c.name} todavía no tiene kit de WhatsApp guardado: se prepara (y lo propone la IA) en Marca → WhatsApp.`;
+  };
+
   if (estudio) Object.assign(acciones, crearHerramientasEstudio({ env, acceso, resolverCliente, ...estudio }));
   // Las recetas (el mismo «/receta» que llega de claude.ai): sólo leen, así que no necesitan a quien firma.
   Object.assign(acciones, crearHerramientasRecetas({ env, acceso, buscarPublicacion: (id) => buscarEn(acceso, id) }));
@@ -392,6 +410,7 @@ export function describirUso(nombre, entrada = {}) {
     case "buscar_cerebro": return `Buscó en el cerebro${entrada.cliente ? ` de ${entrada.cliente}` : ""}: «${entrada.consulta ?? ""}»`;
     case "leer_nota_cerebro": return `Leyó la nota «${entrada.nota ?? ""}» del cerebro${entrada.cliente ? ` de ${entrada.cliente}` : ""}`;
     case "ver_resultados": return `Consultó los resultados${entrada.cliente ? ` de ${entrada.cliente}` : ""}`;
+    case "kit_whatsapp": return `Leyó el kit de WhatsApp${entrada.cliente ? ` de ${entrada.cliente}` : ""}`;
     case "ver_estudio": return `Miró el Estudio${entrada.cliente ? ` de ${entrada.cliente}` : ""}`;
     case "crear_en_estudio": return `Pidió al Estudio ${entrada.tipo === "video" ? "un video" : "una imagen"}: «${String(entrada.prompt ?? "").slice(0, 80)}»`;
     case "estado_trabajo": return "Miró cómo va un pedido del Estudio";
