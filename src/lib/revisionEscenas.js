@@ -18,6 +18,7 @@
 
 import {
   cajasDeEscena, areaSegura, bandaDeSubtitulos, encajarTexto, capasDe, esCapaCompleta, TIPO_POR_ROL, FUENTE_RESPALDO, DURACION_ENTRADA,
+  esTextoRico, encajarCapaTexto,
 } from "./motorVideo.js";
 import { FORMATOS_VIDEO, tiempoDeCapa } from "./videoEscenas.js";
 import { DURACION_CUENTA } from "./motorPiezas.js";
@@ -107,6 +108,33 @@ export function revisarEscenas(ctx, { guion, linea, formato, recursos = {}, fuen
   const cuerpo = fuentes?.cuerpo || titular;
   const problemas = [];
 
+  // Lo más alto que puede ser un bloque (lo mismo que le da el motor: `altoUtil`).
+  const maxAlto = area.h * (ancho > alto * 1.2 ? 0.82 : 0.62);
+  /** Un texto con carácter: se sale, se encoge o se lee pequeño (el gigante, por su línea más pequeña). */
+  function revisarTextoRico(capa, caja, de) {
+    const r = TIPO_POR_ROL[capa.rol] ?? TIPO_POR_ROL.titular;
+    const anchoTexto = caja.ancho ?? caja.w;
+    const lay = encajarCapaTexto(ctx, capa, { ancho: anchoTexto, lado, fuentes, maxAlto });
+    const escala = caja.escala ?? 1;
+    const nombre = `«${caja.id}»`;
+    if (lay.anchoMax > anchoTexto + TOLERANCIA) {
+      const larga = lay.lineas.flatMap((l) => l.palabras).reduce((x, y) => (y.ancho > x.ancho ? y : x), { ancho: 0, texto: "" }).texto;
+      de("texto_se_sale", `El texto de ${nombre} no cabe: «${larga}» es más ancha que su caja y se sale. Acórtala o dale más ancho (tam).`, true);
+      return;
+    }
+    if (!lay.gigante && lay.lineas.length > r.lineas) de("texto_se_parte", `El texto de ${nombre} se parte en ${lay.lineas.length} líneas (lo normal para un ${capa.rol ?? "titular"} son ${r.lineas}). Acórtalo.`);
+    const px = lay.tam * escala;
+    if (!lay.gigante && px / (lado * r.tam) < ENCOGIDO_MINIMO) {
+      de("texto_apretado", `El texto de ${nombre} se encogió al ${Math.round((px / (lado * r.tam)) * 100)} % de su tamaño para caber: se leerá pequeño. Menos palabras, o pásalo al habla.`);
+    } else if (px < lado * TEXTO_MINIMO) {
+      de("texto_pequeno", `El texto de ${nombre} sale a unos ${Math.round(px)} px${lay.gigante ? " en su línea más pequeña" : ""}: en el teléfono se lee pequeño. ${lay.gigante ? "Menos palabras: el gigante va de una o dos por línea." : "Usa un rol mayor o menos palabras."}`);
+    }
+    const ultima = lay.lineas.at(-1)?.palabras ?? [];
+    if (!lay.gigante && lay.lineas.length >= 2 && ultima.length === 1 && ultima[0].texto.length <= 6) {
+      de("palabra_sola", `La última línea de ${nombre} queda con una palabra sola («${ultima[0].texto}»). Cambia una palabra para que se reparta mejor.`);
+    }
+  }
+
   (guion?.escenas ?? []).forEach((escena, i) => {
     const capas = capasDe(escena);
     const porId = new Map(capas.map((c) => [c.id, c]));
@@ -175,6 +203,8 @@ export function revisarEscenas(ctx, { guion, linea, formato, recursos = {}, fuen
         continue;
       }
       if (!capa || !["texto", "sello"].includes(capa.tipo)) continue;
+      // El texto con carácter (énfasis, gigante, palabra por palabra) se mide como se dibuja (motorTexto.js).
+      if (capa.tipo === "texto" && esTextoRico(capa)) { revisarTextoRico(capa, caja, (tipo, mensaje, grave = false) => de(caja, tipo, mensaje, grave)); continue; }
       const rol = capa.tipo === "sello" ? "titular" : (capa.rol ?? "titular");
       const r = TIPO_POR_ROL[rol] ?? TIPO_POR_ROL.titular;
       const familia = capa.tipo === "sello" || r.fuente === "titular" ? titular : cuerpo;

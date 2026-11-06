@@ -59,6 +59,11 @@ export async function guardarKit(env, acceso, cliente, entrada) {
     .filter((p) => p.imagenes.length);
   // Las plantillas: su imagen tiene que ser de ESTE cliente.
   kit.plantillas = kit.plantillas.filter((p) => claveDelCliente(p.clave, cliente.id));
+  // Las referencias del ESTILO DEL VIDEO: también sólo de ESTE cliente (las mira la IA que escribe el guion).
+  if (kit.referenciasVideo) {
+    kit.referenciasVideo = kit.referenciasVideo.filter((c) => claveDelCliente(c, cliente.id));
+    if (!kit.referenciasVideo.length) delete kit.referenciasVideo;
+  }
   // El modelo fijado del cliente: sólo uno que exista en el catálogo y sea de ese tipo.
   // (el de las historias es una imagen)
   kit.modelos = Object.fromEntries(Object.entries(kit.modelos).filter(([tipo, id]) => modeloPorId(id)?.tipo === (tipo === "historias" ? "imagen" : tipo)));

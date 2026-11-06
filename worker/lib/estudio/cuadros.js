@@ -56,7 +56,8 @@ export async function pedidoDelVideo(env, acceso, cliente, fila, { formato } = {
   // El personaje se dibuja con el aspecto del kit si el guion no trae uno propio.
   const guion = conPersonajeDelKit(v.guion, kit);
   // Las de la locución, o las de la CANCIÓN sacadas del guion de ahora contra su letra (con el ajuste fino).
-  const palabras = palabrasParaLinea(guion, leerJSON(fila.locucion, {}));
+  const locucion = leerJSON(fila.locucion, {});
+  const palabras = palabrasParaLinea(guion, locucion);
   const cuenta = { bytes: 0 };
 
   // Las imágenes: los ids del guion que ESTÁN en la galería de este cliente (lo demás sale como marcador).
@@ -90,6 +91,8 @@ export async function pedidoDelVideo(env, acceso, cliente, fila, { formato } = {
     guion, palabras,
     pedido: {
       guion, palabras, formato: FORMATOS_VIDEO[formato] ? formato : guion.formatos[0], paleta: kit.paleta ?? [],
+      // Los golpes de la canción (si los hay): el `pulso` de una capa late con ellos.
+      ...(Array.isArray(locucion.golpes) && locucion.golpes.length ? { golpes: locucion.golpes } : {}),
       imagenes, logo, fuentes: { titular: titular ? { datos: titular } : null, cuerpo: cuerpo ? { datos: cuerpo } : null },
       videos: clips.map((c) => c.id),
     },

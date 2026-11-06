@@ -137,9 +137,14 @@ const HEX = /^#[0-9a-f]{6}$/i;
 export const esColor = (c) => TOKENS_COLOR.includes(c) || HEX.test(String(c ?? ""));
 
 export const POSICIONES = Object.freeze(["centro", "arriba", "abajo", "izq", "der", "arriba-izq", "arriba-der", "abajo-izq", "abajo-der"]);
-export const ENTRADAS = Object.freeze(["aparece", "fundido", "sube", "baja", "escala", "rebote", "escribe", "barrido", "dibuja"]);
+// «golpe» (la última, para no cambiar el orden de las de antes): seca, de 1,15 a 1 en ~0,12 s, sin rebote (las palabras
+// que entran cuando se cantan).
+export const ENTRADAS = Object.freeze(["aparece", "fundido", "sube", "baja", "escala", "rebote", "escribe", "barrido", "dibuja", "golpe"]);
 export const SALIDAS = Object.freeze(["ninguna", "fundido", "baja", "escala"]);
 export const BUCLES = Object.freeze(["ninguno", "flota", "pulso", "gira", "late"]);
+/** Lo que se escribe de un fondo por crear (`pide`) y el tratamiento de color de una imagen. */
+export const MAX_PIDE_FONDO = 400;
+export const TRATAMIENTOS_IMAGEN = Object.freeze(["color", "byn"]);
 /** Cómo se mueve una imagen a sangre mientras se ve (el «Ken Burns» de una foto con música). */
 export const MOVIMIENTOS_IMAGEN = Object.freeze(["ninguno", "acercar", "alejar", "paneo"]);
 export const TRANSICIONES = Object.freeze(["corte", "fundido", "barrido", "zoom", "deslizar"]);
@@ -185,7 +190,19 @@ const FORMA_DIBUJO = Object.freeze({
  * vez. Ninguno dibuja un logo, un personaje o un diseño ajeno: los personajes son figuras genéricas de la casa.
  */
 export const COMPONENTES = Object.freeze({
-  texto: { nombre: "Texto", props: { texto: T(MAX_PANTALLA, true), rol: E(["titular", "apoyo", "dato", "etiqueta"], "titular"), color: C("texto"), placa: { t: "color", def: "" }, alinear: E(["centro", "izq", "der"], "centro") } },
+  // TEXTO CON CARÁCTER (src/lib/motorTexto.js): lo que va entre *asteriscos* sale con ÉNFASIS (más grande, la letra de
+  // impacto y el color de acento; los asteriscos no cuentan en el largo); el rol «gigante» llena el ancho, una o dos
+  // palabras por línea, apiladas y en mayúsculas; `mayusculas` pone todo en mayúsculas y `porPalabra` hace que cada
+  // palabra aparezca cuando se DICE (o se canta) en el habla de su escena. Los dos, OPCIONALES y sin escribirse si van
+  // como por defecto: un guion de antes valida igual.
+  texto: {
+    nombre: "Texto",
+    props: {
+      texto: { ...T(MAX_PANTALLA, true), enfasis: true }, rol: E(["titular", "apoyo", "dato", "etiqueta", "gigante"], "titular"), color: C("texto"),
+      placa: { t: "color", def: "" }, alinear: E(["centro", "izq", "der"], "centro"),
+      mayusculas: { ...B(false), omitir: true }, porPalabra: { ...B(false), omitir: true },
+    },
+  },
   sello: { nombre: "Sello de texto", props: { texto: T(24, true), color: C("acento"), rotacion: N(-20, 20, -6) } },
   telefono: {
     nombre: "Teléfono",
@@ -201,12 +218,22 @@ export const COMPONENTES = Object.freeze({
   // `movimiento` la mueve despacio todo el rato que se ve (acercar, alejar o paneo: un «Ken Burns»), `dura` hace que la
   // escena dure al menos eso aunque no diga nada (una foto con música) y `oscurecer` pone un velo para leer el texto.
   // Los cuatro son OPCIONALES y no se escriben si van como por defecto: un guion de antes valida igual que siempre.
+  // Un FONDO POR CREAR (imágenes de fondo por sección): a sangre, con `pide` (lo que muestra, para el director) y sin
+  // `archivo` todavía; mientras no exista, el motor deja ver el fondo de la escena, y al crearse el servidor le pone su
+  // `archivo` (src/lib/fondosVideo.js). `tratamiento` «byn»: blanco y negro con más contraste (donde el lienzo lo sabe
+  // hacer; Safari no, y sale en color). Los dos, opcionales.
   imagen: {
     nombre: "Imagen de la galería",
     props: {
-      archivo: T(64, true), rol: E(["producto", "foto", "persona"], "producto"), recorte: E(["contener", "cubrir"], "contener"), marco: B(false),
+      archivo: T(64), rol: E(["producto", "foto", "persona"], "producto"), recorte: E(["contener", "cubrir"], "contener"), marco: B(false),
       encuadre: { ...E(["caja", "completo"], "caja"), omitir: true }, movimiento: { ...E(MOVIMIENTOS_IMAGEN, "ninguno"), omitir: true },
       dura: { ...N(0, MAX_TRAMO_VIDEO, 0), omitir: true }, oscurecer: { ...N(0, 0.85, 0), omitir: true },
+      pide: { ...T(MAX_PIDE_FONDO), omitir: true }, tratamiento: { ...E(TRATAMIENTOS_IMAGEN, "color"), omitir: true },
+    },
+    comprobar: (p) => {
+      if (!p.archivo && !p.pide) return [{ campo: "archivo", mensaje: "Falta y es obligatorio." }];
+      if (p.pide && p.encuadre !== "completo") return [{ campo: "pide", mensaje: "«pide» es para un FONDO a sangre: va con «encuadre»: «completo»." }];
+      return [];
     },
   },
   // Un CLIP de la galería (grabado por el cliente, de Kie, de Drive): `encuadre` «completo» lo pone a sangre detrás de
@@ -272,7 +299,8 @@ export const COMPONENTES = Object.freeze({
 });
 
 /** Lo que tiene toda capa además de sus propiedades. */
-const COMUNES = new Set(["id", "tipo", "pos", "tam", "entra", "sale", "animacion"]);
+// `pulso` (opcional, sólo si es true): la capa late un 4 % en cada GOLPE de la canción (src/lib/golpes.js).
+const COMUNES = new Set(["id", "tipo", "pos", "tam", "entra", "sale", "animacion", "pulso"]);
 
 // ------------------------------------------------------------
 // Las palabras: lo que se dice y cómo se cuenta
@@ -310,7 +338,9 @@ function validarProp(def, valor, donde, errores) {
   switch (def.t) {
     case "texto": {
       const s = recorta(valor);
-      if (s.length > def.max) errores.push({ donde, mensaje: `Pasa de ${def.max} caracteres (tiene ${s.length}): acórtalo.` });
+      // Las marcas de énfasis (*así*) no se leen: no cuentan en el largo.
+      const largo = def.enfasis ? s.replace(/\*([^*\n]+)\*/g, "$1").length : s.length;
+      if (largo > def.max) errores.push({ donde, mensaje: `Pasa de ${def.max} caracteres (tiene ${largo}): acórtalo.` });
       return s;
     }
     case "enum":
@@ -403,11 +433,12 @@ function validarCapa(capa, donde, nPalabras, errores, avisos, ids) {
     salida: validarProp(E(SALIDAS, "ninguna"), a.salida, `${donde}.animacion.salida`, errores),
     bucle: validarProp(E(BUCLES, "ninguno"), a.bucle, `${donde}.animacion.bucle`, errores),
   };
+  if (capa.pulso !== undefined && typeof capa.pulso !== "boolean") errores.push({ donde: `${donde}.pulso`, mensaje: "Tiene que ser true o false." });
   return {
     id, tipo: capa.tipo, pos: validarPos(capa.pos, `${donde}.pos`, errores), tam: Number.isFinite(tam) ? tam : 0.6,
     entra: validarMomento(capa.entra, `${donde}.entra`, nPalabras, errores) ?? { s: 0 },
     sale: validarMomento(capa.sale, `${donde}.sale`, nPalabras, errores),
-    animacion, ...props,
+    animacion, ...(capa.pulso === true ? { pulso: true } : {}), ...props,
   };
 }
 

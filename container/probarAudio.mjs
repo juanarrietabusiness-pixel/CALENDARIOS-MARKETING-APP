@@ -17,6 +17,7 @@ import { RENDER } from "../src/lib/renderVideo.js";
 import { validarGuion, lineaDeTiempo } from "../src/lib/videoEscenas.js";
 import { EJEMPLO_GUION } from "../src/lib/videoFormatoIA.js";
 import { momentosDeEfectos } from "../src/lib/efectosSonido.js";
+import { golpesDeCancion } from "./golpes.mjs";
 
 const FFMPEG = process.env.FFMPEG || "ffmpeg";
 const carpeta = await mkdtemp(join(tmpdir(), "probar-audio-"));
@@ -131,6 +132,18 @@ try {
   if (!gCancion || lCancion.silencios.length || lCancion.total !== 14) { mal++; console.error("✗ la línea de una canción no lleva silencios y dura lo que la canción"); }
   const cancion = await readFile(mp3("cancion.mp3", 14, 44100, "0.4+0.1*sin(2*PI*2*t)"));
   await caso("Canción sin silencios (la duración manda)", cancion, lCancion.silencios, lCancion.total, { guion: gCancion, linea: lCancion, efectos: true, suena: [13.2, 13.8] });
+
+  // Los GOLPES de una canción (POST /golpes): un MP3 con un bombo cada 0,5 s → 120 BPM y un golpe por bombo.
+  const bombo = join(carpeta, "bombo.mp3");
+  const rb = spawnSync(FFMPEG, ["-hide_banner", "-y", "-f", "lavfi", "-i",
+    "sine=frequency=60:sample_rate=44100:duration=10,volume='if(gte(t,0.3),exp(-mod(t-0.3,0.5)*40),0)':eval=frame",
+    "-ac", "1", "-c:a", "libmp3lame", "-b:a", "128k", bombo], { encoding: "utf8" });
+  if (rb.status !== 0) { mal++; console.error(`✗ no se pudo hacer el bombo: ${rb.stderr.slice(-300)}`); } else {
+    const g = await golpesDeCancion(await readFile(bombo));
+    const bien = Math.abs(g.bpm - 120) <= 2 && g.golpes.length >= 17 && g.golpes.length <= 22;
+    if (bien) console.log(`✓ Golpes de una canción (${g.bpm} BPM, ${g.golpes.length} golpes, el primero en ${g.golpes[0]} s)`);
+    else { mal++; console.error(`✗ Golpes de una canción: ${g.bpm} BPM y ${g.golpes.length} golpes (se esperaban 120 y ~20)`); }
+  }
 } finally {
   await rm(carpeta, { recursive: true, force: true });
 }

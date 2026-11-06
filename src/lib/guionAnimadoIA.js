@@ -10,6 +10,9 @@
 
 import { formatoParaLaIA } from "./videoFormatoIA.js";
 import { FORMATOS_VIDEO, MIN_SEGUNDOS, MAX_SEGUNDOS } from "./videoEscenas.js";
+import { lineaDeReferenciasVideo } from "./estiloVideo.js";
+import { lineaDeFondos } from "./fondosVideo.js";
+import { golpesEnTramo } from "./golpes.js";
 
 /** Las duraciones que ofrece la pantalla (s) y la que va por defecto. */
 export const DURACIONES_ANIMADO = Object.freeze([15, 20, 30, 45, 60]);
@@ -44,7 +47,7 @@ export function textoDePublicacion(post) {
  * catálogo con los IDs de la galería de sus fotos; `personaje`: el aspecto del kit (o null); `errores`: los del intento
  * anterior, para corregirlos sobre `anterior`. Pura.
  */
-export function pedidoDeGuionAnimado({ marca, idea, publicacion = "", segundos, formato = "9:16", contexto = "", productos = "", personaje = null, errores = [], anterior = "", criterio = "", estructura = "" }) {
+export function pedidoDeGuionAnimado({ marca, idea, publicacion = "", segundos, formato = "9:16", contexto = "", productos = "", personaje = null, errores = [], anterior = "", criterio = "", estructura = "", marcaVideo = "", referencias = 0, conFondos = false, galeria = "" }) {
   const f = FORMATOS_VIDEO[formato] ? formato : "9:16";
   const s = duracionAnimado(segundos);
   const partes = [
@@ -52,6 +55,10 @@ export function pedidoDeGuionAnimado({ marca, idea, publicacion = "", segundos, 
     "",
     formatoParaLaIA(),
     "",
+    // El KIT entero (src/lib/estiloVideo.js): los tokens de su paleta, su estilo, su letra, sus reglas, lo aprendido, el
+    // logo, la música y el ESTILO DEL VIDEO obligatorio; y, si van, sus imágenes de referencia de estilo.
+    marcaVideo ? `${marcaVideo}\n` : "",
+    lineaDeReferenciasVideo(referencias),
     "LO QUE PIDE LA AGENCIA",
     idea ? `Idea: ${idea}` : "",
     publicacion ? `Sale de esta publicación del calendario:\n${publicacion}` : "",
@@ -63,6 +70,7 @@ export function pedidoDeGuionAnimado({ marca, idea, publicacion = "", segundos, 
     "· Cada escena con su «pantalla» (lo que se lee) y capas que se dibujen de verdad: texto, sello, icono, cifra, anillo, dibujo, forma, imagen (sólo con IDs de la galería que estén abajo), logo, llamado y personaje.",
     personaje ? `· La marca tiene PERSONAJE${personaje.nombre ? ` («${personaje.nombre}»)` : ""}: úsalo con «personaje» (variante, pose y expresión según lo que pase en la escena). Su aspecto lo pone el kit: no escribas estilo.personaje.` : "",
     "· Sin paleta propia: los colores salen del kit por sus tokens.",
+    conFondos ? `\n${lineaDeFondos({ galeria })}` : "",
     // El criterio comercial de la agencia: el mismo de todo guion de video (lib/guionVideo.js).
     criterio ? `\n${String(criterio).trim()}` : "",
     // La ESTRUCTURA de guion de la agencia (lib/formulasUgc.js): la escogida, en esta duración, o la lista para que la
@@ -108,9 +116,15 @@ const mmss = (s) => {
  * La letra por líneas CON sus tiempos para la IA: cada línea con cuándo se canta y cuánto dura, el CORO marcado (las que
  * se repiten) y los HUECOS instrumentales (intro, puente, final) donde van escenas sin letra. Pura.
  */
-export function letraParaLaIA(lineas = [], huecos = []) {
+export function letraParaLaIA(lineas = [], huecos = [], golpes = []) {
+  // Los GOLPES de la canción que caen en cada línea (src/lib/golpes.js), como mucho 8: ahí caen bien los cortes y las
+  // palabras que entran de golpe.
+  const deLinea = (l) => {
+    const g = golpesEnTramo(golpes, l.desde, l.hasta).slice(0, 8);
+    return g.length ? ` · golpes en ${g.map((t) => t.toFixed(2)).join(", ")} s` : "";
+  };
   const filas = [
-    ...lineas.map((l) => ({ desde: l.desde, texto: `[${mmss(l.desde)}–${mmss(l.hasta)}, ${(l.hasta - l.desde).toFixed(1)} s]${l.coro ? " (CORO)" : ""} ${l.texto}` })),
+    ...lineas.map((l) => ({ desde: l.desde, texto: `[${mmss(l.desde)}–${mmss(l.hasta)}, ${(l.hasta - l.desde).toFixed(1)} s]${l.coro ? " (CORO)" : ""} ${l.texto}${deLinea(l)}` })),
     ...huecos.map((h) => ({ desde: h.desde, texto: `[${mmss(h.desde)}–${mmss(h.hasta)}] HUECO instrumental (${h.cual}, ${(h.hasta - h.desde).toFixed(1)} s): una escena SIN habla` })),
   ];
   return filas.sort((a, b) => a.desde - b.desde).map((f) => f.texto).join("\n");
@@ -122,13 +136,18 @@ export function letraParaLaIA(lineas = [], huecos = []) {
  * visual y el texto en pantalla corto. `lineas` y `huecos`: los de videoCancion.js; `errores`/`anterior`: la vuelta de
  * corrección. Pura.
  */
-export function pedidoDeGuionCancion({ marca, titulo = "", nombre = "", duracion, lineas = [], huecos = [], formato = "9:16", contexto = "", productos = "", personaje = null, indicacion = "", errores = [], anterior = "" }) {
+export function pedidoDeGuionCancion({ marca, titulo = "", nombre = "", duracion, lineas = [], huecos = [], formato = "9:16", contexto = "", productos = "", personaje = null, indicacion = "", errores = [], anterior = "", marcaVideo = "", referencias = 0, conFondos = false, galeria = "", golpes = [], bpm = 0 }) {
   const f = FORMATOS_VIDEO[formato] ? formato : "9:16";
   const coro = lineas.some((l) => l.coro);
   return [
     `Eres el director de arte de videos animados de la agencia Juancito Ads. Diseña las ESCENAS de UN video animado para una CANCIÓN YA GRABADA de ${marca}: el audio es la canción (voz e instrumental), no se genera voz.`,
     "",
     formatoParaLaIA(),
+    "",
+    marcaVideo ? `${marcaVideo}\n` : "",
+    lineaDeReferenciasVideo(referencias),
+    // La agencia: «todo se construye sobre lo que dice la canción: su mensaje, su estilo y su ritmo».
+    "TODO SALE DE LA CANCIÓN: su MENSAJE (lo que dice la letra decide qué se ve en cada escena), su ESTILO (el género y el ánimo deciden la tipografía, el ritmo de las entradas y los fondos) y su RITMO (los cortes de escena caen donde empieza una línea; las palabras clave entran de golpe cuando se cantan).",
     "",
     "MODO CANCIÓN (manda sobre lo de arriba)",
     "· El «habla» de las escenas es la LETRA TAL CUAL y EN ORDEN: ni una palabra cambiada, añadida ni quitada (tampoco [emociones]). Pártela por líneas o frases: una escena por línea, o dos líneas cortas juntas. Toda la letra va, de principio a fin.",
@@ -140,11 +159,14 @@ export function pedidoDeGuionCancion({ marca, titulo = "", nombre = "", duracion
     "· No escribas «cancion» ni «musica»: los pone la aplicación.",
     personaje ? `· La marca tiene PERSONAJE${personaje.nombre ? ` («${personaje.nombre}»)` : ""}: úsalo en el coro o en los huecos (variante, pose y expresión según la letra). Su aspecto lo pone el kit.` : "",
     "· Sin paleta propia: los colores salen del kit por sus tokens.",
+    "· La letra en pantalla con CARÁCTER: el coro o la frase clave en rol «gigante» o con *énfasis* en la palabra clave; con «porPalabra» y la entrada «golpe», cada palabra entra cuando se canta.",
+    conFondos ? `\n${lineaDeFondos({ galeria, cancion: true })}` : "",
     indicacion ? `\nLO QUE PIDE LA AGENCIA (manda): ${String(indicacion).trim().slice(0, 600)}` : "",
     "",
-    `LA CANCIÓN${nombre ? ` «${nombre}»` : ""}: dura ${Number(duracion).toFixed(1)} s. Formato principal: ${f} (formatos: ["${f}"]).${titulo ? ` Título del video: «${titulo}».` : ""}`,
+    `LA CANCIÓN${nombre ? ` «${nombre}»` : ""}: dura ${Number(duracion).toFixed(1)} s${bpm > 0 ? `, a unos ${bpm} BPM` : ""}. Formato principal: ${f} (formatos: ["${f}"]).${titulo ? ` Título del video: «${titulo}».` : ""}`,
+    golpes.length ? "EL RITMO: cada línea dice en qué segundos caen sus GOLPES. Lo que entra de golpe (la palabra clave, un sello, un icono) va anclado a la palabra que suena en un golpe; una capa con «pulso»: true late en cada golpe (el coro, el logo del cierre)." : "",
     "La letra por líneas, con cuándo se canta cada una (y los huecos sin letra):",
-    letraParaLaIA(lineas, huecos),
+    letraParaLaIA(lineas, huecos, golpes),
     "",
     contexto ? `LA MARCA\n${contexto}` : "",
     productos ? `CATÁLOGO (las fotos son el producto REAL; en una capa «imagen» va su ID en «archivo»)\n${productos}` : "",

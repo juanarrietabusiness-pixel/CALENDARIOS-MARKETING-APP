@@ -524,6 +524,8 @@ export function crearHerramientasEstudio({ env, acceso, resolverCliente, usuario
         kitVacio(kitDe(c))
           ? "KIT DE MARCA: no está preparado (se prepara en la pestaña Marca → Kit y voz). Sin él, pon la guía visual en el prompt."
           : `KIT DE MARCA: preparado${kitDe(c).logo ? ", con logo" : ""}. La paleta, el estilo y el logo los pone el kit en cada pieza. Usa estilo=<tipo de contenido> en crear_en_estudio (${Object.keys(TIPOS_PRESET).join("|")}) y escribe en el prompt sólo la escena.`,
+        // El estilo de los videos animados de la marca (kit.estiloVideo): lo sigue todo guion de video animado.
+        kitDe(c).estiloVideo ? `ESTILO DE LOS VIDEOS DE LA MARCA (obligatorio en todo video animado: tipografía, fondos, ritmo):\n${kitDe(c).estiloVideo}` : "",
         guia
           ? `GUÍA VISUAL DE LA MARCA (del cerebro; ponla en el prompt, con tus palabras):\n${guia}`
           : `GUÍA VISUAL: el cerebro de ${c.name} no tiene notas de identidad visual. Pregunta al usuario por colores, estilo y qué evitar, o pídele que las añada en Marca → Cerebro.`,

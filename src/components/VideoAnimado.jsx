@@ -28,6 +28,7 @@ import { listarVideos, leerVideo, crearVideo, guardarVideo, aprobarVideo, borrar
 import { limpiarKit } from "../lib/kitMarca";
 import { conPersonajeDelKit } from "../lib/personajeVideo";
 import { palabrasParaLinea, esCancion } from "../lib/videoCancion";
+import { conGolpes } from "../lib/golpes";
 import { editaLaAgencia } from "../lib/sesionActual";
 import RenderVideo from "./RenderVideo";
 import "./VideoAnimado.css";
@@ -39,6 +40,8 @@ const VideoSonido = lazy(() => import("./VideoSonido"));
 const CrearVideoAnimado = lazy(() => import("./CrearVideoAnimado"));
 const EditorEscenas = lazy(() => import("./EditorEscenas"));
 const LocucionVideo = lazy(() => import("./LocucionVideo"));
+// Las imágenes de fondo por sección que pidió la IA («Con imágenes de fondo»): las crea el director (con su costo).
+const FondosVideo = lazy(() => import("./FondosVideo"));
 // «Guardar como estructura»: la IA saca la estructura de esta voz en off para las de la agencia (sólo al pulsarlo).
 const GuardarEstructura = lazy(() => import("./GuardarEstructura"));
 
@@ -279,6 +282,11 @@ export default function VideoAnimado({ client, estudio, publicacion = null, abri
             </Suspense>
           )}
           {sucio && <p className="hint">Hay cambios sin guardar.</p>}
+          {!abierto.nuevo && (
+            <Suspense fallback={null}>
+              <FondosVideo client={client} video={abierto} sucio={sucio} onCambio={(v) => { setAbierto(v); setTexto(JSON.stringify(v.guion, null, 2)); }} />
+            </Suspense>
+          )}
           {!abierto.nuevo && <Suspense fallback={null}><LocucionVideo client={client} video={abierto} sucio={sucio} onCambio={setAbierto} /></Suspense>}
           {!abierto.nuevo && <RenderVideo client={client} video={abierto} sucio={sucio} onCambio={setAbierto} />}
           {!abierto.nuevo && (
@@ -365,7 +373,9 @@ function VistaPrevia({ guion, locucion, kit, archivos }) {
   const [reproduciendo, setReproduciendo] = useState(false);
   const [zonas, setZonas] = useState(false);
   const [prep, setPrep] = useState({ recursos: {}, fuentes: {}, faltan: [] });
-  const linea = useMemo(() => lineaDeTiempo(guion, palabras), [guion, palabras]);
+  // Con una canción, sus golpes van en la línea: el `pulso` de una capa late con ellos (como en el render).
+  const golpes = locucion?.golpes;
+  const linea = useMemo(() => conGolpes(lineaDeTiempo(guion, palabras), golpes), [guion, palabras, golpes]);
   const paleta = useMemo(() => paletaDelGuion(guion, kit.paleta), [guion, kit.paleta]);
   const f = guion.formatos.includes(formato) ? formato : guion.formatos[0];
   const { ancho, alto } = FORMATOS_VIDEO[f];
