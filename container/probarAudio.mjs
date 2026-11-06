@@ -121,6 +121,16 @@ try {
   // Una foto con música (src/lib/conMusica.js): sin voz, la escena entera es un silencio insertado y debajo sólo la
   // música, repetida; tiene que oírse a -14 LUFS (sin voz que la mida quedaba muy baja) y sonar en medio.
   await caso("Sólo música, sin voz (una foto con música)", null, [{ en: 0, dur: 10 }], 10, { musica: { audio: tema, volumen: 0 }, suena: [4, 6] });
+  // «Video con tu canción» (src/lib/videoCancion.js): la toma ES la canción. Sin silencios insertados, el video dura lo
+  // que ella y su final instrumental suena (no se corta tras la última palabra + la cola), en -14 LUFS y con los efectos.
+  const gCancion = validarGuion({
+    cancion: { archivo: "c1", duracion: 14 },
+    escenas: [{ id: "a", tipo: "explicacion", habla: "la la la mi canción", transicion: { tipo: "fundido" } }, { id: "fin", tipo: "cierre", habla: "", transicion: { tipo: "fundido" }, capas: [{ tipo: "logo" }] }],
+  }).guion;
+  const lCancion = lineaDeTiempo(gCancion, null);
+  if (!gCancion || lCancion.silencios.length || lCancion.total !== 14) { mal++; console.error("✗ la línea de una canción no lleva silencios y dura lo que la canción"); }
+  const cancion = await readFile(mp3("cancion.mp3", 14, 44100, "0.4+0.1*sin(2*PI*2*t)"));
+  await caso("Canción sin silencios (la duración manda)", cancion, lCancion.silencios, lCancion.total, { guion: gCancion, linea: lCancion, efectos: true, suena: [13.2, 13.8] });
 } finally {
   await rm(carpeta, { recursive: true, force: true });
 }

@@ -108,3 +108,18 @@
 .va-editor-botones { display: flex; gap: 2px; margin-left: auto; }
 .va-editor-pausa { max-width: 7rem; }
 .va-locucion { display: grid; gap: var(--sp-1); border-top: 1px solid var(--border); padding-top: var(--sp-2); }
+
+/* «Video con tu canción»: escoger la canción, la letra sincronizada línea a línea y el ajuste fino */
+.va-cancion { display: grid; gap: var(--sp-2); min-width: 0; }
+.va-cancion-fila { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; }
+.va-cancion-fila select { flex: 1 1 200px; width: auto; min-width: 0; }
+.va-cancion-audio { width: 100%; min-height: var(--tap-sm); }
+.va-cancion-sincronia { display: grid; gap: var(--sp-2); padding: var(--sp-2); border-radius: var(--radius-sm); background: var(--surface-2); min-width: 0; }
+.va-cancion-sincronia h4 { margin: 0; font-size: var(--fs-sm); }
+.va-cancion-lineas { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--sp-1); max-height: 16rem; overflow-y: auto; }
+.va-cancion-lineas li { display: flex; gap: var(--sp-2); align-items: baseline; font-size: var(--fs-sm); overflow-wrap: anywhere; }
+.va-cancion-t { flex: none; min-width: 3.4rem; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.va-cancion-coro { font-weight: 600; }
+.va-cancion-etiqueta { color: var(--text-muted); font-weight: 400; font-size: var(--fs-xs); }
+.va-cancion-ajuste { width: 100%; min-height: var(--tap-sm); accent-color: var(--accent); }
+.va-avisos-cancion { margin: var(--sp-1) 0 0; padding-left: var(--sp-3); }

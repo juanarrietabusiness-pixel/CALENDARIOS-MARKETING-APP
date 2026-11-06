@@ -491,6 +491,7 @@ export function describirUso(nombre, entrada = {}) {
     case "personaje_video": return ["piel", "pelo", "ropa", "accesorio", "nombre"].some((k) => entrada[k] !== undefined) ? "Cambió el personaje de los videos animados" : "Miró el personaje de los videos animados";
     case "sonido_video": return entrada.efectos === undefined && entrada.musica_id === undefined && entrada.volumen === undefined ? "Miró el sonido de un video animado" : "Cambió el sonido de un video animado (efectos o música)";
     case "musicas": return `Miró las músicas de fondo${entrada.cliente ? ` de ${entrada.cliente}` : ""}`;
+    case "video_con_cancion": return entrada.confirmado === true ? `Creó un video animado con una canción${entrada.disenar === true ? " (escenas de la IA)" : " (prueba de sincronía)"}` : "Miró el costo de sincronizar una canción (sin crear nada)";
     case "versiones_video": return "Miró el historial de un video animado";
     case "volver_a_version": return `Volvió un video animado a su versión ${entrada.a_version ?? ""}`;
     default: return nombre;

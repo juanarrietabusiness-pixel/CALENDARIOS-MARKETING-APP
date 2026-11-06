@@ -32,6 +32,7 @@ import { MAX_BYTES_SONIDO } from "../../../src/lib/bibliotecaSonido.js";
 import { dbDeVolumenGuion } from "../../../src/lib/musica.js";
 import { avisarRender } from "../equipo.js";
 import { esVideoDeFoto, postConMusica } from "../../../src/lib/conMusica.js";
+import { esCancion } from "../../../src/lib/videoCancion.js";
 
 const leerJSON = (t, d) => { try { return typeof t === "string" ? JSON.parse(t) : (t ?? d); } catch { return d; } };
 const SISTEMA = { userId: "sistema", nombre: "Render", color: "", tab: null };
@@ -183,19 +184,25 @@ export async function ejecutarRender(env, { ownerId, clienteId, videoId, intento
     const sinClips = fallaron.length ? `No se pudo cargar ${fallaron.length === 1 ? "un clip de video" : `${fallaron.length} clips de video`}: ${fallaron.length === 1 ? "salió" : "salieron"} con el cuadro de espera.` : null;
     // Un montaje sin habla no tiene locución: el audio es el de los clips (y la música).
     let audio = null;
+    // Con una CANCIÓN ya grabada (src/lib/videoCancion.js) la toma ES la canción: del cliente o de la biblioteca de la
+    // agencia de este espacio. Sin silencios (la línea de tiempo no los pone) y el video dura lo que ella.
+    const locucion = leerJSON(fila.locucion, {});
+    const conCancion = esCancion(locucion);
     if (tieneHabla(guion)) {
-      const locucion = leerJSON(fila.locucion, {});
-      const claveVoz = claveDelCliente(locucion.clave, clienteId);
+      const claveVoz = conCancion ? claveDeSonido(locucion.clave, clienteId, ownerId) : claveDelCliente(locucion.clave, clienteId);
       const voz = claveVoz ? await env.MEDIA.get(claveVoz) : null;
-      if (!voz) throw new Error("No encontré el audio de la locución: genérala otra vez.");
-      if (voz.size > TOPE_VOZ) throw new Error("El audio de la locución pesa demasiado.");
+      if (!voz) throw new Error(conCancion ? "No encontré el audio de la canción: ¿se quitó de la biblioteca de sonido?" : "No encontré el audio de la locución: genérala otra vez.");
+      if (voz.size > TOPE_VOZ) throw new Error(conCancion ? "La canción pesa demasiado." : "El audio de la locución pesa demasiado.");
       audio = aBase64(new Uint8Array(await voz.arrayBuffer()));
     }
 
     // El sonido de debajo (efectos y música): aparte del guion. Una música que ya no está no tumba el render: va sin ella.
     const sonido = limpiarSonido(leerJSON(fila.sonido, {}));
+    // Con una canción, la música de «Sonido» (y la del guion) se ignora: la canción ya es la música. Los efectos siguen.
+    const sinMusicaPorCancion = conCancion && sonido.musica ? `La música de «Sonido» («${sonido.musica.nombre || "Música"}») no sonó: la canción ya es la música.` : null;
+    if (conCancion) sonido.musica = null;
     // Sin música escogida en «Sonido», la que el GUION trae por su clave (con su volumen 0–1 pasado a dB).
-    if (!sonido.musica) {
+    if (!sonido.musica && !conCancion) {
       const delGuion = leerJSON(fila.guion, {})?.musica;
       if (delGuion?.clave && claveDelCliente(delGuion.clave, clienteId)) {
         sonido.musica = { archivoId: "guion", clave: delGuion.clave, nombre: "La música del guion", volumen: dbDeVolumenGuion(delGuion.volumen ?? 0.35) };
@@ -267,7 +274,7 @@ export async function ejecutarRender(env, { ownerId, clienteId, videoId, intento
     const listo = {
       ...render, estado: "listo", clave, archivoId, bytes: bytes.byteLength, ancho, alto, ...datos, terminadoAt: momento,
       adjunto: puesto?.postId ? { calendarId: puesto.calendarId, postId: puesto.postId } : null,
-      aviso: [sinClips, sinMusica, avisoEfectos, puesto?.aviso].filter(Boolean).join(" ") || null,
+      aviso: [sinClips, sinMusicaPorCancion, sinMusica, avisoEfectos, puesto?.aviso].filter(Boolean).join(" ") || null,
     };
     delete listo.anterior;
     const escrito = await terminar(acceso, clienteId, videoId, intento, "renderizado", listo);

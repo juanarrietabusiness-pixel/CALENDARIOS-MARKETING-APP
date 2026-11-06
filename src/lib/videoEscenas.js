@@ -31,6 +31,12 @@
 // render mete ese hueco en el audio. `lineaDeTiempo` devuelve dónde (en el
 // tiempo del AUDIO) y cuánto, para que el render lo haga con ffmpeg.
 //
+// MODO CANCIÓN (`cancion: { archivo, duracion }` en la raíz, opcional y que no se escribe si no está): el audio es una
+// canción YA GRABADA (voz e instrumental mezclados) y el «habla» de las escenas es su LETRA. Nada se inserta en el audio
+// —ni `pausa`, ni el alargue de `MIN_ESCENA`, ni el tramo de un clip—: estirar una escena desincronizaría la música. El
+// video dura lo que la canción (su final instrumental se ve), y una escena sin letra (intro, puente, final) ocupa el
+// hueco entre la última palabra cantada de la anterior y la primera de la siguiente. Lo que es demasiado corto se AVISA.
+//
 // La documentación con ejemplos está en docs/formato-escenas-v1.md.
 // ============================================================
 
@@ -92,6 +98,11 @@ export const MIN_ESCENA = 0.6;
 export const COLA_FINAL = 0.4;
 /** Lo que dura como mucho el tramo fijo (`hasta − desde`) de una capa de video. */
 export const MAX_TRAMO_VIDEO = 60;
+/** En MODO CANCIÓN (una canción ya grabada): hasta 3 minutos y más escenas (una por línea de la letra). */
+export const MAX_SEGUNDOS_CANCION = 180;
+export const MAX_ESCENAS_CANCION = 80;
+/** El id de la canción en la biblioteca de sonido (del cliente o de la agencia). */
+const ID_CANCION = /^[\w-]{1,80}$/;
 
 // ------------------------------------------------------------
 // El vocabulario
@@ -400,7 +411,7 @@ function validarCapa(capa, donde, nPalabras, errores, avisos, ids) {
   };
 }
 
-function validarEscena(e, i, errores, avisos, idsEscenas) {
+function validarEscena(e, i, errores, avisos, idsEscenas, { cancion = false } = {}) {
   const donde = `escenas[${i}]`;
   if (!esObjeto(e)) { errores.push({ donde, mensaje: "Una escena es un objeto." }); return null; }
   const id = recorta(e.id) || `e${i + 1}`;
@@ -410,11 +421,16 @@ function validarEscena(e, i, errores, avisos, idsEscenas) {
   const habla = recorta(e.habla);
   if (habla.length > MAX_HABLA) errores.push({ donde: `${donde}.habla`, mensaje: `Pasa de ${MAX_HABLA} caracteres: parte la escena en dos.` });
   const nPalabras = palabrasDe(habla).length;
-  const pausa = e.pausa === undefined ? 0 : Number(e.pausa);
+  let pausa = e.pausa === undefined ? 0 : Number(e.pausa);
   if (!(pausa >= 0 && pausa <= MAX_PAUSA)) errores.push({ donde: `${donde}.pausa`, mensaje: `«pausa» son segundos de silencio detrás del habla: entre 0 y ${MAX_PAUSA}.` });
+  // En una canción no se inserta nada en el audio: la pausa se ignora (y se dice), y una escena sin letra ocupa su hueco.
+  if (cancion && pausa > 0) {
+    avisos.push({ donde: `${donde}.pausa`, mensaje: "En un video con canción no se insertan silencios: «pausa» se ignora (la escena dura lo que su parte de la canción)." });
+    pausa = 0;
+  }
   const conTramo = Array.isArray(e.capas) && e.capas.some((c) => (c?.tipo === "video" && Number(c.hasta) > Number(c.desde ?? 0))
     || (c?.tipo === "imagen" && Number(c.dura) > 0));
-  if (!nPalabras && !(pausa > 0) && !conTramo) errores.push({ donde, mensaje: "Una escena que no dice nada necesita «pausa» (los segundos que dura en silencio), un video con su tramo («desde» y «hasta») o una imagen con «dura»." });
+  if (!cancion && !nPalabras && !(pausa > 0) && !conTramo) errores.push({ donde, mensaje: "Una escena que no dice nada necesita «pausa» (los segundos que dura en silencio), un video con su tramo («desde» y «hasta») o una imagen con «dura»." });
   const pantalla = recorta(e.pantalla);
   if (pantalla.length > MAX_PANTALLA) errores.push({ donde: `${donde}.pantalla`, mensaje: `Pasa de ${MAX_PANTALLA} caracteres.` });
 
@@ -472,6 +488,23 @@ function validarEstilo(s = {}, errores) {
 }
 
 /**
+ * La canción de un guion en MODO CANCIÓN: { archivo (su id en la biblioteca de sonido), duracion (s, medida de verdad),
+ * nombre? }. null si no la trae (un guion de siempre: no se escribe nada). Pura.
+ */
+function validarCancion(c, errores) {
+  if (c === undefined || c === null) return null;
+  if (!esObjeto(c)) { errores.push({ donde: "cancion", mensaje: "«cancion» es { archivo, duracion } (la canción de la biblioteca y lo que dura)." }); return null; }
+  const archivo = recorta(c.archivo);
+  if (!ID_CANCION.test(archivo)) errores.push({ donde: "cancion.archivo", mensaje: "«archivo» es el id de la canción en la biblioteca de sonido." });
+  const duracion = Number(c.duracion);
+  if (!(Number.isFinite(duracion) && duracion >= MIN_SEGUNDOS && duracion <= MAX_SEGUNDOS_CANCION)) {
+    errores.push({ donde: "cancion.duracion", mensaje: `Lo que dura la canción, en segundos: entre ${MIN_SEGUNDOS} y ${MAX_SEGUNDOS_CANCION} (3 minutos).` });
+  }
+  const nombre = recorta(c.nombre).slice(0, 120);
+  return { archivo, duracion: Number.isFinite(duracion) ? Math.round(duracion * 1000) / 1000 : 0, ...(nombre ? { nombre } : {}) };
+}
+
+/**
  * Valida un guion (objeto o texto JSON) y lo devuelve LIMPIO: sólo los campos del formato, con sus valores por
  * defecto. Nada se recorta ni se arregla en silencio: un texto largo, un color que no existe o una palabra que la
  * escena no dice son ERRORES (quien lo escribió lo corrige); lo que sobra se quita y va en `avisos`.
@@ -496,11 +529,14 @@ export function validarGuion(entrada) {
   }) : [];
   if (!formatos.length) errores.push({ donde: "formatos", mensaje: "Hace falta al menos un formato." });
 
+  // MODO CANCIÓN: la canción ya grabada (opcional; un guion sin ella valida exactamente como siempre).
+  const cancion = validarCancion(g.cancion, errores);
+  const maxEscenas = cancion ? MAX_ESCENAS_CANCION : MAX_ESCENAS;
   const escIn = g.escenas;
   if (!Array.isArray(escIn) || !escIn.length) errores.push({ donde: "escenas", mensaje: "Hace falta al menos una escena." });
-  else if (escIn.length > MAX_ESCENAS) errores.push({ donde: "escenas", mensaje: `Como mucho ${MAX_ESCENAS} escenas.` });
+  else if (escIn.length > maxEscenas) errores.push({ donde: "escenas", mensaje: `Como mucho ${maxEscenas} escenas.` });
   const idsEscenas = new Set();
-  const escenas = (Array.isArray(escIn) ? escIn.slice(0, MAX_ESCENAS) : []).map((e, i) => validarEscena(e, i, errores, avisos, idsEscenas)).filter(Boolean);
+  const escenas = (Array.isArray(escIn) ? escIn.slice(0, maxEscenas) : []).map((e, i) => validarEscena(e, i, errores, avisos, idsEscenas, { cancion: Boolean(cancion) })).filter(Boolean);
 
   const sub = esObjeto(g.subtitulos) ? g.subtitulos : {};
   const subtitulos = {
@@ -523,15 +559,22 @@ export function validarGuion(entrada) {
   if (musica?.clave && (!/^clientes\/[^/]+\//.test(musica.clave) || musica.clave.includes(".."))) errores.push({ donde: "musica.clave", mensaje: "La música es un archivo del cliente (clientes/<cliente>/…)." });
 
   for (const k of Object.keys(g)) {
-    if (!["version", "titulo", "formatos", "estilo", "escenas", "subtitulos", "musica"].includes(k)) avisos.push({ donde: k, mensaje: `«${k}» no es del formato: se quitó.` });
+    if (!["version", "titulo", "formatos", "estilo", "escenas", "subtitulos", "musica", "cancion"].includes(k)) avisos.push({ donde: k, mensaje: `«${k}» no es del formato: se quitó.` });
   }
   const guion = {
     version: VERSION_GUION, titulo: recorta(g.titulo).slice(0, 120), formatos,
     estilo: validarEstilo(g.estilo, errores), escenas, subtitulos, musica,
+    // Sólo si la trae: así un guion de antes valida igual y volver a guardarlo no le sube la versión.
+    ...(cancion ? { cancion } : {}),
   };
   const segundos = escenas.length ? lineaDeTiempo(guion).total : 0;
-  if (escenas.length && segundos < MIN_SEGUNDOS) errores.push({ donde: "escenas", mensaje: `Dura unos ${segundos.toFixed(1)} s: el mínimo es ${MIN_SEGUNDOS}.` });
-  if (segundos > MAX_SEGUNDOS) errores.push({ donde: "escenas", mensaje: `Dura unos ${Math.round(segundos)} s: el máximo es ${MAX_SEGUNDOS} (2 min 30 s).` });
+  if (cancion) {
+    // En una canción, el video dura lo que ella (ya lo dijo `validarCancion`).
+    if (escenas.length && !tieneHabla(guion)) errores.push({ donde: "escenas", mensaje: "Un video con canción lleva su letra en el «habla» de las escenas (sin letra no hay nada que sincronizar)." });
+  } else {
+    if (escenas.length && segundos < MIN_SEGUNDOS) errores.push({ donde: "escenas", mensaje: `Dura unos ${segundos.toFixed(1)} s: el mínimo es ${MIN_SEGUNDOS}.` });
+    if (segundos > MAX_SEGUNDOS) errores.push({ donde: "escenas", mensaje: `Dura unos ${Math.round(segundos)} s: el máximo es ${MAX_SEGUNDOS} (2 min 30 s).` });
+  }
   return { ok: !errores.length, errores, avisos, guion, segundos };
 }
 
@@ -568,6 +611,7 @@ function tiemposDeAudio(total, palabras) {
  *     silencios: [{ en (s del audio), dur }] }. Pura.
  */
 export function lineaDeTiempo(guion, palabras = null) {
+  if (Number(guion?.cancion?.duracion) > 0) return lineaDeCancion(guion, palabras);
   const escenas = guion?.escenas ?? [];
   const porEscena = escenas.map((e) => palabrasDe(e.habla));
   const total = porEscena.reduce((n, l) => n + l.length, 0);
@@ -604,6 +648,73 @@ export function lineaDeTiempo(guion, palabras = null) {
     salida.push({ id: e.id, desde: redondo(desde), hasta: redondo(reloj), frames: { desde: aFrame(desde), hasta: aFrame(reloj) }, palabras: palabrasEscena });
   });
   return { total: redondo(reloj), estimado, escenas: salida, silencios };
+}
+
+/**
+ * Los tiempos de cada palabra de una CANCIÓN: los de la sincronía (`palabras`, uno por palabra del habla, en segundos de
+ * la canción, ya con su desplazamiento) o, si no hay o no cuadran, repartidos parejos sobre lo que dura. Nunca fuera de
+ * [0, total]. Pura.
+ */
+function tiemposDeCancion(n, palabras, total) {
+  const dentro = (x) => Math.min(total, Math.max(0, x));
+  if (Array.isArray(palabras) && palabras.length === n
+    && palabras.every((p, i) => Number.isFinite(p?.desde) && Number.isFinite(p?.hasta) && p.hasta >= p.desde && (i === 0 || p.desde >= palabras[i - 1].desde))) {
+    return { tiempos: palabras.map((p) => ({ desde: dentro(p.desde), hasta: dentro(p.hasta) })), estimado: false };
+  }
+  const paso = total / Math.max(1, n);
+  return { tiempos: Array.from({ length: n }, (_, i) => ({ desde: i * paso, hasta: i * paso + paso * 0.9 })), estimado: true };
+}
+
+/**
+ * La línea de tiempo en MODO CANCIÓN (`guion.cancion`): el audio es la canción tal cual. Sin silencios insertados (el
+ * tiempo del video ES el de la canción) y el total es lo que dura ella. La primera escena empieza en 0; una escena con
+ * letra, en su primera palabra cantada; una SIN letra (intro, puente, final), en el hueco entre la última palabra de la
+ * anterior y la primera de la siguiente (varias seguidas se lo reparten). Una escena más corta que `MIN_ESCENA` no se
+ * estira (desincronizaría la música): va en `avisos`. → la forma de `lineaDeTiempo` con `cancion: true` y `avisos`. Pura.
+ */
+function lineaDeCancion(guion, palabras) {
+  const escenas = guion.escenas ?? [];
+  const N = escenas.length;
+  const total = redondo(Number(guion.cancion.duracion));
+  const porEscena = escenas.map((e) => palabrasDe(e.habla));
+  const n = porEscena.reduce((a, l) => a + l.length, 0);
+  const { tiempos, estimado } = tiemposDeCancion(n, palabras, total);
+  const inicio = [];
+  porEscena.reduce((a, l, k) => { inicio[k] = a; return a + l.length; }, 0);
+  const primera = (k) => tiempos[inicio[k]].desde;
+  const ultima = (k) => tiempos[inicio[k] + porEscena[k].length - 1].hasta;
+
+  // Dónde empieza cada escena.
+  const corte = new Array(N).fill(0);
+  for (let k = 0; k < N;) {
+    if (porEscena[k].length) {
+      corte[k] = k === 0 ? 0 : Math.max(corte[k - 1], primera(k));
+      k++;
+      continue;
+    }
+    // Un tramo de escenas sin letra (de k a j − 1): se reparten el hueco entre la letra de antes y la de después.
+    let j = k;
+    while (j < N && !porEscena[j].length) j++;
+    const a = k === 0 ? 0 : Math.max(corte[k - 1], ultima(k - 1));
+    const b = Math.max(a, j < N ? primera(j) : total);
+    for (let i = k; i < j; i++) corte[i] = a + ((b - a) * (i - k)) / (j - k);
+    k = j;
+  }
+
+  const avisos = [];
+  const salida = escenas.map((e, k) => {
+    const desde = Math.min(total, corte[k]);
+    const hasta = Math.max(desde, k === N - 1 ? total : Math.min(total, corte[k + 1]));
+    if (hasta - desde < MIN_ESCENA) {
+      avisos.push({ donde: `escenas[${k}]`, escena: e.id, mensaje: `Dura ${(hasta - desde).toFixed(2)} s: en una canción no se estira (se desincronizaría la música). Júntala con la de al lado o quítala.` });
+    }
+    const palabrasEscena = porEscena[k].map((texto, i) => {
+      const t = tiempos[inicio[k] + i];
+      return { texto, desde: redondo(t.desde), hasta: redondo(t.hasta) };
+    });
+    return { id: e.id, desde: redondo(desde), hasta: redondo(hasta), frames: { desde: aFrame(desde), hasta: aFrame(hasta) }, palabras: palabrasEscena };
+  });
+  return { total, estimado, escenas: salida, silencios: [], cancion: true, avisos };
 }
 
 /** Los ids de la galería que nombra un guion como IMAGEN (imágenes, teléfonos, antes y después). Pura. */

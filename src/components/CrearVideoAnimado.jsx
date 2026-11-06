@@ -6,9 +6,12 @@
 // lo devuelve SIN GUARDAR: la pantalla lo abre como borrador para revisarlo, editarlo y guardarlo. «Empezar con una
 // plantilla» abre el guion de arranque, como antes. «Estructura del guion» escoge cuál de las de la agencia sigue la voz
 // en off (o la IA escoge); la que siguió vuelve con el guion y el borrador la guarda (`origen.estructuraId`).
+//
+// «Con tu canción» (CrearConCancion.jsx, en su chunk): el video sobre una canción YA GRABADA con su letra sincronizada; la
+// crea el servidor ya guardada (con la canción como su locución) y se abre con `onCreado`.
 // ============================================================
 
-import { useId, useMemo, useState } from "react";
+import { lazy, Suspense, useId, useMemo, useState } from "react";
 import Icon from "./Icon";
 import { escribirGuionVideo } from "../lib/videosApi";
 import { DURACIONES_ANIMADO, DURACION_ANIMADO_POR_DEFECTO, MAX_IDEA_ANIMADO } from "../lib/guionAnimadoIA";
@@ -17,9 +20,12 @@ import { fmtDate } from "../utils";
 import SelectorEstructura from "./SelectorEstructura";
 
 const FORMATOS = [["9:16", "Vertical 9:16"], ["1:1", "Cuadrado 1:1"], ["16:9", "Horizontal 16:9"]];
+const CrearConCancion = lazy(() => import("./CrearConCancion"));
 
-export default function CrearVideoAnimado({ client, publicacion = null, onListo, onPlantilla, onCancelar }) {
+export default function CrearVideoAnimado({ client, publicacion = null, onListo, onPlantilla, onCancelar, onCreado }) {
   const ids = useId();
+  // De qué sale: una idea (la IA escribe la voz en off) o una canción ya grabada.
+  const [forma, setForma] = useState("idea");
   const [idea, setIdea] = useState(publicacion?.idea ?? "");
   const [segundos, setSegundos] = useState(DURACION_ANIMADO_POR_DEFECTO);
   const [formato, setFormato] = useState("9:16");
@@ -43,9 +49,28 @@ export default function CrearVideoAnimado({ client, publicacion = null, onListo,
     } catch (e) { setError(e.message); } finally { setOcupado(false); }
   };
 
+  const formas = onCreado && (
+    <div className="va-opciones" role="group" aria-label="De qué sale el video">
+      <button type="button" className="filter-chip" aria-pressed={forma === "idea"} onClick={() => setForma("idea")}><Icon name="sparkles" /> Con una idea</button>
+      <button type="button" className="filter-chip" aria-pressed={forma === "cancion"} onClick={() => setForma("cancion")}><Icon name="music" /> Con tu canción</button>
+    </div>
+  );
+  if (forma === "cancion") {
+    return (
+      <section className="va-crear" aria-labelledby={`${ids}-t`}>
+        <h3 id={`${ids}-t`}>Video nuevo con tu canción</h3>
+        {formas}
+        <Suspense fallback={<p className="hint">Cargando…</p>}>
+          <CrearConCancion client={client} publicacion={publicacion} onCreado={onCreado} onCancelar={onCancelar} />
+        </Suspense>
+      </section>
+    );
+  }
+
   return (
     <section className="va-crear" aria-labelledby={`${ids}-t`}>
       <h3 id={`${ids}-t`}>Video nuevo</h3>
+      {formas}
       <p className="hint">Di de qué va y la IA escribe el guion por escenas (texto: unos céntimos). Lo revisas y lo editas antes de guardarlo; la voz, después, con su costo.</p>
       <label htmlFor={`${ids}-idea`}>De qué va el video</label>
       <textarea id={`${ids}-idea`} className="input" rows={4} maxLength={MAX_IDEA_ANIMADO} value={idea} onChange={(e) => setIdea(e.target.value)}

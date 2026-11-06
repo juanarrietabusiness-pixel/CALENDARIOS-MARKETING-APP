@@ -4,12 +4,17 @@
 // Antes la locución sólo la pedía Claude (generar_locucion). Aquí, con el guion aprobado: «Ver el costo» pregunta al
 // servidor (409 `confirmar` con la cifra; no crea nada) y sólo «Generar por …» la paga. Mientras se genera, se relee
 // el video cada 4 s (además del aviso del espacio). La voz es la de la marca (kit); si no hay, se dice dónde escogerla.
+//
+// Un video con CANCIÓN («Video con tu canción») no tiene voz que generar: en su sitio va «La canción» (CancionVideo.jsx,
+// en su chunk) con la sincronía, el ajuste fino y «Volver a sincronizar».
 // ============================================================
 
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import Icon from "./Icon";
 import { leerVideo, pedirLocucionVideo } from "../lib/videosApi";
 import { puedeGenerarVoz, tieneHabla } from "../lib/videoEscenas";
+
+const CancionVideo = lazy(() => import("./CancionVideo"));
 
 const CADA_MS = 4000;
 const dinero = (n) => (n < 0.01 ? "menos de 1 ¢" : `${Number(n).toLocaleString("es-PA", { minimumFractionDigits: 2, maximumFractionDigits: 3 })} $`);
@@ -45,6 +50,9 @@ export default function LocucionVideo({ client, video, sucio, onCambio }) {
     } finally { setOcupado(false); }
   };
 
+  if (loc.origen === "cancion") {
+    return <Suspense fallback={null}><CancionVideo client={client} video={video} sucio={sucio} onCambio={onCambio} /></Suspense>;
+  }
   if (!["aprobado", "con_voz", "renderizado", "fallido"].includes(video.estado) && !generando && !loc.estado) return null;
   // Un montaje de clips sin habla no tiene voz que generar: sale con el sonido de los clips.
   if (video.guion && !tieneHabla(video.guion) && !loc.estado) return null;

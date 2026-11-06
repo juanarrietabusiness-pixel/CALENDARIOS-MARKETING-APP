@@ -17,6 +17,7 @@ import { kitDe } from "./kit.js";
 import { conPersonajeDelKit } from "../../../src/lib/personajeVideo.js";
 import { claveDelCliente } from "./archivos.js";
 import { validarGuion, archivosDelGuion, videosDelGuion, FORMATOS_VIDEO } from "../../../src/lib/videoEscenas.js";
+import { palabrasParaLinea } from "../../../src/lib/videoCancion.js";
 
 /** Lo más que pesa lo que se manda (imágenes y fuentes): el Container lo tiene en memoria. */
 const TOPE_TOTAL = 24 * 1024 * 1024;
@@ -54,8 +55,8 @@ export async function pedidoDelVideo(env, acceso, cliente, fila, { formato } = {
   const kit = kitDe(cliente);
   // El personaje se dibuja con el aspecto del kit si el guion no trae uno propio.
   const guion = conPersonajeDelKit(v.guion, kit);
-  const locucion = leerJSON(fila.locucion, {});
-  const palabras = locucion.estado === "lista" && Array.isArray(locucion.palabras) ? locucion.palabras : null;
+  // Las de la locución, o las de la CANCIÓN sacadas del guion de ahora contra su letra (con el ajuste fino).
+  const palabras = palabrasParaLinea(guion, leerJSON(fila.locucion, {}));
   const cuenta = { bytes: 0 };
 
   // Las imágenes: los ids del guion que ESTÁN en la galería de este cliente (lo demás sale como marcador).
