@@ -185,6 +185,9 @@ describe("el protocolo y las herramientas", () => {
     const { access_token: tk } = await conectar("u-ana");
     const r = await llamar(tk, "listar_clientes");
     expect(r.content[0].text).toContain("Café Luna");
+    expect(r.content[0].text, "sin días fijos, no hay línea de días").not.toContain("Días fijos");
+    db.sqlite.prepare("update clients set dias_trabajo = ? where name = 'Café Luna'").run("[3,1]");
+    expect((await llamar(tk, "listar_clientes")).content[0].text).toContain("Días fijos: lunes, miércoles");
     expect(r.content[0].text).not.toContain("Cliente Ajeno");
     const ajeno = await llamar(tk, "ver_calendario", { cliente: "Cliente Ajeno" });
     expect(ajeno.isError).toBe(true);
@@ -268,5 +271,15 @@ describe("el protocolo y las herramientas", () => {
     const { access_token: tk } = await conectar();
     const r = await (await mcp(tk, "tools/call", { name: "borrar_todo" })).json();
     expect(r.error.code).toBe(-32602);
+  });
+});
+
+describe("listar_clientes: los días fijos de cada empresa (Mi día)", () => {
+  it("salen en su línea, de lunes a sábado, y lo raro se ignora", async () => {
+    const { diasFijos } = await import("../../worker/lib/mcp.js");
+    expect(diasFijos("[3,1,9,1]")).toEqual([1, 3]);
+    expect(diasFijos([6])).toEqual([6]);
+    expect(diasFijos("no es json")).toEqual([]);
+    expect(diasFijos(null)).toEqual([]);
   });
 });
