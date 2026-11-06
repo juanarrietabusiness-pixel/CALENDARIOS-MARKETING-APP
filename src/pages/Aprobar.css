@@ -203,12 +203,15 @@
 
 /* Rejilla del perfil */
 .aprobar-perfil { padding: var(--sp-2) 0 var(--sp-5); }
+.aprobar-perfil-titulo { font-size: var(--fs-md); margin: 0 0 var(--sp-3); }
+.aprobar-perfil-nota { font-size: var(--fs-2xs); color: var(--text-dim); margin: 0 0 var(--sp-3); }
 .aprobar-perfil-cabecera { display: flex; align-items: center; gap: var(--sp-3); margin-bottom: var(--sp-3); }
 .aprobar-perfil-cabecera div { display: flex; flex-direction: column; }
 .aprobar-perfil-cabecera span { font-size: var(--fs-2xs); color: var(--text-faint); }
 .aprobar-perfil-rejilla { list-style: none; display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; }
-.aprobar-perfil-rejilla button { position: relative; display: block; width: 100%; aspect-ratio: 4 / 5; padding: 0; border: none; background: var(--surface-3); cursor: pointer; overflow: hidden; }
-.aprobar-perfil-rejilla img, .aprobar-perfil-rejilla video { width: 100%; height: 100%; object-fit: cover; display: block; }
+/* El recorte del perfil de hoy: 3:4, del centro (Instagram lo saca siempre de ahí). */
+.aprobar-perfil-rejilla button { position: relative; display: block; width: 100%; aspect-ratio: 3 / 4; padding: 0; border: none; background: var(--surface-3); cursor: pointer; overflow: hidden; }
+.aprobar-perfil-rejilla img, .aprobar-perfil-rejilla video { width: 100%; height: 100%; object-fit: cover; object-position: center; display: block; }
 .aprobar-perfil-vacio { display: flex; width: 100%; height: 100%; align-items: center; justify-content: center; color: var(--text-faint); }
 .aprobar-perfil-icono { position: absolute; top: 6px; right: 6px; color: #fff; filter: drop-shadow(0 1px 2px rgba(0,0,0,.6)); }
 .aprobar-perfil-estado { position: absolute; left: 6px; bottom: 6px; width: 10px; height: 10px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 2px rgba(11,18,32,.35); }

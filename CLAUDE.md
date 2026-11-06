@@ -112,6 +112,8 @@ src/
   hooks/useRepaso.js      ¿Toca el repaso de la mañana? (una vez al día por persona)
   hooks/useBancoIdeas.js  El banco de ideas único: leerlo entero, añadir, cambiar (agrupado), asignar empresa, quitar
   hooks/useArrastrarOrden.js  Ordenar una lista arrastrando y con flechas (Hoy de Mi día y del panel de tareas)
+  hooks/useAjustada.js   La imagen como saldrá en su red (el lienzo de `vistaAjuste`, recordado): la vista previa de cada red y la
+                          cuadrícula de «Ver el mes como se verá»
   lib/
     filas.js              Conversores fila ⇄ aplicación
     auth.js               Sesión, inicio y cierre
@@ -418,6 +420,9 @@ src/
                           hora sale (puro; también lo importa el Worker)
     cola.js               La cola de publicación resumida para la rejilla y el panel, la
                           página Programación y «Programar lo aprobado» (puro)
+    vistaMes.js           «Ver el mes como se verá»: qué entra en la cuadrícula del perfil y en qué orden, el feed del mes, qué está
+                          LISTO para programar sin la aprobación del cliente (y por qué no lo demás), la confirmación y los detalles
+                          de cada publicación (puro; también el enlace del cliente, «Así se verá tu perfil»)
     historiasAuto.js      Historias automáticas: ajustes, qué día toca (Panamá), qué se prepara, cuál sale, la carga
                           de la cola y las frases (puro; también lo importa el Worker)
     historiasRepost.js    La historia de un post ya publicado, dibujada: la imagen encajada en 9:16 y su frase (lienzo)
@@ -599,6 +604,9 @@ src/
     GuardarRegla.jsx      «Guardar como regla» junto a cada corrección
     Recetas.jsx           Las recetas de la agencia: «Crear aquí» (el director, pestaña Diseño), «Crear con Claude» y el editor (lazy)
     calendario/RevisionMes.jsx  «Revisar el mes» antes de enviarlo: reglas, IA opcional e imágenes contra el kit (lazy)
+    calendario/VistaMes.jsx  «Ver el mes como se verá»: Perfil (la cuadrícula 3:4), Feed (una a una, con vistaRed.jsx) y Detalles, y
+                          «Programar todo lo listo» (lazy, con VistaMes.css)
+    calendario/vistaRed.css  Los estilos de la vista previa de cada red (salieron de publicar.css: la usan el panel, «Subir» y VistaMes)
     calendario/CarruselIA.jsx   «Crear carrusel con IA»: el guion en láminas, el texto por IA o por plantilla, rehacer una (lazy)
     calendario/ProducirMes.jsx  «Diseñar las aprobadas» (paso del asistente del mes; `ponerSolas`): las piezas que faltan en lote, con
                           costo y confirmación (lazy)
@@ -5447,6 +5455,42 @@ son del servidor.
   sólo el administrador (`fijarSinPreguntar`: el doble del pedido redondeado, o 3 $) y a los demás se les dice dónde.
   Encenderlo o cambiarlo lo hace PUT /api/ajustes, sólo el administrador (403 a los demás), con el mismo CHECK que la base
   (0 a 1000). Las «Recrear para…» de «Lo mejor» siguen preguntando: crean además una publicación en un día.
+
+- **«Ver el mes como se verá»: revisar MIRANDO y programar lo listo sin la aprobación del cliente** (decisión de la agencia:
+  «hay clientes que no me piden revisión… y cuando reviso no le pongo "revisado"»; `src/lib/vistaMes.js`,
+  `calendario/VistaMes.jsx`, lazy). Botón «Ver el mes» en la barra del calendario, «Ver y programar lo listo» en la barra de
+  publicar y su bloque en «Revisar y enviar» del asistente del mes. Cosas que no se ven:
+  · **«Listo» no es «aprobado»** (`estadoParaProgramar`): pieza, hora (`publishTime` escrita: sin ella la cola pondría las
+  9:00 sin que nadie lo decidiera), texto si su formato lo lleva (una historia no), alguna red conectada y sin errores de
+  `revisarPublicacion` para ESAS redes con `navegador: true` (el JPEG y la copia 4:5 los hace el navegador al programar). No
+  cuenta lo publicado, lo que ya está en la cola (`programada`/`procesando`/`publicada`; lo que FALLÓ sí se puede volver a
+  meter), «La publico yo» (`asistida`) ni los directos: van aparte, contados, no como «no listo». Lo que el cliente pidió
+  cambiar (`rejected`) NO está listo. Lo pendiente con el cliente sí: si luego pide cambios, sale solo de la cola
+  (`cancelarPendientes` en la aprobación pública) y la confirmación lo dice.
+  · **El servidor no exigía aprobación**: `planificar()`/`programarLote` nunca miraron `status`, así que no hizo falta otra
+  puerta: el botón va por `programarAprobadasDe` (prepara cada una por su lado, guarda y `POST /api/publicar/lote`) igual que
+  «Programar lo aprobado». Sólo lectura lo corta `worker/index.js` (403) y la pantalla no enseña el botón. Dos casos en
+  tests/migracion/publicar.test.js lo vigilan.
+  · **La cuadrícula es la de HOY del perfil: 3:4 del centro** (lo que saca Instagram; `ventanaCuadricula`), con lo del mes
+  arriba (lo más nuevo primero), sólo lo que sale en el FEED de Instagram (`entraEnLaCuadricula`) y debajo lo ya publicado
+  ANTES del mes (`yaPublicadasEnInstagram`, de las métricas del cron, por `/api/metricas/miniatura`: la CSP no deja pintar el
+  CDN). Lo publicado DURANTE el mes por fuera de la aplicación no sale: no se distingue de una del mes publicada a mano. De
+  un reel, su portada (ya encuadrada) o el video en `portadaMs`; de una imagen, la copia del feed si la hay, y si no cabe en
+  el feed, el MISMO ajuste del lienzo (`useAjustada`, que salió de vistaRed.jsx a hooks/useAjustada.js: un .jsx que exporta
+  algo más que su componente da un aviso de oxlint). La foto de perfil es la de la cuenta conectada (por el proxy; si no
+  carga, el logo).
+  · **Tocar un aviso y volver**: `abrirDesdeLista(postId, volver)` de CalendarView guarda `volver` (vista, filtro,
+  publicación) en el `sidePanel`, y `cerrarPanel` (el fondo y el botón de cerrar del panel) reabre la vista con eso. Quitar o
+  mover la publicación desde el panel no vuelve (el `sidePanel` se va con su `volver`).
+  · **En el feed las flechas pasan de publicación** salvo dentro de lo que las usa (campos, video, la barra de pestañas), y
+  deslizar pasa de publicación salvo DENTRO de un carrusel (`[data-carrusel]`), que ahora se desliza con el dedo en
+  vistaRed.jsx (también en el panel). El texto de Instagram abre entero con «más».
+  · **El enlace del cliente** («Tu perfil» → «Así se verá tu perfil», pages/Aprobar.jsx) usa la MISMA `cuadriculaDelMes`
+  sobre lo que el servidor ya le deja ver (`visibleParaCliente`), con `srcPublico`; sin lo ya publicado (su proxy pide
+  sesión). Antes eran 4:5, con las historias fuera pero con lo que iba sólo a otras redes dentro, y el video en vez de la
+  portada de los reels.
+  · **Los estilos de la vista previa de cada red salieron de publicar.css a vistaRed.css** (con su componente): la vista del
+  mes no carga los 36 kB del panel.
 
 ## Documentos relacionados
 
