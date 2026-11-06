@@ -407,8 +407,9 @@ export default {
       if (partes[0] === "banco-ideas") {
         return await rutasBancoIdeas(req, env, { acceso, usuario, partes, metodo });
       }
-      // Las fórmulas UGC de la agencia (la receta de un video, sin su contenido).
-      if (partes[0] === "formulas-ugc") {
+      // Las ESTRUCTURAS DE GUION de la agencia (antes «fórmulas UGC»: la forma de un guion, sin su contenido), para
+      // UGC y voz en off. Las dos direcciones son la misma ruta.
+      if (partes[0] === "formulas-ugc" || partes[0] === "estructuras-guion") {
         return await rutasFormulasUgc(req, env, { acceso, usuario, partes, metodo });
       }
       // Los videos animados de un cliente: el guion por escenas, su aprobación (la voz y el render, aparte).

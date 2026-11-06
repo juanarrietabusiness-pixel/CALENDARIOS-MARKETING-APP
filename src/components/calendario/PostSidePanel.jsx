@@ -231,7 +231,7 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
           if (t.formulaUgc && !form.formulaUgc) {
             const { listarFormulas } = await import("../../lib/formulasUgcApi");
             const nombre = (await listarFormulas().catch(() => [])).find((f) => f.id === t.formulaUgc)?.nombre;
-            setFieldAviso(`La IA siguió la fórmula${nombre ? ` «${nombre}»` : " de la agencia"}. Revisa el guion antes de grabar.`);
+            setFieldAviso(`La IA siguió la estructura${nombre ? ` «${nombre}»` : " de la agencia"}. Revisa el guion antes de grabar.`);
           }
         }
       } else {

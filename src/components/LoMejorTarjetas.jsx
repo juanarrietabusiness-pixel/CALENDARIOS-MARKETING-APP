@@ -93,8 +93,8 @@ function Tarjeta({ p, clientes, clienteFijo, lectura, onLlevar, arrastrable, ocu
           )}
           {!lectura && p.conVideo && cliente && (
             <button type="button" className="btn btn-ghost btn-sm" disabled={ocupado} onClick={() => onAccion("formula", p, cliente)}
-              title="La receta del video, sin su contenido, para la biblioteca de fórmulas UGC de la agencia">
-              <Icon name="list" size={13} /> Fórmula
+              title="La receta del video, sin su contenido, para las estructuras de guion de la agencia (para todos los clientes)">
+              <Icon name="list" size={13} /> Estructura
             </button>
           )}
           {!lectura && cliente && (

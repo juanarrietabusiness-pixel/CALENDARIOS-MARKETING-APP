@@ -26,7 +26,7 @@
 //   POST   /<cliente>/carrusel/propuesta           { guion?, tema?, preset?, estilo?, productoId?, personajes?, estructura? }: el plan por láminas (texto)
 //   POST   /<cliente>/carrusel/ideas               { preset?, tema?, productoId?, n?, usados? }: ideas de carrusel con su guion (texto)
 //   POST   /<cliente>/reel/ideas                   { preset?, tema?, productoId?, n?, usados?, segundos? }: ideas de reel IA (texto)
-//   POST   /<cliente>/reel/guion                   { idea, segundos?, preset?, estilo?, productoId?, personajes? }: el guion por planos (texto)
+//   POST   /<cliente>/reel/guion                   { idea, segundos?, preset?, estilo?, productoId?, personajes?, estructuraId? }: el guion por planos (texto), con la estructura de guion de la agencia
 //   POST   /<cliente>/reel/mes                     { calendarId, postIds | postId, confirmado? }: los reels del mes (asistente del mes)
 //   POST   /<cliente>/guion-corto                  { idea, segundos, post? }: guion de un video de 8 o 10 s (texto)
 //   POST   /<cliente>/video-producto/guion         { productoId, segundos?, idea?, post? }: la receta «Video del producto» (texto)

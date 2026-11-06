@@ -1,5 +1,5 @@
 // ============================================================
-// Cliente de /api/formulas-ugc: las fórmulas UGC de la agencia
+// Cliente de /api/formulas-ugc: las ESTRUCTURAS DE GUION de la agencia (antes «fórmulas UGC»), para UGC y voz en off
 //
 // Tras guardar, cambiar o quitar se lanza `formulas-ugc` en `window` (con
 // `local`): el eco de la propia pestaña no llega por el socket, y el panel de
@@ -30,10 +30,13 @@ export async function quitarFormula(id) {
   return r?.formulas ?? [];
 }
 
-/** La IA abstrae la fórmula de un video transcrito → { formula, aviso }. No guarda. */
-export async function proponerFormula({ original, fuente = null, duracion = null, clienteId = null }) {
+/**
+ * La IA abstrae la estructura de un video transcrito (`original`, UGC) o de una VOZ EN OFF que salió bien (`voz`: {
+ * titulo, duracion, tramos: [{ desde, hasta, dice, pantalla, tipo }] }) → { formula, aviso }. No guarda.
+ */
+export async function proponerFormula({ original = null, voz = null, fuente = null, duracion = null, clienteId = null }) {
   try {
-    return await pedir(`${BASE}/proponer`, json("POST", { original, fuente, duracion, clienteId }));
+    return await pedir(`${BASE}/proponer`, json("POST", voz ? { voz, clienteId } : { original, fuente, duracion, clienteId }));
   } finally {
     try { window.dispatchEvent(new Event("ia:gasto")); } catch { /* sin ventana */ }
   }

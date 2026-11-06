@@ -15,6 +15,7 @@ import { CopyButton } from "./calendario/primitivas";
 import ReferenciasGaleria from "./ReferenciasGaleria";
 import GuardarRegla from "./GuardarRegla";
 import IdeasDeFormato from "./IdeasDeFormato";
+import { editaLaAgencia } from "../lib/sesionActual";
 import "./calendario/RevisionMes.css";
 import "./calendario/CarruselIA.css";
 import "./EstudioLote.css";
@@ -45,6 +46,10 @@ const PASOS = [["idea", "Idea"], ["planos", "Planos"], ["fotogramas", "Fotograma
 // aquí y no como opción del compositor porque el chunk del Estudio está en su tope (rendimiento.bundle.test.js).
 const FlujoVideoProducto = lazy(() => import("./FlujoVideoProducto"));
 const VideoAnimado = lazy(() => import("./VideoAnimado"));
+// La estructura de guion de la voz en off y «Guardar como estructura»: en su chunk (este flujo se precarga con el
+// Estudio, que está en su tope: un import fijo sumaría sus archivos a la lista de precarga del Estudio).
+const SelectorEstructura = lazy(() => import("./SelectorEstructura"));
+const GuardarEstructura = lazy(() => import("./GuardarEstructura"));
 const FORMAS = [
   ["guion", "Por planos", "La idea, el storyboard, el video y el montaje con voz, texto y logo"],
   ["producto", "Del producto", "10–15 s que terminan en su foto real y el logo"],
@@ -74,6 +79,9 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
   // Un anuncio que ya funciona (referencias analizadas del estudio de mercado): el guion sigue su estructura.
   const [referencias, setReferencias] = useState([]);
   const [referenciaId, setReferenciaId] = useState(inicial.referenciaId ?? "");
+  // La ESTRUCTURA de guion de la agencia que sigue la voz en off ("" = la escoge la IA) y «Guardar como estructura».
+  const [estructuraId, setEstructuraId] = useState("");
+  const [sacarEstructura, setSacarEstructura] = useState(false);
   const [copiado, setCopiado] = useState(false);
   const [voz, setVoz] = useState(() => kit.voz || ""); // la voz de Omni (sólo un video de Omni con su propia voz)
   const [ejemplosFoto, setEjemplosFoto] = useState({}); // i → [ejemplos de la galería]
@@ -254,13 +262,15 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
     try {
       const r = await api.guionDeReel(clienteId, {
         idea, segundos: duracion, preset, estilo, productoId: productoId || undefined, personajes, referenciaId: referenciaId || undefined,
+        estructuraId: estructuraId || undefined,
         // El guion que YA tiene la publicación: el reel lo sigue en vez de inventar otro.
         ...(inicial.guionPost ? { guionPost: inicial.guionPost } : {}), ...(inicial.postId ? { postId: inicial.postId } : {}),
         montaje: true,
       });
       setGuion(r);
       setPaso("planos");
-      setAviso({ ok: true, texto: ["Revisa los planos: qué se ve, lo que se dice y lo que se lee. El video va limpio: el texto lo pone el montaje.", r.aviso ?? ""].filter(Boolean).join(" ") });
+      setSacarEstructura(false);
+      setAviso({ ok: true, texto: ["Revisa los planos: qué se ve, lo que se dice y lo que se lee. El video va limpio: el texto lo pone el montaje.", r.estructuraNombre ? `Sigue la estructura «${r.estructuraNombre}».` : "", r.aviso ?? ""].filter(Boolean).join(" ") });
     } catch (e) {
       setAviso({ ok: false, texto: e.message });
     } finally {
@@ -611,6 +621,10 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
               <p className="hint">El guion copia su forma —orden, ritmo, gancho y cierre— con tu marca y tu producto. Sin idea escrita, usa la que propuso el análisis.</p>
             </div>
           )}
+          {/* La estructura de guion de la agencia que sigue la voz en off (o la escoge la IA). */}
+          <Suspense fallback={null}>
+            <SelectorEstructura uso="voz" value={estructuraId} onChange={setEstructuraId} disabled={Boolean(ocupado)} />
+          </Suspense>
           {selectorDuracion}
           <div className="lote-fila">
             <div className="field">
@@ -660,6 +674,7 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
 
       {paso === "planos" && guion && (
         <div className="carrusel-opciones">
+          {guion.estructuraNombre && <p className="hint" style={{ margin: 0 }}><Icon name="list" size={12} /> La voz sigue la estructura de la agencia «{guion.estructuraNombre}».</p>}
           <div className="lote-fila">
             <div className="field">
               <label className="label" htmlFor={`${ids}-gancho`}>El gancho escrito (los primeros segundos)</label>
@@ -718,6 +733,17 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
                 onChange={(e) => setGuion((g) => ({ ...g, efectos: e.target.value }))} />
             </div>
           </fieldset>
+          {/* Una voz en off que salió bien → su estructura, para todos los clientes (la cambian admin y editores). */}
+          {editaLaAgencia() && planos.filter((p) => String(p.dice ?? "").trim()).length >= 2 && (
+            sacarEstructura
+              ? <Suspense fallback={<p className="hint">Cargando…</p>}><GuardarEstructura client={client} reel={{ ...guion, segundos }} onCerrar={() => setSacarEstructura(false)} onAviso={(texto) => setAviso({ ok: true, texto })} /></Suspense>
+              : (
+                <button type="button" className="btn btn-ghost btn-sm" style={{ alignSelf: "flex-start" }} onClick={() => setSacarEstructura(true)} disabled={Boolean(ocupado)}
+                  title="La forma de esta voz en off, sin su contenido, para escogerla con cualquier cliente (la IA la saca y tú la revisas)">
+                  <Icon name="list" size={14} /> Guardar como estructura
+                </button>
+              )
+          )}
           {guion.descripcion && (
             <div className="field">
               <span className="label">Descripción del post</span>

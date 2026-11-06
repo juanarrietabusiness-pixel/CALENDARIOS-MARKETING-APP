@@ -5,10 +5,11 @@ import Icon from "./Icon";
 // Ajustes → «Cómo trabajamos» (fase 7)
 //
 // Lo que la agencia decide UNA vez y siguen el director, la IA y el equipo en todos los clientes, que estaba repartido:
-// las RECETAS (se abrían sólo desde la pestaña Diseño o desde una publicación), las FÓRMULAS UGC (sólo desde el guion
-// de un UGC), las PLANTILLAS de plan y los MANUALES (campañas, el criterio comercial de los videos, el del director y
-// «cómo se diseña cada tipo»). Aquí, juntos: las recetas y las fórmulas abren su editor de siempre (un diálogo, en
-// diferido); las plantillas y los manuales son las secciones que siguen (SeccionPlantillas, SeccionManualCampanas).
+// las RECETAS (se abrían sólo desde la pestaña Diseño o desde una publicación), las ESTRUCTURAS DE GUION (antes
+// «fórmulas UGC»: sólo desde el guion de un UGC; ahora también para la voz en off), las PLANTILLAS de plan y los
+// MANUALES (campañas, el criterio comercial de los videos, el del director y «cómo se diseña cada tipo»). Aquí, juntos:
+// las recetas y las estructuras abren su editor de siempre (un diálogo, en diferido, con su filtro UGC / Voz en off);
+// las plantillas y los manuales son las secciones que siguen (SeccionPlantillas, SeccionManualCampanas).
 // ============================================================
 
 const Recetas = lazy(() => import("./Recetas"));
@@ -27,7 +28,7 @@ export default function SeccionComoTrabajamos() {
         <Icon name="list" size={18} /> Cómo trabajamos
       </h2>
       <p className="ajustes-intro">
-        Las recetas, las fórmulas de video, las plantillas de plan y los manuales de la agencia: lo que se decide una vez y
+        Las recetas, las estructuras de guion, las plantillas de plan y los manuales de la agencia: lo que se decide una vez y
         siguen el director, la IA y el equipo con todos los clientes.
       </p>
       <ul className="como-trabajamos">
@@ -39,9 +40,12 @@ export default function SeccionComoTrabajamos() {
         </li>
         <li>
           <button type="button" className="btn btn-secondary" onClick={() => setAbierto("formulas")}>
-            <Icon name="video" size={16} /> Fórmulas UGC
+            <Icon name="video" size={16} /> Estructuras de guion
           </button>
-          <span className="hint">Las formas de video que funcionan, sin su contenido: valen para todos los clientes.</span>
+          <span className="hint">
+            De la agencia, para todos los clientes: la forma de los guiones que funcionan (UGC para grabar y voz en off),
+            sin su contenido. Se escoge una al escribir el guion; el tono de cada marca va aparte.
+          </span>
         </li>
         <li>
           <a href="#plantillas" className="btn btn-secondary" onClick={irA("plantillas")}>

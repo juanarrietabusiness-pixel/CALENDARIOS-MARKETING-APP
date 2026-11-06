@@ -115,7 +115,7 @@ export const HERRAMIENTAS_MCP = Object.freeze([
   ...DEFINICIONES_ESTUDIO.map(({ name, description, input_schema: inputSchema }) => ({
     name,
     description,
-    inputSchema: { ...inputSchema, required: [...new Set([...(inputSchema.required ?? []), ...(["estado_trabajo", "formato_video"].includes(name) ? [] : ["cliente"])])] },
+    inputSchema: { ...inputSchema, required: [...new Set([...(inputSchema.required ?? []), ...(["estado_trabajo", "formato_video", "ver_estructuras"].includes(name) ? [] : ["cliente"])])] },
     annotations: ["crear_en_estudio", "previsualizar_voz", "generar_locucion", "generar_musica", ...ESCRIBEN_VIDEO].includes(name) ? escribe() : soloLectura,
   })),
   // El DIRECTOR CREATIVO por MCP (worker/lib/estudio/herramientasDiseno.js): diseñar en lote, ver, corregir y poner en un post.

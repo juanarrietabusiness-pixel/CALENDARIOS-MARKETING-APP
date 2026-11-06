@@ -56,7 +56,8 @@ import { consultaDelPlan, materialDelPlan, conEducativo, lineaDeLoQueFalta, MATE
 import { leerMercado } from "../mercado.js";
 import { vozUgcDe } from "../cerebro/vozUgc.js";
 import { lineaDeVozUgc } from "../../../src/lib/ugc.js";
-import { limpiarFormula, bloqueDeFormulas, formulaUsada, lineaDeFormula, MAX_FORMULAS } from "../../../src/lib/formulasUgc.js";
+import { bloqueDeFormulas, formulaUsada, lineaDeFormula } from "../../../src/lib/formulasUgc.js";
+import { leerEstructuras } from "../estructurasGuion.js";
 import { productosActivos, productosParaPlan, lineaDeProducto, notaDeProducto, resumenGeneral, limpiarEstudio } from "../../../src/lib/estudioMercado.js";
 import {
   pedidoDeProduccion, leerProduccion, limpiarCuantas, totalDeCuantas, celdasPorNiveles, celdasMatriz, celdasPorTipos, darForma, estructurasDeCalendarios,
@@ -381,14 +382,14 @@ export async function produccionDeLote(env, acceso, cliente, datos = {}) {
     else faltan.push("rubro");
   }
 
-  // Las UGC: la voz de ESTA marca en sus videos (nota «Voz UGC») y las fórmulas de la agencia, para que la IA escoja.
+  // Las UGC: la voz de ESTA marca en sus videos (nota «Voz UGC») y las estructuras de guion de la agencia, para que la
+  // IA escoja ENTRE LAS DE UGC (`para`, lib/formulasUgc.js; las de sólo voz en off no se ofrecen aquí). La que escogió
+  // una persona en la publicación se busca entre todas: la escogió ella.
   let ugc = "";
   let formulas = [];
   const conUgc = modo === "campos" ? plan.filter((c) => c.rostro && c.campos.includes("guion")) : plan.filter((c) => c.rostro);
   if (conUgc.length) {
-    formulas = await acceso.leer("formulas_ugc", {}, "created_at desc", MAX_FORMULAS)
-      .then((filas) => filas.map((f) => limpiarFormula({ ...leerJSONSeguro(f.datos), id: f.id })).filter(Boolean))
-      .catch(() => []);
+    formulas = await leerEstructuras(acceso).catch(() => []);
     const voz = await vozUgcDe(env, acceso, cliente.id);
     // La fórmula que la agencia escogió en la publicación (`formulaUgc`) manda: va en su línea, en su duración.
     if (modo === "campos") {
@@ -399,7 +400,7 @@ export async function produccionDeLote(env, acceso, cliente, datos = {}) {
     }
     const escoge = modo !== "campos" || plan.some((r) => r.rostro && r.campos.includes("guion") && !r.formulaLinea);
     const d = modo === "campos" ? conUgc[0].duracionUgc ?? 30 : 30;
-    ugc = [lineaDeVozUgc(voz?.texto), escoge ? bloqueDeFormulas(formulas, d).replace(/\nEmpieza tu respuesta[^\n]*$/, "") : ""].filter(Boolean).join("\n\n");
+    ugc = [lineaDeVozUgc(voz?.texto), escoge ? bloqueDeFormulas(formulas, d, { uso: "ugc" }).replace(/\nEmpieza tu respuesta[^\n]*$/, "") : ""].filter(Boolean).join("\n\n");
   }
 
   // Lo que va a pauta: el tipo de negocio y el destino del cliente (sus números del negocio), una lectura y sólo si hace
@@ -481,10 +482,6 @@ export async function produccionDeLote(env, acceso, cliente, datos = {}) {
     conEstudio: Boolean(general),
     modelo: r.modelo, aviso: r.aviso ?? null,
   };
-}
-
-function leerJSONSeguro(t) {
-  try { return JSON.parse(t) ?? {}; } catch { return {}; }
 }
 
 /** Compatibilidad con el nombre de antes (anuncios por nivel). */
