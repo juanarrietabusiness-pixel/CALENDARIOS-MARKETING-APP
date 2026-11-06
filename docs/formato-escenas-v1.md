@@ -111,7 +111,7 @@ Los 17 componentes de la librería v1 y lo propio de cada uno:
 | `sello` | `texto`* (≤ 24), `color`, `rotacion` (−20 a 20) |
 | `telefono` | `pantalla` (chat/imagen/color/notificacion), `mensajes` [{ `de`: cliente/marca, `texto` }] (≤ 6), `archivo`, `notificacion`, `color` |
 | `burbuja` | `texto`*, `lado` (izq/der), `color` |
-| `imagen` | `archivo`* (id de la galería: la foto REAL del producto), `rol` (producto/foto/persona), `recorte` (contener/cubrir), `marco` |
+| `imagen` | `archivo`* (id de la galería: la foto REAL del producto), `rol` (producto/foto/persona), `recorte` (contener/cubrir), `marco`. Opcionales (no se escriben si van como por defecto): `encuadre` (caja: en su zona; completo: a sangre, detrás de todo y fuera del reparto, como un video), `movimiento` (ninguno, acercar, alejar, paneo: un «Ken Burns» lento todo lo que se ve), `dura` (0–60 s: la escena dura al menos eso aunque no diga nada), `oscurecer` (0–0,85: el velo, a sangre). Ver «La imagen a sangre» abajo |
 | `video` | Un **clip de la galería** (grabado por el cliente, de Kie, de Drive): `archivo`* (id de un VIDEO de la galería), `encuadre` (completo: a sangre, detrás de todo y fuera del reparto; caja: en su zona, como una imagen), `recorte` (cubrir/contener), `desde` (el segundo del clip donde empieza), `hasta` (0 = sigue hasta que acaba la capa; mayor que `desde` = ese tramo, y la escena dura al menos eso), `sonido` (su audio se oye, debajo de la voz si la hay), `volumen` (0–1), `oscurecer` (0–0,85: un velo negro encima para leer el texto; sólo a sangre), `marco`. Ver «El video» abajo |
 | `personaje` | `variante` (adulto/nino/bebe), `pose` (de-pie/saluda/senala/piensa/celebra/preocupado), `expresion` (auto/neutral/feliz/triste/preocupado/dormido; «auto» la toma de la pose), `color` — figura de la casa dibujada con código; su ASPECTO (piel, pelo, ropa, accesorio) es el del kit del cliente (`personaje_video`) o el de `estilo.personaje` |
 | `icono` | `nombre` (check, cruz, corazon, estrella, rayo, reloj, bolsa, carrito, chat, telefono, ubicacion, regalo, escudo, hoja, gota, bebe, casa, flecha, alerta, sonrisa, dinero, camion), `color`, `fondo` (un círculo de ese color detrás; el icono toma el color que más contraste) |
@@ -143,6 +143,21 @@ locución para renderizarse.
 Con `sonido`, el audio del tramo se mezcla con la voz (y la música baja también cuando habla el clip). En la vista
 previa el clip se ve (un `<video>` dibujado en el lienzo) y suena sólo mientras se reproduce; en el mp4 lo decodifica
 el Container con ffmpeg cuadro a cuadro.
+
+### La imagen a sangre (una foto con música)
+
+Una capa `imagen` con `encuadre: "completo"` va encima del fondo y detrás de todo lo demás, a todo el cuadro, como un
+video a sangre: no ocupa sitio en el reparto y, en el gancho, no se retrasa. Con `recorte: "cubrir"` llena el cuadro (lo
+que sobra se corta); con `"contener"` se ve **entera** —un post 4:5 no pierde su texto en 9:16— sobre ella misma ampliada,
+difuminada y oscurecida. `movimiento` la mueve despacio todo el rato que se ve, suave al empezar y al acabar: `acercar`
+(crece un 12 %), `alejar` (al revés) o `paneo` (se corre de un lado al otro por lo que sobra). Si entra con su escena y
+«aparece», se ve entera desde el primer cuadro. Con `dura`, la escena dura al menos esos segundos aunque no diga nada:
+una foto con música es UNA escena sin habla (no necesita locución) con la pista en el sonido del video.
+
+```jsonc
+{ "tipo": "imagen", "id": "foto", "archivo": "ID-DE-LA-FOTO", "rol": "foto", "encuadre": "completo", "recorte": "contener",
+  "movimiento": "acercar", "dura": 10, "entra": { "s": 0 } }
+```
 
 ### El dibujo
 
