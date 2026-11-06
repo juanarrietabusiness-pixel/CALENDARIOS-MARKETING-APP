@@ -107,7 +107,7 @@ const ID = /^[\w-]{1,80}$/;
 
 
 /** Una respuesta de error de este módulo: lleva además el `codigo` y el costo, que la pantalla usa para pedir confirmación. */
-const fallo = (e) => json({ error: e.message, ...(e.codigo ? { codigo: e.codigo } : {}), ...(e.costo != null ? { costo: e.costo } : {}), ...(e.usos != null ? { usos: e.usos } : {}), ...(e.que ? { que: e.que } : {}) }, e.estado ?? 400);
+const fallo = (e) => json({ error: e.message, ...(e.codigo ? { codigo: e.codigo } : {}), ...(e.costo != null ? { costo: e.costo } : {}), ...(e.usos != null ? { usos: e.usos } : {}), ...(e.que ? { que: e.que } : {}), ...(e.motivo ? { motivo: e.motivo } : {}) }, e.estado ?? 400);
 
 export async function rutasEstudio(req, env, { acceso, usuario, partes, metodo }) {
   const [, a, b, c, d] = partes;
