@@ -28,6 +28,7 @@
 // retira.
 // ============================================================
 
+import { sincronizarAvisosAMano } from "./avisosAMano.js";
 import { crearAcceso, colaPendiente } from "./acceso.js";
 import { difundir } from "./vivo.js";
 import { despertar } from "./despertar.js";
@@ -295,6 +296,9 @@ export async function cancelarPendientes(acceso, calendarId, postId, motivo) {
  * ya empezó a publicarse no se toca.
  */
 export async function resincronizarCalendario(env, acceso, cal, por) {
+  // El aviso a la hora de lo que se publica A MANO (worker/lib/avisosAMano.js): por aquí pasan todas las escrituras de un
+  // calendario. Sin nada a mano no consulta nada, y no lanza.
+  await sincronizarAvisosAMano(acceso, cal);
   const [filas, fallidas] = await Promise.all([
     acceso.leer("publicaciones_programadas", { calendar_id: cal.id, estado: "programada" }),
     acceso.leer("publicaciones_programadas", { calendar_id: cal.id, estado: "error" }),

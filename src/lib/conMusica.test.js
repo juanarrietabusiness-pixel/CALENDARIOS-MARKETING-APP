@@ -249,3 +249,13 @@ describe("la canción sugerida", () => {
     expect(ultimaCancionUsada(cliente, "b")).toMatchObject(lista[0]);
   });
 });
+
+describe("las canciones de Instagram viven en el kit", () => {
+  it("limpiarKit las conserva (limpias) y fundirKit no se las lleva al volver a preparar el kit", async () => {
+    const { limpiarKit, fundirKit } = await import("./kitMarca.js");
+    const kit = limpiarKit({ musica: { estilo: "acústica", cancionesInstagram: [{ nombre: " Flowers ", artista: "Miley Cyrus" }, { nombre: "" }] } });
+    expect(kit.musica.cancionesInstagram).toEqual([{ nombre: "Flowers", artista: "Miley Cyrus" }]);
+    expect(fundirKit(kit, { estilo: "nuevo" }).musica.cancionesInstagram).toEqual([{ nombre: "Flowers", artista: "Miley Cyrus" }]);
+    expect(limpiarKit({ musica: { estilo: "x" } }).musica.cancionesInstagram).toBeUndefined();
+  });
+});
