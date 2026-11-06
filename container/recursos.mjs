@@ -16,7 +16,7 @@ import { Buffer } from "node:buffer";
 import { readdirSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
-import { ruidoDeGrano, cajaOpaca } from "../src/lib/motorVideo.js";
+import { ruidoDeGrano, cajaOpaca, FUENTE_CASA, ARCHIVO_FUENTE_CASA } from "../src/lib/motorVideo.js";
 import { quitarFondoLiso, tonoDeImagen } from "../src/lib/motorPiezas.js";
 import { videosEnInstante } from "../src/lib/motorVideo.js";
 import { infoDe, cuadroDe } from "./clips.mjs";
@@ -34,6 +34,16 @@ export function registrarRespaldo() {
     for (const f of readdirSync(join(base, carpeta.name))) if (f.endsWith(".ttf") && GlobalFonts.registerFromPath(join(base, carpeta.name, f), "Roboto")) n++;
   }
   return n;
+}
+
+/**
+ * La LETRA DE LA CASA (Anton, OFL): la del rol gigante y el énfasis cuando el kit no tiene letra. El MISMO archivo que
+ * carga el navegador (src/lib/motorVideoNavegador.js), del mismo paquete npm y con el mismo nombre: así la vista previa
+ * y el render dibujan igual. → true si quedó registrada.
+ */
+export function registrarLetraDeLaCasa() {
+  const archivo = createRequire(import.meta.url).resolve(ARCHIVO_FUENTE_CASA);
+  return Boolean(GlobalFonts.registerFromPath(archivo, FUENTE_CASA));
 }
 
 /** Lo que se recorta como mínimo para que valga la pena una copia (fracción del lado). Igual que en el navegador. */

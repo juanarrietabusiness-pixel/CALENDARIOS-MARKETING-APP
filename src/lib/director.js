@@ -511,6 +511,8 @@ export function resumenDelKit({ kit = null, marca = "", vacio = false, cliente =
       : `Logo: el kit NO tiene logo cargado. Díselo a la persona en una línea (en la galería, abre su logo → «Usar como logo»). ${SIN_LOGO_EN_LA_FICHA}`,
     (kit.plantillas ?? []).length ? `Plantillas guardadas (diseños que ya funcionaron; pasa su id en «plantilla» para seguir una):\n${kit.plantillas.map(lineaDePlantilla).join("\n")}` : "",
     lineaDeTiposArte(kit.tiposArte),
+    // El estilo de sus VIDEOS animados (Marca → Kit y voz): para un video, o para los fondos de uno.
+    kit.estiloVideo ? `Estilo de los videos animados de la marca: ${String(kit.estiloVideo).replace(/\s+/g, " ").slice(0, 600)}` : "",
   ].filter(Boolean).join("\n");
 }
 

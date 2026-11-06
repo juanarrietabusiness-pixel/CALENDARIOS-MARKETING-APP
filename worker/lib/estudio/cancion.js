@@ -27,6 +27,9 @@ import { tipoPorBytes } from "./archivos.js";
 import { sonidoParaVideo, claveDeSonido } from "./sonidos.js";
 import { alineacionForzada, aislarVoz } from "./elevenlabs.js";
 import { escribirGuionCancion, ErrorGuion } from "./guionAnimado.js";
+import { fondosPendientes } from "../../../src/lib/fondosVideo.js";
+import { alContenedor, aBase64 } from "./cuadros.js";
+import { limpiarGolpes } from "../../../src/lib/golpes.js";
 import { crearProyecto, publicacionDelCliente, deFila, ErrorVideo } from "../videosProyectos.js";
 import { ErrorIA } from "../cerebro/ia.js";
 import { palabrasDe, MIN_SEGUNDOS, MAX_SEGUNDOS_CANCION } from "../../../src/lib/videoEscenas.js";
@@ -93,6 +96,8 @@ export function resumenDeSincronia(s, { desplazamiento = 0 } = {}) {
     coincidencia: s.coincidencia, fuente: s.fuente, nombreFuente: FUENTES_CANCION[s.fuente] ?? s.fuente,
     revisar: s.coincidencia < COINCIDENCIA_MINIMA, palabras: s.oidas.length, lineas, huecos: huecosInstrumentales(lineas, s.duracion),
     intentos: s.intentos ?? [], avisos: s.avisos ?? [], costo: s.costo ?? 0,
+    // El ritmo de la canción, si el Container lo sacó (los golpes van con la locución del video).
+    bpm: s.bpm ?? 0, golpes: Array.isArray(s.golpes) ? s.golpes.length : 0,
   };
 }
 
@@ -107,6 +112,23 @@ async function oirCancion(env, acceso, { bytes, mime, clienteId, letra }) {
   } catch (e) {
     console.warn("canción: Gemini no la pudo oír", e?.message);
     return { palabras: [], error: String(e?.message ?? e).slice(0, 200) };
+  }
+}
+
+/**
+ * Los GOLPES de la canción (el BPM y el segundo de cada golpe): los saca el Container (ffmpeg + src/lib/golpes.js). Sin
+ * Container (en local) o si falla, null y el aviso: la canción se sincroniza igual, sin ajustar los cortes a su ritmo.
+ * No gasta IA. → { bpm, confianza, golpes } | { aviso }.
+ */
+async function golpesDeLaCancion(env, bytes, duracion) {
+  if (!env.VIDEO) return { aviso: "Sin los golpes de la canción (el Container no está aquí): los cortes no se ajustan a su ritmo." };
+  try {
+    const r = await (await alContenedor(env, "/golpes", { audio: aBase64(bytes) })).json();
+    const golpes = limpiarGolpes(r.golpes, duracion + 0.5);
+    return { bpm: Math.round(Number(r.bpm) || 0), confianza: Number(r.confianza) || 0, golpes };
+  } catch (e) {
+    console.warn("canción: sin golpes", e?.message);
+    return { aviso: `No se pudieron sacar los golpes de la canción (${String(e?.message ?? e).slice(0, 120)}): los cortes no se ajustan a su ritmo.` };
   }
 }
 
@@ -209,10 +231,14 @@ export async function sincronizarCancion(env, acceso, cliente, { musicaId, letra
     avisos.push(`La letra sólo se encontró en un ${Math.round(mejor.coincidencia * 100)} % de la canción: revisa la vista previa (el ajuste fino mueve todo junto) o comprueba que la letra sea exactamente la del fragmento.`);
   }
 
+  // El RITMO de la canción (sus golpes): los usan la IA que diseña las escenas y el `pulso` de una capa.
+  const ritmo = await golpesDeLaCancion(env, bytes, duracion);
+  if (ritmo.aviso) avisos.push(ritmo.aviso);
   const sincronia = {
     version: 1, huella, cliente: cliente.id, archivo: pista.archivoId, ...(pista.de ? { de: pista.de } : {}), nombre: pista.nombre,
     clave: pista.clave, src: pista.src, mime, duracion: Math.round(duracion * 1000) / 1000, letra: limpia.letra,
     oidas: mejor.oidas, coincidencia: mejor.coincidencia, fuente: mejor.fuente, intentos, crudo, avisos,
+    ...(ritmo.golpes?.length ? { bpm: ritmo.bpm, golpes: ritmo.golpes } : {}),
     costo: Math.round(gastado * 1000) / 1000, creada: ahora(), por: usuario?.id ?? null,
   };
   await env.MEDIA.put(claveDeSincronia(acceso.ownerId, cliente.id, huella), JSON.stringify(sincronia), { httpMetadata: { contentType: "application/json" } });
@@ -229,6 +255,8 @@ export function locucionDeSincronia(s, guion, version, { desplazamiento = 0 } = 
     nombre: s.nombre, duracion: s.duracion, letra: s.letra, oidas: s.oidas, coincidencia: s.coincidencia, fuente: s.fuente,
     desplazamiento: limpiarDesplazamiento(desplazamiento), sincronia: s.huella, version, revisar: s.coincidencia < COINCIDENCIA_MINIMA,
     intentos: (s.intentos ?? []).slice(0, 4), crudo: extractoCrudo(s.crudo ?? {}, 1500), costo: s.costo ?? 0, terminadoAt: s.creada ?? ahora(),
+    // Los golpes de la canción (si el Container los sacó): no se mueven con el ajuste fino (son del audio, no de la letra).
+    ...(Array.isArray(s.golpes) && s.golpes.length ? { bpm: s.bpm ?? 0, golpes: s.golpes } : {}),
   });
 }
 
@@ -237,7 +265,7 @@ export function locucionDeSincronia(s, guion, version, { desplazamiento = 0 } = 
  * diseñadas por la IA (`modo` «ia», texto). `huella`: la de `sincronizarCancion` (se lee de R2, no del navegador).
  * → { video, avisos, corregido, aviso }.
  */
-export async function crearVideoConCancion(env, acceso, cliente, { huella, modo = "karaoke", formato = "9:16", titulo = "", postId = "", calendarId = "", desplazamiento = 0, indicacion = "", usuario = null }) {
+export async function crearVideoConCancion(env, acceso, cliente, { huella, modo = "karaoke", formato = "9:16", titulo = "", postId = "", calendarId = "", desplazamiento = 0, indicacion = "", conFondos = false, usuario = null }) {
   const s = await leerSincronia(env, acceso.ownerId, cliente.id, String(huella ?? ""));
   if (!s) throw new ErrorCancion("No encuentro esa sincronización de la letra: vuelve a sincronizarla.", 404);
   // La canción tiene que seguir en la biblioteca (si se quitó, el render no tendría audio).
@@ -257,7 +285,8 @@ export async function crearVideoConCancion(env, acceso, cliente, { huella, modo 
   let aviso = null;
   if (modo === "ia") {
     try {
-      const r = await escribirGuionCancion(env, acceso, cliente, { sincronia: s, lineas, huecos, formato, titulo, postId: liga?.postId ?? "", indicacion });
+      // «Con imágenes de fondo»: la IA pone un fondo por crear por sección (src/lib/fondosVideo.js); se crean después.
+      const r = await escribirGuionCancion(env, acceso, cliente, { sincronia: s, lineas, huecos, formato, titulo, postId: liga?.postId ?? "", indicacion, conFondos: conFondos === true, golpes: s.golpes ?? [], bpm: s.bpm ?? 0 });
       ({ guion, avisos, corregido, aviso } = r);
     } catch (e) {
       if (e instanceof ErrorGuion || e instanceof ErrorIA) throw new ErrorCancion(e.message, e.estado ?? 502);
@@ -270,7 +299,7 @@ export async function crearVideoConCancion(env, acceso, cliente, { huella, modo 
     guion, titulo: titulo || guion.titulo, calendarId: liga?.calendarId ?? null, postId: liga?.postId ?? null, usuario,
     origen: { tipo: "cancion" }, locucion: locucionDeSincronia(s, guion, 1, { desplazamiento: d }),
   });
-  return { video: r.video, avisos: [...avisos, ...r.avisos], corregido, aviso };
+  return { video: r.video, avisos: [...avisos, ...r.avisos], corregido, aviso, fondos: fondosPendientes(guion).length };
 }
 
 /** El ajuste fino de la canción de un video (±1,5 s): se aplica al leer, sin pagar otra vez ni subir la versión. → { video }. */

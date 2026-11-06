@@ -21,10 +21,14 @@
 //     capa lleva `sonido` (si el navegador no deja sonar sin un toque, sigue mudo).
 // ============================================================
 
-import { ruidoDeGrano, cajaOpaca } from "./motorVideo";
+import { ruidoDeGrano, cajaOpaca, FUENTE_CASA } from "./motorVideo";
 import { quitarFondoLiso, tonoDeImagen } from "./motorPiezas";
 import { archivosDelGuion, videosDelGuion } from "./videoEscenas";
 import { cargarFuente } from "./muestraFuente";
+// La LETRA DE LA CASA (Anton, OFL) para el rol gigante y el énfasis cuando el kit no tiene letra: el MISMO archivo que
+// registra el Container (container/recursos.mjs), servido desde el propio sitio (`font-src 'self'`). Sólo en este
+// chunk: nada de la carga inicial.
+import archivoCasa from "@fontsource/anton/files/anton-latin-400-normal.woff2?url";
 
 const imagenes = new Map();
 
@@ -179,6 +183,17 @@ function texturaDeGrano() {
   return grano;
 }
 
+let casa = null;
+/** Registra la letra de la casa una vez (FontFace, como la del kit). → true si quedó lista. */
+export function cargarLetraDeLaCasa() {
+  if (casa) return casa;
+  if (typeof FontFace === "undefined" || typeof document === "undefined" || !document.fonts) return Promise.resolve(false);
+  casa = new FontFace(FUENTE_CASA, `url(${archivoCasa})`, { weight: "400", style: "normal" }).load()
+    .then((f) => { document.fonts.add(f); return true; })
+    .catch(() => { casa = null; return false; });
+  return casa;
+}
+
 /**
  * Todo lo que necesita el motor para un guion → { recursos, fuentes, faltan }.
  *   archivos — la galería del cliente (`{ id, clave }`), para pasar del id a la clave
@@ -193,11 +208,13 @@ export async function prepararRecursos(guion, { archivos = [], kit = {}, alCambi
   const faltan = [...ids, ...idsVideo].filter((id) => !porId.has(id));
   const esVideo = (a) => a && (a.tipo === "video" || String(a.mime ?? "").startsWith("video/"));
   const [cargadas, logo, titular, cuerpo, clips] = await Promise.all([
+    // La letra de la casa va siempre (pesa unos 18 kB): sin letra del kit, el gigante y el énfasis salen con ella.
     Promise.all(ids.map(async (id) => [id, await cargarImagen(porId.get(id)?.clave)])),
     cargarImagen(kit?.logo || "", { logo: true }),
     familiaDe(guion?.estilo?.fuentes?.titular, kit),
     familiaDe(guion?.estilo?.fuentes?.cuerpo, kit),
     Promise.all(idsVideo.map(async (id) => [id, esVideo(porId.get(id)) ? await cargarVideo(porId.get(id).clave) : null])),
+    cargarLetraDeLaCasa(),
   ]);
   const mapa = new Map(cargadas);
   const porArchivo = new Map(clips.filter(([, v]) => v));

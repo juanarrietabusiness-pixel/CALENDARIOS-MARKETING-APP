@@ -47,8 +47,26 @@ export async function aprobarVideo(clienteId, id, version) {
  * corregido, aviso, publicacion: { calendarId, postId } | null, estructura: { id, nombre } | null }. `estructuraId`: la
  * estructura de guion de la agencia que sigue la voz (vacía: la escoge la IA y vuelve en `estructura`).
  */
-export async function escribirGuionVideo(clienteId, { idea = "", segundos, formato, postId = "", estructuraId = "" } = {}) {
-  return pedir(`${base(clienteId)}/escribir`, json("POST", { idea, segundos, formato, postId, ...(estructuraId ? { estructuraId } : {}) }));
+export async function escribirGuionVideo(clienteId, { idea = "", segundos, formato, postId = "", estructuraId = "", conFondos = false } = {}) {
+  return pedir(`${base(clienteId)}/escribir`, json("POST", { idea, segundos, formato, postId, ...(estructuraId ? { estructuraId } : {}), ...(conFondos ? { conFondos: true } : {}) }));
+}
+
+/** Los fondos por crear del guion guardado: { pendientes, enCurso, costo, texto, modelo }. */
+export async function estadoDeFondos(clienteId, id) {
+  return pedir(`${base(clienteId)}/${encodeURIComponent(id)}/fondos`);
+}
+
+/**
+ * «Crear las imágenes de fondo» (el director, por un encargo del servidor). Sin `confirmado` el servidor contesta 409
+ * con el costo: aquí vuelve como `{ confirmar: { costo, texto, fondos, modelo, error } }` y no se crea nada.
+ */
+export async function crearFondosVideo(clienteId, id, { confirmado = false } = {}) {
+  try {
+    return await pedir(`${base(clienteId)}/${encodeURIComponent(id)}/fondos`, json("POST", { confirmado }));
+  } catch (e) {
+    if (e?.datos?.codigo === "confirmar") return { confirmar: { ...e.datos, error: e.message } };
+    throw e;
+  }
 }
 
 /**

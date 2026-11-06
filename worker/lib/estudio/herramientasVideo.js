@@ -56,6 +56,7 @@ import { lineaDeTiempo, NOMBRE_ESTADO_VIDEO, NOMBRE_TIPO_ESCENA, puedeGenerarVoz
 import { formatoParaLaIA } from "../../../src/lib/videoFormatoIA.js";
 import { textoDeSubtitulo } from "../../../src/lib/subtitulos.js";
 import { esCancion, estadoDeCancion, FUENTES_CANCION, DESPLAZAMIENTO_MAX } from "../../../src/lib/videoCancion.js";
+import { fondosPendientes } from "../../../src/lib/fondosVideo.js";
 import { textoCosto } from "../../../src/lib/estudioCatalogo.js";
 import { instanteLleno } from "../../../src/lib/revisionEscenas.js";
 import { pedidoConClips, alContenedor, respuestaEnBase64 } from "./cuadros.js";
@@ -90,7 +91,7 @@ export const DEFINICIONES_VIDEO = Object.freeze([
   },
   {
     name: "crear_video",
-    description: "Crea un video animado (borrador) para un cliente con su guion en el formato de escenas v1 (lee formato_video antes). Opcional: publicacion_id para ligarlo a su post del calendario; estructura_id, la estructura de guion de la agencia que sigue su voz en off (de ver_estructuras: queda apuntada en el video). Si el guion tiene errores no se crea y la respuesta dice cada uno con su sitio. No gasta nada.",
+    description: "Crea un video animado (borrador) para un cliente con su guion en el formato de escenas v1 (lee formato_video antes). Opcional: publicacion_id para ligarlo a su post del calendario; estructura_id, la estructura de guion de la agencia que sigue su voz en off (de ver_estructuras: queda apuntada en el video). Si el guion tiene errores no se crea y la respuesta dice cada uno con su sitio. No gasta nada. CON IMÁGENES DE FONDO (si la persona lo pide): pon de fondo de cada sección una «imagen» a sangre con «pide» y SIN archivo (formato_video lo explica); después fondos_video las crea con el director, con su costo. Lee antes el kit de la marca (ver_estudio): su paleta, su letra y el estilo de sus videos mandan.",
     input_schema: {
       type: "object",
       properties: {
@@ -277,10 +278,20 @@ export const DEFINICIONES_VIDEO = Object.freeze([
         titulo: { type: "string", description: "Nombre del video (si se omite, el de la canción)." },
         disenar: { type: "boolean", description: "true: la IA diseña las escenas sobre la letra (texto). false (por defecto): la prueba de sincronía, gratis." },
         indicacion: { type: "string", description: "Sólo con disenar: lo que pide la agencia del diseño (≤ 600)." },
+        con_fondos: { type: "boolean", description: "Sólo con disenar: «con imágenes de fondo». La IA pone de fondo de cada sección (verso, coro, puente) una imagen a sangre con «pide» (lo que muestra, en el estilo del kit) y sin archivo; después fondos_video las crea con el director (con su costo)." },
         desplazamiento: { type: "number", description: `El ajuste fino de la letra, de −${DESPLAZAMIENTO_MAX} a ${DESPLAZAMIENTO_MAX} s (0 por defecto).` },
         confirmado: { type: "boolean", description: "SÓLO true si la persona dijo que sí al costo de sincronizar que dio la llamada anterior." },
       },
       required: ["musica_id", "letra"],
+    },
+  },
+  {
+    name: "fondos_video",
+    description: "Crea las IMÁGENES DE FONDO por sección de un video animado: las capas «imagen» a sangre con «pide» y sin archivo del guion GUARDADO (las pone la IA con con_fondos, o tú al escribir el guion: ver formato_video). Las diseña el DIRECTOR de arte de la agencia con el kit y el estilo de los videos de la marca, en 9:16, sin texto ni logo, con el modelo de imagen del cliente, por un encargo del servidor; al terminar se ponen solas en el guion (otra versión). La PRIMERA llamada, sin confirmado, NO crea nada: devuelve cuántas y el costo; díselo a la persona y, sólo con su «sí», repite con confirmado=true. EXCEPCIÓN: con «crear sin preguntar» fijado (Ajustes → IA) y dentro de su tope, la primera llamada ya crea, y la respuesta lo dice. Mira cómo va con ver_video.",
+    input_schema: {
+      type: "object",
+      properties: { ...clienteParam, ...videoParam, confirmado: { type: "boolean", description: "SÓLO true si la persona dijo que sí al costo que dio la llamada anterior." } },
+      required: ["video_id"],
     },
   },
   {
@@ -295,7 +306,7 @@ export const DEFINICIONES_VIDEO = Object.freeze([
 ]);
 
 /** Las que escriben (en el MCP van como escritura; las demás, de sólo lectura). */
-export const ESCRIBEN_VIDEO = Object.freeze(["video_con_cancion", "publicar_con_musica", "crear_video", "guardar_video", "editar_escena", "aprobar_video", "renderizar_video", "ligar_video", "sonido_video", "volver_a_version", "personaje_video"]);
+export const ESCRIBEN_VIDEO = Object.freeze(["fondos_video", "video_con_cancion", "publicar_con_musica", "crear_video", "guardar_video", "editar_escena", "aprobar_video", "renderizar_video", "ligar_video", "sonido_video", "volver_a_version", "personaje_video"]);
 
 /** Lo que falta para el siguiente paso, en una frase para el modelo. Pura. */
 /** ¿La locución es de la versión aprobada? (un video «aprobado» con voz de esa versión ya no la necesita otra vez). */
@@ -357,6 +368,7 @@ function textoDelVideo(video, { conGuion = true } = {}) {
     `Sonido: efectos ${video.sonido?.efectos === false ? "apagados" : "encendidos"}; ${video.sonido?.musica ? `música «${video.sonido.musica.nombre}»` : "sin música"} (sonido_video).`,
     render,
     linea ? `Duración: ${linea.total.toFixed(1)} s${linea.estimado ? " (estimada: aún no hay voz)" : ""}, ${linea.escenas.length} escenas.` : "Sin escenas válidas.",
+    video.guion && fondosPendientes(video.guion).length ? `Imágenes de fondo POR CREAR: ${fondosPendientes(video.guion).length} (mientras tanto se ve el fondo de la escena). fondos_video las crea con el director (dice el costo antes).` : "",
     voz,
     `Siguiente paso: ${siguientePaso(video)}`,
     video.errores?.length ? `ERRORES:\n${video.errores.map((e) => `· ${e.donde}: ${e.mensaje}`).join("\n")}` : "",
@@ -391,7 +403,7 @@ export function crearHerramientasVideo({ env, acceso, resolverCliente, usuario, 
   };
 
   return {
-    async video_con_cancion({ cliente, musica_id: musicaId = "", letra = "", formato = "9:16", publicacion_id: postId = "", titulo = "", disenar = false, indicacion = "", desplazamiento = 0, confirmado }) {
+    async video_con_cancion({ cliente, musica_id: musicaId = "", letra = "", formato = "9:16", publicacion_id: postId = "", titulo = "", disenar = false, indicacion = "", desplazamiento = 0, con_fondos: conFondos = false, confirmado }) {
       const c = await resolverCliente(cliente);
       // En el momento: cancion.js lee guionAnimado.js → mercado.js, que estático cerraría el ciclo con herramientas.js.
       const { sincronizarCancion, crearVideoConCancion, resumenDeSincronia, ErrorCancion } = await import("./cancion.js");
@@ -400,7 +412,7 @@ export function crearHerramientasVideo({ env, acceso, resolverCliente, usuario, 
           const s = await sincronizarCancion(env, acceso, c, { musicaId: String(musicaId), letra: String(letra), confirmado: confirmado === true, usuario });
           const r = await crearVideoConCancion(env, acceso, c, {
             huella: s.huella, modo: disenar === true ? "ia" : "karaoke", formato, titulo: String(titulo ?? ""), postId: String(postId ?? ""),
-            desplazamiento, indicacion: String(indicacion ?? ""), usuario,
+            desplazamiento, indicacion: String(indicacion ?? ""), conFondos: disenar === true && conFondos === true, usuario,
           });
           avisar(c.id, r.video.id);
           const res = resumenDeSincronia(s, { desplazamiento });
@@ -412,6 +424,7 @@ export function crearHerramientasVideo({ env, acceso, resolverCliente, usuario, 
             ...(res.avisos ?? []),
             r.aviso ? r.aviso : "",
             disenar === true ? `Escenas diseñadas por la IA sobre la letra${r.corregido ? " (corrigió su primer intento)" : ""}.` : "Es la PRUEBA DE SINCRONÍA (karaoke, gratis): una escena por línea con la letra de titular. Para un diseño con más fuerza: disenar=true.",
+            r.fondos > 0 ? `Lleva ${r.fondos} imagen(es) de fondo POR CREAR (mientras tanto se ve el fondo de la escena): fondos_video las crea con el director (dice el costo antes).` : "",
             `Líneas (con su segundo): ${res.lineas.slice(0, 14).map((l) => `[${l.desde.toFixed(1)}] ${l.texto}`).join(" · ")}${res.lineas.length > 14 ? " · …" : ""}`,
             "Siguiente: ver_video o ver_escenas para revisarlo; aprobar_video SÓLO con el sí de la persona (la canción ya es su locución) y renderizar_video.",
             textoDelVideo(video, { conGuion: false }),
@@ -423,6 +436,29 @@ export function crearHerramientasVideo({ env, acceso, resolverCliente, usuario, 
             return `NO SE CREÓ NADA. ${e.message.replace(/ Confírmalo para hacerlo\.$/, "")} Díselo al usuario con esa cifra y pregúntale si lo hago. Sólo si responde que sí, vuelve a llamar con los MISMOS datos y confirmado=true.`;
           }
           throw new Fallo(e.message);
+        }
+      });
+    },
+
+    async fondos_video({ cliente, video_id: videoId, confirmado }) {
+      const c = await resolverCliente(cliente);
+      const fila = await acceso.leerUno("videos_proyectos", { id: String(videoId ?? ""), client_id: c.id });
+      if (!fila) throw new Fallo("No encuentro ese video animado en este cliente (listar_videos).");
+      // En el momento: fondosVideo.js lee encargos.js, que estático cerraría el ciclo con herramientas.js.
+      const { pedirFondos } = await import("./fondosVideo.js");
+      return conErrores(async () => {
+        try {
+          const r = await pedirFondos(env, acceso, c, fila, { confirmado: confirmado === true, usuario });
+          return [
+            `Pedidas ${r.fondos === 1 ? "la imagen de fondo" : `las ${r.fondos} imágenes de fondo`} del video «${fila.titulo}» al director (${r.modelo}, unos ${r.texto}). Encargo ${r.encargo?.id}.`,
+            r.sinPreguntar ?? "",
+            "Se crean en el servidor (unos minutos) y se ponen solas en el guion; mira cómo va con ver_video.",
+          ].filter(Boolean).join("\n");
+        } catch (e) {
+          if (e instanceof ErrorVideo && e.extra?.codigo === "confirmar") {
+            return `NO SE CREÓ NADA. ${e.message}${e.extra.aviso ? ` ${e.extra.aviso}` : ""} Díselo al usuario con esa cifra. Sólo si responde que sí, vuelve a llamar con confirmado=true.`;
+          }
+          throw e;
         }
       });
     },

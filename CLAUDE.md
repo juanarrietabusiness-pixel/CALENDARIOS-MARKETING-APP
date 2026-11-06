@@ -189,6 +189,15 @@ src/
                           después, teléfono (puro: navegador y Container; el motor le pasa sus ayudantes)
     personajeVideo.js     El PERSONAJE del video animado dibujado con código (bebé, niño, adulto; 5 expresiones, 6 poses) y su
                           aspecto por cliente (`kit.personajeVideo`) (puro: navegador y Container)
+    motorTexto.js         El TEXTO CON CARÁCTER del video animado: *énfasis*, el rol «gigante» (cada línea a todo el ancho),
+                          palabra por palabra con lo que se dice, y la LETRA DE LA CASA (Anton, `@fontsource/anton`: el mismo
+                          archivo en el navegador y en el Container) (puro: mide; lo dibuja motorVideo.js)
+    estiloVideo.js        El KIT contado a la IA que escribe el guion de un video animado: la paleta en TOKENS del motor, estilo,
+                          letra, nunca, reglas, lo aprendido, logo, música y el ESTILO DEL VIDEO obligatorio (`kit.estiloVideo`) (puro)
+    fondosVideo.js        Las IMÁGENES DE FONDO por sección: los fondos por crear (capas imagen con «pide» y sin archivo),
+                          ponerlos en el guion, las reglas para la IA y lo que recibe el director (puro; también el Worker)
+    golpes.js             El RITMO de una canción: el BPM y los golpes por energía (envolvente de ataques, picos, autocorrelación)
+                          y el «pulso» de una capa (puro: Container, Worker y pantalla)
     motorVideoNavegador.js  Lo que ese motor necesita en el navegador: las imágenes de la galería, el logo, la letra del kit
                           y la textura del grano (no es puro)
     videosApi.js          Cliente de /api/videos/<cliente>
@@ -604,6 +613,8 @@ src/
                           (lazy; dentro de VideoAnimado)
     BibliotecaVoces.jsx   «Buscar voces en español»: la biblioteca de ElevenLabs (gratis), escuchar y «Añadir a mis voces»
     MusicaDeMarca.jsx     La música de la marca en el kit (Marca → Kit y voz): cómo suena, lo que nunca suena y las que gustaron (lazy)
+    EstiloVideoMarca.jsx  «Estilo de los videos de la marca» en el kit (Marca → Kit y voz): el texto obligatorio y hasta 6 imágenes
+                          de la galería de referencia (lazy)
     CancionesInstagram.jsx  Las canciones de Instagram que le van a un cliente (Marca → Kit y voz, junto a la música de la marca; lazy)
     VideoAnimado.jsx      «Animado con código»: los videos animados del cliente, el guion (errores con su sitio), la vista
                           previa en el lienzo y «Aprobar el guion» (lazy; dentro de FlujoReel)
@@ -614,6 +625,7 @@ src/
                           editor de las estructuras con «Voz en off» marcado (lazy)
     EditorEscenas.jsx     «Editar los textos»: lo que se dice, lo que se lee, tipo, pausa, orden de las escenas (lazy)
     LocucionVideo.jsx     «La voz» del video en su pantalla: ver el costo y generarla (lazy)
+    FondosVideo.jsx       «Imágenes de fondo» del video en su pantalla: los fondos por crear, ver el costo y crearlos con el director (lazy)
     CrearConCancion.jsx   «Con tu canción» de «Video nuevo»: la canción (escoger o subir), la letra, sincronizar con su costo, cada
                           línea con su tiempo, el ajuste fino y «Prueba de sincronía» o «Diseñar las escenas con IA» (lazy)
     CancionVideo.jsx      «La canción» en el sitio de «La voz» de un video con canción: la sincronía, el ajuste fino y «Volver a
@@ -868,6 +880,8 @@ worker/
                           la voz aislada, Gemini o estimado; siempre con su confirmación), la sincronía en R2 (`canciones/…`),
                           crear el borrador con la canción de locución, el ajuste fino y volver a sincronizar
     estudio/ponerPiezas.js  «Poner en una publicación…» del Estudio (POST /api/estudio/<c>/poner): lo de la galería a un post
+    estudio/fondosVideo.js  Crear las IMÁGENES DE FONDO de un video animado con el director (un encargo del servidor, con su costo) y,
+                          al cerrarse, ponerlas en el guion guardado (`ponerFondosEnVideo`)
     estudio/guionVideo.js El contexto común de los guiones de video (`contextoDeGuion`): producto, cerebro, criterio, publicación
     estudio/herramientasReel.js  El video por MCP: crear_reel, estado_reel, continuar_reel, montar_reel, video_listo y
                           extraer_guion_ugc (sólo MCP: desde herramientas.js sería el ciclo de siempre)
@@ -932,6 +946,7 @@ worker/
     whatsapp.js           /api/whatsapp/<cliente> (kit, proponer, voz, enlace, estudio, aceptar, quitar) y /api/publico-voz/<testigo>
 container/                El Container del video animado (Node + @napi-rs/canvas + ffmpeg, Dockerfile): /cuadro, /hoja, /revisar y
                           /render (render.mjs) con el MISMO motor de src/lib; los clips de video (clips.mjs, PUT /clip/<id>);
+                          /golpes (golpes.mjs: el ritmo de una canción, con ffmpeg y src/lib/golpes.js);
                           probar.mjs, probarAudio.mjs y probarClips.mjs son sus pruebas (job «contenedor»)
 migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales, 0033 kit de marca, 0034 estudio de mercado, 0035 ritmo de contenido, 0036 inventario, 0037 plantillas de plan, 0038 campañas con varios conjuntos y anuncios, 0039 estratega, 0040 historial de anuncios, 0041 informe de anuncios, 0042 galería agrupada y repetidos, 0043 conversaciones del asistente, 0044 banco de ideas único, 0045 fórmulas UGC, 0046 inspiración, 0047 conversaciones de diseño, 0048 historias automáticas, 0049 encargos del Estudio: lote y carrusel, 0050 historias apartadas, 0051 notas fijas de los días, 0052 programar al aprobar por cliente, 0053 qué se le cambió a una nota, 0054 qué redes entran en el informe, 0055 hasta 5 historias automáticas al día, 0056 los días fijos de cada empresa, 0057 la lista aplicada de una auditoría, 0058 la caché de Scrape Creators, 0059 proyectos de video animado, 0060 sonido e historial de los videos, 0061 recetas y «Crear con Claude», 0062 «Lo mejor del momento»)
 migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales, 0033 kit de marca, 0034 estudio de mercado, 0035 ritmo de contenido, 0036 inventario, 0037 plantillas de plan, 0038 campañas con varios conjuntos y anuncios, 0039 estratega, 0040 historial de anuncios, 0041 informe de anuncios, 0042 galería agrupada y repetidos, 0043 conversaciones del asistente, 0044 banco de ideas único, 0045 fórmulas UGC, 0046 inspiración, 0047 conversaciones de diseño, 0048 historias automáticas, 0049 encargos del Estudio: lote y carrusel, 0050 historias apartadas, 0051 notas fijas de los días, 0052 programar al aprobar por cliente, 0053 qué se le cambió a una nota, 0054 qué redes entran en el informe, 0055 hasta 5 historias automáticas al día, 0056 los días fijos de cada empresa, 0057 la lista aplicada de una auditoría, 0058 la caché de Scrape Creators, 0059 proyectos de video animado, 0060 sonido e historial de los videos, 0061 recetas y «Crear con Claude», 0063 de dónde sale un video animado, 0066 el plan semanal único, 0068 TikTok y tendencias por Scrape Creators, 0069 números del negocio, 0070 las ventas de la semana, 0071 la revisión 3Q, 0072 WhatsApp y la voz del cliente, 0073 qué publicación es cada anuncio, 0074 crear imágenes sin preguntar, 0075 la biblioteca de sonido de la agencia)
@@ -5688,10 +5703,72 @@ son del servidor.
   agencia se puede firmar (`claveServible` admite `biblioteca/<espacio>/musica/`).
   · **La herramienta** importa `cancion.js` EN EL MOMENTO (lee guionAnimado.js → mercado.js: estático cerraría el ciclo
   con herramientas.js).
-  · **Siguiente paso, NO en esta entrega**: imágenes de IA por sección de la canción (verso, coro, puente).
+  · **Las imágenes de IA por sección de la canción (verso, coro, puente)** ya están: ver «El ESTILO del video animado».
   · **Nada de esto se ha probado contra ElevenLabs ni Gemini reales**: los tests (tests/migracion/videos.cancion.test.js)
   usan un `fetch` de mentira con la forma de su documentación. Lo primero con la llave: sincronizar UNA canción corta y
   mirar en su `canciones/…json` (o en `locucion.crudo`) qué devolvió Forced Alignment.
+- **El ESTILO del video animado: el kit entero llega al guion, texto con carácter, imágenes de fondo por sección y el
+  ritmo** (decisión de la agencia, con las referencias de 57DMC: «que se use el KIT DE MARCA al 100 % y que todo se construya
+  sobre lo que dice la canción: su mensaje, su estilo y su ritmo»; sin migración: todo va en el JSON del kit y del guion).
+  Lo que no se ve en la pantalla:
+  · **Al guion le llegaba del kit sólo el personaje y «los colores por sus tokens»**: no sabía qué token era el dorado, ni el
+  estilo, ni la letra, ni las reglas. Ahora `marcaParaElVideo` (src/lib/estiloVideo.js) es la versión «para el video» de
+  `bloqueDeMarca`: la paleta traducida a los TOKENS del motor con su nombre y su papel (`paletaEnTokens`, con la MISMA
+  `paletaDelKit` del motor: lo que dice la IA es lo que se dibuja), el estilo, la luz, la letra (y si es la del kit o la de la
+  casa), lo que nunca, las reglas, lo aprendido, si hay logo, la música de la marca y, al final, el ESTILO OBLIGATORIO
+  (`kit.estiloVideo`). Nada interno: ni claves de R2, ni modelos, ni presets de imagen (un test lo busca). Va en «Video nuevo»
+  (`escribirGuion`) y en «Diseñar las escenas con IA» de la canción (`escribirGuionCancion`).
+  · **`kit.estiloVideo` (≤ 1.500, con sus saltos de línea) y `kit.referenciasVideo` (≤ 6 claves)**: sólo se escriben si los
+  hay (un kit de antes no cambia), `fundirKit` los conserva, `guardarKit` sólo acepta claves de ESE cliente y la papelera no
+  borra esas imágenes (`clavesDeLaMarca`). Se editan en Marca → Kit y voz (EstiloVideoMarca.jsx). Las referencias van al
+  guion COMO IMÁGENES (copias de 512 px de `miniaturaDe`) delante del pedido, con «son referencias del estilo; no se
+  copian». **Si el modelo del hueco no las recibe** (un 4xx que no es la llave, el saldo ni la saturación: Muse puede no
+  aceptar imágenes), se repite SIN ellas y la respuesta lo dice (`avisoRefs`); la vuelta de corrección va con las mismas que
+  fueron. `ver_estudio` y el resumen del kit del director dicen el estilo de los videos.
+  · **Texto con carácter** (src/lib/motorTexto.js; lo dibuja motorVideo.js): `*énfasis*` (más grande, la letra de impacto y
+  el color de acento; los asteriscos no cuentan en el largo y uno SUELTO se queda como letra: un guion de antes con una nota
+  al pie no cambia), `mayusculas`, el rol `gigante` (una o dos palabras por línea —las cortas con la siguiente, el énfasis en
+  sus líneas— y CADA línea a todo el ancho de su caja; interlineado 1,04: con 0,94 la tilde de «MÁS» pisaba la línea de
+  arriba), `porPalabra` (cada palabra aparece cuando se DICE: se casan, en orden y sin tildes, con las del habla de su escena
+  —`tiemposDePalabras`—; la capa no hace su entrada entera: la hace cada palabra) y la entrada `golpe` (AL FINAL de
+  `ENTRADAS`). `mayusculas` y `porPalabra` llevan `omitir`: un guion de antes valida igual. Lo de siempre (sin énfasis, ni
+  gigante, ni palabra por palabra) va por el camino de antes TAL CUAL (`esTextoRico`); el reparto y la revisión miden lo nuevo
+  con el mismo código (`encajarCapaTexto`; la revisión no da por «partido» un gigante).
+  · **La LETRA DE LA CASA (Anton, OFL)** para el gigante y el énfasis cuando el kit no tiene letra (con letra del kit, manda la
+  del kit: `impactoDe(fuentes.titular)`): `@fontsource/anton` 5.3.0, la MISMA versión en el package.json de la raíz y en el del
+  Container, y el MISMO archivo (`ARCHIVO_FUENTE_CASA`, su woff2 latino: @napi-rs/canvas lo registra igual que un TTF y mide lo
+  mismo, comprobado). En el navegador, FontFace desde `?url` (un asset del sitio con hash, `font-src 'self'`) SÓLO en
+  motorVideoNavegador.js (el chunk del video); en el Container, `registrarLetraDeLaCasa()` al arrancar. Se pide con peso 400
+  (sólo tiene ese: con 900 el navegador la engordaría a mano y no saldría como en el render). Un test exige que los dos lados
+  lean el nombre y el archivo de motorTexto.js y que las dos versiones coincidan.
+  · **Las IMÁGENES DE FONDO por sección** (src/lib/fondosVideo.js, worker/lib/estudio/fondosVideo.js, FondosVideo.jsx): con
+  «Con imágenes de fondo» la IA pone de fondo de cada sección una `imagen` a sangre con `pide` (lo que muestra, en el estilo
+  del kit) y SIN `archivo` —un FONDO POR CREAR: `archivo` ya no es obligatorio si hay `pide`, y `pide` sólo vale a sangre—;
+  las escenas de una sección repiten el MISMO `pide` (una imagen para todas; como mucho `MAX_FONDOS`, 8, o se corrige en la
+  segunda vuelta). Recibe además la galería del cliente (ids y lo que se sabe) por si alguna sirve, pero funciona sin ninguna.
+  El guion se GUARDA así y el motor, mientras no existe, deja ver el fondo de la escena (ni marcador ni error). «Crear las
+  imágenes de fondo» (`POST /api/videos/<c>/<id>/fondos`, `fondos_video` para Claude y el asistente) arma cada una como una
+  pieza del lote —el modelo del cliente, 9:16, sin referencias ni logo (`conLogo: false`), `controlar: false`— con el
+  DIRECTOR (`encargo` con `sinTexto`, la escena = el `pide`, la idea = el estilo del video, la indicación «sin texto ni
+  logo»), dice el costo antes (409 `confirmar`; «crear sin preguntar» aplica) y crea UN encargo con `datos.fondosVideo` (de
+  qué video y qué `pide` es cada paso). Un segundo pedido mientras va: 409 `en_curso`. **Al CERRARSE el encargo**,
+  `avanzarEncargo` importa en el momento fondosVideo.js (estático cerraría el ciclo con herramientas.js) y
+  `ponerFondosEnVideo` pone el `archivo` en las capas de cada `pide` del guion GUARDADO con `guardarProyecto` (la versión
+  leída como condición; si otra persona guardó, se relee una vez): sube la versión y lo devuelve a borrador, como cualquier
+  edición. Lo que una persona ya cambió no se toca; un video renderizándose no se edita (queda en la galería y se dice en
+  `datos.fondosPuestos`). `tratamiento: "byn"` (opcional) los pone en blanco y negro con más contraste con `ctx.filter`
+  (`FILTRO_BYN`; el Container lo hace; Safari no, y sale en color).
+  · **El RITMO** (src/lib/golpes.js, container/golpes.mjs): al sincronizar una canción, el Worker le pide al Container
+  `POST /golpes` (ffmpeg a PCM mono a 11 025 Hz y el análisis en JS: la energía de la señal DERIVADA en ventanas de 46 ms, su
+  subida, picos sobre la media local y la autocorrelación para el BPM, llevado a 80–160). Un ataque se nota en cuanto ENTRA
+  en la ventana: sin `desfase` los golpes salían 40 ms antes. Se guardan con la sincronía y con la locución (`bpm`, `golpes`;
+  son del audio: el ajuste fino de la letra NO los mueve). Sin Container (en local), sin golpes y un aviso en la sincronía.
+  La IA del diseño recibe el BPM y los golpes de cada línea; una capa con `pulso: true` (común a toda capa, sólo si va) late un
+  4 % en cada golpe (`pulsoEn`): los golpes viajan en la LÍNEA DE TIEMPO (`conGolpes`, `linea.golpes`), la del Container (del
+  pedido: `pedidoDelVideo` los manda) y la de la vista previa. Probado con señales sintéticas (vitest) y con el ffmpeg del
+  sistema sobre un WAV y un MP3 (120 BPM, un golpe por bombo); `container/probarAudio.mjs` lo prueba dentro de la imagen.
+  · **Nada de esto se ha probado contra Anthropic, Meta ni los motores de imagen reales**: tests/migracion/videos.estilo.test.js
+  y videos.cancion.test.js usan un `fetch` de mentira (también el 400 del modelo que no recibe imágenes).
 - **`wrangler d1 migrations apply` pinta la tabla ENTERA de migraciones tras cada una**: su salida crece con el cuadrado de
   cuántas hay, y con la 0076 (72 migraciones) pasó del 1 MB que `execFile` admite por defecto. `npm run test:vivo` moría con
   «stdout maxBuffer length exceeded» antes de arrancar el Worker, con el SQL perfecto. `tests/vivo/espacio.js` le da 64 MB.

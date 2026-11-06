@@ -33,6 +33,13 @@ import {
   dibujarIcono, dibujarFormas, dibujarEstrellas, dibujarLineas, formatearCifra, avanceDeCuenta, logoNecesitaPlaca,
 } from "./motorPiezas.js";
 import { dibujarLista, dibujarBurbuja, dibujarReloj, dibujarAntesDespues, dibujarTelefono } from "./motorComponentes.js";
+import {
+  partirEnfasis, tieneEnfasis, encajarRico, encajarGigante, tiemposDePalabras, impactoDe,
+} from "./motorTexto.js";
+import { pulsoEn } from "./golpes.js";
+
+// La letra de la casa (rol gigante y énfasis sin letra del kit): vive en motorTexto.js; aquí, a mano de quien carga.
+export { FUENTE_CASA, ARCHIVO_FUENTE_CASA, FUENTE_IMPACTO, impactoDe } from "./motorTexto.js";
 
 /** Los componentes que este motor ya dibuja (todos los del formato v1). Uno desconocido sale como marcador. */
 export const COMPONENTES_LISTOS = Object.freeze([
@@ -101,6 +108,8 @@ export const suave = {
 /** Lo que dura la entrada de una capa según el ritmo del estilo. */
 export const DURACION_ENTRADA = Object.freeze({ calmado: 0.6, medio: 0.4, rapido: 0.25 });
 export const DURACION_SALIDA = 0.3;
+/** Lo que tarda la entrada «golpe» en asentarse (de 1,15 a 1). */
+export const DURACION_GOLPE = 0.12;
 
 // ------------------------------------------------------------
 // Colores
@@ -521,8 +530,11 @@ export function estadoDeCapa(capa, momento, t, { ritmo = "medio", lado = 1080 } 
   // `vida`: los segundos desde que entró (la cifra cuenta y el dibujo saca sus formas con eso).
   const e = { alfa: 1, dx: 0, dy: 0, escala: 1, giro: 0, revelado: 1, vida: t - desde };
   const desp = lado * 0.08;
-  switch (capa.animacion?.entrada ?? "aparece") {
+  // Un texto palabra por palabra no entra entero: cada palabra hace la entrada cuando se dice (ver `dibujarTextoRico`).
+  switch (capa.porPalabra ? "ninguna" : capa.animacion?.entrada ?? "aparece") {
     case "aparece": e.alfa = limitar((t - desde) / 0.12); break;
+    // Seca: entra entera y de 1,15 a 1 en `DURACION_GOLPE`, sin rebote (lo que entra cuando se canta).
+    case "golpe": e.escala = 1 + 0.15 * (1 - suave.sale(limitar((t - desde) / DURACION_GOLPE))); break;
     case "fundido": e.alfa = suave.entraSale(pe); break;
     case "sube": e.alfa = suave.sale(pe); e.dy = desp * (1 - suave.sale(pe)); break;
     case "baja": e.alfa = suave.sale(pe); e.dy = -desp * (1 - suave.sale(pe)); break;
@@ -627,6 +639,8 @@ export function partirEquilibrado(ctx, texto, ancho, n) {
 
 export const TIPO_POR_ROL = Object.freeze({
   titular: { tam: 0.105, peso: 800, lineas: 3, fuente: "titular", alto: 1.08 },
+  // El cartel tipográfico (motorTexto.js): cada línea a todo el ancho; `tam` es lo más grande de una línea.
+  gigante: { tam: 0.36, peso: 900, lineas: 8, fuente: "impacto", alto: 1.04, mayusculas: true },
   apoyo: { tam: 0.06, peso: 500, lineas: 4, fuente: "cuerpo", alto: 1.25 },
   dato: { tam: 0.16, peso: 900, lineas: 2, fuente: "titular", alto: 1.0 },
   etiqueta: { tam: 0.042, peso: 700, lineas: 2, fuente: "cuerpo", alto: 1.2, mayusculas: true },
@@ -754,12 +768,18 @@ function cajaDeImagen(img, ancho, maxAlto, recorte) {
   return { w, h };
 }
 
-function dibujarImagenEn(ctx, img, w, h, recorte) {
+/** El filtro del lienzo para el tratamiento «byn» de una imagen (blanco y negro con más contraste). */
+export const FILTRO_BYN = "grayscale(1) contrast(1.25)";
+
+function dibujarImagenEn(ctx, img, w, h, recorte, tratamiento = "color") {
+  // Blanco y negro: donde el lienzo no sabe de filtros (Safari), sale en color; nada se rompe.
+  if (tratamiento === "byn") ctx.filter = FILTRO_BYN;
   if (recorte === "cubrir" && img?.width && img?.height) {
     const escala = Math.max(w / img.width, h / img.height);
     const sw = w / escala; const sh = h / escala;
     ctx.drawImage(img, (img.width - sw) / 2, (img.height - sh) / 2, sw, sh, -w / 2, -h / 2, w, h);
   } else ctx.drawImage(img, -w / 2, -h / 2, w, h);
+  if (tratamiento === "byn") ctx.filter = "none";
 }
 
 function marcador(ctx, nombre, w, h, paleta, familia) {
@@ -839,10 +859,11 @@ function dibujarImagenCompleta(ctx, capa, estado, c, cuando) {
   else {
     const cubre = Math.max(W / img.width, H / img.height);
     let k = cubre * mov.escala;
+    const byn = capa.tratamiento === "byn" ? ` ${FILTRO_BYN}` : "";
     if (capa.recorte === "contener") {
       // El fondo: la misma imagen, más grande, difuminada y oscurecida (se mueve con ella).
       ctx.save();
-      ctx.filter = `blur(${Math.round(Math.min(W, H) * 0.04)}px)`;
+      ctx.filter = `blur(${Math.round(Math.min(W, H) * 0.04)}px)${byn}`;
       const kf = cubre * 1.1 * mov.escala;
       ctx.drawImage(img, (-img.width * kf) / 2, (-img.height * kf) / 2, img.width * kf, img.height * kf);
       ctx.restore();
@@ -856,7 +877,9 @@ function dibujarImagenCompleta(ctx, capa, estado, c, cuando) {
     const w = img.width * k; const h = img.height * k;
     // El paneo corre la imagen por lo que sobra a los lados (nunca deja ver el borde).
     const holgura = Math.max(0, (w - W) / 2);
+    if (byn) ctx.filter = FILTRO_BYN;
     ctx.drawImage(img, -w / 2 + mov.desplaza * holgura, -h / 2, w, h);
+    if (byn) ctx.filter = "none";
   }
   if (capa.oscurecer > 0) {
     ctx.fillStyle = "#000000";
@@ -864,6 +887,96 @@ function dibujarImagenCompleta(ctx, capa, estado, c, cuando) {
     ctx.fillRect(-W / 2, -H / 2, W, H);
   }
   ctx.restore();
+}
+
+// ------------------------------------------------------------
+// El texto con carácter: énfasis, gigante y palabra por palabra (lo que mide, en motorTexto.js)
+// ------------------------------------------------------------
+
+/** ¿Va por el camino del texto con carácter? (rol gigante, *énfasis* o palabra por palabra). Pura. */
+export const esTextoRico = (capa) => capa?.tipo === "texto" && (capa.rol === "gigante" || capa.porPalabra === true || tieneEnfasis(capa.texto));
+
+/**
+ * Cómo queda un texto en `ancho` (las líneas, sus palabras y su tamaño), con la letra de cada rol y la de impacto (la
+ * del kit, o la de la casa). La usan el dibujo y la revisión. → { tam, lineas: [{ palabras, ancho, alto, tam }], alto,
+ * anchoMax, espacio, gigante }. Pura salvo medir.
+ */
+export function encajarCapaTexto(ctx, capa, { ancho, lado, fuentes = {}, maxAlto = Infinity }) {
+  const r = TIPO_POR_ROL[capa.rol] ?? TIPO_POR_ROL.titular;
+  const titular = fuentes?.titular || FUENTE_RESPALDO;
+  const familia = r.fuente === "cuerpo" ? fuentes?.cuerpo || titular : titular;
+  const impacto = impactoDe(fuentes?.titular);
+  const palabras = partirEnfasis(capa.texto, { mayusculas: capa.mayusculas === true || Boolean(r.mayusculas) });
+  if (capa.rol === "gigante") return { ...encajarGigante(ctx, palabras, { ancho, lado, maxAlto, impacto }), gigante: true };
+  return { ...encajarRico(ctx, palabras, { ancho, lado, rol: r, familia, impacto }), gigante: false };
+}
+
+/**
+ * Cuándo se dice cada palabra de un texto palabra por palabra, en segundos desde que entró la capa (null: con la capa).
+ * Se casan con el habla de SU escena (`momento.palabras`, de la línea de tiempo). Pura.
+ */
+export function tiemposRelativos(capa, momento, cuando) {
+  const absolutos = tiemposDePalabras(partirEnfasis(capa.texto).map((p) => p.texto), momento?.palabras ?? []);
+  const desde = cuando?.desde ?? momento?.desde ?? 0;
+  return absolutos.map((x) => (x == null ? null : Math.max(0, x - desde)));
+}
+
+/**
+ * Dibuja un texto con carácter: cada palabra con su fuente; las de énfasis en el color de acento (o en el del texto si
+ * el texto ya va en acento); con `porPalabra`, cada una aparece (con la entrada de la capa) cuando se dice. Devuelve lo
+ * que ocupa, como los demás componentes.
+ */
+function dibujarTextoRico(ctx, capa, estado, c, w) {
+  const { paleta, lado } = c;
+  const lay = encajarCapaTexto(ctx, capa, { ancho: w, lado, fuentes: c.fuentes, maxAlto: c.altoUtil ?? c.alto * 0.55 });
+  const pad = lado * 0.035;
+  const pw = lay.anchoMax + pad * 2;
+  const alto = lay.alto;
+  if (capa.placa) {
+    ctx.fillStyle = colorDe(capa.placa, paleta);
+    const x0 = capa.alinear === "izq" ? -w / 2 - pad : capa.alinear === "der" ? w / 2 - pw + pad : -pw / 2;
+    rectRedondo(ctx, x0, -alto / 2 - pad * 0.7, pw, alto + pad * 1.4, lado * 0.025);
+    ctx.fill();
+  }
+  const conPlaca = (tok) => (capa.placa ? colorLegible(tok, capa.placa, paleta) : colorDe(tok, paleta));
+  const normal = conPlaca(capa.color);
+  const resaltado = conPlaca(capa.color === "acento" ? "texto" : "acento");
+  ctx.textBaseline = "middle";
+  ctx.textAlign = "center";
+  const total = lay.lineas.reduce((n, l) => n + l.palabras.length, 0);
+  const visibles = capa.animacion?.entrada === "escribe" && !capa.porPalabra ? Math.round(total * (estado.revelado ?? 1)) : total;
+  const tiempos = Array.isArray(estado.palabras) && Number.isFinite(estado.vida) ? estado.palabras : null;
+  let k = 0;
+  let y = -alto / 2;
+  for (const linea of lay.lineas) {
+    let x = capa.alinear === "izq" ? -w / 2 : capa.alinear === "der" ? w / 2 - linea.ancho : -linea.ancho / 2;
+    const espacio = linea.espacio ?? lay.espacio;
+    const cy = y + linea.alto / 2;
+    for (const p of linea.palabras) {
+      const cx = x + p.ancho / 2;
+      x += p.ancho + espacio;
+      const i = k++;
+      if (i >= visibles) continue;
+      let e = null;
+      if (tiempos && tiempos[i] != null) {
+        if (estado.vida < tiempos[i]) continue;
+        e = estadoDeCapa({ animacion: { entrada: capa.animacion?.entrada ?? "aparece" } }, { desde: tiempos[i], hasta: Infinity }, estado.vida, { ritmo: c.ritmo, lado });
+        if (!e) continue;
+      }
+      ctx.save();
+      if (e) {
+        ctx.globalAlpha *= e.alfa;
+        ctx.translate(cx + e.dx, cy + e.dy);
+        if (e.escala !== 1) ctx.scale(e.escala, e.escala);
+      } else ctx.translate(cx, cy);
+      ctx.font = p.fuente;
+      ctx.fillStyle = p.enfasis ? resaltado : normal;
+      ctx.fillText(p.texto, 0, 0);
+      ctx.restore();
+    }
+    y += linea.alto;
+  }
+  return capa.placa ? { w: Math.max(w, pw), h: alto + pad * 1.4 } : { w, h: alto };
 }
 
 const NOMBRES_MARCADOR = Object.freeze({
@@ -884,8 +997,10 @@ function dibujarCapa(ctx, capa, estado, c, ancho = capa.tam * c.lado) {
   const cuerpo = fuentes?.cuerpo || titular;
   switch (capa.tipo) {
     case "texto": {
+      // Con carácter (énfasis, gigante o palabra por palabra), por su camino; si no, el de siempre, tal cual.
+      if (esTextoRico(capa)) return dibujarTextoRico(ctx, capa, estado, c, w);
       const familia = (TIPO_POR_ROL[capa.rol] ?? TIPO_POR_ROL.titular).fuente === "titular" ? titular : cuerpo;
-      const { fuente, lineas, altoLinea } = encajarTexto(ctx, capa.texto, { ancho: w, lado, rol: capa.rol, familia });
+      const { fuente, lineas, altoLinea } = encajarTexto(ctx, capa.mayusculas ? String(capa.texto).toUpperCase() : capa.texto, { ancho: w, lado, rol: capa.rol, familia });
       ctx.font = fuente;
       const alto = lineas.length * altoLinea;
       const anchos = lineas.map((l) => ctx.measureText(l).width);
@@ -943,7 +1058,7 @@ function dibujarCapa(ctx, capa, estado, c, ancho = capa.tam * c.lado) {
         ctx.fill();
         ctx.restore();
       }
-      dibujarImagenEn(ctx, img, iw, ih, capa.recorte);
+      dibujarImagenEn(ctx, img, iw, ih, capa.recorte, capa.tratamiento);
       return { w: iw + m * 2, h: ih + m * 2 };
     }
     case "video": {
@@ -1236,6 +1351,8 @@ function dibujarEscena(ctx, escena, momento, t, cGuion, primera = false) {
   const tiempos = tiemposDeEscena(todas, momento, primera);
   // Los videos y las imágenes a sangre, encima del fondo y detrás de todo lo demás.
   for (const capa of todas.filter(esCapaCompleta)) {
+    // Un FONDO por crear (sólo su `pide`): mientras no exista, se ve el fondo de la escena.
+    if (capa.tipo === "imagen" && !capa.archivo) continue;
     const cuando = tiempos.get(capa.id);
     const estado = estadoACompleta(capa, cuando, momento, t, c);
     if (!estado) continue;
@@ -1253,7 +1370,8 @@ function dibujarEscena(ctx, escena, momento, t, cGuion, primera = false) {
     ctx.save();
     ctx.globalAlpha *= estado.alfa;
     ctx.translate(s.x + estado.dx, s.y + estado.dy);
-    const escala = estado.escala * s.escala;
+    // `pulso`: late con los golpes de la canción (los trae la línea de tiempo; sin golpes, nada).
+    const escala = estado.escala * s.escala * (capa.pulso ? pulsoEn(c.golpes, t) : 1);
     if (escala !== 1) ctx.scale(escala, escala);
     if (estado.giro && capa.tipo !== "forma") ctx.rotate(estado.giro);
     // Barrido y dibuja: la capa se descubre de izquierda a derecha.
@@ -1262,7 +1380,9 @@ function dibujarEscena(ctx, escena, momento, t, cGuion, primera = false) {
       ctx.rect(-c.lado, -c.alto, c.lado * 2 * estado.revelado, c.alto * 2);
       ctx.clip();
     }
-    dibujarCapa(ctx, capa, estado, c, s.ancho);
+    // Palabra por palabra: cuándo se dice cada palabra, desde que entró la capa (lo que dibuja cada una).
+    const conTiempos = capa.tipo === "texto" && capa.porPalabra ? { ...estado, palabras: tiemposRelativos(capa, momento, tiempos.get(capa.id)) } : estado;
+    dibujarCapa(ctx, capa, conTiempos, c, s.ancho);
     ctx.restore();
   }
 }
@@ -1431,12 +1551,13 @@ export function usosDeVideo(guion, linea) {
 }
 
 /** Lo que necesitan el reparto y el dibujo de cada capa: medidas, paleta, ritmo, recursos, fuentes, subtítulos. */
-function contextoDe({ guion, formato, paleta, recursos = {}, fuentes = {} }) {
+function contextoDe({ guion, linea = null, formato, paleta, recursos = {}, fuentes = {} }) {
   const f = FORMATOS_VIDEO[formato] ? formato : (guion?.formatos?.[0] ?? "9:16");
   const { ancho, alto } = FORMATOS_VIDEO[f] ?? FORMATOS_VIDEO["9:16"];
   return {
     ancho, alto, lado: Math.min(ancho, alto), formato: f, paleta: paleta ?? paletaDelGuion(guion),
     ritmo: guion?.estilo?.ritmo ?? "medio", recursos, fuentes, subtitulos: guion?.subtitulos, personaje: guion?.estilo?.personaje ?? null,
+    golpes: linea?.golpes ?? null,
     // Lo más alto que puede ser una imagen: el 62 % del área segura; en 16:9 lo visual tiene su columna y llega al 82 %.
     altoUtil: areaSegura(f, ancho, alto).h * (ancho > alto * 1.2 ? 0.82 : 0.62),
   };
@@ -1481,7 +1602,7 @@ export function cajasDeEscena(ctx, { guion, linea, indice = 0, formato, recursos
  * El contexto se escala por fuera: aquí se dibuja en las medidas del formato.
  */
 export function dibujarFrame(ctx, { guion, linea, t = 0, formato, paleta, recursos = {}, fuentes = {} }) {
-  const c = contextoDe({ guion, formato, paleta, recursos, fuentes });
+  const c = contextoDe({ guion, linea, formato, paleta, recursos, fuentes });
   const { ancho, alto } = c;
   const escenas = guion?.escenas ?? [];
   ctx.save();

@@ -104,17 +104,18 @@ Todas llevan:
 | `id` | Único dentro de la escena |
 | `pos`, `tam` | Dónde y de qué ancho (ver reglas) — `centro`, `0.6` |
 | `entra`, `sale` | `{ "palabra": n }` (la n-ésima palabra que se dice en la escena, desde 0) o `{ "s": segundos }` desde que empieza. `sale` vacío = hasta el final |
-| `animacion` | `entrada` (aparece, fundido, sube, baja, escala, rebote, escribe, barrido, dibuja), `salida` (ninguna, fundido, baja, escala), `bucle` (ninguno, flota, pulso, gira, late) |
+| `pulso` | Opcional (sólo `true`): en un video con canción, la capa late un 4 % en cada GOLPE del ritmo (los saca el Container al sincronizar la canción) |
+| `animacion` | `entrada` (aparece, fundido, sube, baja, escala, rebote, escribe, barrido, dibuja, golpe), `salida` (ninguna, fundido, baja, escala), `bucle` (ninguno, flota, pulso, gira, late). `golpe`: seca, entera desde el primer cuadro y de 1,15 a 1 en 0,12 s, sin rebote (la letra que entra cuando se canta) |
 
 Los 17 componentes de la librería v1 y lo propio de cada uno:
 
 | Componente | Propiedades |
 |---|---|
-| `texto` | `texto`*, `rol` (titular/apoyo/dato/etiqueta), `color`, `placa` (color de fondo o vacío), `alinear` |
+| `texto` | `texto`*, `rol` (titular/apoyo/dato/etiqueta/gigante), `color`, `placa` (color de fondo o vacío), `alinear`. Opcionales: `mayusculas`, `porPalabra`. Lo que va entre `*asteriscos*` lleva énfasis. Ver «El texto con carácter» abajo |
 | `sello` | `texto`* (≤ 24), `color`, `rotacion` (−20 a 20) |
 | `telefono` | `pantalla` (chat/imagen/color/notificacion), `mensajes` [{ `de`: cliente/marca, `texto` }] (≤ 6), `archivo`, `notificacion`, `color` |
 | `burbuja` | `texto`*, `lado` (izq/der), `color` |
-| `imagen` | `archivo`* (id de la galería: la foto REAL del producto), `rol` (producto/foto/persona), `recorte` (contener/cubrir), `marco`. Opcionales (no se escriben si van como por defecto): `encuadre` (caja: en su zona; completo: a sangre, detrás de todo y fuera del reparto, como un video), `movimiento` (ninguno, acercar, alejar, paneo: un «Ken Burns» lento todo lo que se ve), `dura` (0–60 s: la escena dura al menos eso aunque no diga nada), `oscurecer` (0–0,85: el velo, a sangre). Ver «La imagen a sangre» abajo |
+| `imagen` | `archivo`* (id de la galería: la foto REAL del producto), `rol` (producto/foto/persona), `recorte` (contener/cubrir), `marco`. Opcionales (no se escriben si van como por defecto): `encuadre` (caja: en su zona; completo: a sangre, detrás de todo y fuera del reparto, como un video), `movimiento` (ninguno, acercar, alejar, paneo: un «Ken Burns» lento todo lo que se ve), `dura` (0–60 s: la escena dura al menos eso aunque no diga nada), `oscurecer` (0–0,85: el velo, a sangre), `tratamiento` (color/byn: blanco y negro con más contraste), `pide` (≤ 400: un FONDO POR CREAR, sin `archivo`; ver «Los fondos por crear»). Ver «La imagen a sangre» abajo |
 | `video` | Un **clip de la galería** (grabado por el cliente, de Kie, de Drive): `archivo`* (id de un VIDEO de la galería), `encuadre` (completo: a sangre, detrás de todo y fuera del reparto; caja: en su zona, como una imagen), `recorte` (cubrir/contener), `desde` (el segundo del clip donde empieza), `hasta` (0 = sigue hasta que acaba la capa; mayor que `desde` = ese tramo, y la escena dura al menos eso), `sonido` (su audio se oye, debajo de la voz si la hay), `volumen` (0–1), `oscurecer` (0–0,85: un velo negro encima para leer el texto; sólo a sangre), `marco`. Ver «El video» abajo |
 | `personaje` | `variante` (adulto/nino/bebe), `pose` (de-pie/saluda/senala/piensa/celebra/preocupado), `expresion` (auto/neutral/feliz/triste/preocupado/dormido; «auto» la toma de la pose), `color` — figura de la casa dibujada con código; su ASPECTO (piel, pelo, ropa, accesorio) es el del kit del cliente (`personaje_video`) o el de `estilo.personaje` |
 | `icono` | `nombre` (check, cruz, corazon, estrella, rayo, reloj, bolsa, carrito, chat, telefono, ubicacion, regalo, escudo, hoja, gota, bebe, casa, flecha, alerta, sonrisa, dinero, camion), `color`, `fondo` (un círculo de ese color detrás; el icono toma el color que más contraste) |
@@ -160,6 +161,42 @@ una foto con música es UNA escena sin habla (no necesita locución) con la pist
 ```jsonc
 { "tipo": "imagen", "id": "foto", "archivo": "ID-DE-LA-FOTO", "rol": "foto", "encuadre": "completo", "recorte": "contener",
   "movimiento": "acercar", "dura": 10, "entra": { "s": 0 } }
+```
+
+### El texto con carácter
+
+Lo que piden las referencias de estilo de la agencia (un cartel tipográfico, no un titular en dos líneas):
+
+- **Énfasis**: lo que va entre `*asteriscos*` sale más grande, con la letra de impacto y en el color de acento (en el del
+  texto si el texto ya va en acento): `"LAS MANOS *MÁS BELLAS* DE LA HISTORIA"`. Los asteriscos no cuentan en el largo
+  ni se dibujan; uno suelto (sin pareja) se queda como letra.
+- **`rol: "gigante"`**: una o dos palabras por línea (las cortas, «de», «la», «y», van con la siguiente; lo que lleva
+  énfasis, en sus propias líneas), en MAYÚSCULAS, apiladas con el interlineado apretado, y **cada línea a todo el ancho**
+  de su caja. Para lo que tiene que golpear (el gancho, el coro), de 2 a 7 palabras.
+- **`mayusculas: true`**: todo en mayúsculas.
+- **`porPalabra: true`**: cada palabra aparece cuando se DICE (o se canta). Las palabras del texto se casan, en orden, con
+  las del `habla` de su escena (sin tildes ni signos): escríbelo con las mismas palabras. Cada una hace la `entrada` de la
+  capa (con `golpe`, la letra cinética de una canción); la que el habla no dice sale con la anterior.
+
+La **letra de impacto** (el gigante y el énfasis) es la del kit si el cliente tiene la suya; si no, la de la casa: Anton
+(sans muy gruesa, licencia OFL), el MISMO archivo en la vista previa y en el render.
+
+```jsonc
+{ "tipo": "texto", "id": "coro", "texto": "Las manos *más bellas* de la historia", "rol": "gigante", "porPalabra": true,
+  "animacion": { "entrada": "golpe" }, "pos": "arriba" }
+```
+
+### Los fondos por crear (imágenes de fondo por sección)
+
+Una `imagen` a sangre con `pide` (lo que muestra, para el director de arte) y SIN `archivo` es un fondo que todavía no
+existe: mientras tanto se ve el fondo de la escena. «Crear las imágenes de fondo» (en la pantalla del video, o
+`fondos_video` por MCP) las crea con el director (9:16, sin texto ni logo, con el kit y el estilo del video), una por
+cada `pide` distinto —las escenas de una misma sección llevan el MISMO `pide`: es una imagen para todas— y, al terminar,
+les pone su `archivo`. Con `tratamiento: "byn"` se ven en blanco y negro con más contraste.
+
+```jsonc
+{ "tipo": "imagen", "id": "fondo", "encuadre": "completo", "recorte": "cubrir", "movimiento": "acercar", "oscurecer": 0.45,
+  "tratamiento": "byn", "pide": "Grabado antiguo en blanco y negro de unas manos abiertas hacia la luz, con mucho aire arriba" }
 ```
 
 ### El dibujo

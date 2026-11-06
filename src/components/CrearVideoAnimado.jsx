@@ -33,18 +33,21 @@ export default function CrearVideoAnimado({ client, publicacion = null, onListo,
   const [postId, setPostId] = useState(publicacion?.postId ?? "");
   // La ESTRUCTURA de guion de la agencia que sigue la voz ("" = la escoge la IA entre las de voz en off).
   const [estructuraId, setEstructuraId] = useState("");
+  // «Con imágenes de fondo»: la IA pide un fondo por sección; el director los crea después, con su costo.
+  const [conFondos, setConFondos] = useState(false);
   const [ocupado, setOcupado] = useState(false);
   const [error, setError] = useState("");
 
   const escribir = async () => {
     setOcupado(true); setError("");
     try {
-      const r = await escribirGuionVideo(client.id, { idea, segundos, formato, postId, estructuraId });
+      const r = await escribirGuionVideo(client.id, { idea, segundos, formato, postId, estructuraId, conFondos });
       const destino = r.publicacion ?? (postId ? { postId, calendarId: opciones.find((o) => o.postId === postId)?.calendarId ?? publicacion?.calendarId ?? null } : null);
       const sigue = r.estructura ? `Sigue la estructura «${r.estructura.nombre}».` : "";
+      const fondos = r.fondos > 0 ? `Pide ${r.fondos} imagen${r.fondos === 1 ? "" : "es"} de fondo: guarda el guion y créalas con el director (se dice el costo antes).` : "";
       onListo(r.guion, {
         publicacion: destino, estructura: r.estructura ?? null,
-        aviso: [r.corregido ? "La IA corrigió su primer intento para que valide." : r.aviso || "", sigue].filter(Boolean).join(" "),
+        aviso: [r.corregido ? "La IA corrigió su primer intento para que valide." : r.aviso || "", sigue, fondos].filter(Boolean).join(" "),
       });
     } catch (e) { setError(e.message); } finally { setOcupado(false); }
   };
@@ -94,6 +97,10 @@ export default function CrearVideoAnimado({ client, publicacion = null, onListo,
         ))}
       </fieldset>
       <SelectorEstructura uso="voz" value={estructuraId} onChange={setEstructuraId} disabled={ocupado} sencilla />
+      <label className="va-check">
+        <input type="checkbox" checked={conFondos} disabled={ocupado} onChange={(e) => setConFondos(e.target.checked)} />
+        Con imágenes de fondo (una por sección, en el estilo del kit; el director las crea después de guardar, con su costo)
+      </label>
       <div className="va-acciones">
         <button type="button" className="btn btn-primary" disabled={ocupado || (!idea.trim() && !postId)} onClick={escribir}>
           <Icon name="sparkles" /> {ocupado ? "Escribiendo el guion… (hasta un minuto)" : "Escribir el guion con IA"}

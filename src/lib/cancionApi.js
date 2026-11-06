@@ -31,8 +31,8 @@ export function sincronizarCancion(clienteId, { musicaId, letra, confirmado = fa
 }
 
 /** Crea el borrador con la canción: `modo` «karaoke» (gratis) o «ia». → { video, avisos, corregido, aviso }. */
-export async function crearVideoConCancion(clienteId, { huella, modo = "karaoke", formato = "9:16", titulo = "", postId = "", calendarId = "", desplazamiento = 0, indicacion = "" }) {
-  const r = await pedir(`${base(clienteId)}/cancion/video`, json("POST", { huella, modo, formato, titulo, postId, calendarId, desplazamiento, indicacion }));
+export async function crearVideoConCancion(clienteId, { huella, modo = "karaoke", formato = "9:16", titulo = "", postId = "", calendarId = "", desplazamiento = 0, indicacion = "", conFondos = false }) {
+  const r = await pedir(`${base(clienteId)}/cancion/video`, json("POST", { huella, modo, formato, titulo, postId, calendarId, desplazamiento, indicacion, ...(conFondos ? { conFondos: true } : {}) }));
   avisar(clienteId, r?.video?.id);
   return r;
 }

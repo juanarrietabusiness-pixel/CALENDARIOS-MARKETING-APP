@@ -19,6 +19,7 @@
     "verificar": "npm run lint && npm test && npm run build && npm run test:bundle && npm run test:vivo"
   },
   "dependencies": {
+    "@fontsource/anton": "5.3.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7"
   },
