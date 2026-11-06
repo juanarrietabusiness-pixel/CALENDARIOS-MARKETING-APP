@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import Icon from "../Icon";
 import { useDialogA11y } from "../../hooks/useDialogA11y";
 import { Envoltura } from "./envolturaMes";
@@ -9,7 +9,9 @@ import { fechasDelMes } from "../../lib/fechasEspeciales";
 import { mediosDe } from "../../lib/publicacion";
 import { revisarMarcaDeRuta } from "../../lib/estudio";
 import { FORMATS } from "../../constants";
-import { revisarMes, resumenRevision, aplicarArregloTexto, pedidoDeRevisionIA, leerRevisionIA } from "../../lib/revisionMes";
+import { revisarMes, resumenRevision, aplicarArregloTexto, pedidoDeRevisionIA, leerRevisionIA, revisarPauta, resumenPauta, aplicarArregloPauta } from "../../lib/revisionMes";
+import { describirPauta } from "../../lib/pauta";
+import { leerNegocio } from "../../lib/negocioApi";
 import { BalanceDelMes } from "../EstrategiaMes";
 import { semanasDelMes } from "../../lib/campanas";
 import { limpiarEstrategia } from "../../lib/estrategiaMes";
@@ -26,6 +28,8 @@ import "./RevisionMes.css";
 // se cambia solo: cada arreglo es un botón, y «Abrir» lleva al panel.
 // «Ver las piezas juntas» mira todas las imágenes A LA VEZ (una hoja numerada que arma el navegador, lib/hojaPiezas.js)
 // y dice cuáles se salen de la serie: lo que la revisión de cada imagen sola no ve.
+// LO QUE VA A PAUTA sale aparte, con la revisión de anuncio (lib/pauta.js): lo que se arregla solo, con su botón
+// (hashtags, el llamado); lo demás lo reescribe el motor como anuncio (unos céntimos) sobre la publicación de AHORA.
 // ============================================================
 
 const MAX_IMAGENES = 30;
@@ -44,8 +48,42 @@ export default function RevisionMes({ client, cal, onAbrir, onArreglar, onClose,
   const [aviso, setAviso] = useState(null);
   const [serie, setSerie] = useState(null); // { puntaje, resumen, comun, fuera, porId: postId → { n, motivo, arreglo } }
   const clienteId = client?.dbId || client?.id;
+  // El destino del cliente (WhatsApp o web): cambia qué llamado se le pide a lo que va a pauta.
+  const [destino, setDestino] = useState("");
+  const calRef = useRef(cal);
+  calRef.current = cal;
 
   useEffect(() => { leerMercado(clienteId).then(setMercado).catch(() => setMercado({})); }, [clienteId]);
+  useEffect(() => {
+    let vivo = true;
+    if ((cal.days ?? []).some((d) => (d.posts ?? []).some((p) => p.pauta && typeof p.pauta === "object"))) {
+      leerNegocio(clienteId, { meta: false }).then((r) => { if (vivo) setDestino(r?.negocio?.destino ?? ""); }).catch(() => {});
+    }
+    return () => { vivo = false; };
+  }, [clienteId, cal.days]);
+  const pauta = useMemo(() => revisarPauta(cal.days, { destino }), [cal.days, destino]);
+
+  /**
+   * Reescribe lo que va a pauta como anuncio por el motor (el caption o sus textos aparte) y lo pone sobre la publicación
+   * de AHORA: la IA tarda, y mientras tanto alguien pudo tocarla.
+   */
+  const reescribir = async (date, post, campos, pide = "") => {
+    setTrabajando(`pauta ${post.id}`);
+    setAviso(null);
+    try {
+      const { reescribirComoAnuncio } = await import("../../lib/escribirTextos");
+      const day = (calRef.current.days ?? []).find((d) => d.date === date) ?? { date };
+      const cambios = await reescribirComoAnuncio(clienteId, { post, day, cal: calRef.current, campos, pide });
+      const ahora = (calRef.current.days ?? []).flatMap((d) => d.posts ?? []).find((p) => p.id === post.id) ?? post;
+      onArreglar(date, { ...ahora, ...cambios });
+      setAviso({ ok: true, texto: campos.includes("anuncio") && !campos.includes("descripcion") ? "Listos sus textos de anuncio. Revísalos en la publicación." : "Reescrita como anuncio. Revísala antes de enviarla." });
+      window.dispatchEvent(new Event("ia:gasto"));
+    } catch (e) {
+      setAviso({ ok: false, texto: e.message });
+    }
+    setTrabajando("");
+    ref.current?.focus({ preventScroll: true });
+  };
 
   const lista = useMemo(() => {
     const competidores = (limpiarEstudio(mercado?.estudio ?? mercado?.borrador)?.general?.competidores ?? []).map((c) => c.nombre);
@@ -132,7 +170,7 @@ export default function RevisionMes({ client, cal, onAbrir, onArreglar, onClose,
     return [...porId.values()].sort((a, b) => (a.date < b.date ? -1 : 1));
   }, [lista, todas, ia, marca, serie]);
 
-  const resumen = resumenRevision(lista);
+  const resumen = [resumenRevision(lista), resumenPauta(pauta)].filter(Boolean).join(" · ");
   const ocupado = Boolean(trabajando);
 
   return (
@@ -178,7 +216,63 @@ export default function RevisionMes({ client, cal, onAbrir, onArreglar, onClose,
           <BalanceDelMes days={cal.days ?? []} objetivo={limpiarEstrategia(cal.opciones?.estrategia)?.objetivo ?? ""} foco={limpiarEstrategia(cal.opciones?.estrategia)?.foco ?? ""}
             semanas={Number.isInteger(cal.month) && cal.year ? semanasDelMes(cal.year, cal.month).map((w) => ({ n: w.numero, desde: w.desde, hasta: w.hasta })) : []} />
 
-          {mercado !== null && !filas.length && (
+          {pauta.length > 0 && (
+            <section className="revision-serie" aria-labelledby={`${ids}-pauta`}>
+              <h3 id={`${ids}-pauta`} style={{ fontSize: "var(--fs-sm)", margin: 0, display: "flex", alignItems: "center", gap: "var(--sp-2)" }}>
+                <Icon name="megaphone" size={16} /> Lo que va a pauta
+              </h3>
+              <p className="hint" style={{ margin: 0 }}>
+                {resumenPauta(pauta)}. Su caption ES el texto principal del anuncio: en el Ads Manager ya no se cambia, así que se revisa como anuncio.
+              </p>
+              <ul className="revision-lista">
+                {pauta.map(({ date, post, problemas }) => {
+                  const iaCaption = problemas.some((p) => p.ia && p.codigo !== "textos");
+                  const parecida = problemas.find((p) => p.codigo === "parecida");
+                  const sinTextos = problemas.some((p) => p.codigo === "textos");
+                  const ocupada = trabajando === `pauta ${post.id}`;
+                  return (
+                    <li key={post.id} className="revision-item">
+                      <div className="revision-cabeza">
+                        <strong>{fechaCorta(date)} · {FORMATS[post.format]?.label ?? post.format} · {describirPauta(post.pauta)}</strong>
+                        <span className="hint">{String(post.title || post.idea || post.descripcion || "").slice(0, 70)}</span>
+                        <button type="button" className="btn btn-ghost btn-sm" onClick={() => onAbrir(post.id)}>Abrir <Icon name="chevronRight" size={14} /></button>
+                      </div>
+                      {!problemas.length && <p className="revision-problema revision-ok"><Icon name="check" size={12} /> Lista como anuncio.</p>}
+                      {problemas.map((p) => (
+                        <p key={p.codigo} className="revision-problema">
+                          {p.texto}
+                          {p.arreglo && (
+                            <button type="button" className="btn btn-ghost btn-sm" disabled={ocupado} onClick={() => {
+                              onArreglar(date, aplicarArregloPauta(post, p.codigo, { destino, whatsapp: client?.whatsapp ?? "" }));
+                              ref.current?.focus({ preventScroll: true });
+                            }}>{p.arreglo}</button>
+                          )}
+                        </p>
+                      ))}
+                      {(iaCaption || sinTextos) && (
+                        <div className="revision-acciones" style={{ marginBottom: 0 }}>
+                          {iaCaption && (
+                            <button type="button" className="btn btn-secondary btn-sm" disabled={ocupado}
+                              onClick={() => reescribir(date, post, sinTextos ? ["descripcion", "anuncio"] : ["descripcion"], parecida ? `Que sea DISTINTA de esta otra de su misma etapa (otro gancho, otro ángulo): «${parecida.distintaDe}»` : "")}>
+                              <Icon name="sparkles" size={14} /> {ocupada ? "Escribiendo…" : parecida ? "Escribir otra distinta (IA)" : "Reescribir el caption como anuncio (IA)"}
+                            </button>
+                          )}
+                          {sinTextos && !iaCaption && (
+                            <button type="button" className="btn btn-secondary btn-sm" disabled={ocupado} onClick={() => reescribir(date, post, ["anuncio"])}>
+                              <Icon name="sparkles" size={14} /> {ocupada ? "Escribiendo…" : "Escribir sus textos de anuncio (IA)"}
+                            </button>
+                          )}
+                          <span className="hint">Unos céntimos. Se pone en la publicación: revísala.</span>
+                        </div>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          )}
+
+          {mercado !== null && !filas.length && !pauta.some((x) => x.problemas.length) && (
             <p className="revision-vacio"><Icon name="checkCircle" size={18} /> Todo listo para enviar.</p>
           )}
           <ul className="revision-lista">

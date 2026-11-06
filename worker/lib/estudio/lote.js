@@ -32,13 +32,19 @@
 // pantalla las pide una tras otra pasando lo que ya salió en `usados`. Escribir 30 en una sola llamada daba ideas
 // planas: cada pieza recibía muy poca atención. Sin tanda, todas (como antes).
 //
+// LO QUE VA A PAUTA (lib/pauta.js): una casilla con `pauta` (modos «plan» y «campos») lleva su etapa y su caption se
+// escribe como ANUNCIO, con el tipo de negocio y el destino del cliente (sus números del negocio, worker/lib/negocio.js:
+// una lectura, sólo si alguna va a pauta); en «campos», además, el campo «anuncio» (los textos aparte) cuando se pide,
+// y en «plan» lo trae cada una que va a pauta. 3 hashtags como mucho.
+//
 // No pide nada al motor de imagen: eso lo hace la pantalla, pieza a pieza,
 // después de que una persona revisa las ideas y ve el costo.
 // ============================================================
 
 import { llamarIA } from "../cerebro/ia.js";
-import { pedidoDeCampos, leerCampos, FORMATOS_CAMPOS, ORDEN_CAMPOS, MAX_ESCRITO, MAX_PUBLICACIONES_CAMPOS } from "../../../src/lib/camposTexto.js";
-import { llevaCampo } from "../../../src/lib/reglasFormato.js";
+import { pedidoDeCampos, leerCampos, pideCampo, FORMATOS_CAMPOS, ORDEN_CAMPOS, MAX_ESCRITO, MAX_PUBLICACIONES_CAMPOS } from "../../../src/lib/camposTexto.js";
+import { limpiarPauta, bloqueDeAnuncio, lineaDePauta, anunciosDeRespuesta, recortarHashtags } from "../../../src/lib/pauta.js";
+import { leerNegocio } from "../negocio.js";
 import { estrategiaDelCalendario } from "../../../src/lib/estrategiaMes.js";
 import { duracionUgc } from "../../../src/lib/ugc.js";
 import { aprenderComposiciones } from "../../../src/lib/loteAnuncios.js";
@@ -108,6 +114,8 @@ export function limpiarCasillas(lista, activos = [], { formatos = null } = {}) {
       ...(corto(c.cambio, 160) ? { cambio: corto(c.cambio, 160) } : {}),
       // Un video con rostro (UGC): lo graba una persona; el guion es para grabarlo.
       ...(formato === "reel" && c.rostro === true ? { rostro: true } : {}),
+      // Va a pauta: su caption se escribe como anuncio (lib/pauta.js). Un directo no se pauta.
+      ...(formato !== "live" && limpiarPauta(c.pauta) ? { pauta: limpiarPauta(c.pauta) } : {}),
     }];
   });
 }
@@ -128,7 +136,7 @@ export function limpiarParaCampos(lista, activos = []) {
   const limpias = limpiarCasillas(crudas, activos, { formatos: FORMATOS_CAMPOS });
   return limpias.flatMap((c) => {
     const o = crudas.find((x) => corto(x.clave, 40) === c.clave) ?? {};
-    const campos = ORDEN_CAMPOS.filter((k) => Array.isArray(o.campos) && o.campos.includes(k) && llevaCampo(c.formato, k));
+    const campos = ORDEN_CAMPOS.filter((k) => Array.isArray(o.campos) && o.campos.includes(k) && pideCampo(c.formato, k, c.pauta));
     if (!campos.length) return [];
     return [{
       ...c, campos,
@@ -386,9 +394,21 @@ export async function produccionDeLote(env, acceso, cliente, datos = {}) {
     ugc = [lineaDeVozUgc(voz?.texto), escoge ? bloqueDeFormulas(formulas, d).replace(/\nEmpieza tu respuesta[^\n]*$/, "") : ""].filter(Boolean).join("\n\n");
   }
 
+  // Lo que va a pauta: el tipo de negocio y el destino del cliente (sus números del negocio), una lectura y sólo si hace
+  // falta. Si falla, la regla va sin ellos (con WhatsApp de destino, el de casi toda la agencia).
+  let negocio = null;
+  const enPauta = plan.filter((r) => r.pauta);
+  if (enPauta.length) {
+    negocio = await leerNegocio(acceso, cliente.id).catch(() => null);
+    plan = plan.map((r) => (r.pauta ? { ...r, lineaPauta: lineaDePauta(r.pauta, r) } : r));
+  }
+  const bloquePauta = (opciones) => (enPauta.length
+    ? bloqueDeAnuncio({ tipo: negocio?.tipo ?? "", destino: negocio?.destino ?? "", etapas: enPauta.map((r) => r.pauta.etapa), ...opciones })
+    : "");
+
   if (modo === "campos") {
     const pidenGuion = plan.some((r) => r.campos.includes("guion"));
-    const salida = plan.reduce((t, r) => t + r.campos.reduce((u, c) => u + ({ guion: 700, descripcion: 350, idea: 150, textoPieza: 80, hashtags: 80, titulo: 30 }[c] ?? 100), 0), 0) + 600;
+    const salida = plan.reduce((t, r) => t + r.campos.reduce((u, c) => u + ({ guion: 700, descripcion: 350, idea: 150, textoPieza: 80, hashtags: 80, titulo: 30, anuncio: 650 }[c] ?? 100), 0), 0) + 600;
     const r = await llamarIA(env, acceso, cliente, {
       prompt: pedidoDeCampos({
         marca: cliente.name, plan, contexto, estudio: textoEstudio,
@@ -396,12 +416,12 @@ export async function produccionDeLote(env, acceso, cliente, datos = {}) {
         perfiles: Object.fromEntries(perfiles.map((p) => [p.nombre, [p.quien, p.dolor && `le duele: ${p.dolor}`, p.aspiracion && `quiere: ${p.aspiracion}`].filter(Boolean).join("; ")])),
         fechasEspeciales: fechas.map((f) => `${f.fecha} · ${f.nombre}${f.delicada ? " (delicada: sin promociones)" : ""}`),
         usados: (Array.isArray(datos.usados) ? datos.usados : []).map((t) => String(t ?? "").slice(0, 80)).filter(Boolean).slice(0, 30),
-        estrategia, falta: lineaDeLoQueFalta(faltan), ugc, cliente: textoDelCliente(cliente),
+        estrategia, falta: lineaDeLoQueFalta(faltan), ugc, cliente: textoDelCliente(cliente), pauta: bloquePauta({ conCampo: false }),
       }),
       salida,
       funcion: pidenGuion ? "guiones" : plan.length === 1 ? "publicación" : "descripciones",
     });
-    const textos = leerCampos(r.texto, plan).map(({ formula, ...t }) => {
+    const textos = leerCampos(r.texto, plan, { destino: negocio?.destino ?? "" }).map(({ formula, ...t }) => {
       const id = formula ? formulaUsada(`FÓRMULA: ${formula}`, formulas) : "";
       return id ? { ...t, formulaUgc: id } : t;
     });
@@ -422,13 +442,20 @@ export async function produccionDeLote(env, acceso, cliente, datos = {}) {
       ugc,
       identidad: identidadParaFichas(cliente, plan, await manualDelEspacio(acceso).catch(() => null)),
       cliente: textoDelCliente(cliente),
+      pauta: bloquePauta({ conCampo: true, enJson: true }),
     }),
-    // Las de una imagen escriben además su ficha de diseño (unas 350 palabras más cada una).
-    salida: plan.reduce((t, r) => t + (FORMATOS_LOTE[r.formato ?? formato]?.guiado ? 850 : 950), 0) + 800,
+    // Las de una imagen escriben además su ficha de diseño (unas 350 palabras más cada una); las que van a pauta, sus
+    // textos de anuncio.
+    salida: plan.reduce((t, r) => t + (FORMATOS_LOTE[r.formato ?? formato]?.guiado ? 850 : 950) + (r.pauta ? 650 : 0), 0) + 800,
     funcion: modo === "mes" || modo === "plan" ? "lote del mes" : modo === "publicacion" ? "publicación" : "ideas de anuncios",
   });
   const nombres = new Map(rotan.map((p) => [p.id, p.nombre]));
+  // Lo que va a pauta: sus textos de anuncio (vienen en la misma respuesta) y 3 hashtags como mucho.
+  const anuncios = enPauta.length ? anunciosDeRespuesta(r.texto, { destino: negocio?.destino ?? "" }) : new Map();
   const ideas = leerProduccion(r.texto, plan, formato)
+    .map(({ lineaPauta: _l, ...i }) => (i.pauta
+      ? { ...i, ...(i.hashtags ? { hashtags: recortarHashtags(i.hashtags) } : {}), ...(anuncios.get(i.n) ? { anuncio: anuncios.get(i.n) } : {}) }
+      : i))
     .map((i) => (i.productoId ? { ...i, producto: nombres.get(i.productoId) ?? i.producto ?? "" } : i))
     // «Titular\nApoyo»: lo que va escrito en la pieza (el textoPieza de la publicación).
     .map((i) => ({ ...i, textoPieza: textoDeIdea(i) }))

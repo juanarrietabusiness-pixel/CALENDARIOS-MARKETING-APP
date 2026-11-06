@@ -129,6 +129,8 @@ export function casillasSinIdea(cal) {
         ...(semana ? { semana } : {}),
         ...(d.specialDate ? { especial: d.specialDate } : {}),
         ...(formato === "reel" && p.rostro ? { rostro: true } : {}),
+        // Va a pauta: el motor la escribe como anuncio (lo limpia el servidor; lib/pauta.js).
+        ...(p.pauta && typeof p.pauta === "object" ? { pauta: p.pauta } : {}),
       });
     }
   }
@@ -182,7 +184,10 @@ export function rellenarConIdea(post = {}, idea = {}) {
   if (idea.imagen && !carrusel && !video && igual(queda.escena, idea.escena) && igual(queda.textoPieza, propuesta.textoPieza)) {
     Object.assign(cambios, camposDePromptListo(queda, idea.imagen));
   }
-  const NOMBRES = { title: "título", idea: "idea", escena: "qué se ve", textoPieza: "texto de la pieza", guion: "guion", descripcion: "descripción", hashtagsFinales: "hashtags" };
+  // Lo que va a pauta: sus textos de anuncio aparte (un objeto), si no tenía (lib/pauta.js; aquí sin importarlo: este
+  // archivo lo carga el panel y la regla del anuncio arrastra el estudio de mercado).
+  if (idea.anuncio?.textos?.length && !post.anuncio?.textos?.length) cambios.anuncio = idea.anuncio;
+  const NOMBRES = { title: "título", idea: "idea", escena: "qué se ve", textoPieza: "texto de la pieza", guion: "guion", descripcion: "descripción", hashtagsFinales: "hashtags", anuncio: "textos del anuncio" };
   return { cambios, campos: Object.keys(cambios).map((k) => NOMBRES[k]).filter(Boolean) };
 }
 
@@ -200,6 +205,7 @@ export function casillaParaOtra(post = {}, day = {}, { pide = "" } = {}) {
     ...(day?.specialDate ? { especial: day.specialDate } : {}),
     antes: String(post.title || post.idea || "").trim().slice(0, 200),
     ...(String(pide).trim() ? { pide: String(pide).trim().slice(0, 300) } : {}),
+    ...(post.pauta && typeof post.pauta === "object" ? { pauta: post.pauta } : {}),
   };
 }
 
@@ -221,6 +227,8 @@ export function reemplazarConIdea(post = {}, idea = {}) {
     composicion: idea.composicion || "",
     tactica: idea.tactica || "",
     ...(guiado && idea.estructura ? { estructura: idea.estructura } : {}),
+    // Lo que va a pauta: los textos de anuncio de la idea nueva (se pidió otra: también se reemplazan).
+    ...(idea.anuncio?.textos?.length ? { anuncio: idea.anuncio } : {}),
     sugerencia: "",
     promptImagen: "",
     promptImagenDe: "",
