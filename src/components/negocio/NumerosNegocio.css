@@ -1,0 +1,145 @@
+/* ============================================================
+   Marca → «Números del negocio» (components/negocio/NumerosNegocio.jsx)
+   Va con su chunk (lazy): el CSS inicial está en su tope.
+   Móvil primero: una columna; a lo ancho, los números en dos o tres.
+   ============================================================ */
+
+.nn { display: flex; flex-direction: column; gap: var(--sp-3); min-width: 0; }
+.nn > .card { padding: var(--sp-4); }
+/* Los controles de esta pantalla miden 44 px (también los pequeños): se usa con el dedo. */
+.nn .btn-sm { min-height: var(--tap); }
+
+.nn-cabecera { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: var(--sp-2) var(--sp-3); }
+.nn-cabecera .crear-titulo { display: flex; align-items: center; gap: var(--sp-2); flex: 1 1 220px; }
+.nn-campo-corto { margin-bottom: 0; min-width: 0; flex: 0 1 260px; }
+
+/* El número mágico */
+.nn-magico { border-color: var(--accent-line); }
+.nn-magico[data-alarma] { border-color: var(--danger-line); }
+.nn-magico-cuerpo { display: flex; flex-direction: column; gap: var(--sp-2); margin-top: var(--sp-2); }
+.nn-metrica { margin: 0; font-size: var(--fs-xs); color: var(--text-dim); font-weight: 600; }
+.nn-magico-cifras { display: flex; flex-wrap: wrap; gap: var(--sp-3) var(--sp-6); align-items: flex-end; }
+.nn-magico-cifras > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.nn-etiqueta { font-size: var(--fs-3xs); color: var(--text-muted); text-transform: uppercase; letter-spacing: .06em; }
+.nn-grande { font-size: var(--fs-2xl); line-height: var(--lh-tight); color: var(--text); }
+.nn-mediano { font-size: var(--fs-lg); line-height: var(--lh-tight); color: var(--text-dim); }
+.nn-alarma { display: flex; align-items: flex-start; gap: var(--sp-2); margin: 0; }
+.nn-alarma svg { flex-shrink: 0; margin-top: 2px; }
+
+/* El perfil y los grupos de opciones (radios con aspecto de píldora) */
+.nn-perfil { display: grid; grid-template-columns: 1fr; gap: var(--sp-3); }
+.nn-grupo { border: 0; margin: 0; padding: 0; min-width: 0; }
+.nn-opciones { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.nn-opcion {
+  display: inline-flex; align-items: center; gap: var(--sp-2);
+  min-height: var(--tap); padding: 0 var(--sp-3);
+  border: 1px solid var(--border); border-radius: var(--radius-pill);
+  background: var(--surface-2); color: var(--text-dim);
+  font-size: var(--fs-xs); font-weight: 600; cursor: pointer;
+}
+.nn-opcion input { margin: 0; accent-color: var(--accent); width: 18px; height: 18px; }
+.nn-opcion[data-activa] { background: var(--accent-soft); border-color: var(--accent-line); color: var(--text); }
+.nn-opcion:focus-within { box-shadow: 0 0 0 3px var(--accent-soft); }
+.nn-grupo:disabled .nn-opcion { cursor: default; opacity: .8; }
+
+/* Los números */
+.nn-campos { display: grid; grid-template-columns: 1fr; gap: var(--sp-3); margin-top: var(--sp-3); }
+.nn-campo { min-width: 0; display: flex; flex-direction: column; gap: var(--sp-1); }
+.nn-campo .label { margin-bottom: 0; }
+.nn-entrada { display: flex; align-items: center; gap: var(--sp-2); }
+.nn-entrada .input { flex: 1 1 auto; min-width: 0; }
+.nn-unidad { font-size: var(--fs-xs); color: var(--text-muted); flex-shrink: 0; }
+.nn-campo-pie { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-1) var(--sp-2); min-height: 0; }
+.nn-campo-pie .hint { margin: 0; }
+
+.nn-origen {
+  display: inline-flex; align-items: center;
+  font-size: var(--fs-3xs); font-weight: 600;
+  padding: 2px var(--sp-2); border-radius: var(--radius-pill);
+  background: var(--surface-2); color: var(--text-dim); border: 1px solid var(--border);
+}
+.nn-origen[data-origen="estimado"] { background: var(--alt-soft); border-color: var(--alt-line); color: var(--accent-alt); }
+.nn-origen[data-origen="meta"] { background: var(--accent-soft); border-color: var(--accent-line); color: var(--text); }
+.nn-origen[data-origen="medida"] { background: rgba(102, 187, 106, .14); border-color: var(--success); color: var(--success); }
+.nn-origen[data-origen="cliente"] { color: var(--text); }
+
+.nn-ayuda { font-size: var(--fs-2xs); color: var(--text-dim); }
+.nn-ayuda summary {
+  cursor: pointer; display: inline-flex; align-items: center;
+  min-height: var(--tap-sm); color: var(--accent); font-weight: 600;
+}
+@media (pointer: coarse) { .nn-ayuda summary { min-height: var(--tap); } }
+.nn-ayuda p { margin: 0 0 var(--sp-1); line-height: var(--lh-normal); }
+
+/* Los costos variables */
+.nn-costos { border: 0; margin: var(--sp-4) 0 0; padding: 0; min-width: 0; }
+.nn-costos-lista { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-2); }
+.nn-costo {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(72px, 96px); gap: var(--sp-2);
+  align-items: end; padding: var(--sp-2); background: var(--surface-2); border-radius: var(--radius-sm);
+}
+.nn-costo .field { margin: 0; min-width: 0; }
+.nn-costo-pie { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); }
+.nn-quitar { margin-left: auto; }
+.nn-costo-nota { margin: 0; min-width: 0; }
+
+.nn-botones { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-top: var(--sp-2); }
+
+/* Lo que propone la IA */
+.nn-propuesta { margin-top: var(--sp-3); padding: var(--sp-3); border: 1px dashed var(--alt-line); border-radius: var(--radius-sm); background: var(--alt-soft); }
+.nn-propuesta-titulo { margin: 0 0 var(--sp-2); display: flex; align-items: center; gap: var(--sp-1); font-size: var(--fs-xs); font-weight: 700; color: var(--accent-alt); }
+.nn-propuesta-lista { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-2); }
+.nn-propuesta-lista li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--sp-2); font-size: var(--fs-xs); }
+.nn-propuesta-lista li > span { flex: 1 1 220px; min-width: 0; }
+
+/* Guardar */
+.nn-guardar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2) var(--sp-3); margin-top: var(--sp-4); padding-top: var(--sp-3); border-top: 1px solid var(--border); }
+.nn-guardar .hint { margin: 0; }
+
+/* Las cifras de cada calculadora */
+.nn-cifras { margin: 0; display: grid; grid-template-columns: 1fr; gap: var(--sp-1); }
+.nn-cifra { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 0 var(--sp-3); padding: var(--sp-2) 0; border-bottom: 1px solid var(--border-soft); }
+.nn-cifra dt { font-size: var(--fs-xs); color: var(--text-dim); }
+.nn-cifra dd { margin: 0; font-size: var(--fs-sm); font-weight: 600; color: var(--text); text-align: right; }
+.nn-cifra dd .hint { font-weight: 400; }
+.nn-cifra[data-fuerte] dd { font-size: var(--fs-md); color: var(--accent); }
+
+.nn-reparto { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-1); }
+.nn-reparto li { display: flex; justify-content: space-between; gap: var(--sp-2); font-size: var(--fs-xs); padding: var(--sp-1) var(--sp-2); background: var(--surface-2); border-radius: var(--radius-sm); }
+
+.nn-ensayo { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--sp-2) var(--sp-3); margin-top: var(--sp-3); }
+.nn-ensayo-texto { margin: 0; flex: 1 1 260px; font-size: var(--fs-xs); line-height: var(--lh-normal); padding: var(--sp-2) var(--sp-3); border-radius: var(--radius-sm); background: var(--surface-2); }
+.nn-ensayo-texto[data-signo="mas"] strong { color: var(--success); }
+.nn-ensayo-texto[data-signo="menos"] strong { color: var(--danger); }
+
+/* Las tablas: desplazan dentro de su caja, nunca la página. */
+.nn-tabla-plegable { margin-top: var(--sp-3); }
+.nn-tabla-plegable summary { cursor: pointer; min-height: var(--tap); display: flex; align-items: center; font-size: var(--fs-xs); font-weight: 600; color: var(--accent); }
+.nn-tabla-caja { overflow-x: auto; max-width: 100%; border: 1px solid var(--border); border-radius: var(--radius-sm); margin-top: var(--sp-2); }
+.nn-tabla-caja:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.nn-tabla { border-collapse: collapse; width: 100%; font-size: var(--fs-2xs); font-variant-numeric: tabular-nums; }
+.nn-tabla th, .nn-tabla td { padding: var(--sp-2); text-align: right; white-space: nowrap; border-bottom: 1px solid var(--border-soft); }
+.nn-tabla thead th { color: var(--text-muted); font-weight: 600; background: var(--surface-2); position: sticky; top: 0; }
+.nn-tabla tbody th { color: var(--text-dim); font-weight: 600; text-align: left; background: var(--surface-2); position: sticky; left: 0; }
+.nn-tabla td[data-signo="mas"] { color: var(--success); }
+.nn-tabla td[data-signo="menos"] { color: var(--danger); }
+.nn-tabla th[data-actual], .nn-tabla tr[data-actual] th { color: var(--text); }
+.nn-tabla td[data-actual] { outline: 2px solid var(--accent); outline-offset: -2px; font-weight: 700; }
+.nn-tabla-sim td, .nn-tabla-sim th { font-size: var(--fs-xs); }
+.nn-tabla-sim tr[data-principal] td { font-weight: 700; color: var(--text); }
+
+/* El simulador */
+.nn-sim-entradas { display: grid; grid-template-columns: 1fr; gap: 0 var(--sp-3); margin-top: var(--sp-2); }
+.nn-sim-entradas .field { min-width: 0; margin-bottom: var(--sp-3); }
+.nn-sim-entradas .nn-origen { margin-top: var(--sp-1); }
+
+@media (min-width: 600px) {
+  .nn-campos, .nn-sim-entradas { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .nn-costo { grid-template-columns: minmax(0, 1fr) 96px auto; }
+  .nn-costo-pie { grid-column: auto; justify-content: flex-end; min-height: var(--tap); }
+}
+@media (min-width: 1024px) {
+  .nn-perfil { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .nn-campos, .nn-sim-entradas { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .nn-cifras { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: var(--sp-5); }
+}

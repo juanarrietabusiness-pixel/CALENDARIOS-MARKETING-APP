@@ -15,7 +15,8 @@
 //   GET  /clientes/:c/intereses?q=                 Buscar intereses de Meta (conjuntos por intereses)
 //   GET  /clientes/:c/publicos                     Públicos de la cuenta (personalizados y similares)
 //   POST /clientes/:c/similares { origenId, pais, porcentaje }  Crear un público similar (no gasta)
-//   POST /clientes/:c/diagnostico { costoMax?, conIA? }   Qué apagar, escalar o renovar (reglas; la IA lo explica)
+//   POST /clientes/:c/diagnostico { costoMax?, conIA? }   Qué apagar, escalar o renovar (reglas; la IA lo explica).
+//                                                  Sin costoMax, el número mágico de los números del negocio
 //   POST /clientes/:c/objetos/:id/pausar           Pausar un conjunto o un anuncio de la cuenta del cliente
 //   POST /clientes/:c/conjuntos/:id/presupuesto { diario, confirmado }  Subir o bajar (admin, confirmando)
 //   GET  /manual · PUT /manual                     El «Manual de campañas de la agencia» (el estratega lo lee)
@@ -31,6 +32,7 @@
 //   GET  /clientes/:c/informes/:mes                Uno entero
 //   POST /clientes/:c/informes/:mes/compartir { compartido, mostrarCosto }   El enlace del cliente
 //   DELETE /clientes/:c/informes/:mes
+//   GET|PUT /clientes/:c/negocio · POST /clientes/:c/negocio/proponer   Los números del negocio (worker/lib/negocio.js)
 //   (y sin sesión, en worker/index.js: GET /api/publico-informe-anuncios/:testigo)
 //
 // ACTIVAR ES DEL SERVIDOR, NO DE LA PANTALLA. La pantalla enseña un
@@ -59,6 +61,7 @@ import {
   generarInformeAnuncios, ajustesInforme, guardarAjustesInforme, resumenInformeAnuncios, contenidoInforme,
 } from "../lib/informeAnuncios.js";
 import { testigo as nuevoTestigo } from "../lib/ids.js";
+import { rutasNegocio, costoAceptableDelCliente } from "../lib/negocio.js";
 
 const leerJSON = (t, d) => { try { return JSON.parse(t) ?? d; } catch { return d; } };
 const miniatura = (u) => (u ? `/api/metricas/miniatura?u=${encodeURIComponent(u)}` : "");
@@ -195,6 +198,8 @@ async function atender(req, env, { acceso, usuario, partes, metodo }) {
 
   // ---- El informe de anuncios: se puede abrir (y ajustar) sin cuenta asignada todavía ----
   if (sub === "informes" || sub === "ajustes-informe") return await rutasInforme(req, env, { acceso, usuario, clientId: id, sub, mes: subId, accion, metodo });
+  // ---- Los números del negocio (Marca): tampoco piden cuenta asignada ----
+  if (sub === "negocio") return await rutasNegocio(req, env, { acceso, usuario, clientId: id, accion: subId, metodo });
 
   // ---- De un cliente ----
   const { cliente, cuenta } = await clienteYCuenta(acceso, id, { exigirCuenta: sub !== "historial" && sub !== "medios" });
@@ -290,7 +295,14 @@ async function atender(req, env, { acceso, usuario, partes, metodo }) {
   // ---- El diagnóstico y lo que propone ----
   if (sub === "diagnostico" && metodo === "POST") {
     const datos = (await cuerpo(req)) ?? {};
-    const costoMax = Number(datos.costoMax) > 0 ? Number(datos.costoMax) : 0;
+    // Lo aceptable: lo que se teclee; si no, el número mágico guardado (Marca → Números del negocio); si no, el
+    // promedio de 30 días de cada campaña (lo hace `diagnosticar` con 0).
+    let costoMax = Number(datos.costoMax) > 0 ? Number(datos.costoMax) : 0;
+    let origenCosto = costoMax ? "escrito" : "promedio";
+    if (!costoMax) {
+      const aceptable = await costoAceptableDelCliente(acceso, cliente.id);
+      if (aceptable) { costoMax = aceptable.valor; origenCosto = "numero-magico"; }
+    }
     const d = diagnosticar(await datosDiagnostico(env, token, cuenta), { costoMax, moneda: cuenta.moneda });
     let explicacion = "";
     let avisoIA = null;
@@ -303,7 +315,7 @@ async function atender(req, env, { acceso, usuario, partes, metodo }) {
         avisoIA = e.message;
       }
     }
-    return json({ ...d, moneda: cuenta.moneda, costoMax, explicacion, avisoIA });
+    return json({ ...d, moneda: cuenta.moneda, costoMax, origenCosto, explicacion, avisoIA });
   }
 
   if (sub === "objetos" && subId && accion === "pausar" && metodo === "POST") {

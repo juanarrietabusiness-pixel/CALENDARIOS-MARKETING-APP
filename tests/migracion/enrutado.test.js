@@ -1357,6 +1357,23 @@ describe("anuncios de Meta (/api/anuncios)", () => {
     expect((await worker.fetch(conSesion("/api/anuncios/clientes/cliente-de-otro/campanas"), env)).status).toBe(404);
   });
 
+  it("los números del negocio llegan a su rama SIN cuenta publicitaria (no es el 409 de las campañas)", async () => {
+    // La lógica entera, contra una D1 de verdad, está en negocio.test.js.
+    const env = await entorno();
+    const res = await worker.fetch(conSesion("/api/anuncios/clientes/cliente-1/negocio"), env);
+    expect(res.status).toBe(200);
+    const d = await res.json();
+    expect(d).toMatchObject({ negocio: { v: 1, costos: [] }, tasaDefecto: 5, cuenta: null, lectura: null });
+    expect(d.avisoMeta).toMatch(/Sin cuenta publicitaria/);
+    expect((await worker.fetch(conSesion("/api/anuncios/clientes/cliente-de-otro/negocio"), env)).status).toBe(404);
+    // «Proponer» llega a la IA: sin llave lo dice, en vez de un 404 de ruta.
+    const p = await worker.fetch(conSesion("/api/anuncios/clientes/cliente-1/negocio/proponer", {
+      method: "POST", body: JSON.stringify({}), headers: { "Content-Type": "application/json" },
+    }), env);
+    expect(p.status).toBe(503);
+    expect((await p.json()).error).toMatch(/llave de IA/);
+  });
+
   it("una ruta que no existe es 404, y sin sesión 401", async () => {
     const env = await entorno();
     expect((await worker.fetch(conSesion("/api/anuncios/no-existe"), env)).status).toBe(404);

@@ -22,6 +22,7 @@
 import { limpiarDisenoTipos } from "./director.js";
 import { ELEMENTOS_MERCADO } from "./estudioMercado.js";
 import { OBJETIVOS, DESTINOS, TIPOS_CONJUNTO, MAX_CONJUNTOS, MAX_ANUNCIOS, MAX_TARJETAS, EDAD_MIN, EDAD_MAX, MAX_TEXTO, MAX_TITULO } from "./anuncios.js";
+import { TASA_CIERRE_DEFECTO } from "./numerosNegocio.js";
 
 /** Las mejoras de oferta que la agencia propone (como sugerencia: la decide el cliente). */
 export const TIPOS_OFERTA = Object.freeze({
@@ -47,7 +48,8 @@ export const NOMENCLATURA_POR_DEFECTO = Object.freeze({
 });
 
 export const MAX_MANUAL = 6000;
-export const TASA_CIERRE_POR_DEFECTO = 20; // de cada 100 conversaciones, cuántas compran
+// De cada 100 conversaciones, cuántas compran: la del curso (5 %) hasta medir la del cliente (decisión 4). Era 20.
+export const TASA_CIERRE_POR_DEFECTO = TASA_CIERRE_DEFECTO;
 const MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
 
 const num = (v) => {
