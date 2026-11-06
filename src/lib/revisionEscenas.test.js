@@ -154,6 +154,25 @@ describe("la revisión de las escenas", () => {
     // En la primera, la capa «t» entra en la palabra 5: el instante lleno es después.
     expect(instanteLleno(g, l, 0)).toBeGreaterThan(l.escenas[0].palabras[5].desde);
   });
+
+  it("un texto palabra por palabra está lleno cuando se dice su ÚLTIMA palabra, no cuando entra", () => {
+    // e2 dice «El primero: decidir sólo por el precio y no por lo que de verdad necesitas.»
+    const g = con((x) => { x.escenas[1].capas[1] = { tipo: "texto", id: "l", texto: "Decidir por lo que necesitas", rol: "apoyo", porPalabra: true, entra: { palabra: 2 } }; });
+    const l = lineaDeTiempo(g);
+    const necesitas = l.escenas[1].palabras.at(-1);
+    expect(necesitas.texto).toMatch(/necesitas/);
+    const t = instanteLleno(g, l, 1);
+    expect(t).toBeGreaterThan(necesitas.desde);
+    expect(t).toBeLessThan(l.escenas[1].hasta);
+  });
+
+  it("un titular corto en el centro no está «fuera de la zona estricta»: cuenta lo que se ve, no su columna", () => {
+    const g = con((x) => { x.escenas[1].capas[1] = { tipo: "texto", id: "l", texto: "El precio", rol: "titular", pos: "abajo" }; });
+    expect(revisar(g).filter((p) => p.tipo === "zona_esencial" && p.capa === "l")).toEqual([]);
+    // Alineado a la derecha y con x/y pegado al borde sí se sale (lo tapan los botones de la red).
+    const der = con((x) => { x.escenas[1].capas[1] = { tipo: "texto", id: "l", texto: "El precio", rol: "titular", alinear: "der", pos: { x: 0.6, y: 0.5 } }; });
+    expect(revisar(der).some((p) => (p.tipo === "zona_esencial" || p.tipo === "zona_segura") && p.capa === "l")).toBe(true);
+  });
 });
 
 describe("la zona estricta del texto esencial y lo que entra por partes", async () => {

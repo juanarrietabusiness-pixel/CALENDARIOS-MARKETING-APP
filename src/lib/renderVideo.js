@@ -17,7 +17,7 @@ import { tieneHabla } from "./videoEscenas.js";
 import { esCancion, estadoDeCancion } from "./videoCancion.js";
 
 /** Lo fijo del render. -14 LUFS integrados, el pico verdadero a -1,5 dB y el rango que admite la voz hablada. */
-export const RENDER = Object.freeze({ fps: 30, lufs: -14, pico: -1.5, rango: 11, muestreo: 48000, kbpsAudio: 192, crf: 20 });
+export const RENDER = Object.freeze({ fps: 30, lufs: -14, pico: -1.5, rango: 11, muestreo: 48000, kbpsAudio: 192, crf: 20, kbpsVideoMax: 12000 });
 
 /** Lo que tarda como mucho un render antes de darlo por perdido (el Durable Object pudo morir a la mitad). */
 export const PLAZO_RENDER_MS = 15 * 60 * 1000;

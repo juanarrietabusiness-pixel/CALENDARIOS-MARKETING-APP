@@ -243,8 +243,6 @@ export async function ejecutarRender(env, { ownerId, clienteId, videoId, intento
       const j = await r.json().catch(() => ({}));
       throw new Error(j.error || `El Container respondió ${r.status}.`);
     }
-    const bytes = new Uint8Array(await r.arrayBuffer());
-    if (!esMp4(bytes)) throw new Error("El Container no devolvió un mp4.");
     const h = (k) => r.headers.get(k);
     const num = (k) => (h(k) === null || h(k) === "" ? null : Number(h(k)));
     const ancho = num("X-Ancho") ?? 0;
@@ -252,7 +250,7 @@ export async function ejecutarRender(env, { ownerId, clienteId, videoId, intento
     const duracion = num("X-Duracion") ?? 0;
 
     const clave = claveDeArchivo(clienteId, `video ${fila.titulo}`, "video/mp4");
-    await env.MEDIA.put(clave, bytes, { httpMetadata: { contentType: "video/mp4" } });
+    const bytes = { byteLength: await guardarMp4(env, clave, r) };
     const medio = medioDelRender(fila, { clave, ancho, alto, duracion });
     const puesto = await ponerEnPublicacion(env, acceso, fila, medio);
     const momento = ahora();
@@ -291,6 +289,43 @@ export async function ejecutarRender(env, { ownerId, clienteId, videoId, intento
     if (escrito) await avisarRender(env, acceso, fila, fallido);
     return null;
   }
+}
+
+/**
+ * El mp4 que devuelve el Container, a R2 POR FLUJO (→ lo que pesa). Leerlo entero en memoria reventaba el Durable
+ * Object («Memory limit exceeded before EOF»): un video de 100 s con fondos de imagen y grano pasa de 100 MB, y el objeto
+ * tiene 128. R2 pide saber el largo de un flujo (`FixedLengthStream`, del runtime de Workers): el Container lo dice en
+ * `X-Bytes` (o `Content-Length`). Los primeros bytes se miran al pasar, y si no es un mp4 se borra y falla. Sin largo o
+ * fuera de Workers (las pruebas), como antes: entero en memoria.
+ */
+export async function guardarMp4(env, clave, r) {
+  const largo = Number(r.headers.get("X-Bytes") || r.headers.get("Content-Length") || 0);
+  const Fijo = globalThis.FixedLengthStream;
+  if (!(largo > 0) || typeof Fijo !== "function" || !r.body) {
+    const bytes = new Uint8Array(await r.arrayBuffer());
+    if (!esMp4(bytes)) throw new Error("El Container no devolvió un mp4.");
+    await env.MEDIA.put(clave, bytes, { httpMetadata: { contentType: "video/mp4" } });
+    return bytes.byteLength;
+  }
+  let cabeza = new Uint8Array(0);
+  const mirar = new TransformStream({
+    transform(trozo, ctl) {
+      if (cabeza.length < 16) {
+        const junto = new Uint8Array(cabeza.length + trozo.length);
+        junto.set(cabeza);
+        junto.set(trozo, cabeza.length);
+        cabeza = junto.slice(0, 16);
+      }
+      ctl.enqueue(trozo);
+    },
+  });
+  const fijo = new Fijo(largo);
+  await env.MEDIA.put(clave, r.body.pipeThrough(mirar).pipeThrough(fijo), { httpMetadata: { contentType: "video/mp4" } });
+  if (!esMp4(cabeza)) {
+    await env.MEDIA.delete(clave).catch(() => {});
+    throw new Error("El Container no devolvió un mp4.");
+  }
+  return largo;
 }
 
 /**

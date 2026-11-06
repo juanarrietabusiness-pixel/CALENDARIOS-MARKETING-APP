@@ -40,7 +40,12 @@ function r2(objetos = new Map()) {
       return b ? { size: b.length, arrayBuffer: async () => b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) } : null;
     },
     async head(k) { return objetos.has(k) ? { size: objetos.get(k).length } : null; },
-    async put(k, v) { objetos.set(k, v instanceof Uint8Array ? v : new Uint8Array(v)); },
+    async put(k, v) {
+      // Un flujo (el mp4 que va por flujo a R2) se lee entero, como haría R2.
+      if (v instanceof ReadableStream) v = new Uint8Array(await new Response(v).arrayBuffer());
+      objetos.set(k, v instanceof Uint8Array ? v : new Uint8Array(v));
+    },
+    async delete(k) { objetos.delete(k); },
   };
 }
 
@@ -144,6 +149,33 @@ describe("hacer el render (la alarma del objeto)", () => {
     await renderizar(id);
     return { id, encargo: encargos.at(-1).cuerpo };
   }
+
+  it("el mp4 va a R2 POR FLUJO con su largo (leerlo entero reventaba la memoria del objeto)", async () => {
+    const { id, encargo } = await encargado();
+    const largos = [];
+    // FixedLengthStream es del runtime de Workers: aquí, uno que deja pasar y apunta el largo que se le dio.
+    globalThis.FixedLengthStream = class extends TransformStream { constructor(n) { super(); largos.push(n); } };
+    try {
+      const r = await ejecutarRender(env, encargo, async () => new Response(MP4, {
+        headers: { "Content-Type": "video/mp4", "X-Bytes": String(MP4.length), "X-Duracion": "13.8", "X-Ancho": "1080", "X-Alto": "1920" },
+      }));
+      expect(r.estado).toBe("listo");
+      expect(largos).toEqual([MP4.length]);
+      const render = JSON.parse(fila(id).render);
+      expect(env.MEDIA.objetos.get(render.clave)).toEqual(MP4);
+      expect(render.bytes).toBe(MP4.length);
+
+      // Lo que no es un mp4 se borra de R2 y el render falla con su motivo.
+      const otro = await encargado();
+      const antes = env.MEDIA.objetos.size;
+      const mal = await ejecutarRender(env, otro.encargo, async () => new Response(new Uint8Array(40), { headers: { "X-Bytes": "40" } }));
+      expect(mal).toBeNull();
+      expect(JSON.parse(fila(otro.id).render)).toMatchObject({ estado: "fallido", error: "El Container no devolvió un mp4." });
+      expect(env.MEDIA.objetos.size).toBe(antes);
+    } finally {
+      delete globalThis.FixedLengthStream;
+    }
+  });
 
   it("manda la voz y lo del cliente; el mp4 va a R2, a la galería y a su publicación (primero)", async () => {
     const { id, encargo } = await encargado();

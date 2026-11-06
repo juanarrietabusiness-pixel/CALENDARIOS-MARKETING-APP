@@ -182,7 +182,11 @@ export async function renderizar(base, { audio = null, musica = null, efectos = 
       // adivina y los colores del kit salen corridos.
       "-vf", "scale=out_color_matrix=bt709:out_range=tv,format=yuv420p",
       "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
-      "-c:v", "libx264", "-preset", "veryfast", "-crf", String(RENDER.crf), "-profile:v", "high", "-r", String(fps),
+      "-c:v", "libx264", "-preset", "veryfast", "-crf", String(RENDER.crf),
+      // Tope de bitrate: con fondos de imagen y grano, el crf solo subía a decenas de Mbps (más de 100 MB en 100 s) y
+      // Instagram admite como mucho 25 Mbps en un reel.
+      "-maxrate", `${RENDER.kbpsVideoMax}k`, "-bufsize", `${RENDER.kbpsVideoMax * 2}k`,
+      "-profile:v", "high", "-r", String(fps),
       "-c:a", "copy", "-t", duracion.toFixed(3), "-movflags", "+faststart", salida,
     ], { conEntrada: true });
     let roto = null;
