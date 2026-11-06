@@ -10,7 +10,7 @@
 export const HERRAMIENTAS_DISENO = Object.freeze([
     {
       name: "disenar_piezas",
-      description: "Diseña de 1 a 12 piezas de imagen con diseño gráfico (posts, historias, portadas, anuncios, las láminas de un carrusel) para este cliente, una FICHA DE DISEÑO cada una. Los productos, SÓLO del catálogo y con sus ids en «productos». La persona ve las fichas y el costo y aprueba con un botón (no le pidas el «sí» antes). Al terminar recibes cada imagen para revisarla.",
+      description: "Diseña de 1 a 12 piezas de imagen con diseño gráfico (posts, historias, portadas, anuncios, las láminas de un carrusel) para este cliente, una FICHA DE DISEÑO cada una. Los productos, SÓLO del catálogo y con sus ids en «productos». La persona ve las fichas y el costo y aprueba con un botón (no le pidas el «sí» antes); si la agencia fijó «crear sin preguntar» (Ajustes → IA), con el modelo del cliente y dentro de su tope se crean directo. Va con el modelo del cliente: sugiere otro (modelo + motivo_modelo) sólo si de verdad conviene, y la tarjeta se lo pregunta a la persona. Al terminar recibes cada imagen para revisarla.",
       input_schema: {
         type: "object",
         properties: {
@@ -18,6 +18,8 @@ export const HERRAMIENTAS_DISENO = Object.freeze([
           carrusel: { type: "boolean", description: "true si las piezas son las láminas de UN carrusel, en su orden (portada primero): quedan agrupadas en la galería como un carrusel. Todas en formato vertical 4:5." },
           post_id: { type: "string", description: "Con carrusel=true: la publicación del calendario donde va el carrusel ENTERO. Al terminar, sus láminas quedan puestas en ella, en orden y listas para revisar (reemplazan lo que tuviera; lo de antes sigue en la galería)." },
           productos: { type: "array", items: { type: "string" }, maxItems: 6, description: "Los ids del CATÁLOGO del cliente (los del sistema) de los productos que enseña la tanda o el carrusel: sus fotos reales van de referencia en cada pieza que no diga los suyos. Sólo ids que existan; si no sabes cuál, pregúntale a la persona antes." },
+          modelo: { type: "string", description: "Opcional: el ID de OTRO modelo de imagen que sugieres en vez del del cliente (un texto exacto largo que el suyo escribe mal, una proporción que no hace). Sólo con motivo_modelo: la persona lo ve y escoge." },
+          motivo_modelo: { type: "string", description: "Por qué sugieres ese modelo, en una frase corta: se le enseña a la persona en la tarjeta." },
           piezas: {
             type: "array",
             minItems: 1,

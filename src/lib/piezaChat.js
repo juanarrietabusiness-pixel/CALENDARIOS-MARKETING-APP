@@ -20,13 +20,15 @@
 // ============================================================
 
 import * as api from "./estudio";
-import { estimar, CONFIRMAR_DESDE, textoCosto, modeloPorId } from "./estudioCatalogo";
+import { estimar, textoCosto, modeloPorId } from "./estudioCatalogo";
 import { apoyosDePieza, pedidoDePieza } from "./pieza";
 import { productosNombrados } from "./referencias";
 import { esperarArchivos } from "./carruselEstudio";
 import { esFicha, textoDeLaFicha } from "./director";
 import { nombreDePreset, referenciaDePlantilla, lineaDePlantillaEnPedido } from "./kitMarca";
 import { crearUnaEnServidor, pasoListo } from "./piezaServidor";
+import { decidir } from "./sinPreguntarApi";
+import { textoSugerencia, textoDelMotivo, textoSinPreguntar } from "./sinPreguntar";
 
 /** Del tamaño del chat a la proporción del motor. */
 const PROPORCION = Object.freeze({ square: "1:1", vertical: "4:5", story: "9:16", horizontal: "16:9" });
@@ -47,16 +49,25 @@ function armar({ cliente, idea, g, kit, modelo, estilo, deseada, video, activos,
 }
 
 /**
- * Crea la pieza y espera a que salga. → { archivo, modelo, costo } o, si cuesta desde CONFIRMAR_DESDE y no viene
- * `confirmado`, { confirmar: costo, modelo } sin crear nada (la persona tiene que decir que sí).
+ * Crea la pieza y espera a que salga. → { archivo, modelo, costo, sinPreguntar } o, si hay que preguntar y no viene
+ * `confirmado`, { confirmar: costo, modelo, fijo, sugerencia, motivo } sin crear nada (la persona tiene que decir que sí).
+ * Se pregunta desde 0,50 $, salvo que el espacio tenga fijado «crear imágenes sin preguntar» (src/lib/sinPreguntar.js):
+ * entonces una imagen con el modelo del cliente dentro del tope sale directa (`sinPreguntar`: el tope, para decirlo).
+ * `modelo`: OTRO modelo que sugiere el asistente (con `motivoModelo`): con el ajuste puesto, eso siempre se pregunta.
  */
-export async function crearPiezaParaElChat({ cliente, idea, tipo = "imagen", formato = "square", estilo = "", confirmado = false, alProgresar = () => {} }) {
+export async function crearPiezaParaElChat({ cliente, idea, tipo = "imagen", formato = "square", estilo = "", modelo: sugeridoId = "", motivoModelo = "", confirmado = false, alProgresar = () => {} }) {
   const clienteId = cliente.dbId || cliente.id;
   const video = tipo === "video";
   const [g, m] = await Promise.all([api.leerEstudio(clienteId), api.leerMotores()]);
   const activos = Object.fromEntries(Object.entries(m?.motores ?? {}).map(([k, v]) => [k, v.activo]));
   const kit = g?.kit ?? {};
-  const modelo = api.modeloPreferido(activos, video ? "video" : "imagen", kit.modelos?.[video ? "video" : "imagen"]);
+  const fijo = api.modeloPreferido(activos, video ? "video" : "imagen", kit.modelos?.[video ? "video" : "imagen"]);
+  // El que sugiere el asistente, si existe, es de este tipo y tiene llave; si no, el del cliente.
+  const pedido0 = sugeridoId ? modeloPorId(String(sugeridoId)) : null;
+  const sugerido = pedido0 && pedido0.tipo === (video ? "video" : "imagen") && (pedido0.motor === "prueba" || activos[pedido0.motor]) ? pedido0 : null;
+  if (sugeridoId && !sugerido) throw new Error(`«${sugeridoId}» no es un modelo de ${video ? "video" : "imagen"} con llave: no pases modelo (va el del cliente) o escoge uno que tenga.`);
+  const modelo = sugerido ?? fijo;
+  const otroMotor = Boolean(sugerido && fijo && sugerido.id !== fijo.id);
   if (!modelo) throw new Error(`No hay ningún modelo de ${video ? "video" : "imagen"} con llave.`);
   const deseada = PROPORCION[formato] ?? (video ? "9:16" : "1:1");
 
@@ -64,13 +75,20 @@ export async function crearPiezaParaElChat({ cliente, idea, tipo = "imagen", for
   const borrador = armar({ cliente, idea, g, kit, modelo, estilo, deseada, video, activos });
   const usado = modeloPorId(borrador.modelo) ?? modelo;
   const costo = estimar(usado, 1, borrador.ajustes);
-  if (costo >= CONFIRMAR_DESDE && !confirmado) return { confirmar: costo, modelo: usado };
+  const d = confirmado ? { preguntar: false, sinPreguntar: false } : await decidir({ costo, tipo: video ? "video" : "imagen", otroMotor });
+  if (d.preguntar) {
+    return {
+      confirmar: costo, modelo: usado, fijo, motivo: textoDelMotivo(d),
+      sugerencia: otroMotor ? textoSugerencia({ sugerido: usado.nombre, fijo: fijo.nombre, motivo: motivoModelo }) : "",
+    };
+  }
+  const sinPreguntar = d.sinPreguntar ? d.tope : 0;
 
   if (video) {
     alProgresar(`Creando el video con ${usado.nombre} (puede tardar unos minutos)…`);
     const { trabajo } = await api.pedirImagenes(clienteId, { ...borrador, confirmado: true });
     const [archivo] = await esperarArchivos(clienteId, trabajo);
-    return { archivo, modelo: usado, costo };
+    return { archivo, modelo: usado, costo, sinPreguntar };
   }
 
   // Lo que no es ya una ficha de diseño, lo diseña el director (como el lote): la escena, el texto exacto, la plantilla.
@@ -91,12 +109,21 @@ export async function crearPiezaParaElChat({ cliente, idea, tipo = "imagen", for
     clienteId, kit, alProgresar, paso: pasoListo({ titulo: "Pieza del asistente", pedido, texto: textoDeLaFicha(ficha), kit }),
   });
   if (!archivo) throw new Error("La imagen no llegó. Prueba otra vez.");
-  return { archivo, modelo: final, costo: estimar(final, 1, pedido.ajustes) };
+  return { archivo, modelo: final, costo: estimar(final, 1, pedido.ajustes), sinPreguntar };
 }
 
 /** Lo que se le dice al modelo cuando la pieza cuesta y falta el «sí». */
-export const fraseDeConfirmar = ({ confirmar, modelo }, video) =>
-  `NO SE CREÓ NADA. ${video ? "Este video" : "Esta imagen"} cuesta ${textoCosto(confirmar)} (${modelo.nombre}). Díselo al usuario con esa cifra y pregúntale si la hago. Sólo si dice que sí, vuelve a llamar con los MISMOS datos y confirmado=true.`;
+export const fraseDeConfirmar = ({ confirmar, modelo, fijo, sugerencia = "", motivo = "" }, video) =>
+  [
+    `NO SE CREÓ NADA. ${video ? "Este video" : "Esta imagen"} cuesta ${textoCosto(confirmar)} (${modelo.nombre}).`,
+    motivo,
+    sugerencia
+      ? `${sugerencia} Díselo al usuario con la cifra y el porqué, y pregúntale cuál. Si acepta, vuelve a llamar con los MISMOS datos y confirmado=true; si se queda con el suyo (${fijo?.nombre ?? "el del cliente"}), vuelve a llamar SIN modelo.`
+      : "Díselo al usuario con esa cifra y pregúntale si la hago. Sólo si dice que sí, vuelve a llamar con los MISMOS datos y confirmado=true.",
+  ].filter(Boolean).join(" ");
+
+/** Lo que se le dice al modelo cuando la pieza salió sin preguntar gracias al ajuste del espacio (vacío si no). */
+export const fraseSinPreguntar = (r) => (r?.sinPreguntar ? ` ${textoSinPreguntar(r.sinPreguntar)}` : "");
 
 /** Que la papelera del Estudio sepa que una publicación usa el archivo. */
 export const apuntarUso = api.apuntarUso;

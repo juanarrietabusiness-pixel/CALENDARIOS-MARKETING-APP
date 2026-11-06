@@ -59,6 +59,21 @@ export function modeloFinal(activos = {}) {
   return null;
 }
 
+/**
+ * El modelo que SUGIERE el asistente (`modelo` de disenar_piezas) si es otro que el del cliente, es de imagen y tiene
+ * llave; si no, null (va el del cliente). Lanza si el id no sirve: el asistente lo puede corregir. Pura.
+ */
+export function modeloSugerido(ctx, id = "") {
+  const pedido = String(id ?? "").trim();
+  if (!pedido) return null;
+  const m = modeloPorId(pedido);
+  if (!(m && m.tipo === "imagen" && (m.motor === "prueba" || ctx.activos?.[m.motor]))) {
+    throw new Error(`«${pedido}» no es un modelo de imagen con llave: no pases modelo (va el del cliente) o escoge uno que tenga.`);
+  }
+  const delCliente = api.modeloPreferido(ctx.activos, "imagen", ctx.kit?.modelos?.imagen);
+  return m.id === delCliente?.id ? null : m;
+}
+
 /** Una pieza que llega del asistente, limpia. Pura. */
 export function limpiarPieza(p = {}, i = 0) {
   return {
@@ -89,11 +104,12 @@ export function fotosDeLaPiezaDelChat(productos = [], pieza = {}, huecos = 8) {
  * El pedido de cada pieza y su costo, sin crear nada. `calidad`: «borrador» (el modelo del cliente) o «final» (el
  * mejor con llave). → [{ ...pieza, modelo, costo, pedido }] (una sin ficha va con `error`). Pura salvo por los imports.
  */
-export function planDePiezas(ctx, piezas = [], { calidad = "borrador" } = {}) {
+export function planDePiezas(ctx, piezas = [], { calidad = "borrador", modelo: sugerido = null } = {}) {
   const { g, activos, kit, cliente } = ctx;
   const preferido = api.modeloPreferido(activos, "imagen", kit.modelos?.imagen);
   const final = modeloFinal(activos);
-  const modelo = calidad === "final" && final ? final : preferido;
+  // `sugerido`: el modelo que propuso el asistente en vez del del cliente (la tarjeta lo pregunta: calidad «sugerido»).
+  const modelo = calidad === "sugerido" && sugerido ? sugerido : calidad === "final" && final ? final : preferido;
   const productos = g?.productos ?? [];
   return piezas.slice(0, MAX_FICHAS).map((x, i) => {
     const p = limpiarPieza(x, i);

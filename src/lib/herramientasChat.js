@@ -177,7 +177,7 @@ export function getChatTools(hasCalendar) {
   // Fuera del `if`: una imagen para el chat no necesita calendario.
   tools.push({
     name: "generar_imagen",
-    description: "Crea una imagen (o un video, con tipo «video») con IA y la ENTREGA EN EL CHAT, donde el usuario la ve y la descarga. Con un cliente abierto la hace el Estudio con su kit de marca (logo, paleta, fotos del producto). Úsala siempre que pidan una imagen o un video. Si también piden ponerla en una publicación del calendario, pasa post_id.",
+    description: "Crea una imagen (o un video, con tipo «video») con IA y la ENTREGA EN EL CHAT, donde el usuario la ve y la descarga. Con un cliente abierto la hace el Estudio con su kit de marca (logo, paleta, fotos del producto) y su modelo. Úsala siempre que pidan una imagen o un video. Si también piden ponerla en una publicación del calendario, pasa post_id. Si la agencia fijó «crear sin preguntar» (Ajustes → IA), una imagen con el modelo del cliente dentro de su tope sale a la primera; si la respuesta dice NO SE CREÓ NADA, pregunta con la cifra.",
     input_schema: {
       type: "object",
       properties: {
@@ -194,6 +194,8 @@ export function getChatTools(hasCalendar) {
           enum: ["anuncio", "beneficios", "servicios", "educativo", "diferenciador", "maletas", "humano"],
           description: "El tipo de contenido de la pieza (el del día o el de la publicación): pone el preset de ese tipo del kit de marca. Opcional.",
         },
+        modelo: { type: "string", description: "Opcional: el ID de OTRO modelo (de ver_estudio) que sugieres en vez del del cliente. Sólo si de verdad conviene (un texto exacto largo que el suyo escribe mal, una proporción que no hace), con motivo_modelo: se le pregunta a la persona." },
+        motivo_modelo: { type: "string", description: "Por qué sugieres ese modelo, en una frase corta: se le enseña a la persona." },
         confirmado: { type: "boolean", description: "Sólo true si el usuario ya dijo que sí al costo que le dijiste. Nunca lo pongas por tu cuenta." },
       },
       required: ["prompt"],
