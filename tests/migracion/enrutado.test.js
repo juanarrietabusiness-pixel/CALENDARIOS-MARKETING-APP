@@ -1414,6 +1414,17 @@ describe("anuncios de Meta (/api/anuncios)", () => {
     expect((await worker.fetch(new Request("https://calendarios.test/api/anuncios/revision/pendientes"), env)).status).toBe(401);
   });
 
+  it("el plan de campañas llega a su rama SIN cuenta publicitaria (se monta en el Ads Manager)", async () => {
+    // La lógica entera, contra una D1 de verdad, está en planCampanas.test.js.
+    const env = await entorno();
+    const res = await worker.fetch(conSesion("/api/anuncios/clientes/cliente-1/ciclo?mes=2026-11"), env);
+    expect(res.status).toBe(200);
+    const d = await res.json();
+    expect(d.plan).toMatchObject({ mes: "2026-11", destino: "whatsapp" });
+    expect(d.guardado.progreso).toEqual({});
+    expect((await worker.fetch(conSesion("/api/anuncios/clientes/cliente-de-otro/ciclo"), env)).status).toBe(404);
+  });
+
   it("una ruta que no existe es 404, y sin sesión 401", async () => {
     const env = await entorno();
     expect((await worker.fetch(conSesion("/api/anuncios/no-existe"), env)).status).toBe(404);

@@ -1566,7 +1566,7 @@ function Workspace({ session, ruta }) {
               <Suspense fallback={<Cargando />}>
                 <LoMejor clients={clients} pulso={pulso} yo={yo} />
               </Suspense>
-            ) : ruta.vista === "campanas" || ruta.vista === "biblioteca" ? (
+            ) : ruta.vista === "campanas" || ruta.vista === "biblioteca" || ruta.vista === "plan-campanas" ? (
               <Suspense fallback={<Cargando />}>
                 <Anuncios vista={ruta.vista} clients={clients} pulso={pulso} yo={yo} onClienteNuevo={async (datos) => {
                   // El estratega guarda como cliente a alguien de fuera: se crea y se mete en la lista (el eco propio se ignora).

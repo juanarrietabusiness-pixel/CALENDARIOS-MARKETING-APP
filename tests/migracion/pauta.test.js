@@ -166,6 +166,28 @@ describe("modo «plan» (el asistente del mes): las casillas que van a pauta", (
     expect(ideas[0].hashtags).toBe("#a #b #c");
   });
 
+  it("modo «niveles» con `pauta` («Producir los anuncios que faltan» del plan de campañas): todas a pauta, cada una con su nivel", async () => {
+    conNegocio({ tipo: "productos", destino: "whatsapp" });
+    anthropic(JSON.stringify({ ideas: [
+      { n: 1, titular: "Tu sala", escena: "Una sala", descripcion: "Gancho.\n\nEscríbenos por WhatsApp.", anuncio: { textos: ["A", "B", "C"] } },
+      { n: 2, titular: "Otra", escena: "Otra sala", descripcion: "Otro gancho." },
+    ] }));
+    const r = await lote({ modo: "niveles", cuantas: { problema: 2 }, pauta: { etapa: "presentacion" } });
+    expect(r.status).toBe(200);
+    const t = textoDe(peticiones[0]);
+    expect(t).toMatch(/LO QUE VA A PAUTA/);
+    expect(t).toMatch(/VA A PAUTA · etapa Presentación · nivel/);
+    const { ideas } = await r.json();
+    expect(ideas.map((i) => i.pauta)).toEqual([{ etapa: "presentacion", nivel: "problema", como: "" }, { etapa: "presentacion", nivel: "problema", como: "" }]);
+    expect(ideas[0].anuncio.textos).toEqual(["A", "B", "C"]);
+    // Al calendario llegan marcadas (lib/loteAnuncios.js `publicacionDePieza`).
+    const { publicacionDePieza } = await import("../../src/lib/loteAnuncios.js");
+    const pub = publicacionDePieza({ id: "x", idea: ideas[0], formato: "post" });
+    expect(pub.pauta).toEqual({ etapa: "presentacion", nivel: "problema", como: "" });
+    expect(pub.anuncio.textos).toEqual(["A", "B", "C"]);
+    expect(publicacionDePieza({ id: "y", idea: { titular: "Sin pauta", escena: "x" }, formato: "post" }).pauta).toBeUndefined();
+  });
+
   it("sin ninguna casilla en pauta, el pedido no cambia", async () => {
     anthropic(JSON.stringify({ ideas: [{ n: 1, titular: "Uno", escena: "Una sala" }] }));
     await lote({ modo: "plan", casillas: [{ clave: "a", fecha: "2030-03-04", formato: "post", pilar: "educativo" }] });

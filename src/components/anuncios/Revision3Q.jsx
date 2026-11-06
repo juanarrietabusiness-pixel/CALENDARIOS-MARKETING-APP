@@ -401,6 +401,8 @@ export default function Revision3Q({ client, esAdmin = false, soloLectura = fals
       const q = new URLSearchParams({ lote: "anuncios" });
       const niveles = etapaCiclo(campana?.etapa)?.niveles ?? [];
       if (a.ir === "ganchos" && niveles.length) q.set("niveles", niveles.join(","));
+      // Con la etapa, las piezas llegan al calendario marcadas «Va a pauta» (lib/lotePauta.js).
+      if (etapaCiclo(campana?.etapa)) q.set("etapa", etapaCiclo(campana.etapa).id);
       if (a.pide) q.set("pide", `${a.pide} Para la campaña «${campana?.nombre ?? ""}»${campana?.nombreEtapa ? ` (${campana.nombreEtapa.toLowerCase()})` : ""}.`.slice(0, 400));
       ir(`${construirRuta({ cliente: slug, pestana: "crear", seccion: "galeria" })}?${q}`);
     },

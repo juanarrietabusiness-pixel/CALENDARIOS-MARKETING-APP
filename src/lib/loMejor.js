@@ -31,6 +31,7 @@
 
 import { fechaEnZona, sumarDias, diasEntre } from "./agenda.js";
 import { cifraCorta } from "./scrapeCreators.js";
+import { mediana } from "./inspiracion.js";
 
 export const VENTANAS = Object.freeze([
   { id: "semana", nombre: "Esta semana", dias: 7 },
@@ -189,6 +190,29 @@ export function rindeAjustado(rinde, n) {
   if (!Number.isFinite(rinde)) return null;
   const k = Math.max(0, numero(n));
   return Math.round((1 + (rinde - 1) * (k / (k + 4))) * 100) / 100;
+}
+
+/** Lo que se mide de una publicación PROPIA (una fila de `metricas_publicacion`): interacciones, guardados y compartidos. Pura. */
+export const valorDePropia = (f) => (Number(f?.interacciones) || 0) + (Number(f?.guardados) || 0) + (Number(f?.compartidos) || 0);
+
+/**
+ * «rinde X×» de cada publicación propia contra la MEDIANA de su cuenta (`cuenta_id`), sólo con 3 o más medidas de esa
+ * cuenta, y su señal corregida por la muestra (`rindeAjustado`). La usan «Lo mejor» (worker/lib/loMejor.js) y el plan
+ * de campañas (lib/planCiclo.js), que escoge lo que mejor funcionó en orgánico para pautarlo: dos copias de esta cuenta
+ * acabarían diciendo cosas distintas de la misma publicación. → Map(fila → { rinde, n, senal }). Pura.
+ */
+export function rindesDePropias(filas = []) {
+  const por = new Map();
+  for (const f of filas) {
+    if (!por.has(f.cuenta_id)) por.set(f.cuenta_id, []);
+    por.get(f.cuenta_id).push(valorDePropia(f));
+  }
+  const medidas = new Map([...por].map(([g, v]) => [g, { mediana: mediana(v), n: v.length }]));
+  return new Map(filas.map((f) => {
+    const m = medidas.get(f.cuenta_id);
+    const rinde = m?.n >= 3 && m.mediana > 0 ? Math.round((valorDePropia(f) / m.mediana) * 10) / 10 : null;
+    return [f, { rinde, n: m?.n ?? 0, senal: rindeAjustado(rinde, m?.n ?? 0) }];
+  }));
 }
 
 /** Los días que lleva (o llevó) un anuncio: de su inicio a su fin, o a hoy si sigue activo. Pura. */

@@ -5,6 +5,8 @@ import { editaLaAgencia } from "../lib/sesionActual";
 import { MANUAL_VIDEO_BASE, MAX_MANUAL_VIDEO } from "../lib/directorVideo";
 import { MANUAL_DISENO_BASE, MAX_MANUAL_DISENO, DISENO_POR_TIPO, MAX_DISENO_TIPO } from "../lib/director";
 import { CAMPOS_UMBRALES_3Q, UMBRALES_3Q } from "../lib/umbrales3q";
+import ManualCiclo from "./anuncios/ManualCiclo";
+import { errorDelCiclo } from "../lib/manualCiclo";
 
 // ============================================================
 // Ajustes → Manual de campañas de la agencia
@@ -16,7 +18,7 @@ import { CAMPOS_UMBRALES_3Q, UMBRALES_3Q } from "../lib/umbrales3q";
 // cuentas del costo máximo por resultado.
 // ============================================================
 
-const AYUDA_NOMBRES = "Se rellena {cliente}, {objetivo}, {producto}, {mes} · {tipo}, {edad}, {lugar} · {numero}, {formato}, {angulo}.";
+const AYUDA_NOMBRES = "Se rellena {cliente}, {etapa}, {objetivo}, {producto}, {mes} · {tipo}, {edad}, {lugar} · {numero}, {formato}, {angulo}. {etapa} (Presentación, Evaluación…) la pone el plan de campañas: por ella se reconoce cada campaña al leerla.";
 const EJEMPLO = `Ejemplos:
 - Las ventas van a WhatsApp, nunca a la web si el cliente no tiene píxel.
 - Mínimo 5 $ al día por conjunto; con menos de 15 $ al día, un solo conjunto Advantage+.
@@ -96,6 +98,7 @@ export default function SeccionManualCampanas({ pulso = 0 }) {
               </div>
             ))}
           </details>
+          <ManualCiclo m={m} poner={poner} puede={puede} />
           <div className="field">
             <label className="label" htmlFor={`${ids}-video`}>Criterio comercial de los videos</label>
             <textarea id={`${ids}-video`} className="textarea" rows={8} maxLength={MAX_MANUAL_VIDEO} value={m.video ?? ""} readOnly={!puede}
@@ -124,7 +127,7 @@ export default function SeccionManualCampanas({ pulso = 0 }) {
           </details>
           <div aria-live="polite">{aviso && <p role={aviso.ok ? "status" : "alert"} className={aviso.ok ? "hint" : "cerebro-error"}>{aviso.texto}</p>}</div>
           {puede ? (
-            <button type="button" className="btn btn-primary" onClick={guardar} disabled={!cambiado || guardando}>{guardando ? "Guardando…" : "Guardar el manual"}</button>
+            <button type="button" className="btn btn-primary" onClick={guardar} disabled={!cambiado || guardando || Boolean(errorDelCiclo(m))}>{guardando ? "Guardando…" : "Guardar el manual"}</button>
           ) : <p className="hint">Lo cambian el administrador y los editores de la agencia.</p>}
         </>
       )}

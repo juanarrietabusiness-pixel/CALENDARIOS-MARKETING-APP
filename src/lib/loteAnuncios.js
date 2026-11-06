@@ -550,6 +550,10 @@ export function publicacionDePieza({ id, idea, archivo = null, archivos = null, 
     ...(idea.perfil ? { perfil: idea.perfil } : {}),
     ...(idea.rostro ? { rostro: true } : {}),
     ...(idea.rostro && idea.formulaUgc ? { formulaUgc: idea.formulaUgc } : {}),
+    // Va a pauta (el lote de los anuncios que faltan del plan de campañas): la etapa y sus textos de anuncio, ya limpios
+    // en el servidor (lib/pauta.js).
+    ...(idea.pauta ? { pauta: idea.pauta } : {}),
+    ...(idea.pauta && idea.anuncio ? { anuncio: idea.anuncio } : {}),
     status: "pending",
     ...(lista.length ? { medios: lista.map(medioDe) } : { aprobacion: "idea" }),
   };
