@@ -571,7 +571,8 @@ describe("POST /api/estudio/<cliente>/estrategia («Proponer la estrategia con I
     expect(r.estrategia).toMatchObject({ objetivo: "ventas", focoId: "sofa", foco: "Sofá cama", campana: "Marzo cómodo" });
     // Sólo las semanas de ESE mes.
     expect(r.semanas).toHaveLength(2);
-    expect(r.estrategia.semanas.map((x) => x.etapa)).toEqual(["atraer", "convertir"]);
+    // La IA contestó con las etapas de antes («atraer», «convertir»): se leen con las del ciclo de ventas.
+    expect(r.estrategia.semanas.map((x) => x.etapa)).toEqual(["presentacion", "conversion"]);
     expect(r.mejores.map((m) => m.texto)).toEqual(["El sofá que se abre en 3 segundos"]);
     const t = textoDe(peticiones[0]);
     expect(t).toMatch(/OBJETIVO \(lo decidió la agencia, respétalo\): Vender/);
@@ -616,6 +617,20 @@ describe("POST /api/estudio/<cliente>/lote/ideas: la matriz y por tipos", () => 
     const t = textoDe(peticiones[0]);
     expect(t).toMatch(/Los perfiles:\n- Pareja joven: primer apartamento/);
     expect(t).toMatch(/NO aparece en la imagen/);
+  });
+
+  it("el motor lee los sesgos de cada perfil y los tipos de arte de la marca (curso de campañas)", async () => {
+    await pedir("/api/mercado/c1/catalogo", { method: "PUT", body: { catalogo: [{ id: "sofa", nombre: "Sofá cama", precio: "$399" }] } });
+    db.sqlite.prepare("update mercado_clientes set estudio = ? where client_id = 'c1'").run(JSON.stringify({
+      general: { resumen: "Mercado de muebles.", perfiles: [{ nombre: "Pareja joven", quien: "primer apartamento", sesgos: ["prueba-social", "reciprocidad"] }], deseos: [{ deseo: "Tranquilidad" }] },
+      productos: {},
+    }));
+    db.sqlite.prepare("update clients set kit_marca = ? where id = 'c1'").run(JSON.stringify({ tiposArte: ["demostracion", "testimonio"] }));
+    anthropic(JSON.stringify({ ideas: [{ n: 1, titulo: "T", brief: "B", titular: "Titular", escena: "Escena" }] }));
+    expect((await lote({ modo: "matriz", productoId: "sofa", deseos: ["Tranquilidad"], perfiles: ["Pareja joven"], niveles: ["decision"] })).status).toBe(200);
+    const t = textoDe(peticiones[0]);
+    expect(t).toMatch(/- Pareja joven: primer apartamento; lo mueve: prueba social, reciprocidad/);
+    expect(t).toMatch(/Tipos de arte de esta marca[^\n]*Demostración[^\n]*Testimonio/);
   });
 
   it("la matriz sin estudio aprobado no llama a nadie", async () => {
@@ -792,6 +807,16 @@ describe("un solo director: el carrusel, las correcciones de la agencia y lo que
     anthropic(JSON.stringify({ concepto: "x", piezas: [{ n: 1, ficha: "Pieza: post.\nTexto: NINGUNO." }] }));
     await pedir("/api/estudio/c1/fichas", { method: "POST", body: { piezas: [{ n: 1, idea: "Un sofá", sinTexto: true }] } });
     expect(textoDe(peticiones[0])).toMatch(/- el logo más pequeño/);
+  });
+
+  it("el director lee los tipos de arte de la marca, aunque el kit esté sin preparar", async () => {
+    db.sqlite.prepare("update clients set kit_marca = ? where id = 'c1'").run(JSON.stringify({ tiposArte: ["producto", "promocion"] }));
+    anthropic(JSON.stringify({ concepto: "x", piezas: [{ n: 1, ficha: "Pieza: post.\nTexto: NINGUNO." }] }));
+    await pedir("/api/estudio/c1/fichas", { method: "POST", body: { piezas: [{ n: 1, idea: "Un sofá", sinTexto: true }] } });
+    const t = textoDe(peticiones[0]);
+    expect(t).toMatch(/Tipos de arte de esta marca[^\n]*Producto[^\n]*Promoción/);
+    // Con sólo los tipos de arte, el kit sigue sin preparar: el director lo sabe (no los toma por «la marca»).
+    expect(t).toMatch(/aún no tiene kit de marca/);
   });
 
   it("cada tipo se diseña a su manera, y la plantilla asignada a un tipo va sola en las piezas de ese tipo", async () => {

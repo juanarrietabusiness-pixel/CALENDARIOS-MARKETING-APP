@@ -11,7 +11,7 @@ import {
 } from "../../lib/asistenteMes";
 import { semanasDelPlan, unoPorSemana } from "../../lib/planMes";
 import { limpiarEstrategia, estrategiaDelCalendario } from "../../lib/estrategiaMes";
-import { PasoEstrategia, EtapaSemana, BalanceDelMes } from "../EstrategiaMes";
+import { PasoEstrategia, EtapaSemana, BalanceDelMes, AyudaEtapas } from "../EstrategiaMes";
 import { leerPlantillas } from "../../lib/plantillasApi";
 import { semanaDelCliente, lineasDeLaSemana, ritmoDelCliente, notasDelCliente, horaCorta } from "../../lib/planSemanal";
 import { sugerenciasDeTemporada, ritmoDelMes, asignarMatriz, fechaCorta, nombreDePilar, CAMPOS_MATRIZ } from "../../lib/pilares";
@@ -231,6 +231,7 @@ function PasoEstrategiaMes({ client, cal, onGuardar }) {
             </div>
           </div>
         ))}
+        <AyudaEtapas />
       </fieldset>
       <div className="asistente-mes-acciones">
         <button type="button" className="btn btn-primary" onClick={guardar}><Icon name="check" size={16} /> Guardar la estrategia y seguir</button>

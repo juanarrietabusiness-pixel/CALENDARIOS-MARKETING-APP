@@ -133,6 +133,8 @@ export const TABLAS_CON_DUENO = Object.freeze([
   // El informe de anuncios del mes y lo que se decide por cliente (worker/lib/informeAnuncios.js).
   "informes_anuncios",
   "anuncios_clientes",
+  // Las ventas de cada semana que apunta el cliente por su enlace (o la agencia): worker/lib/ventas.js.
+  "ventas_semana",
   // Las historias automáticas: el interruptor de cada cliente y la historia hecha de cada publicación (worker/lib/historiasAuto.js).
   "historias_auto",
   "historias_auto_piezas",
@@ -173,7 +175,7 @@ export const TABLAS_CON_CLIENTE = Object.freeze([
   "bandeja_clientes", "bandeja_comentarios", "bandeja_hilos", "bandeja_mensajes",
   "biblioteca_filtros",
   "cuentas_anuncios", "campanas_anuncios", "historial_anuncios",
-  "planes_campana", "informes_anuncios", "anuncios_clientes",
+  "planes_campana", "informes_anuncios", "anuncios_clientes", "ventas_semana",
   "historias_auto", "historias_auto_piezas",
   "handoffs",
   "lo_mejor_anuncios",

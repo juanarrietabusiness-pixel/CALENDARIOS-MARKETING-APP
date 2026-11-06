@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import Icon from "../Icon";
 import { useDialogA11y } from "../../hooks/useDialogA11y";
 import * as api from "../../lib/anunciosApi";
@@ -6,9 +6,11 @@ import { leerMercado, guardarCatalogo } from "../../lib/mercado";
 import { productosActivos, ELEMENTOS_MERCADO, limpiarCatalogo } from "../../lib/estudioMercado";
 import { OBJETIVOS, DESTINOS, TIPOS_CONJUNTO, formatoMoneda } from "../../lib/anuncios";
 import {
-  economia, escenarios, planABorrador, planATexto, TIPOS_OFERTA, ETAPAS_EMBUDO,
+  economia, escenarios, planABorrador, planATexto, TIPOS_OFERTA, etapaEmbudoDe, leerPlan,
 } from "../../lib/estratega";
 import { fechaEnZona } from "../../lib/agenda";
+import { leerNegocio } from "../../lib/negocioApi";
+import { equilibrio } from "../../lib/numerosNegocio";
 import "./Estratega.css";
 
 // ============================================================
@@ -50,7 +52,7 @@ function Plan({ r, moneda, diario, dias }) {
         <section aria-label="Embudo">
           <h3>Embudo</h3>
           <ol className="est-embudo">
-            {plan.embudo.map((e, i) => <li key={i}><strong>{ETAPAS_EMBUDO[e.etapa]}</strong> · {e.objetivo}<span className="hint"> {e.idea}</span></li>)}
+            {plan.embudo.map((e, i) => <li key={i}><strong>{etapaEmbudoDe(e.etapa)}</strong> · {e.objetivo}<span className="hint"> {e.idea}</span></li>)}
           </ol>
         </section>
       )}
@@ -167,6 +169,35 @@ export default function Estratega({ clients = [], clienteId = "", cuentaLista = 
   useEffect(() => {
     api.planes().then(setPlanesGuardados).catch(() => setPlanesGuardados([]));
   }, []);
+  // Los números del negocio del cliente (Marca): el margen efectivo y la tasa de cierre, para no teclearlos. Sólo
+  // rellenan lo vacío o lo que vino de los números de otro cliente; lo tecleado se queda.
+  const [numeros, setNumeros] = useState(null);
+  const numerosAntes = useRef(null);
+  useEffect(() => {
+    if (para !== "cliente" || !cliente) { setNumeros(null); return undefined; }
+    let vivo = true;
+    leerNegocio(cliente, { meta: false }).then((r) => {
+      if (!vivo) return;
+      const e = equilibrio(r.negocio, { tasaDefecto: r.tasaDefecto });
+      const nuevos = {
+        margen: r.negocio.costos.length && e.margenEfectivo > 0 ? String(Math.round(e.margenEfectivo * 10) / 10) : "",
+        tasaCierre: r.negocio.tasaCierre?.valor > 0 ? String(r.negocio.tasaCierre.valor) : "",
+      };
+      const antes = numerosAntes.current;
+      numerosAntes.current = nuevos;
+      setNumeros(nuevos);
+      setCifras((c) => {
+        const margenLibre = !c.margen || c.margen === antes?.margen;
+        return {
+          ...c,
+          margen: margenLibre ? nuevos.margen : c.margen,
+          margenTipo: margenLibre && nuevos.margen ? "%" : c.margenTipo,
+          tasaCierre: !c.tasaCierre || c.tasaCierre === antes?.tasaCierre ? nuevos.tasaCierre : c.tasaCierre,
+        };
+      });
+    }).catch(() => { if (vivo) setNumeros(null); });
+    return () => { vivo = false; };
+  }, [para, cliente]);
   useEffect(() => {
     if (para !== "cliente" || !cliente) { setCatalogo(null); return; }
     setCatalogo(null);
@@ -222,7 +253,9 @@ export default function Estratega({ clients = [], clienteId = "", cuentaLista = 
     const g = planesGuardados.find((x) => x.id === id);
     if (!g) return;
     const d = g.datos ?? {};
-    setR({ plan: d.plan, eco: d.eco, producto: d.producto, fuentes: d.fuentes ?? [] });
+    // Pasa por `leerPlan`: un plan guardado antes del ciclo de ventas (frío, tibio, caliente; las maletas de antes) se lee
+    // con las etapas y las 7 maletas del curso, sin reescribir la fila.
+    setR({ plan: (d.plan && leerPlan(d.plan)) || d.plan, eco: d.eco, producto: d.producto, fuentes: d.fuentes ?? [] });
     setGuardadoId(g.id);
     if (d.para) setPara(d.para);
     if (g.clientId) setCliente(g.clientId);
@@ -338,6 +371,9 @@ export default function Estratega({ clients = [], clienteId = "", cuentaLista = 
             <div className="field"><label className="label" htmlFor={`${ids}-pr`}>Al día ({moneda})</label><input id={`${ids}-pr`} className="input" type="number" inputMode="decimal" min="0" value={cifras.diario} onChange={(e) => setCifras({ ...cifras, diario: e.target.value })} placeholder="Que lo proponga" /></div>
             <div className="field"><label className="label" htmlFor={`${ids}-di`}>Días</label><input id={`${ids}-di`} className="input" type="number" inputMode="numeric" min="1" max="365" value={cifras.dias} onChange={(e) => setCifras({ ...cifras, dias: e.target.value })} /></div>
           </div>
+          {para === "cliente" && (numeros?.margen || numeros?.tasaCierre) && (
+            <p className="hint">{numeros.margen && numeros.tasaCierre ? "El margen (efectivo) y la tasa de cierre salen" : numeros.margen ? "El margen (efectivo) sale" : "La tasa de cierre sale"} de Marca → Números del negocio.</p>
+          )}
           {eco && <p className="hint" role="status">Con esto, cada resultado puede costar como mucho <strong>{DINERO(eco.costoMaxResultado, moneda)}</strong> (para ganar, {DINERO(eco.costoObjetivo, moneda)}).</p>}
 
           <div className="est-fila">

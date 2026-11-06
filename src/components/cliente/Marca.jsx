@@ -32,10 +32,12 @@ const Cerebro = lazy(() => import("../Cerebro"));
 const PestanaContenido = lazy(() => import("../PestanaContenido"));
 const EditorSemana = lazy(() => import("../calendario/PlanSemanal").then((m) => ({ default: m.EditorSemana })));
 const FechasEspecialesDialog = lazy(() => import("../calendario/fechasEspeciales").then((m) => ({ default: m.FechasEspecialesDialog })));
+const NumerosNegocio = lazy(() => import("../negocio/NumerosNegocio"));
 
 const SUBPESTANAS_MARCA = Object.freeze([
   ["ficha", "Ficha", "building"],
   ["kit", "Kit y voz", "palette"],
+  ["negocio", "Números del negocio", "calculator"],
   ["cerebro", "Cerebro", "brain"],
   ["plan", "Plan semanal", "grid"],
   ["fechas", "Fechas", "calendar"],
@@ -203,6 +205,7 @@ export default function Marca({ client, seccion = null, pulso = 0, lectura = fal
         <Suspense fallback={<p role="status" className="hint">Cargando…</p>}>
           {actual === "ficha" && <FichaCliente client={client} onEditar={onEditar} />}
           {actual === "kit" && <KitYVoz client={client} estudio={estudio} lectura={lectura} onCambio={cargar} onError={setError} />}
+          {actual === "negocio" && <NumerosNegocio key={client.id} client={client} lectura={lectura} pulso={pulso} />}
           {actual === "cerebro" && <Cerebro client={client} abrirMercado={abrirMercado} />}
           {actual === "plan" && <PlanDeLaSemana client={client} lectura={lectura} onGuardarPlan={onGuardarPlan} />}
           {actual === "fechas" && <FechasDelCliente client={client} lectura={lectura} onGuardarFechas={onGuardarFechas} />}

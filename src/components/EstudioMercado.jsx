@@ -11,9 +11,11 @@ import { subirImagen, archivoDeDrive } from "../lib/estudio";
 import BancoSelector from "./BancoSelector";
 import { urlBibliotecaWeb } from "../lib/biblioteca";
 import {
-  ELEMENTOS_MERCADO, DESEOS_REISS, NIVELES_CONSCIENCIA, LIMITES_ANUNCIO, MAX_MATERIAL, MAX_PRODUCTOS, MAX_FOTOS_PRODUCTO, NIVELES_STOCK,
+  ELEMENTOS_MERCADO, EXTRAS_MERCADO, DESEOS_REISS, NIVELES_CONSCIENCIA, LIMITES_ANUNCIO, MAX_MATERIAL, MAX_PRODUCTOS, MAX_FOTOS_PRODUCTO, NIVELES_STOCK,
   limpiarCatalogo, productosActivos, pasosDelEstudio, nombreDeNivel, fraseActivo, mensajePedirDatos,
 } from "../lib/estudioMercado";
+import { SESGOS, MAX_SESGOS, nombresDeSesgos } from "../lib/tiposArte";
+import { MaletasDeProducto, ResumenMaletas } from "./SemaforoMaletas";
 import { claveDeEnlace, caminosPosibles, caminoPorDefecto } from "../lib/loMejor";
 
 // «Recrear para [cliente]»: el MISMO recreador que «Lo mejor» (sólo se descarga al abrirlo).
@@ -89,6 +91,8 @@ export default function EstudioMercado({ client, onCambio, abrir = null }) {
             <div><dt>Competencia</dt><dd>{datos.referencias.length ? `${datos.referencias.length} referencias` : "Ninguna"}</dd></div>
           </dl>
         )}
+        {/* El semáforo de las 7 maletas de cada producto: si falta una, no se lanza el anuncio. */}
+        {datos && <ResumenMaletas client={client} estudio={datos.estudio ?? datos.borrador} catalogo={datos.catalogo} lectura={soloLectura()} />}
       </div>
       <div className="mercado-tarjeta-acciones">
         <button type="button" className="btn btn-accent" disabled={!datos} onClick={() => setAbierto(activos.length ? "estudio" : "catalogo")}>
@@ -667,7 +671,7 @@ function PanelEstudio({ client, datos, lectura, onOcupado, onDatos, onCambioCere
           </div>
           {vista.general && <RevisionGeneral general={vista.general} editable={esBorrador && !lectura && !paso} onEditar={editar} />}
           {Object.entries(vista.productos ?? {}).map(([id, est]) => (
-            <RevisionProducto key={id} id={id} estudio={est} producto={datos.catalogo.find((p) => p.id === id)}
+            <RevisionProducto key={id} id={id} estudio={est} producto={datos.catalogo.find((p) => p.id === id)} client={client} lectura={lectura}
               editable={esBorrador && !lectura && !paso} onEditar={editar} />
           ))}
         </div>
@@ -709,6 +713,35 @@ function Campo({ etiqueta, valor, onCambio, editable, filas = 2, max = 1200 }) {
   );
 }
 
+/** Los sesgos que más mueven a un perfil (de 3 a 5, los propone el estudio); en el borrador se marcan y desmarcan. */
+function SesgosDelPerfil({ perfil, editable, onCambio }) {
+  const ids = useId();
+  const sesgos = Array.isArray(perfil.sesgos) ? perfil.sesgos : [];
+  if (!editable) {
+    return sesgos.length ? (
+      <div className="mercado-campo">
+        <p className="mercado-campo-etiqueta">Lo que lo mueve a decidir</p>
+        <p className="mercado-campo-texto">{nombresDeSesgos(sesgos)}</p>
+      </div>
+    ) : null;
+  }
+  return (
+    <div className="field mercado-campo">
+      <span className="label" id={`${ids}-s`}>Lo que lo mueve a decidir (de 3 a {MAX_SESGOS})</span>
+      <div className="mercado-sesgos" role="group" aria-labelledby={`${ids}-s`}>
+        {SESGOS.map((x) => {
+          const dentro = sesgos.includes(x.id);
+          return (
+            <button key={x.id} type="button" className="filter-chip" aria-pressed={dentro} title={x.ayuda}
+              disabled={!dentro && sesgos.length >= MAX_SESGOS}
+              onClick={() => onCambio(dentro ? sesgos.filter((y) => y !== x.id) : [...sesgos, x.id])}>{x.nombre}</button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function RevisionGeneral({ general: g, editable, onEditar }) {
   const ids = useId();
   const set = (ruta) => (v) => onEditar((b) => { ruta(b.general, v); return b; });
@@ -727,6 +760,7 @@ function RevisionGeneral({ general: g, editable, onEditar }) {
             <Campo etiqueta="Quién es" valor={p.quien} editable={editable} max={300} onCambio={set((x, v) => { x.perfiles[i].quien = v; })} />
             <Campo etiqueta="Qué le duele" valor={p.dolor} editable={editable} max={300} onCambio={set((x, v) => { x.perfiles[i].dolor = v; })} />
             <Campo etiqueta="Qué quiere lograr" valor={p.aspiracion} editable={editable} max={300} onCambio={set((x, v) => { x.perfiles[i].aspiracion = v; })} />
+            <SesgosDelPerfil perfil={p} editable={editable} onCambio={set((x, v) => { x.perfiles[i].sesgos = v; })} />
           </div>
         ))}
       </div>
@@ -784,18 +818,32 @@ function RevisionGeneral({ general: g, editable, onEditar }) {
   );
 }
 
-function RevisionProducto({ id, estudio: e, producto, editable, onEditar }) {
+function RevisionProducto({ id, estudio: e, producto, client, lectura = false, editable, onEditar }) {
   const set = (ruta) => (v) => onEditar((b) => { ruta(b.productos[id], v); return b; });
+  const extras = EXTRAS_MERCADO.filter((x) => e.extra?.[x.clave]);
   return (
     <details className="mercado-bloque">
       <summary><Icon name="star" size={16} /> {producto?.nombre ?? e.nombre}{producto?.precio ? ` · ${producto.precio}` : ""}</summary>
+      {/* El semáforo de las 7 maletas del producto (se recalcula con lo que se corrige en el borrador). */}
+      <MaletasDeProducto client={client} estudio={e} producto={producto?.nombre ?? e.nombre} lectura={lectura} />
       <div className="mercado-rejilla">
-        {ELEMENTOS_MERCADO.map((el) => (
+        {/* De lectura, sólo las escritas: las que faltan ya las dice el semáforo de arriba. */}
+        {ELEMENTOS_MERCADO.filter((el) => editable || e.elementos[el.clave]).map((el) => (
           <div key={el.clave} className="mercado-ficha">
             <Campo etiqueta={el.titulo} valor={e.elementos[el.clave]} editable={editable} filas={3} onCambio={set((x, v) => { x.elementos[el.clave] = v; })} />
           </div>
         ))}
       </div>
+      {/* Lo que tenía un estudio de antes y no es una maleta (deseo, alternativas): sigue aquí y en la nota del cerebro. */}
+      {extras.length > 0 && (
+        <div className="mercado-rejilla">
+          {extras.map((x) => (
+            <div key={x.clave} className="mercado-ficha">
+              <Campo etiqueta={x.titulo} valor={e.extra[x.clave]} editable={editable} filas={2} onCambio={set((prod, v) => { prod.extra[x.clave] = v; })} />
+            </div>
+          ))}
+        </div>
+      )}
 
       {e.objeciones.length > 0 && (
         <>

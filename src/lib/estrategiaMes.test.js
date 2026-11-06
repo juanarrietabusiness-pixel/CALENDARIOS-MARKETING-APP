@@ -1,13 +1,14 @@
 import { describe, it, expect } from "vitest";
 import {
   embudoDelMes, mejoresDelPeriodo, pedidoDeEstrategia, leerEstrategia, limpiarEstrategia, semanasConEtapa, balanceDelMes, resumenFormatos,
+  estrategiaDelCalendario, etapaDe, ETAPAS, OBJETIVOS_MES,
 } from "./estrategiaMes.js";
 
 describe("la estrategia del mes", () => {
   it("el embudo por defecto sigue el objetivo y llena las semanas", () => {
-    expect(embudoDelMes("ventas", 4)).toEqual(["atraer", "considerar", "convertir", "convertir"]);
+    expect(embudoDelMes("ventas", 4)).toEqual(["presentacion", "evaluacion", "conversion", "conversion"]);
     expect(embudoDelMes("nada", 6)).toHaveLength(6);
-    expect(embudoDelMes("seguidores", 2)).toEqual(["atraer", "atraer"]);
+    expect(embudoDelMes("seguidores", 2)).toEqual(["presentacion", "presentacion"]);
   });
 
   it("lo mejor del mes anterior, por interacciones y dentro del periodo", () => {
@@ -30,6 +31,10 @@ describe("la estrategia del mes", () => {
     expect(p).toContain("delicada: sin promociones");
     expect(p).toContain("90 interacciones");
     expect(p).toContain("Semana 1: del 2026-11-01");
+    // Las etapas del curso, con su nombre; las de antes ya no se piden.
+    expect(p).toContain('"presentacion" (Presentación:');
+    expect(p).toContain("presentacion|evaluacion|conversion|ascension");
+    expect(p).not.toMatch(/atraer|considerar|fidelizar/);
   });
 
   it("lee la respuesta: foco sólo del catálogo, etapas válidas y todas las semanas", () => {
@@ -37,7 +42,9 @@ describe("la estrategia del mes", () => {
     expect(r.objetivo).toBe("marca");
     expect(r.focoId).toBe("");
     expect(r.semanas).toHaveLength(3);
-    expect(r.semanas[1].etapa).toBe("considerar");
+    // «atraer» (de antes) se entiende; «otra» no: va la del objetivo.
+    expect(r.semanas[0].etapa).toBe("presentacion");
+    expect(r.semanas[1].etapa).toBe("evaluacion");
     expect(r.semanas[2].concepto).toBe("");
     expect(leerEstrategia('{"foco":"p1","semanas":[]}', { semanas: 1, productos: ["p1"], objetivo: "ventas" })).toMatchObject({ focoId: "p1", objetivo: "ventas" });
     expect(leerEstrategia("sin json")).toBeNull();
@@ -45,8 +52,30 @@ describe("la estrategia del mes", () => {
 
   it("lo guardado se limpia y las semanas llevan su etapa al motor", () => {
     expect(limpiarEstrategia({ objetivo: "x", etapas: ["nada"] })).toBeNull();
-    expect(limpiarEstrategia({ objetivo: "ventas", etapas: ["atraer", "x"] })).toMatchObject({ objetivo: "ventas", etapas: ["atraer", ""] });
-    expect(semanasConEtapa(["Visitas", "Sofá"], ["atraer", ""])).toEqual([expect.stringContaining("etapa: Atraer"), "Sofá"]);
+    // Lo guardado con las etapas de antes se lee con las del ciclo de ventas, sin reescribir nada.
+    expect(limpiarEstrategia({ objetivo: "ventas", etapas: ["atraer", "x", "considerar", "convertir", "fidelizar"] }))
+      .toMatchObject({ objetivo: "ventas", etapas: ["presentacion", "", "evaluacion", "conversion", "ascension"] });
+    expect(semanasConEtapa(["Visitas", "Sofá"], ["atraer", ""])).toEqual([expect.stringContaining("etapa: Presentación"), "Sofá"]);
+    expect(semanasConEtapa(["Visitas"], ["inventada"])).toEqual(["Visitas"]);
+    expect(etapaDe("fidelizar")).toBe("Ascensión");
+    expect(etapaDe("conversion")).toBe("Conversión");
+    expect(etapaDe("nada")).toBe("");
+  });
+});
+
+describe("las etapas son las del ciclo de ventas", () => {
+  it("cuatro, con los niveles de consciencia del curso, y los objetivos reparten con ellas", () => {
+    expect(Object.keys(ETAPAS)).toEqual(["presentacion", "evaluacion", "conversion", "ascension"]);
+    expect(ETAPAS.presentacion.niveles).toEqual(["inconsciente", "problema", "solucion"]);
+    expect(ETAPAS.ascension.niveles).toEqual(["decision"]);
+    for (const o of OBJETIVOS_MES) expect(o.embudo.every((x) => ETAPAS[x])).toBe(true);
+  });
+
+  it("un calendario planeado con las etapas de antes llega al motor con las de ahora", () => {
+    const cal = { weekConcepts: ["Visitas", "El sofá"], opciones: { estrategia: { objetivo: "ventas", etapas: ["atraer", "convertir"] } } };
+    const e = estrategiaDelCalendario(cal);
+    expect(e.semanas[0]).toMatch(/Visitas \(etapa: Presentación/);
+    expect(e.semanas[1]).toMatch(/El sofá \(etapa: Conversión/);
   });
 });
 
