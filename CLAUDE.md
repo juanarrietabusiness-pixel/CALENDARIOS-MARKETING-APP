@@ -192,6 +192,11 @@ src/
     motorVideoNavegador.js  Lo que ese motor necesita en el navegador: las imágenes de la galería, el logo, la letra del kit
                           y la textura del grano (no es puro)
     videosApi.js          Cliente de /api/videos/<cliente>
+    videoCancion.js       «Video con tu canción»: la letra (limpiar, líneas, coro), leer la sincronía de ElevenLabs o Gemini y
+                          alinearla a la letra, el ajuste fino, las palabras del guion contra la canción (`palabrasParaLinea`),
+                          si sigue valiendo, la prueba de sincronía (`guionKaraoke`), `comprobarLetra`, lo que dura un audio
+                          (MP3, WAV, M4A) y el costo aproximado (puro: Worker, Container y pantalla)
+    cancionApi.js         Cliente de /api/videos/<cliente>/cancion (sincronizar, crear el borrador, ajuste fino, volver a sincronizar)
     subtitulos.js         Los SUBTÍTULOS por palabra: grupos por trozos de frase y parejos, la palabra clave, qué está dicho,
                           diciéndose o falta en cada instante (puro: lo leen el motor, la vista previa y el render)
     renderVideo.js        El RENDER a mp4: los cuadros, la voz en tramos con los silencios insertados (copiando muestras), la
@@ -609,6 +614,10 @@ src/
                           editor de las estructuras con «Voz en off» marcado (lazy)
     EditorEscenas.jsx     «Editar los textos»: lo que se dice, lo que se lee, tipo, pausa, orden de las escenas (lazy)
     LocucionVideo.jsx     «La voz» del video en su pantalla: ver el costo y generarla (lazy)
+    CrearConCancion.jsx   «Con tu canción» de «Video nuevo»: la canción (escoger o subir), la letra, sincronizar con su costo, cada
+                          línea con su tiempo, el ajuste fino y «Prueba de sincronía» o «Diseñar las escenas con IA» (lazy)
+    CancionVideo.jsx      «La canción» en el sitio de «La voz» de un video con canción: la sincronía, el ajuste fino y «Volver a
+                          sincronizar» (lazy)
     RenderVideo.jsx       «Renderizar a mp4»: pedirlo, esperarlo (relee cada 4 s), verlo, descargarlo y a qué publicación va
     VideoSonido.jsx       «Sonido» (efectos —los de la aplicación o uno de la biblioteca para cada sitio— y música de la
                           biblioteca del cliente o de la agencia, con su volumen) e «Historial de versiones» del video
@@ -855,6 +864,9 @@ worker/
     estudio/conMusica.js  «Publicar con música»: el video de una foto (crear, aprobar y renderizar, ligado a su publicación; no gasta
                           IA) y el carrusel a mano con la canción sugerida; la herramienta `publicar_con_musica` va por aquí
     estudio/ponerEnPost.js  Cambiar UNA publicación desde el servidor sin pisar a nadie (updated_at como condición, la cola, el aviso)
+    estudio/cancion.js    «Video con tu canción»: sincronizar la letra con una canción ya grabada (Forced Alignment de ElevenLabs,
+                          la voz aislada, Gemini o estimado; siempre con su confirmación), la sincronía en R2 (`canciones/…`),
+                          crear el borrador con la canción de locución, el ajuste fino y volver a sincronizar
     estudio/ponerPiezas.js  «Poner en una publicación…» del Estudio (POST /api/estudio/<c>/poner): lo de la galería a un post
     estudio/guionVideo.js El contexto común de los guiones de video (`contextoDeGuion`): producto, cerebro, criterio, publicación
     estudio/herramientasReel.js  El video por MCP: crear_reel, estado_reel, continuar_reel, montar_reel, video_listo y
@@ -5630,6 +5642,56 @@ son del servidor.
   · **El asistente y Claude**: `publicar_con_musica` (herramientasVideo.js): un post de una foto → el reel (no gasta: lo dice);
   un carrusel → a mano con la canción. No está en `CON_VISTA` (la vista previa del chat): el mp4 se mira con `ver_video`.
   · **Nada de esto se ha probado contra Instagram**: que el reel salga como «audio original» lo dice su documentación.
+- **«Video con tu canción»: el video animado sobre una canción YA GRABADA, y la canción ES su locución** (decisión de la
+  agencia: sube el MP3 terminado del fragmento del reel y pega la letra; `src/lib/videoCancion.js`,
+  `worker/lib/estudio/cancion.js`, `CrearConCancion.jsx`, `CancionVideo.jsx`; sin migración: todo vive en el JSON del
+  proyecto). Lo que no se ve en la pantalla:
+  · **MODO CANCIÓN en el formato**: `cancion: { archivo, duracion, nombre? }` en la raíz del guion, OPCIONAL y que no se
+  escribe si no está (un guion de antes valida igual y volver a guardarlo no le sube la versión). Con ella,
+  `lineaDeTiempo` va por `lineaDeCancion`: NUNCA inserta silencios (ni `pausa` —se ignora con aviso—, ni el alargue de
+  `MIN_ESCENA`, ni el `hasta` de un clip, ni el `dura` de una imagen), el total es lo que dura la canción (el final
+  instrumental se ve) y una escena SIN letra ocupa el hueco entre la última palabra cantada de la anterior y la primera
+  de la siguiente (varias seguidas se lo reparten; la primera escena empieza en 0). Una escena de menos de `MIN_ESCENA` va
+  en `linea.avisos` y NO se estira (desincronizaría la música). Topes propios: 180 s y 80 escenas (`MAX_SEGUNDOS_CANCION`,
+  `MAX_ESCENAS_CANCION`). El render y el Container NO cambiaron: la línea sale sin silencios y `armarPcm` copia la canción
+  tal cual hasta el último cuadro (un caso más en `container/probarAudio.mjs`).
+  · **La locución con `origen: "cancion"`** guarda la canción (archivo, clave, `src`, mime, duración medida de los bytes
+  —`duracionDeAudio`: MP3, WAV, M4A— o la que midió el navegador), la letra, `oidas` (la LETRA con sus tiempos, una por
+  palabra), `coincidencia`, `fuente` y `desplazamiento`. Las `palabras` del guion NO se guardan como verdad: se sacan GRATIS
+  al leer (`palabrasParaLinea` / `conPalabrasDeCancion`: `alinearPalabras` del guion de ahora contra `oidas` movidas por
+  el ajuste fino) en `deFila`, en `pedidoDelVideo` (lo que recibe el Container) y en la vista previa (con el guion SIN
+  guardar). La canción sigue valiendo mientras el guion diga la letra (`estadoDeCancion`: la misma canción y duración, ≥
+  `COINCIDENCIA_MINIMA`): aprobar la deja «Con locución» sin pagar nada, `puedeRenderizar` lo exige (sin mirar la versión
+  de la locución) y `pedirLocucion` contesta 409 `cancion`: generar una voz la pisaría.
+  · **Sincronizar** (`POST /api/videos/<c>/cancion`) es UNA llamada dentro de la petición (la canción ≤ 15 MB en memoria) y
+  SIEMPRE pide confirmar (409 con lo de una alineación y lo más que puede costar). La canción es de la biblioteca del
+  cliente o de la agencia de ESTE espacio (`sonidoParaVideo` + `claveDeSonido`). Orden: Forced Alignment con la mezcla →
+  si no sirve, Voice Isolator y Forced Alignment de la voz aislada → si no (o sin llave), Gemini la oye con la letra
+  delante → si no, estimado y lo dice. **Una alineación FORZADA devuelve siempre la letra que se le dio**: que las palabras
+  casen no dice nada, así que la `coincidencia` de una alineación es exactas × (1 − aplastadas) (`medirAlineacion`: las que
+  quedan sin duración son las que no encontró entre la música). La escala del `loss` de ElevenLabs no está verificada: se
+  apunta, no decide. Cada llamada que sale bien se apunta en `consumo_ia` (proveedor «elevenlabs», función «sincronizar
+  canción»; por sus créditos si la respuesta los dice —`character-cost`—, si no lo aproximado: `USD_ALINEAR_POR_MINUTO`,
+  `USD_AISLAR_POR_MINUTO`, NO verificados). El resultado queda en R2 bajo `canciones/<espacio>/<cliente>/<huella>.json`
+  (fuera de `clientes/`), con un extracto CRUDO de cada respuesta: la misma canción con la misma letra otra vez sale
+  gratis, y crear el video lo lee de ahí por su huella (no lo que mande el navegador).
+  · **La prueba de sincronía** (`guionKaraoke`, gratis): una escena por línea (las largas se parten; las que se cantan
+  muy seguidas se juntan), la línea de titular con un icono encima y una forma detrás (sin pieza visual la revisión la da
+  por vacía), el coro (las líneas que se repiten) con placa y estrellas, escenas sin letra en los huecos de más de 2 s
+  (intro y final con el logo, puente con una forma) y el logo al cierre. «Diseñar las escenas con IA»
+  (`escribirGuionCancion`, función «guion de video») lleva la letra por líneas con sus tiempos, el coro y los huecos; la
+  aplicación le pone SU canción y le quita la música (`conLaCancion`) y `comprobarLetra` exige la letra tal cual: una
+  vuelta de corrección y si no, 502.
+  · **El render** lee la canción con `claveDeSonido` (también de `biblioteca/<espacio>/`), ignora la música de «Sonido» (y
+  lo dice en `render.aviso`) y deja los efectos. La vista previa la toca por `locucion.src` (la de la agencia va por
+  `/api/sonidos/agencia/<id>/audio`). En el chat de Claude, `video_con_cancion` está en `CON_VISTA` y la canción de la
+  agencia se puede firmar (`claveServible` admite `biblioteca/<espacio>/musica/`).
+  · **La herramienta** importa `cancion.js` EN EL MOMENTO (lee guionAnimado.js → mercado.js: estático cerraría el ciclo
+  con herramientas.js).
+  · **Siguiente paso, NO en esta entrega**: imágenes de IA por sección de la canción (verso, coro, puente).
+  · **Nada de esto se ha probado contra ElevenLabs ni Gemini reales**: los tests (tests/migracion/videos.cancion.test.js)
+  usan un `fetch` de mentira con la forma de su documentación. Lo primero con la llave: sincronizar UNA canción corta y
+  mirar en su `canciones/…json` (o en `locucion.crudo`) qué devolvió Forced Alignment.
 - **`wrangler d1 migrations apply` pinta la tabla ENTERA de migraciones tras cada una**: su salida crece con el cuadrado de
   cuántas hay, y con la 0076 (72 migraciones) pasó del 1 MB que `execFile` admite por defecto. `npm run test:vivo` moría con
   «stdout maxBuffer length exceeded» antes de arrancar el Worker, con el SQL perfecto. `tests/vivo/espacio.js` le da 64 MB.

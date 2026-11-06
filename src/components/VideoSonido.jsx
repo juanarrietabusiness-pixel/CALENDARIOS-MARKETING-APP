@@ -121,6 +121,8 @@ function Sonido({ client, video, onCambio }) {
         </>
       )}
       <label htmlFor={`${ids}-musica`}>Música de fondo</label>
+      {/* «Video con tu canción»: la canción ya es la música; el render no mezcla otra (y lo dice). */}
+      {video.locucion?.origen === "cancion" && <p className="hint">Este video va con su canción: la música de fondo no suena (la canción ya es la música). Los efectos sí.</p>}
       <select id={`${ids}-musica`} className="input" value={musicaId} onChange={(e) => setMusicaId(e.target.value)} disabled={musicas === null}>
         <option value="">Sin música</option>
         <OpcionesDeSonido lista={musicas ?? []} cliente={client.name} />

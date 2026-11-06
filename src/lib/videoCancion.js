@@ -372,6 +372,10 @@ function juntarCortas(lineas, max) {
   return salida;
 }
 
+/** Las formas que van detrás de una línea y los iconos de encima (rotan: uno por escena; el coro, su estrella). */
+const FORMAS_KARAOKE = Object.freeze(["mancha", "circulo", "ola"]);
+const ICONOS_KARAOKE = Object.freeze(["corazon", "sonrisa", "rayo", "hoja", "gota"]);
+
 /** Un texto para la pantalla (≤ 80): entero si cabe; si no, hasta la última palabra que cabe con «…». */
 function enPantalla(texto, max = 80) {
   const t = String(texto ?? "").replace(/\s+/g, " ").trim();
@@ -400,9 +404,15 @@ export function guionKaraoke({ titulo = "", lineas = [], duracion, cancion, form
         id: `l${i + 1}`, tipo: l.coro ? "beneficio" : "explicacion", habla: l.texto, pantalla,
         fondo: l.coro ? { tipo: "estrellas", color: "fondo", color2: "acento" } : i % 2 ? { tipo: "puntos", color: "fondo", color2: "superficie" } : { tipo: "papel", color: "fondo" },
         transicion: { tipo: l.coro ? "zoom" : "fundido", dur: 0.25 },
-        capas: [l.coro
-          ? { tipo: "texto", id: "linea", texto: pantalla, rol: "titular", placa: "acento", color: "claro", tam: 0.95, entra: { palabra: 0 }, animacion: { entrada: "escala", bucle: "pulso" } }
-          : { tipo: "texto", id: "linea", texto: pantalla, rol: "titular", color: "texto", tam: 0.95, entra: { palabra: 0 }, animacion: { entrada: "sube" } }],
+        // Un icono encima (sin una pieza visual, una línea sola se ve vacía) y una forma DETRÁS de la línea (el motor pone
+        // una forma tras la capa que la sigue). El titular a 0,6 del lado corto: el motor lo agranda al llenar.
+        capas: [
+          { tipo: "icono", id: "icono", nombre: l.coro ? "estrella" : ICONOS_KARAOKE[i % ICONOS_KARAOKE.length], fondo: l.coro ? "acento" : "superficie", pos: "arriba", tam: 0.28, entra: { palabra: 0 }, animacion: { entrada: "rebote", bucle: l.coro ? "late" : "flota" } },
+          { tipo: "forma", id: "fondo-linea", figura: l.coro ? "estrella" : FORMAS_KARAOKE[i % FORMAS_KARAOKE.length], color: l.coro ? "acento" : "apoyo", tam: 0.72, animacion: { entrada: "escala", bucle: l.coro ? "gira" : "flota" } },
+          l.coro
+            ? { tipo: "texto", id: "linea", texto: pantalla, rol: "titular", placa: "acento", color: "claro", tam: 0.6, entra: { palabra: 0 }, animacion: { entrada: "escala", bucle: "pulso" } }
+            : { tipo: "texto", id: "linea", texto: pantalla, rol: "titular", color: "texto", tam: 0.6, entra: { palabra: 0 }, animacion: { entrada: "sube" } },
+        ],
       },
     };
   });
@@ -416,7 +426,7 @@ export function guionKaraoke({ titulo = "", lineas = [], duracion, cancion, form
         fondo: { tipo: "degradado", color: "fondo", color2: "superficie" }, transicion: { tipo: "fundido", dur: 0.3 },
         capas: [
           { tipo: "logo", id: "logo", pos: "centro", tam: 0.5, animacion: { entrada: "escala", bucle: "flota" } },
-          ...(h.cual === "intro" ? [{ tipo: "texto", id: "nombre", texto: nombre, rol: "apoyo", pos: "abajo", tam: 0.8, entra: { s: 0.4 }, animacion: { entrada: "sube" } }] : []),
+          ...(h.cual === "intro" ? [{ tipo: "texto", id: "nombre", texto: nombre, rol: "apoyo", pos: "abajo", tam: 0.6, entra: { s: 0.4 }, animacion: { entrada: "sube" } }] : []),
         ],
       },
   }));

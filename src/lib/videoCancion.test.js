@@ -11,6 +11,22 @@ import {
 import { puedeRenderizar, tramosDeAudio, armarPcm, BYTES_MUESTRA } from "./renderVideo.js";
 import { formatoParaLaIA } from "./videoFormatoIA.js";
 import { pedidoDeGuionCancion, letraParaLaIA } from "./guionAnimadoIA.js";
+import { revisarEscenas } from "./revisionEscenas.js";
+
+/** Un contexto 2D que sólo mide (como el de revisionEscenas.test.js): cada letra, el 55 % del tamaño de la fuente. */
+function lienzo() {
+  const estado = { font: "10px x" };
+  const tam = () => Number(/(\d+)px/.exec(estado.font)?.[1] ?? 10);
+  return new Proxy({}, {
+    get(_, k) {
+      if (k === "measureText") return (t) => ({ width: String(t).length * tam() * 0.55 });
+      if (k === "createLinearGradient") return () => ({ addColorStop: () => {} });
+      if (k in estado) return estado[k];
+      return () => {};
+    },
+    set(_, k, v) { estado[k] = v; return true; },
+  });
+}
 
 // ============================================================
 // «Video con tu canción» (puro): el MODO CANCIÓN del formato y de la línea de tiempo, la letra, leer y alinear la
@@ -289,13 +305,22 @@ describe("la prueba de sincronía (karaoke)", () => {
     expect(g.escenas.map((e) => e.id)).toEqual(["intro", "l1", "l2", "p2", "l3", "l4", "final"]);
     expect(g.escenas.find((e) => e.id === "intro").capas.some((c) => c.tipo === "logo")).toBe(true);
     expect(g.escenas.find((e) => e.id === "final").capas.some((c) => c.tipo === "logo")).toBe(true);
-    expect(g.escenas.find((e) => e.id === "l1").capas[0]).toMatchObject({ rol: "titular", placa: "acento" });
+    expect(g.escenas.find((e) => e.id === "l1").capas.find((c) => c.id === "linea")).toMatchObject({ rol: "titular", placa: "acento" });
     // La letra va tal cual: comprobarLetra no encuentra nada.
     expect(comprobarLetra(g, letra)).toEqual([]);
     // Con sus palabras, la línea de tiempo dura la canción y no tiene silencios.
     const l = lineaDeTiempo(g, palabrasDeLaCancion(g, { oidas, duracion: 32 }).palabras);
     expect(l.total).toBe(32);
     expect(l.silencios).toEqual([]);
+  });
+
+  it("la revisión antes de renderizar no encuentra nada grave en 9:16 (ni escenas vacías: cada línea lleva su forma detrás)", () => {
+    const oidas = oidasDe(LETRA, { inicio: 4, hueco: 5 });
+    const g = guionKaraoke({ titulo: "Toallitas", lineas: lineasConTiempos(letra, oidas), duracion: 32, cancion: cancion(32) });
+    const linea = lineaDeTiempo(g, palabrasDeLaCancion(g, { oidas, duracion: 32 }).palabras);
+    const problemas = revisarEscenas(lienzo(), { guion: g, linea, formato: "9:16" });
+    expect(problemas.filter((x) => x.grave)).toEqual([]);
+    expect(problemas.filter((x) => x.tipo === "espacio_vacio" && /^l\d/.test(x.escena))).toEqual([]);
   });
 
   it("sin final instrumental, el logo va en la última escena; las líneas muy seguidas se juntan", () => {
