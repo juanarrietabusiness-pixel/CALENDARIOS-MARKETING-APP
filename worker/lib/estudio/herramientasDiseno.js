@@ -184,7 +184,8 @@ export function vistaDelPlan(plan, { carrusel = false, cliente = null, sugerenci
 /** Las plantillas del kit y lo que le gustó a la agencia, como imágenes de 512 px: lo que el director mira. */
 async function vistasDelCliente(env, acceso, cliente, kit) {
   const claves = (limpiarKit(kit).plantillas ?? []).map((p) => p.clave).filter(Boolean);
-  const gustos = await acceso.leer("estudio_archivos", { client_id: cliente.id, favorito: 1, borrado_at: NULO }, "created_at desc", 8).catch(() => []);
+  // Sólo imágenes: la música de la marca (la favorita de la biblioteca de sonido) también lleva `favorito`.
+  const gustos = await acceso.leer("estudio_archivos", { client_id: cliente.id, tipo: "imagen", favorito: 1, borrado_at: NULO }, "created_at desc", 8).catch(() => []);
   const elegidas = [...claves.map((clave) => ({ clave, mime: "image/png" })), ...gustos.filter((f) => f.tipo === "imagen").map((f) => ({ clave: f.clave, mime: f.mime }))].slice(0, MAX_VISTAS);
   const vistas = [];
   for (const f of elegidas) {
