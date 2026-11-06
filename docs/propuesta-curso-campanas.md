@@ -349,15 +349,19 @@ usa (deeplook.co/calculadora-roas, pública). Son dos números distintos y la ap
 La IA no inventa un número: lo que propone queda «estimado» hasta que una persona lo confirma, como las fechas
 especiales.
 
-**Lo que queda por decidir:**
+**Lo decidido (agencia, 6-nov):**
 
-1. **Qué es la «Campaña especial»** y cuándo se usa (¿promociones, fechas, lanzamientos?), y si Presentación lleva 4
-   anuncios por conjunto (apuntes) o 5 (plantilla).
-2. **Todo el negocio o sólo la pauta.** En WhatsApp Meta no ve las ventas: el ROAS sólo se puede medir con las ventas
-   totales del mes ÷ la pauta. Propuesta: «todo el negocio» por defecto; «sólo la pauta» cuando el cliente separe lo
-   que viene de los anuncios (etiquetas, CRM).
-3. **Quién apunta las ventas** para medir la tasa de cierre y el ROAS real: cada semana, el número de ventas por
-   WhatsApp (y su monto). ¿Lo escribe la agencia en la app o el cliente por un enlace, como la aprobación?
+1. **La «Campaña especial»** es la quinta hoja del Excel de estrategia (sin explicación en los apuntes). Se usa para lo
+   que tiene fecha: la oferta del mes, una fecha comercial (Black Friday, Día de la Madre) o un lanzamiento. Es opcional:
+   el plan la propone cuando el mes trae oferta o fecha comercial (ya están en la campaña del mes y en las fechas
+   especiales). Su presupuesto es aparte del reparto 60/20/10/10 y dura lo que dura la fecha. Anuncios: **de 4 a 6 por
+   conjunto** en todas las campañas, 4 por defecto (el promedio de la agencia).
+2. **Qué número se compara, según el destino.** Web (e-commerce): el ROAS que registra Meta frente al ROAS de equilibrio.
+   WhatsApp: el costo por conversación frente al objetivo y al de equilibrio (Meta no ve esas ventas). Los costos fijos y
+   las ventas de otros canales van JUNTOS o no van: sin ellos, el equilibrio es el PISO (la pauta se paga sola) y la app
+   lo dice; con ellos, el exacto. Los fijos sin las ventas de otros canales cargarían todo a la pauta y saldría un
+   equilibrio imposible para un negocio que también vende en tienda.
+3. **Las ventas, por un enlace del cliente**, sin sesión, como el de aprobación (fase E.1).
 
 **B.2 Las métricas que faltan (S).** Clics únicos en el enlace, CTR único y su costo, reproducciones de 3 s, tiempo
 promedio de reproducción y los rankings de calidad. Con ellos, el **% de mensajes** = conversaciones ÷ clics únicos.
@@ -445,7 +449,27 @@ hecho solo.
 
 ### Fase E · El destino (WhatsApp) y la investigación
 
-Sin cambios respecto a la primera versión. Para WhatsApp Business, listo para copiar: bienvenida, respuestas rápidas
+**E.1 «Tus ventas de la semana», por un enlace (S-M).** Muchos clientes no pasan sus ventas, y sin ellas no hay tasa
+de cierre ni ROAS real en WhatsApp. Un enlace fijo por cliente, sin sesión (como el de aprobación), que se llena en 30
+segundos desde el teléfono:
+
+- ¿Cuántas ventas cerraste esta semana por WhatsApp? ¿Por cuánto en total? (las dos obligatorias, nada más);
+- opcional: cuántas vinieron de los anuncios, si lo sabe, y las ventas en tienda u otros canales (para el equilibrio
+  exacto).
+
+La pantalla le enseña al cliente lo que la app ya sabe («esta semana te escribieron 84 personas por los anuncios»), así
+el número tiene sentido. La agencia lo manda cada lunes con un mensaje de WhatsApp listo para copiar (como «Enviar a
+cliente»), y también puede escribirlo ella desde la app si se lo dicen por llamada. Con eso:
+
+- tasa de cierre = ventas ÷ conversaciones de Meta, sobre las últimas 4 semanas (las ventas de esta semana suelen ser de
+  conversaciones de la anterior);
+- costo real por venta = pauta ÷ ventas, y el ROAS de WhatsApp = monto ÷ pauta;
+- si el cliente no contesta, se queda la última medida (o el 5 %) marcada «sin medir desde…», y el diagnóstico lo dice.
+
+En e-commerce web no hace falta: las compras las registra Meta. El enlace sirve igual para contrastar la atribución de
+Meta con las ventas reales.
+
+Lo demás, sin cambios respecto a la primera versión. Para WhatsApp Business, listo para copiar: bienvenida, respuestas rápidas
 con las objeciones del estudio, etiquetas y un guion de ventas por producto. Además: la tasa de cierre medida cada
 semana, la encuesta «Voz del cliente» por enlace, la revisión mensual del estudio y las preguntas del curso en el
 análisis de la Biblioteca. El CRM y las etiquetas de WhatsApp como público quedan para más adelante.
@@ -474,9 +498,9 @@ campaña completa sugerida. La D necesita A y B funcionando un tiempo para tener
 | 9 | ¿Qué publicaciones se marcan «Va a pauta» solas? | **Decidido (agencia, 5-nov):** las del tipo «Anuncio» del plan semanal y las de la oferta del mes, quitables |
 | 10 | ¿Hashtags en lo que va a pauta? | Ninguno o casi |
 | 11 | Los números del negocio | **Decidido (agencia, 5-nov):** se configuran por cliente en la app, con ayuda y propuestas de la IA (B.1) |
-| 12 | ¿Qué es la «Campaña especial» de la plantilla? ¿4 o 5 anuncios en presentación? | Pendiente |
-| 13 | ¿Equilibrio de todo el negocio o sólo de la pauta? | Todo el negocio por defecto (B.1) |
-| 14 | ¿Quién apunta las ventas de cada semana? | Pendiente: la agencia en la app o el cliente por un enlace |
+| 12 | ¿Qué es la «Campaña especial» de la plantilla? ¿Cuántos anuncios por conjunto? | **Decidido (6-nov):** la de una oferta, una fecha o un lanzamiento, opcional y con presupuesto aparte; de 4 a 6 anuncios por conjunto, 4 por defecto |
+| 13 | ¿Equilibrio de todo el negocio o sólo de la pauta? | **Decidido (6-nov):** web con el ROAS de Meta, WhatsApp con el costo por conversación; fijos y otros canales juntos o el piso (B.1) |
+| 14 | ¿Quién apunta las ventas de cada semana? | **Decidido (6-nov):** el cliente por un enlace; la agencia también puede escribirlas (E.1) |
 
 ---
 
