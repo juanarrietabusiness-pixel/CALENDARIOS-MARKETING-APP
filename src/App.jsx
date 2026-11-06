@@ -59,6 +59,8 @@ const PlanWizard = lazy(() => import("./components/PlanWizard"));
 const Aprobar = lazy(() => import("./pages/Aprobar"));
 const Informe = lazy(() => import("./pages/Informe"));
 const InformeAnuncios = lazy(() => import("./pages/InformeAnuncios"));
+// «Tus ventas de la semana»: la página del cliente final para apuntar sus ventas (sin sesión).
+const VentasCliente = lazy(() => import("./pages/VentasCliente"));
 const AuditoriaPublica = lazy(() => import("./pages/AuditoriaPublica"));
 const Auditorias = lazy(() => import("./pages/Auditorias"));
 const LoMejor = lazy(() => import("./pages/LoMejor"));
@@ -123,6 +125,8 @@ function App() {
   if (ruta.vista === "informe") return <Suspense fallback={<Aviso>Cargando…</Aviso>}><Informe /></Suspense>;
   // Y el de anuncios.
   if (ruta.vista === "informe-anuncios") return <Suspense fallback={<Aviso>Cargando…</Aviso>}><InformeAnuncios /></Suspense>;
+  // Y el enlace de ventas de la semana.
+  if (ruta.vista === "ventas") return <Suspense fallback={<Aviso>Cargando…</Aviso>}><VentasCliente /></Suspense>;
   // Y la auditoría de perfil que se le manda a un cliente o a un prospecto.
   if (ruta.vista === "auditoria") return <Suspense fallback={<Aviso>Cargando…</Aviso>}><AuditoriaPublica /></Suspense>;
   return <Panel ruta={ruta} />;
@@ -631,6 +635,12 @@ function Workspace({ session, ruta }) {
         // «Lo mejor»: el cron releyó los anuncios o clasificó piezas, o cambió el tope de créditos: quien lo vea relee.
         case "lo-mejor":
           window.dispatchEvent(new CustomEvent("lo-mejor", { detail: ev }));
+          break;
+
+        // Las ventas de la semana: el cliente las apuntó por su enlace (o alguien del equipo): quien las vea relee.
+        case "ventas":
+          window.dispatchEvent(new CustomEvent("ventas", { detail: ev }));
+          if (ev.por?.userId === "cliente") setToast(`${ev.por?.nombre || "El cliente"} apuntó sus ventas de la semana.`);
           break;
 
         case "editando":

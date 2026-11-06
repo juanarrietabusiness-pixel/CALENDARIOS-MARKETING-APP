@@ -1,0 +1,142 @@
+/* ============================================================
+   /ventas?t=… — «Tus ventas de la semana», la página del cliente
+   Clara, con el color del cliente (`--ventas-color`, y el texto que se lee
+   encima, `--ventas-sobre-color`) y pensada para el teléfono: campos de 16 px
+   (iOS no hace zoom) y botones de 44 px. Va con su chunk.
+   ============================================================ */
+
+.ventas-pagina {
+  --ventas-fondo: #F3F5F9;
+  --ventas-tarjeta: #FFFFFF;
+  --ventas-texto: #1A2433;
+  --ventas-suave: #5B6B80;
+  --ventas-borde: #D5DCE6;
+  color-scheme: light;
+  min-height: 100dvh;
+  background: var(--ventas-fondo);
+  color: var(--ventas-texto);
+  padding: calc(var(--sp-5) + var(--safe-top, 0px)) var(--sp-4) calc(var(--sp-8) + var(--safe-bottom, 0px));
+  font-size: var(--fs-md);
+  line-height: var(--lh-normal);
+}
+.ventas-contenido {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  max-width: 560px;
+  margin: 0 auto;
+}
+
+.ventas-cabecera { text-align: center; display: flex; flex-direction: column; align-items: center; gap: var(--sp-1); }
+.ventas-cabecera h1 { font-size: var(--fs-xl); margin: 0; line-height: var(--lh-tight); }
+.ventas-logo { width: 64px; height: 64px; object-fit: contain; border-radius: var(--radius); background: var(--ventas-tarjeta); }
+.ventas-marca { margin: 0; font-weight: 700; color: var(--ventas-color); font-size: var(--fs-sm); }
+
+.ventas-ayuda { margin: 0; color: var(--ventas-suave); font-size: var(--fs-xs); }
+.ventas-solo { margin: var(--sp-8) auto; text-align: center; max-width: 420px; }
+
+.ventas-tarjeta {
+  background: var(--ventas-tarjeta);
+  border: 1px solid var(--ventas-borde);
+  border-radius: var(--radius-lg);
+  padding: var(--sp-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+.ventas-tarjeta h2 { margin: 0; font-size: var(--fs-lg); line-height: var(--lh-tight); }
+.ventas-tarjeta h2 span { display: block; font-size: var(--fs-xs); font-weight: 400; color: var(--ventas-suave); margin-top: 2px; }
+
+.ventas-sabemos {
+  margin: 0;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--radius-sm);
+  background: var(--ventas-fondo);
+  border-left: 4px solid var(--ventas-color);
+  font-size: var(--fs-sm);
+}
+
+.ventas-form { display: flex; flex-direction: column; gap: var(--sp-4); }
+.ventas-campo { display: flex; flex-direction: column; gap: var(--sp-1); }
+.ventas-campo label { font-weight: 600; font-size: var(--fs-sm); }
+.ventas-entrada { display: flex; align-items: center; border: 1px solid var(--ventas-borde); border-radius: var(--radius-sm); background: var(--ventas-tarjeta); }
+.ventas-entrada:focus-within { border-color: var(--ventas-color); box-shadow: 0 0 0 3px rgba(31, 111, 209, .18); }
+.ventas-entrada > span { padding-left: var(--sp-3); color: var(--ventas-suave); font-size: var(--fs-md); }
+.ventas-entrada input,
+.ventas-campo textarea {
+  flex: 1;
+  min-width: 0;
+  min-height: var(--tap);
+  border: 0;
+  background: transparent;
+  color: var(--ventas-texto);
+  /* 16 px: por debajo, Safari del iPhone acerca la pantalla al enfocar. */
+  font-size: var(--fs-md);
+  padding: var(--sp-2) var(--sp-3);
+  font-family: inherit;
+}
+.ventas-entrada input { font-size: var(--fs-lg); font-weight: 600; font-variant-numeric: tabular-nums; }
+.ventas-entrada input:focus, .ventas-campo textarea:focus { outline: none; }
+.ventas-campo textarea { border: 1px solid var(--ventas-borde); border-radius: var(--radius-sm); resize: vertical; }
+.ventas-campo textarea:focus { border-color: var(--ventas-color); }
+
+.ventas-opcional { border-top: 1px solid var(--ventas-borde); padding-top: var(--sp-3); }
+.ventas-opcional > summary {
+  cursor: pointer;
+  min-height: var(--tap);
+  display: flex;
+  align-items: center;
+  font-weight: 600;
+  font-size: var(--fs-sm);
+  color: var(--ventas-suave);
+}
+.ventas-opcional > summary { justify-content: space-between; list-style: none; }
+.ventas-opcional > summary::-webkit-details-marker { display: none; }
+.ventas-opcional > summary svg { transition: transform .2s; }
+.ventas-opcional[open] > summary svg { transform: rotate(180deg); }
+.ventas-opcional[open] > summary { margin-bottom: var(--sp-3); }
+.ventas-opcional > .ventas-campo + .ventas-campo { margin-top: var(--sp-3); }
+
+.ventas-boton {
+  min-height: var(--tap);
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--ventas-color);
+  color: var(--ventas-sobre-color);
+  font-size: var(--fs-md);
+  font-weight: 700;
+  padding: var(--sp-3) var(--sp-5);
+  cursor: pointer;
+}
+.ventas-boton:disabled { opacity: .6; cursor: default; }
+.ventas-boton:focus-visible, .ventas-plegable:focus-visible { outline: 3px solid var(--ventas-color); outline-offset: 2px; }
+
+.ventas-error { margin: 0; padding: var(--sp-2) var(--sp-3); border-radius: var(--radius-sm); background: #FDECEC; color: #9B1C1C; font-size: var(--fs-sm); }
+.ventas-gracias { margin: 0; padding: var(--sp-3); border-radius: var(--radius); background: #E7F6EC; color: #1B5E2B; font-weight: 600; text-align: center; }
+/* Siempre en el DOM (es la región que anuncia «Gracias»): vacía no ocupa sitio. */
+.ventas-gracias:empty { padding: 0; background: none; }
+
+.ventas-otras { display: flex; flex-direction: column; gap: var(--sp-2); }
+.ventas-otras > h2 { margin: var(--sp-2) 0 0; font-size: var(--fs-sm); color: var(--ventas-suave); font-weight: 700; }
+.ventas-tarjeta-plegada { padding: 0; gap: 0; }
+.ventas-tarjeta-plegada > div:not([hidden]) { padding: 0 var(--sp-4) var(--sp-4); display: flex; flex-direction: column; gap: var(--sp-3); }
+.ventas-plegable {
+  min-height: var(--tap);
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  padding: var(--sp-3) var(--sp-4);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  cursor: pointer;
+  font-size: var(--fs-sm);
+  border-radius: var(--radius-lg);
+}
+.ventas-plegable-titulo { font-weight: 700; }
+.ventas-plegable-titulo span { display: block; font-weight: 400; font-size: var(--fs-xs); color: var(--ventas-suave); }
+.ventas-plegable-estado { font-size: var(--fs-xs); color: var(--ventas-suave); white-space: nowrap; }
+.ventas-plegable-estado[data-apuntada] { color: var(--ventas-texto); font-weight: 600; }

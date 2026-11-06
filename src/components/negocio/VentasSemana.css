@@ -1,0 +1,56 @@
+/* ============================================================
+   «Ventas de la semana» (Marca → Números del negocio). Va con su chunk:
+   el CSS inicial (index.css) está en su tope.
+   ============================================================ */
+
+.vs { display: flex; flex-direction: column; gap: var(--sp-3); }
+.vs h3 { margin: 0 0 var(--sp-1); font-size: var(--fs-lg); }
+.vs-cabecera { display: flex; flex-wrap: wrap; gap: var(--sp-3); justify-content: space-between; align-items: flex-start; }
+.vs-cabecera > div:first-child { flex: 1 1 320px; }
+.vs-copiar { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.vs-aviso { margin: 0; font-size: var(--fs-xs); color: var(--text-muted); }
+.vs-copia { font-size: var(--fs-md); }
+
+.vs-cifras { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: var(--sp-2); }
+.vs-cifra {
+  display: flex; flex-direction: column; gap: 2px;
+  padding: var(--sp-3); border-radius: var(--radius); background: var(--surface-2); border: 1px solid var(--border);
+}
+.vs-cifra-nombre { font-size: var(--fs-3xs); font-weight: 700; color: var(--text-dim); text-transform: uppercase; letter-spacing: .06em; }
+.vs-cifra strong { font-size: var(--fs-xl); font-variant-numeric: tabular-nums; line-height: var(--lh-tight); }
+.vs-cifra:not([data-medida]):first-child strong { color: var(--text-dim); font-size: var(--fs-lg); }
+.vs-cifra-nota { font-size: var(--fs-2xs); color: var(--text-dim); }
+
+.vs-tabla-caja { overflow-x: auto; }
+.vs-tabla { width: 100%; border-collapse: collapse; font-size: var(--fs-xs); }
+.vs-tabla th, .vs-tabla td { padding: var(--sp-2); border-bottom: 1px solid var(--border); text-align: left; vertical-align: middle; }
+.vs-tabla thead th { font-size: var(--fs-3xs); color: var(--text-dim); font-weight: 700; white-space: nowrap; }
+.vs-tabla tbody tr:not([data-apuntada]) td { color: var(--text-dim); }
+.vs-tabla tr[data-toca] th, .vs-tabla tr[data-toca] td { background: var(--accent-soft); }
+.vs-semana { font-weight: 600; white-space: nowrap; }
+.vs-semana span { display: block; font-weight: 400; font-size: var(--fs-2xs); color: var(--text-dim); }
+.vs-num { text-align: right !important; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.vs-nota { display: block; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-2xs); color: var(--text-dim); }
+.vs-acciones { text-align: right; white-space: nowrap; }
+
+/* En el teléfono la tabla se vuelve tarjetas: cada celda con su etiqueta (como Producción). */
+@media (max-width: 719px) {
+  .vs-tabla thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .vs-tabla, .vs-tabla tbody, .vs-tabla tr, .vs-tabla th, .vs-tabla td { display: block; width: 100%; }
+  .vs-tabla tr { border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: var(--sp-2); padding: var(--sp-2); background: var(--surface); }
+  .vs-tabla th, .vs-tabla td { border: 0; padding: 2px 0; }
+  .vs-tabla tr[data-toca] { border-color: var(--accent-line); }
+  .vs-tabla td[data-etiqueta] { display: flex; justify-content: space-between; gap: var(--sp-2); text-align: left !important; }
+  .vs-tabla td[data-etiqueta]::before { content: attr(data-etiqueta); color: var(--text-dim); font-size: var(--fs-3xs); font-weight: 700; }
+  .vs-acciones { text-align: left; padding-top: var(--sp-2) !important; }
+  .vs-nota { max-width: 60%; }
+}
+
+.vs-editor {
+  display: flex; flex-direction: column; gap: var(--sp-3);
+  padding: var(--sp-4); border-radius: var(--radius); background: var(--surface-2); border: 1px solid var(--accent-line);
+}
+.vs-editor h4 { margin: 0; font-size: var(--fs-md); }
+.vs-editor h4 span { font-weight: 400; color: var(--text-dim); font-size: var(--fs-xs); margin-left: var(--sp-1); }
+.vs-editor-campos { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: var(--sp-3); }
+.vs-editor-acciones { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
