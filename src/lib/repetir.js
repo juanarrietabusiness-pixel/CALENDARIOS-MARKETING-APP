@@ -127,7 +127,11 @@ export function copiaRepetida(origen = {}, fecha, id, { textosNuevos = true } = 
   for (const k of ARCHIVOS) delete copia[k];
   if (textosNuevos) for (const k of TEXTOS_NUEVOS) delete copia[k];
   delete copia.repetir;
-  return { ...copia, aprobacion: "idea", repiteDe: origen.id, repeticion: fecha };
+  // Sin archivos ya es una idea para el cliente (`tipoAprobacion`), y SIN la marca: con «idea» puesta, al recibir su
+  // pieza el cliente la seguiría viendo como idea. Tampoco lo que escogió alguien para la original: era para ESA pieza.
+  delete copia.aprobacion;
+  delete copia.aprobacionElegida;
+  return { ...copia, repiteDe: origen.id, repeticion: fecha };
 }
 
 /** El calendario con la regla de una publicación cambiada (o quitada con ""). Pura. */

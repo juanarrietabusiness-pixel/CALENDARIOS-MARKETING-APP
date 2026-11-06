@@ -774,7 +774,7 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
 
       <div className="barra-fija-publicar">
         {ancho && revision}
-        <EstadoAprobacion post={post} setForm={setForm} />
+        <EstadoAprobacion post={post} setForm={setForm} calId={cal?.dbId || cal?.id} />
         <CuandoSale
           post={post}
           sf={sf}

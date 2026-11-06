@@ -73,7 +73,7 @@ const nada = () => {};
 
 export default function AsistenteMes({
   client, cal, escribir, onGuardarPlan, onCompletarTextos, completando = false, estadoCompletar = "", onEnviar, onAbrirPost, onArreglar,
-  onProducirEnLote, onPlanificarAMano, onClose, pasoInicial = null,
+  onProducirEnLote, onPlanificarAMano, onClose, pasoInicial = null, onVerMes = null,
 }) {
   const ids = useId();
   const ref = useDialogA11y(onClose);
@@ -142,7 +142,7 @@ export default function AsistenteMes({
           )}
           {paso === PASO_MES.disenar && <PasoDisenar client={client} cal={cal} escribir={escribir} />}
           {paso === PASO_MES.enviar && (
-            <PasoEnviar client={client} cal={cal} escribir={escribir} onEnviar={onEnviar} onAbrirPost={onAbrirPost} onArreglar={onArreglar} />
+            <PasoEnviar client={client} cal={cal} escribir={escribir} onEnviar={onEnviar} onAbrirPost={onAbrirPost} onArreglar={onArreglar} onVerMes={onVerMes} />
           )}
         </div>
 
@@ -799,7 +799,7 @@ function ReelsDelMes({ client, cal }) {
 // 5. Revisar y enviar: las horas en bloque, la revisión del mes y el envío
 // ------------------------------------------------------------
 
-function PasoEnviar({ client, cal, escribir, onEnviar, onAbrirPost, onArreglar }) {
+function PasoEnviar({ client, cal, escribir, onEnviar, onAbrirPost, onArreglar, onVerMes }) {
   const ids = useId();
   const [lista, setLista] = useState(null);
   const [porDefecto, setPorDefecto] = useState("09:00");
@@ -837,6 +837,20 @@ function PasoEnviar({ client, cal, escribir, onEnviar, onAbrirPost, onArreglar }
         ) : <p className="revision-vacio"><Icon name="checkCircle" size={18} /> Todas tienen su hora.</p>}
         <div role="status" aria-live="polite" className={aviso ? "hint" : "sr-only"}>{aviso}</div>
       </section>
+
+      {/* Revisar MIRANDO el mes: la cuadrícula del perfil, el feed y lo que falta; y programar de una vez lo listo. */}
+      {onVerMes && (
+        <section className="asistente-mes-bloque" aria-labelledby={`${ids}-v`}>
+          <h3 id={`${ids}-v`}>Ver el mes como se verá</h3>
+          <p className="hint" style={{ margin: 0 }}>
+            La cuadrícula del perfil, cada publicación como en el teléfono y lo que la revisión encuentra en cada una. Desde ahí se
+            programa de una vez lo que está listo, sin pasar por el cliente.
+          </p>
+          <button type="button" className="btn btn-secondary btn-sm" disabled={!e.publicaciones} onClick={onVerMes}>
+            <Icon name="image" size={14} /> Ver el mes como se verá
+          </button>
+        </section>
+      )}
 
       <Suspense fallback={cargando("Revisando el mes…")}>
         <RevisionMes incrustado client={client} cal={cal} onAbrir={onAbrirPost} onArreglar={onArreglar} onClose={nada} />

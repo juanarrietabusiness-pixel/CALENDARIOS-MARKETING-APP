@@ -3,6 +3,7 @@ import { semanaDelCliente, lineasDeLaSemana, semanaParaGuardar, semanaEstandar, 
 import { plantillasDisponibles, plantillaDelCliente, configDeFormatos, lineaDelPlan } from "./plantillasPlan.js";
 import { casillasConPlantilla } from "./loteMes.js";
 import { publicacionDePieza } from "./loteAnuncios.js";
+import { tipoAprobacion } from "./aprobacion.js";
 
 const lista = plantillasDisponibles([]);
 
@@ -67,7 +68,8 @@ describe("guardar lo editado en la barra", () => {
 
   it("la idea con rostro llega al calendario como reel con rostro, sin archivos (una idea para grabar)", () => {
     const p = publicacionDePieza({ id: "x", idea: { titulo: "Taller", brief: "B", guion: "[0–3 s] Hola", rostro: true, formato: "reel" } });
-    expect(p).toMatchObject({ format: "reel", rostro: true, aprobacion: "idea", guion: "[0–3 s] Hola" });
+    expect(p).toMatchObject({ format: "reel", rostro: true, guion: "[0–3 s] Hola" });
+    expect(tipoAprobacion(p)).toBe("idea");
   });
 
   it("lo que dice la barra", () => {

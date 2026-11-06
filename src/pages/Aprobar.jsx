@@ -7,6 +7,7 @@ import { useDialogA11y } from "../hooks/useDialogA11y";
 import { mediosDe, textoPara, primerComentario, historiasDe } from "../lib/publicacion";
 import { normalizarColor, textoSobre, conAlfa } from "../lib/colores";
 import { fechaEnZona } from "../lib/agenda";
+import { cuadriculaDelMes } from "../lib/vistaMes";
 
 // ============================================================
 // La página que ve el cliente final
@@ -334,7 +335,7 @@ export default function Aprobar() {
 
       <div className="aprobar-barra">
         <div className="aprobar-vistas" role="group" aria-label="Cómo ver el calendario">
-          {[["feed", "Publicaciones", "list"], ["calendario", "Calendario", "calendar"], ["perfil", "Perfil", "grid"]].map(([id, nombre, icono]) => (
+          {[["feed", "Publicaciones", "list"], ["calendario", "Calendario", "calendar"], ["perfil", "Tu perfil", "grid"]].map(([id, nombre, icono]) => (
             <button key={id} type="button" aria-pressed={vista === id} onClick={() => setVista(id)}>
               <Icon name={icono} size={16} /> {nombre}
             </button>
@@ -398,7 +399,7 @@ export default function Aprobar() {
         )}
 
         {vista === "perfil" && (
-          <RejillaPerfil publicaciones={publicaciones} estados={estados} token={token} usuario={usuario} logo={client?.logo} nombre={client?.name} onElegir={irAPublicacion} />
+          <RejillaPerfil calendar={calendar} estados={estados} token={token} usuario={usuario} logo={client?.logo} nombre={client?.name} onElegir={irAPublicacion} />
         )}
 
         {refs.length > 0 && (
@@ -880,12 +881,17 @@ function MesCalendario({ calendar, estados, token, onElegir }) {
   );
 }
 
-function RejillaPerfil({ publicaciones, estados, token, usuario, logo, nombre, onElegir }) {
-  // Como en Instagram: lo más reciente arriba, y sin las historias, que
-  // no se quedan en el perfil.
-  const enPerfil = publicaciones.filter((p) => p.format !== "historia" && p.format !== "live").slice().reverse();
+/**
+ * «Así se verá tu perfil»: la cuadrícula de Instagram con lo del mes, lo más nuevo primero, en el recorte 3:4 que
+ * enseña el perfil. Sólo lo que sale en el feed de Instagram (ni historias ni lo que va sólo a otras redes), con la
+ * MISMA regla que la vista previa de la agencia (lib/vistaMes.js). Lo ya publicado no se enseña: sus miniaturas pasan
+ * por un proxy con sesión, y este enlace no la tiene.
+ */
+function RejillaPerfil({ calendar, estados, token, usuario, logo, nombre, onElegir }) {
+  const enPerfil = cuadriculaDelMes(calendar.days);
   return (
-    <section className="aprobar-perfil" aria-label="Así se verá tu perfil">
+    <section className="aprobar-perfil" aria-labelledby="aprobar-perfil-t">
+      <h2 id="aprobar-perfil-t" className="aprobar-perfil-titulo">Así se verá tu perfil</h2>
       <div className="aprobar-perfil-cabecera">
         <span className="aprobar-avatar aprobar-avatar-grande">{logo ? <img src={logo} alt="" /> : <Icon name="building" size={24} />}</span>
         <div>
@@ -893,31 +899,30 @@ function RejillaPerfil({ publicaciones, estados, token, usuario, logo, nombre, o
           <span>{nombre}</span>
         </div>
       </div>
+      <p className="aprobar-perfil-nota">Lo de este mes, lo más nuevo arriba, como lo enseña Instagram. Toca una para verla.</p>
+      {!enPerfil.length && <p className="aprobar-vacio">Este mes no tiene publicaciones para el perfil.</p>}
       <ul className="aprobar-perfil-rejilla">
-        {enPerfil.map((p) => {
-          const medios = mediosDe(p);
-          const m = medios[0];
-          return (
-            <li key={p.id}>
-              <button type="button" onClick={() => onElegir(p.id)} data-estado={estados[p.id]}
-                aria-label={`${fechaCorta(p._fecha)}: ${ETIQUETA_ESTADO[estados[p.id]]}`}>
-                {m?.tipo === "imagen" ? (
-                  <img src={srcPublico(m.src, token)} alt="" loading="lazy" />
-                ) : m?.tipo === "video" ? (
-                  <video src={srcPublico(m.src, token)} muted playsInline preload="metadata" aria-hidden="true" />
-                ) : (
-                  <span className="aprobar-perfil-vacio"><Icon name={FORMAT_ICONS[p.format] || "formatPost"} size={22} /></span>
-                )}
-                {(medios.length > 1 || p.format === "reel") && (
-                  <span className="aprobar-perfil-icono" aria-hidden="true">
-                    <Icon name={p.format === "reel" ? "play" : "copy"} size={14} />
-                  </span>
-                )}
-                <span className="aprobar-perfil-estado" data-estado={estados[p.id]} aria-hidden="true" />
-              </button>
-            </li>
-          );
-        })}
+        {enPerfil.map(({ post: p, fecha, miniatura: m, tipo }) => (
+          <li key={p.id}>
+            <button type="button" onClick={() => onElegir(p.id)} data-estado={estados[p.id]}
+              aria-label={`${fechaCorta(fecha)}: ${ETIQUETA_ESTADO[estados[p.id]]}`}>
+              {m?.tipo === "imagen" ? (
+                <img src={srcPublico(m.src, token)} alt="" loading="lazy" />
+              ) : m?.tipo === "video" ? (
+                <video src={srcPublico(m.src, token)} muted playsInline preload="metadata" aria-hidden="true" tabIndex={-1}
+                  onLoadedMetadata={(e) => { e.currentTarget.currentTime = m.segundo > 0 ? m.segundo : 0.1; }} />
+              ) : (
+                <span className="aprobar-perfil-vacio"><Icon name={FORMAT_ICONS[p.format] || "formatPost"} size={22} /></span>
+              )}
+              {(tipo === "reel" || tipo === "carrusel") && (
+                <span className="aprobar-perfil-icono" aria-hidden="true">
+                  <Icon name={tipo === "reel" ? "play" : "copy"} size={14} />
+                </span>
+              )}
+              <span className="aprobar-perfil-estado" data-estado={estados[p.id]} aria-hidden="true" />
+            </button>
+          </li>
+        ))}
       </ul>
     </section>
   );

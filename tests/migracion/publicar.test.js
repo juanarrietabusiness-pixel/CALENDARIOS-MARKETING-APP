@@ -5,6 +5,7 @@ import { crearAcceso } from "../../worker/lib/acceso.js";
 import { cifrarMeta, urlMedioPublico } from "../../worker/lib/meta.js";
 import { COOKIE } from "../../worker/lib/sesion.js";
 import { sha256 } from "../../worker/lib/ids.js";
+import { huellaPieza } from "../../src/lib/aprobacion.js";
 import {
   programar, procesarCola, procesarPublicacion, resincronizarCalendario, cancelarPendientes, ErrorPublicar,
 } from "../../worker/lib/publicador.js";
@@ -587,7 +588,8 @@ describe("programar al aprobar", () => {
   });
 
   it("aun encendida, una IDEA aprobada no se programa: aprobar un concepto no es aprobar la pieza", async () => {
-    await sembrar({ opciones: { programarAlAprobar: true }, posts: [post({ aprobacion: "idea" })] });
+    // Con archivo, la «idea» sólo cuenta si la escogió una PERSONA en «¿Qué aprueba el cliente?».
+    await sembrar({ opciones: { programarAlAprobar: true }, posts: [post({ aprobacion: "idea", aprobacionElegida: true })] });
     db.sqlite.prepare("update calendars set share_token = ?, share_enabled = 1 where id = 'cal1'").run("t".repeat(48));
     expect((await aprobar()).status).toBe(200);
     expect(filas()).toHaveLength(0);
@@ -621,7 +623,7 @@ describe("programar al aprobar", () => {
   });
 
   it("la idea aprobada va a «por producir»; reenviada como pieza, el cliente la vuelve a ver por aprobar", async () => {
-    await sembrar({ posts: [post({ aprobacion: "idea" })] });
+    await sembrar({ posts: [post({ aprobacion: "idea", aprobacionElegida: true })] });
     db.sqlite.prepare("update calendars set share_token = ?, share_enabled = 1 where id = 'cal1'").run("t".repeat(48));
     await aprobar();
     let r = await (await worker.fetch(conSesion("/api/publicar/aprobadas"), env, {})).json();
@@ -638,6 +640,107 @@ describe("programar al aprobar", () => {
     r = await (await worker.fetch(conSesion("/api/publicar/aprobadas"), env, {})).json();
     expect(r.porProducir).toEqual([]);
     expect(r.porProgramar).toEqual([]);
+  });
+});
+
+describe("la idea del sistema que ya tiene su pieza (Feria del Lente, 5-nov)", () => {
+  const TOKEN = "t".repeat(48);
+  const aprobar = async (postId = "p1") => {
+    const esperas = [];
+    const res = await worker.fetch(
+      new Request(`https://calendarios.test/api/publico/${TOKEN}/aprobacion`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ postId, estado: "aprobado", revisor: "Ana" }),
+      }),
+      env, { waitUntil: (p) => esperas.push(p) },
+    );
+    await Promise.all(esperas);
+    return res;
+  };
+  const conSesion = (ruta, { metodo = "GET", body, testigo = TESTIGO } = {}) => new Request(`https://calendarios.test${ruta}`, {
+    method: metodo, headers: { Cookie: `${COOKIE}=${testigo}`, "Content-Type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const contar = (postId = "p1", opciones = {}) => worker.fetch(
+    conSesion(`/api/calendarios/cal1/aprobaciones/${postId}`, { metodo: "PATCH", body: { tipo: "pieza" }, ...opciones }), env, {},
+  );
+  const aprobadas = async () => (await worker.fetch(conSesion("/api/publicar/aprobadas"), env, {})).json();
+  /** La aprobación como quedó en producción: el cliente aprobó la IDEA (la publicación ya podía tener su pieza). */
+  const aprobadaComoIdea = (estado = "aprobado", cuando = "2026-09-30T15:00:00.000Z") => db.sqlite.prepare(
+    "insert into approvals (id, calendar_id, post_id, estado, tipo, huella, created_at, updated_at) values (?,?,?,?,?,?,?,?)",
+  ).run("a1", "cal1", "p1", estado, "idea", "vieja", cuando, cuando);
+
+  it("con su pieza ya puesta, el cliente la ve como PIEZA y su «sí» queda por programar (no por producir)", async () => {
+    // Nació como idea en el lote («Sólo las ideas al calendario», con la marca de antes) y luego recibió su imagen.
+    await sembrar({ posts: [post({ aprobacion: "idea", status: "pending" })] });
+    db.sqlite.prepare("update calendars set share_token = ?, share_enabled = 1 where id = 'cal1'").run(TOKEN);
+    const publico = await (await worker.fetch(new Request(`https://calendarios.test/api/publico/${TOKEN}`), env, {})).json();
+    expect(publico.calendar.calendar.days[0].posts[0].aprobacion).toBe("pieza");
+    expect((await aprobar()).status).toBe(200);
+    const a = db.sqlite.prepare("select tipo, huella from approvals").get();
+    expect(a.tipo).toBe("pieza");
+    expect(a.huella).toBe(huellaPieza(post()));
+    const r = await aprobadas();
+    expect(r.porProgramar).toMatchObject([{ postId: "p1" }]);
+    expect(r.porProducir).toEqual([]);
+  });
+
+  it("lo ya aprobado como idea con archivo se cuenta como pieza a mano, y NO se programa solo", async () => {
+    await sembrar({ posts: [post({ aprobacion: "idea", status: "pending" })] });
+    // Aunque el cliente tenga «Programar al aprobar»: contarla no es una respuesta del cliente.
+    db.sqlite.prepare("update clients set programar_al_aprobar = 1 where id = 'c1'").run();
+    aprobadaComoIdea();
+    expect((await aprobadas()).porProducir).toMatchObject([{ postId: "p1", tieneArchivo: true }]);
+
+    const res = await contar();
+    expect(res.status).toBe(200);
+    const cuerpo = await res.json();
+    expect(cuerpo).toMatchObject({ tipo: "pieza", huella: huellaPieza(post()) });
+    const fila = db.sqlite.prepare("select tipo, huella, estado, updated_at from approvals where post_id = 'p1'").get();
+    // La huella y la fecha son las de AHORA: lo que vio el cliente es la publicación de hoy.
+    expect(fila).toMatchObject({ tipo: "pieza", huella: huellaPieza(post()), estado: "aprobado", updated_at: cuerpo.updated_at });
+    expect(fila.updated_at > "2026-09-30T15:00:00.000Z").toBe(true);
+
+    const r = await aprobadas();
+    expect(r.porProducir).toEqual([]);
+    expect(r.porProgramar).toMatchObject([{ postId: "p1", cambios: [] }]);
+    expect(filas()).toHaveLength(0);
+    // Queda en el historial de la publicación quién lo decidió.
+    expect(db.sqlite.prepare("select nombre, accion from historial where post_id = 'p1'").all())
+      .toMatchObject([{ nombre: "Juan", accion: expect.stringMatching(/Contó como aprobada la pieza/) }]);
+    // Repetirlo no rompe nada.
+    expect((await contar()).status).toBe(200);
+  });
+
+  it("sólo con un «sí» que siga valiendo, a una publicación con su archivo; y sólo como pieza", async () => {
+    await sembrar({ posts: [post({ aprobacion: "idea", status: "pending" }), post({ id: "p2", image: undefined, status: "pending" })] });
+    // Sin aprobación del cliente.
+    expect((await contar()).status).toBe(409);
+    aprobadaComoIdea("cambios");
+    const cambios = await contar();
+    expect(cambios.status).toBe(409);
+    expect((await cambios.json()).error).toMatch(/pidió cambios/);
+    // Sin archivo todavía: es «por producir» de verdad.
+    db.sqlite.prepare("insert into approvals (id, calendar_id, post_id, estado, tipo) values (?,?,?,?,?)").run("a2", "cal1", "p2", "aprobado", "idea");
+    const sinPieza = await contar("p2");
+    expect(sinPieza.status).toBe(409);
+    expect((await sinPieza.json()).error).toMatch(/Todavía no tiene su pieza/);
+    // Otra cosa que no sea «pieza», o una publicación que no existe.
+    expect((await contar("p1", { body: { tipo: "idea" } })).status).toBe(400);
+    expect((await contar("nada")).status).toBe(404);
+    expect(db.sqlite.prepare("select tipo from approvals where post_id = 'p2'").get().tipo).toBe("idea");
+  });
+
+  it("de otro espacio, no encontrado: la capa acota por el dueño del calendario", async () => {
+    await sembrar({ posts: [post({ aprobacion: "idea", status: "pending" })] });
+    aprobadaComoIdea();
+    const s = db.sqlite;
+    s.prepare("insert into users (id, email, password_hash, salt) values (?,?,?,?)").run("u-otra", "otra@a.com", "x", "x");
+    s.prepare("insert into memberships (user_id, owner_id, rol, nombre, color) values (?,?,?,?,?)").run("u-otra", "u-otra", "admin", "Otra", "#1E90FF");
+    s.prepare("insert into sessions (token_hash, user_id, created_at, expires_at) values (?,?,?,?)")
+      .run(await sha256("t-otra"), "u-otra", "2026-01-01T00:00:00.000Z", "2099-01-01T00:00:00.000Z");
+    expect((await contar("p1", { testigo: "t-otra" })).status).toBe(404);
+    expect(db.sqlite.prepare("select tipo from approvals").get().tipo).toBe("idea");
   });
 });
 
@@ -778,6 +881,31 @@ describe("programar lo aprobado de una vez y la cola del espacio", () => {
     const { programadas, fallidas } = await (await lote(["a", "t"])).json();
     expect(programadas.map((f) => `${f.postId}:${f.red}`)).toEqual(["a:instagram"]);
     expect(fallidas[0]).toMatchObject({ postId: "t", motivo: expect.stringMatching(/ninguna cuenta/) });
+  });
+
+  // «Programar todo lo listo» (Ver el mes como se verá): para los clientes que no revisan, el lote programa lo que tiene
+  // pieza, hora y texto SIN pedir la aprobación. La cola no la exige: no hizo falta otra forma de pedirlo.
+  it("programa también lo que el cliente no aprobó (pendiente), con las mismas reglas", async () => {
+    await sembrar({ posts: [post({ id: "a", status: "pending" }), post({ id: "b", status: "pending", aprobacion: "pieza", enviadoAt: "2026-09-30T00:00:00Z" })] });
+    const { programadas, fallidas } = await (await lote(["a", "b"])).json();
+    expect(programadas.map((f) => f.postId).sort()).toEqual(["a", "b"]);
+    expect(fallidas).toEqual([]);
+  });
+
+  it("quien es de sólo lectura no programa en lote", async () => {
+    await sembrar({ posts: [post({ id: "a", status: "pending" })] });
+    // Un editor de sólo lectura del mismo espacio, con su sesión (el administrador nunca es de sólo lectura).
+    const s = db.sqlite;
+    s.prepare("insert into users (id, email, password_hash, salt) values (?,?,?,?)").run("u-lector", "lector@a.com", "x", "x");
+    s.prepare("insert into memberships (user_id, owner_id, rol, nombre, color, solo_lectura) values (?,?,?,?,?,1)").run("u-lector", DUENO, "editor", "Lector", "#777777");
+    s.prepare("insert into sessions (token_hash, user_id, created_at, expires_at) values (?,?,?,?)")
+      .run(await sha256("testigo-del-lector"), "u-lector", "2026-01-01T00:00:00.000Z", "2099-01-01T00:00:00.000Z");
+    const res = await worker.fetch(new Request("https://calendarios.test/api/publicar/lote", {
+      method: "POST", body: JSON.stringify({ calendarId: "cal1", postIds: ["a"] }),
+      headers: { Cookie: `${COOKIE}=testigo-del-lector`, "Content-Type": "application/json" },
+    }), env, {});
+    expect(res.status).toBe(403);
+    expect(filas()).toEqual([]);
   });
 
   it("veinte publicaciones caben en el límite de consultas del plan gratuito", async () => {

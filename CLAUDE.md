@@ -112,6 +112,8 @@ src/
   hooks/useRepaso.js      ¿Toca el repaso de la mañana? (una vez al día por persona)
   hooks/useBancoIdeas.js  El banco de ideas único: leerlo entero, añadir, cambiar (agrupado), asignar empresa, quitar
   hooks/useArrastrarOrden.js  Ordenar una lista arrastrando y con flechas (Hoy de Mi día y del panel de tareas)
+  hooks/useAjustada.js   La imagen como saldrá en su red (el lienzo de `vistaAjuste`, recordado): la vista previa de cada red y la
+                          cuadrícula de «Ver el mes como se verá»
   lib/
     filas.js              Conversores fila ⇄ aplicación
     auth.js               Sesión, inicio y cierre
@@ -418,6 +420,9 @@ src/
                           hora sale (puro; también lo importa el Worker)
     cola.js               La cola de publicación resumida para la rejilla y el panel, la
                           página Programación y «Programar lo aprobado» (puro)
+    vistaMes.js           «Ver el mes como se verá»: qué entra en la cuadrícula del perfil y en qué orden, el feed del mes, qué está
+                          LISTO para programar sin la aprobación del cliente (y por qué no lo demás), la confirmación y los detalles
+                          de cada publicación (puro; también el enlace del cliente, «Así se verá tu perfil»)
     historiasAuto.js      Historias automáticas: ajustes, qué día toca (Panamá), qué se prepara, cuál sale, la carga
                           de la cola y las frases (puro; también lo importa el Worker)
     historiasRepost.js    La historia de un post ya publicado, dibujada: la imagen encajada en 9:16 y su frase (lienzo)
@@ -441,9 +446,10 @@ src/
     asistenteMes.js       El asistente del mes: los 5 pasos, el paso que le toca a un mes, las casillas del plan semanal,
                           ponerlas en el calendario, las horas en bloque, `opciones.asistente` (puro)
     asistenteMesApi.js    Cliente de /api/estudio/<c>/reel/mes (los reels del mes: costo y lanzar)
-    aprobacion.js         Qué aprueba el cliente (idea o pieza final), qué cuenta de su respuesta,
-                          por programar / por producir, cambios tras aprobar (puro; también
-                          lo importa el Worker)
+    aprobacion.js         Qué aprueba el cliente (idea o pieza final; la «idea» del sistema se va con la pieza, sólo
+                          la que escoge una persona se queda), qué cuenta de su respuesta, por programar / por
+                          producir, cambios tras aprobar, contar como pieza la idea aprobada que ya tiene archivo
+                          (puro; también lo importa el Worker)
     trabajo.js            Equipo: menciones, las 4 etapas que salen solas (`detalleEtapa`, `marcarEnviadas`), qué ve el
                           cliente con revisión interna, historial (qué cambió) y carga (puro; también lo importa el Worker)
     informeRedes.js       Qué redes entran en el informe mensual: limpiar, ¿entra?, describir (puro; también el Worker)
@@ -508,7 +514,8 @@ src/
     Graficas.jsx          Línea y barras en SVG, sin librería
     MedidorIA.jsx         El gasto del mes contra el presupuesto, en la cabecera
     Avisos.jsx            La campana: la bandeja de avisos de cada persona (y las del sistema)
-    PorProgramar.jsx      «Aprobadas, por programar» (el paso final) e «Ideas por producir»
+    PorProgramar.jsx      «Aprobadas, por programar» (el paso final) e «Ideas por producir» (con su pieza: «Contarla
+                          como aprobada»)
     HistoriasAutomaticas.jsx  «Historias automáticas» en Programación: interruptor, hora, redes, lo preparado (lazy)
     CargaEquipo.jsx       Qué tiene cada persona los próximos 7 días
     PanelTareas.jsx       Las tareas al lado, como Google Tasks: «Hoy» fijo, lo demás plegable (lazy)
@@ -516,7 +523,8 @@ src/
     RepasoAtrasadas.jsx   El repaso de la mañana: qué se hace con cada atrasada
     ElegirDia.jsx         «¿Cuándo la haces?»: sin día, hoy, mañana u otro día (el `today_date` de una tarea)
     HoyInicio.jsx         «Tus tareas de hoy» en el inicio (sustituye al panel de tareas rápidas)
-    calendario/aprobacionCliente.jsx  «¿Qué aprueba el cliente?» y en qué quedó
+    calendario/aprobacionCliente.jsx  «¿Qué aprueba el cliente?» y en qué quedó («El cliente vio la pieza: contarla como
+                          aprobada» si aprobó la idea y ya tiene su pieza)
     calendario/AvisoKitPieza.jsx  El aviso del kit en la pestaña Pieza: sin logo, o un producto que nombra sin fotos (lazy)
     calendario/cambiosCliente.jsx  Lo que pidió cambiar el cliente y «Rehacer la imagen con lo que pidió» (pestaña Subir)
     calendario/equipoPublicacion.jsx  Lo lleva, etapa, hilo del equipo, tareas de la
@@ -596,6 +604,9 @@ src/
     GuardarRegla.jsx      «Guardar como regla» junto a cada corrección
     Recetas.jsx           Las recetas de la agencia: «Crear aquí» (el director, pestaña Diseño), «Crear con Claude» y el editor (lazy)
     calendario/RevisionMes.jsx  «Revisar el mes» antes de enviarlo: reglas, IA opcional e imágenes contra el kit (lazy)
+    calendario/VistaMes.jsx  «Ver el mes como se verá»: Perfil (la cuadrícula 3:4), Feed (una a una, con vistaRed.jsx) y Detalles, y
+                          «Programar todo lo listo» (lazy, con VistaMes.css)
+    calendario/vistaRed.css  Los estilos de la vista previa de cada red (salieron de publicar.css: la usan el panel, «Subir» y VistaMes)
     calendario/CarruselIA.jsx   «Crear carrusel con IA»: el guion en láminas, el texto por IA o por plantilla, rehacer una (lazy)
     calendario/ProducirMes.jsx  «Diseñar las aprobadas» (paso del asistente del mes; `ponerSolas`): las piezas que faltan en lote, con
                           costo y confirmación (lazy)
@@ -1896,7 +1907,8 @@ son del servidor.
   publicación y la regla vive en ella (`post.repetir`). Nada se crea solo —el cajón de un mes se crea al escribir—: al
   mirar un mes, `repeticionesPendientes` junta las reglas de TODOS los meses del cliente (`client.calendars` + el que se
   mira, que puede ser virtual) y el aviso encima de la rejilla ofrece «Añadirlas al mes» o «Ahora no» (por navegador,
-  `repetir-omitidas:<cliente>`); sólo desde hoy (Panamá). La copia (`copiaRepetida`) es una IDEA pendiente sin archivos,
+  `repetir-omitidas:<cliente>`); sólo desde hoy (Panamá). La copia (`copiaRepetida`) es una IDEA pendiente sin archivos
+  (y sin marca `aprobacion`: ver «La marca «idea» del sistema se iba con la publicación»),
   con `repiteDe` y `repeticion` (la fecha que le tocaba: moverla de día no la vuelve a ofrecer) y SIN regla propia: si la
   llevara, serían dos series de lo mismo. Con «La IA escribe textos nuevos» llega sin descripción, texto de la pieza ni
   qué se ve, y «Escribir sus textos con IA» corre el «Completar los textos que faltan» de siempre (sólo rellena). «No
@@ -2151,8 +2163,9 @@ son del servidor.
 - **El lote va por FASES y por FORMATOS** (`EstudioLote.jsx`). Las ideas se escriben de `TANDA` (6) en 6 con `{ desde,
   tamano }` (el servidor corta el plan a `TANDA_MAX`, 10, y devuelve `total`): el plan es el MISMO en cada tanda porque
   sale de la misma semilla, y cada tanda recibe los titulares que ya salieron. Con 30 en una llamada cada pieza recibía
-  muy poca atención. Fase 1: «Sólo las ideas al calendario» las lleva SIN diseñar, cada una en su día, con
-  `aprobacion: "idea"` y «Qué se ve» (`post.escena`), que es lo primero que leen después «Crear con IA» y «Producir el
+  muy poca atención. Fase 1: «Sólo las ideas al calendario» las lleva SIN diseñar, cada una en su día, sin archivos (el
+  cliente aprueba la idea mientras no tengan pieza; ya SIN marca `aprobacion`: ver «La marca «idea» del sistema se iba
+  con la publicación») y con «Qué se ve» (`post.escena`), que es lo primero que leen después «Crear con IA» y «Producir el
   mes» (`promptDePublicacion`). Fase 2: crear las que no se llevaron. Formatos `carrusel` y `reel` (`guiado` en
   `FORMATOS_LOTE`): la IA escribe además su guion y cada idea pasa por el camino de a mano —`crearCarruselDeIdea`
   (propuesta + láminas) y `crearReelDeIdea` (planos + fotogramas + video)—, uno detrás de otro; sin revisión entre
@@ -3437,13 +3450,40 @@ son del servidor.
   midiéndola sólo el navegador: sin medir, la cola hace lo de siempre.
 - **Lo aprobado NO sale solo: espera el paso final.** El cliente aprueba
   a veces sólo la IDEA y a veces la PIEZA FINAL; cada publicación dice cuál
-  se le pide (`post.aprobacion`, sin elegir: pieza si hay archivo) y la
+  se le pide (`post.aprobacion`, sin elegir: pieza si hay archivo; la «idea»
+  con archivo sólo si la escogió una persona, ver la entrada siguiente) y la
   respuesta guarda qué aprobó y con qué texto (`approvals.tipo`, `huella`,
   0019). Idea aprobada = «por producir»: nunca se programa. Pieza aprobada
   = «por programar»: espera en Programación → «Aprobadas, por programar»
   (y en Mi día) a que alguien la revise y pulse Programar. «Programar al
   aprobar» sigue, APAGADO por defecto, y aun encendido sólo con piezas.
   Lo subido con «Subir» sigue saliendo directo.
+- **La marca «idea» del sistema se iba con la publicación, y el «sí» del cliente quedaba «por producir» para siempre**
+  (Feria del Lente, 5-nov: 12 de 25 aprobadas con `approvals.tipo = "idea"` y su imagen puesta). Nacían como ideas del
+  lote («Sólo las ideas al calendario», `publicacionDePieza`) o como copia repetida (`copiaRepetida`) con `aprobacion:
+  "idea"`, recibían después su pieza (el servidor, el panel, «Diseñar las aprobadas», el chat) y `tipoAprobacion`
+  respetaba la marca: el cliente veía la imagen con «Idea para aprobar», su «sí» se guardaba como idea y nunca se
+  programaba. Lo que no se ve:
+  · **La regla vive en UN sitio** (`aprobacionQueSePide` en src/lib/publicacion.js; `tipoAprobacion` de
+  lib/aprobacion.js es ella, y `publicacionParaCliente` la usa para el enlace sin importar en círculo): «pieza» puesta,
+  pieza; «idea» con archivo SÓLO si la escogió una PERSONA (`post.aprobacionElegida`, que ponen `elegirAprobacion` —«¿Qué
+  aprueba el cliente?»— y `pedirAprobacion`); si no, pieza si hay archivo e idea si no. Así vale por TODOS los caminos por
+  los que llega una pieza (`postConPiezas`, `resultadoEnPost.js`, el panel, ProducirMes, el lote) sin acordarse en cada
+  uno. La aprobación (`enviarAprobacion`) y «Programar al aprobar» ya leen «pieza».
+  · **El lote y la copia repetida ya no ponen la marca** (sin archivos ya es «idea»), y la copia tampoco hereda lo que se
+  escogió para la original. Las publicaciones de antes con la marca y archivo pasan solas a pedir la PIEZA; una «idea»
+  escogida a mano antes de esto (sin `aprobacionElegida`) también: no se distinguen, y se aceptó así.
+  · **Lo ya respondido no se reescribe solo** (la agencia: «lo arreglo yo a mano»). El aviso del panel (`EstadoAprobacion`,
+  `ideaAprobadaConPieza`) y Producción → «Ideas aprobadas, por producir» ofrecen «El cliente vio la pieza: contarla como
+  aprobada»: `PATCH /api/calendarios/<id>/aprobaciones/<post>` `{ tipo: "pieza" }` (worker/rutas/datos.js, por la capa)
+  reescribe `approvals.tipo`, la `huella` con la publicación de AHORA y `updated_at` (si no, todo archivo puesto tras el
+  «sí» saldría como «cambiaste los archivos después de que el cliente la aprobara»), apunta el historial y difunde
+  `aprobacion` con `motivo: "pieza"`. Lo comprueba `motivoParaNoContar`: un «sí» vigente, con archivo y sin publicar
+  (409 si no). NO programa nada, ni con «Programar al aprobar»: queda «por programar». El eco propio de `aprobacion`
+  sube el `pulso` (App.jsx): la pestaña que lo pulsó relee las aprobaciones y el sondeo no lo anuncia luego como «tu
+  cliente acaba de responder».
+  · En worker/rutas/datos.js el tipo de la fila y de la respuesta va en una constante (`PIEZA`): tests/despliegue/
+  tiempo-real.test.js toma cada «tipo» con texto literal de ese archivo por un evento de tiempo real.
 - **El `status` de `days` no es la verdad de la aprobación.** Se pone al
   día al abrir ESE calendario (en el estado). Todo lo que mira varios
   calendarios —Programación, Mi día, el tablero— lee las filas de
@@ -5105,7 +5145,8 @@ son del servidor.
   guardado agrupado y sus avisos de tiempo real de siempre. En un mes sin cajón crea el cajón (`fusionarEnMes` lleva ahora
   también las `opciones` que el cajón no tenga).
   · **Las casillas no llevan `aprobacion: "idea"`**: con ella el cliente aprobaría sólo la idea y lo aprobado nunca se
-  programaría. Sin ella, lo de siempre (pieza si la tiene).
+  programaría. Sin ella, lo de siempre (pieza si la tiene). (Hoy la marca del sistema ya no sobreviviría a la pieza —ver
+  «La marca «idea» del sistema se iba con la publicación»—, pero tampoco hace falta ponerla.)
   · **Diseñar NO escribe el calendario desde la pantalla**: «Diseñar las aprobadas» es `ProducirMes` con `ponerSolas` (el
   encargo con `poner: true`, también el carrusel: `lanzarCarrusel({ poner })`) y lo pone el SERVIDOR al terminar
   (`ponerResultados`). Por eso en ese modo no se guardan las fichas desde la pantalla ni hay «Poner»: un guardado del mes
@@ -5414,6 +5455,42 @@ son del servidor.
   sólo el administrador (`fijarSinPreguntar`: el doble del pedido redondeado, o 3 $) y a los demás se les dice dónde.
   Encenderlo o cambiarlo lo hace PUT /api/ajustes, sólo el administrador (403 a los demás), con el mismo CHECK que la base
   (0 a 1000). Las «Recrear para…» de «Lo mejor» siguen preguntando: crean además una publicación en un día.
+
+- **«Ver el mes como se verá»: revisar MIRANDO y programar lo listo sin la aprobación del cliente** (decisión de la agencia:
+  «hay clientes que no me piden revisión… y cuando reviso no le pongo "revisado"»; `src/lib/vistaMes.js`,
+  `calendario/VistaMes.jsx`, lazy). Botón «Ver el mes» en la barra del calendario, «Ver y programar lo listo» en la barra de
+  publicar y su bloque en «Revisar y enviar» del asistente del mes. Cosas que no se ven:
+  · **«Listo» no es «aprobado»** (`estadoParaProgramar`): pieza, hora (`publishTime` escrita: sin ella la cola pondría las
+  9:00 sin que nadie lo decidiera), texto si su formato lo lleva (una historia no), alguna red conectada y sin errores de
+  `revisarPublicacion` para ESAS redes con `navegador: true` (el JPEG y la copia 4:5 los hace el navegador al programar). No
+  cuenta lo publicado, lo que ya está en la cola (`programada`/`procesando`/`publicada`; lo que FALLÓ sí se puede volver a
+  meter), «La publico yo» (`asistida`) ni los directos: van aparte, contados, no como «no listo». Lo que el cliente pidió
+  cambiar (`rejected`) NO está listo. Lo pendiente con el cliente sí: si luego pide cambios, sale solo de la cola
+  (`cancelarPendientes` en la aprobación pública) y la confirmación lo dice.
+  · **El servidor no exigía aprobación**: `planificar()`/`programarLote` nunca miraron `status`, así que no hizo falta otra
+  puerta: el botón va por `programarAprobadasDe` (prepara cada una por su lado, guarda y `POST /api/publicar/lote`) igual que
+  «Programar lo aprobado». Sólo lectura lo corta `worker/index.js` (403) y la pantalla no enseña el botón. Dos casos en
+  tests/migracion/publicar.test.js lo vigilan.
+  · **La cuadrícula es la de HOY del perfil: 3:4 del centro** (lo que saca Instagram; `ventanaCuadricula`), con lo del mes
+  arriba (lo más nuevo primero), sólo lo que sale en el FEED de Instagram (`entraEnLaCuadricula`) y debajo lo ya publicado
+  ANTES del mes (`yaPublicadasEnInstagram`, de las métricas del cron, por `/api/metricas/miniatura`: la CSP no deja pintar el
+  CDN). Lo publicado DURANTE el mes por fuera de la aplicación no sale: no se distingue de una del mes publicada a mano. De
+  un reel, su portada (ya encuadrada) o el video en `portadaMs`; de una imagen, la copia del feed si la hay, y si no cabe en
+  el feed, el MISMO ajuste del lienzo (`useAjustada`, que salió de vistaRed.jsx a hooks/useAjustada.js: un .jsx que exporta
+  algo más que su componente da un aviso de oxlint). La foto de perfil es la de la cuenta conectada (por el proxy; si no
+  carga, el logo).
+  · **Tocar un aviso y volver**: `abrirDesdeLista(postId, volver)` de CalendarView guarda `volver` (vista, filtro,
+  publicación) en el `sidePanel`, y `cerrarPanel` (el fondo y el botón de cerrar del panel) reabre la vista con eso. Quitar o
+  mover la publicación desde el panel no vuelve (el `sidePanel` se va con su `volver`).
+  · **En el feed las flechas pasan de publicación** salvo dentro de lo que las usa (campos, video, la barra de pestañas), y
+  deslizar pasa de publicación salvo DENTRO de un carrusel (`[data-carrusel]`), que ahora se desliza con el dedo en
+  vistaRed.jsx (también en el panel). El texto de Instagram abre entero con «más».
+  · **El enlace del cliente** («Tu perfil» → «Así se verá tu perfil», pages/Aprobar.jsx) usa la MISMA `cuadriculaDelMes`
+  sobre lo que el servidor ya le deja ver (`visibleParaCliente`), con `srcPublico`; sin lo ya publicado (su proxy pide
+  sesión). Antes eran 4:5, con las historias fuera pero con lo que iba sólo a otras redes dentro, y el video en vez de la
+  portada de los reels.
+  · **Los estilos de la vista previa de cada red salieron de publicar.css a vistaRed.css** (con su componente): la vista del
+  mes no carga los 36 kB del panel.
 
 ## Documentos relacionados
 

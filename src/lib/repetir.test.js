@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   opcionesRepetir, fraseRepetir, fechasDeRegla, repeticionesPendientes, copiaRepetida, conRegla, claveRepeticion,
 } from "./repetir.js";
+import { tipoAprobacion } from "./aprobacion.js";
 
 // 2026-10-13 es martes, el 2.º del mes. 2026-10-27, el último (4.º).
 describe("las reglas, desde la fecha de la publicación", () => {
@@ -63,10 +64,20 @@ describe("la copia", () => {
   it("es una idea pendiente con la misma información, sin archivos ni regla, y sabe de dónde viene", () => {
     const c = copiaRepetida(origen, "2026-11-10", "n1");
     expect(c).toMatchObject({
-      id: "n1", status: "pending", aprobacion: "idea", title: "Promo", idea: "Oferta del martes", pilar: "promociones",
+      id: "n1", status: "pending", title: "Promo", idea: "Oferta del martes", pilar: "promociones",
       productoId: "x", publishTime: "09:00", redes: ["instagram"], repiteDe: "p1", repeticion: "2026-11-10",
     });
     for (const k of ["medios", "image", "adaptados", "repetir", "aprobadaComo", "descripcion", "textoPieza", "escena", "hashtagsFinales"]) expect(k in c, k).toBe(false);
+    // Sin archivos es una IDEA para el cliente, pero SIN la marca: al recibir su pieza, el cliente aprueba la pieza.
+    expect(tipoAprobacion(c)).toBe("idea");
+    expect("aprobacion" in c).toBe(false);
+    expect(tipoAprobacion({ ...c, medios: [{ src: "/api/media/b.jpg", tipo: "imagen" }] })).toBe("pieza");
+  });
+
+  it("no hereda lo que escogió una persona para la original (era para ESA pieza)", () => {
+    const c = copiaRepetida({ ...origen, aprobacion: "pieza", aprobacionElegida: true }, "2026-11-10", "n1");
+    expect("aprobacion" in c || "aprobacionElegida" in c).toBe(false);
+    expect(tipoAprobacion(c)).toBe("idea");
   });
 
   it("con los textos iguales, los conserva", () => {

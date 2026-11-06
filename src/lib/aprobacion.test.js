@@ -3,7 +3,10 @@ import {
   tipoAprobacion, huellaPieza, aprobacionVigente, conAprobacion, porProducir, listaParaProgramar,
   cambiosTrasAprobar, avisoCambios, pedirAprobacion, resumenEnvio, aprobadasDelEspacio,
   corregidaTrasCambios, estadoDelEnvio, mensajeDeEnvio, instruccionDelCliente,
+  elegirAprobacion, aprobacionAutomatica, ideaAprobadaConPieza, motivoParaNoContar, contadaComoPieza,
 } from "./aprobacion.js";
+import { publicacionParaCliente } from "./publicacion.js";
+import { postConPiezas } from "./galeriaPura.js";
 
 const IMG = { src: "/api/media/clientes/c1/a.jpg", tipo: "imagen" };
 
@@ -11,7 +14,47 @@ describe("qué se le pide al cliente", () => {
   it("sin elegir: pieza si hay archivo, idea si no", () => {
     expect(tipoAprobacion({})).toBe("idea");
     expect(tipoAprobacion({ medios: [IMG] })).toBe("pieza");
-    expect(tipoAprobacion({ medios: [IMG], aprobacion: "idea" })).toBe("idea");
+  });
+
+  it("la «idea» que puso el SISTEMA se va sola cuando llega la pieza; la que escogió una PERSONA se queda", () => {
+    // Sin archivo, la marca del sistema (el lote, una copia repetida, lo de antes) vale: es una idea.
+    expect(tipoAprobacion({ aprobacion: "idea" })).toBe("idea");
+    // Con archivo y sin elección de nadie: pieza. Es lo de Feria del Lente: el cliente vio la imagen con «Idea para
+    // aprobar» y su «sí» quedó «por producir» para siempre.
+    expect(tipoAprobacion({ medios: [IMG], aprobacion: "idea" })).toBe("pieza");
+    expect(tipoAprobacion({ image: IMG.src, aprobacion: "idea" })).toBe("pieza");
+    // La que escoge una persona en «¿Qué aprueba el cliente?» se respeta con archivo.
+    expect(tipoAprobacion(elegirAprobacion({ medios: [IMG] }, "idea"))).toBe("idea");
+    expect(tipoAprobacion({ medios: [IMG], aprobacion: "idea", aprobacionElegida: true })).toBe("idea");
+    // «pieza» puesta vale siempre (la pide una persona con «Pedir aprobación de la pieza»).
+    expect(tipoAprobacion({ aprobacion: "pieza" })).toBe("pieza");
+    // Una marca que no es ninguna de las dos: lo de siempre.
+    expect(tipoAprobacion({ medios: [IMG], aprobacion: "otra", aprobacionElegida: true })).toBe("pieza");
+  });
+
+  it("vale por TODOS los caminos por los que llega la pieza, sin acordarse en cada uno", () => {
+    // Una idea del lote («Sólo las ideas al calendario», de antes, con su marca) que recibe su imagen por el chat, el
+    // MCP, el Estudio o el servidor (`postConPiezas`).
+    const idea = { id: "p1", format: "post", status: "pending", aprobacion: "idea", title: "Lentes" };
+    const { post } = postConPiezas(idea, [{ src: IMG.src, mime: "image/png", ancho: 1080, alto: 1350 }], "reemplazar");
+    expect(tipoAprobacion(post)).toBe("pieza");
+    // Y lo que ve el cliente en su enlace sale de la MISMA regla: ya no le dice «Idea para aprobar».
+    expect(publicacionParaCliente(post).aprobacion).toBe("pieza");
+    expect(publicacionParaCliente(idea).aprobacion).toBe("idea");
+    expect(publicacionParaCliente(elegirAprobacion(post, "idea")).aprobacion).toBe("idea");
+    // Y la marca de la persona no sale al cliente.
+    expect(publicacionParaCliente(elegirAprobacion(post, "idea"))).not.toHaveProperty("aprobacionElegida");
+  });
+
+  it("lo que escoge una persona lleva su marca; «Elegido solo» sólo cuando no lo escogió nadie", () => {
+    expect(elegirAprobacion({ id: "1" }, "idea")).toEqual({ id: "1", aprobacion: "idea", aprobacionElegida: true });
+    expect(elegirAprobacion({ id: "1" }, "otra")).toEqual({ id: "1" });
+    expect(aprobacionAutomatica({})).toBe(true);
+    expect(aprobacionAutomatica({ aprobacion: "idea" })).toBe(true);
+    expect(aprobacionAutomatica({ aprobacion: "idea", aprobacionElegida: true })).toBe(false);
+    expect(aprobacionAutomatica({ aprobacion: "pieza" })).toBe(false);
+    // «Pedir aprobación de la pieza» también es de una persona.
+    expect(pedirAprobacion({ id: "1" }, "2026-11-06T00:00:00Z", "idea")).toMatchObject({ aprobacion: "idea", aprobacionElegida: true });
   });
 
   it("el resumen del envío cuenta lo que falta por aprobar", () => {
@@ -133,5 +176,44 @@ describe("el calendario completo al cliente, y lo que pidió cambiar", () => {
     expect(instruccionDelCliente("Más luz", "sin la planta")).toContain("y además sin la planta");
     expect(instruccionDelCliente("", "fondo azul")).toBe("haz este cambio: fondo azul. Haz SÓLO ese cambio");
     expect(instruccionDelCliente("", "")).toBe("");
+  });
+});
+
+describe("lo ya aprobado como idea que tiene su pieza: «El cliente vio la pieza: contarla como aprobada»", () => {
+  const review = { estado: "aprobado", tipo: "idea", huella: "h", timestamp: "2026-11-05T10:00:00Z" };
+  const conPieza = { id: "p1", format: "post", medios: [IMG], descripcion: "Hola", aprobacion: "idea" };
+
+  it("se reconoce: idea aprobada con archivo (sin archivo es «por producir» de verdad)", () => {
+    expect(ideaAprobadaConPieza(conAprobacion(conPieza, review))).toBe(true);
+    expect(ideaAprobadaConPieza(conAprobacion({ id: "p1" }, review))).toBe(false);
+    expect(ideaAprobadaConPieza(conAprobacion(conPieza, { ...review, tipo: "pieza" }))).toBe(false);
+  });
+
+  it("el servidor sólo la cuenta con un «sí» que siga valiendo, a una publicación con su archivo y sin publicar", () => {
+    expect(motivoParaNoContar(conPieza, review)).toBeNull();
+    expect(motivoParaNoContar(null, review)).toMatch(/ya no está/);
+    expect(motivoParaNoContar({ ...conPieza, status: "published" }, review)).toMatch(/ya salió/);
+    expect(motivoParaNoContar({ id: "p1" }, review)).toMatch(/Todavía no tiene su pieza/);
+    expect(motivoParaNoContar(conPieza, null)).toMatch(/todavía no la ha aprobado/);
+    expect(motivoParaNoContar(conPieza, { ...review, estado: "cambios" })).toMatch(/pidió cambios/);
+    // Se le volvió a pedir DESPUÉS de su respuesta: lo de antes no cuenta (como en `aprobacionVigente`).
+    expect(motivoParaNoContar({ ...conPieza, pideAprobacionDesde: "2026-11-06T00:00:00Z" }, review)).toMatch(/volvió a pedir/);
+    // La fila de D1 tal cual (con `updated_at`) también vale.
+    expect(motivoParaNoContar(conPieza, { estado: "aprobado", updated_at: "2026-11-05T10:00:00Z" })).toBeNull();
+  });
+
+  it("contada, queda por programar (no por producir) y sin el aviso de «cambiaste… después»", () => {
+    const antes = conAprobacion({ ...conPieza, mediosCambiadosAt: "2026-11-05T12:00:00Z" }, review);
+    expect(porProducir(antes)).toBe(true);
+    const despues = contadaComoPieza(antes, { huella: huellaPieza(conPieza), timestamp: "2026-11-06T09:00:00Z" });
+    expect(porProducir(despues)).toBe(false);
+    expect(listaParaProgramar(despues)).toBe(true);
+    expect(cambiosTrasAprobar(despues)).toEqual([]);
+    // Y lo que el servidor guarda en `approvals` da lo mismo al releer.
+    const releida = conAprobacion(conPieza, { ...review, tipo: "pieza", huella: huellaPieza(conPieza), timestamp: "2026-11-06T09:00:00Z" });
+    expect(listaParaProgramar(releida)).toBe(true);
+    expect(cambiosTrasAprobar({ ...releida, mediosCambiadosAt: "2026-11-05T12:00:00Z" })).toEqual([]);
+    // Si después se cambia el texto, el aviso sale como en cualquier pieza aprobada.
+    expect(cambiosTrasAprobar({ ...releida, descripcion: "Otro" })).toEqual(["el texto"]);
   });
 });

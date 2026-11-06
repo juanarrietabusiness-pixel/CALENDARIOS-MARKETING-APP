@@ -211,35 +211,8 @@
 .conversacion-form { display: flex; gap: var(--sp-2); align-items: center; }
 .conversacion-form .input { flex: 1; }
 
-/* Vista previa en línea: un teléfono con lo que sale en cada red */
-.vista-red { display: flex; flex-direction: column; gap: var(--sp-2); }
-.vista-red-piezas { display: flex; flex-wrap: wrap; gap: var(--sp-1); }
-.vista-red-telefono { background: #fff; color: #0B1220; border-radius: var(--radius-lg); overflow: hidden; border: 1px solid var(--border); width: 100%; max-width: 320px; align-self: center; }
-.vista-previa-autor { display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); font-size: var(--fs-xs); }
-.vista-previa-avatar { width: 30px; height: 30px; border-radius: 50%; background: #E4E8F0; overflow: hidden; display: inline-flex; }
-.vista-previa-avatar img { width: 100%; height: 100%; object-fit: contain; }
-.vista-red-medio { position: relative; background: #0B1220; display: flex; align-items: center; justify-content: center; color: #fff; font-size: var(--fs-xs); min-height: 160px; }
-.vista-red-medio img { width: 100%; height: auto; display: block; }
-.vista-red-medio > video { width: 100%; max-height: 420px; display: block; }
-.vista-red-medio[data-vertical] { aspect-ratio: 9 / 16; }
-.vista-red-medio[data-vertical] img, .vista-red-medio[data-vertical] > video { width: 100%; height: 100%; max-height: none; object-fit: cover; }
-.vista-red-zona {
-  position: absolute; left: 0; right: 0; display: flex; align-items: center; padding: 0 var(--sp-2);
-  font-size: var(--fs-3xs); font-weight: 600; color: #fff; pointer-events: none;
-  background: repeating-linear-gradient(135deg, rgba(0,0,0,.35) 0 6px, rgba(0,0,0,.15) 6px 12px);
-  border-color: rgba(255,255,255,.7); border-style: dashed; border-width: 0;
-}
-.vista-red-zona[data-lado="arriba"] { top: 0; height: 13%; border-bottom-width: 1px; }
-.vista-red-zona[data-lado="abajo"] { bottom: 0; height: 18%; border-top-width: 1px; }
-.vista-red-cargando, .vr-cargando { padding: var(--sp-4); color: rgba(255,255,255,.7); }
-.vista-previa-flecha { position: absolute; top: 50%; transform: translateY(-50%); width: 32px; height: 32px; border-radius: 50%; border: none; background: rgba(255,255,255,.9); color: #0B1220; display: flex; align-items: center; justify-content: center; cursor: pointer; }
-.vista-previa-flecha[data-lado="izq"] { left: 8px; }
-.vista-previa-flecha[data-lado="der"] { right: 8px; }
-.vista-previa-flecha:disabled { opacity: 0; }
-.vista-previa-contador { position: absolute; top: 8px; right: 8px; font-size: var(--fs-3xs); background: rgba(0,0,0,.6); color: #fff; padding: 2px 8px; border-radius: var(--radius-pill); }
-.vista-previa-texto, .vista-previa-comentario, .vista-previa-nota { padding: var(--sp-2) var(--sp-3); font-size: var(--fs-xs); white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; }
-.vista-previa-comentario { color: #4B5566; border-top: 1px solid rgba(11,18,32,.08); }
-.vista-previa-nota { color: #6B7385; font-style: italic; }
+/* La vista previa en línea (el teléfono de cada red) vive en vistaRed.css, con su componente: la usan también
+   «Subir» y «Ver el mes como se verá». */
 
 /* La historia que acompaña al post, y el ajuste de imágenes para Instagram. */
 .historias-post { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-3); border: 1px solid var(--border); border-radius: var(--radius); }

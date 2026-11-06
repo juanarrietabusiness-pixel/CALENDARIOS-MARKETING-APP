@@ -38,6 +38,8 @@ let vistaRecordada = "grid";
 
 const PostSidePanel = lazy(() => import("./calendario/PostSidePanel").then((m) => ({ default: m.PostSidePanel })));
 const ProgramarAprobadas = lazy(() => import("./calendario/programarAprobadas"));
+// «Ver el mes como se verá»: la cuadrícula del perfil, el feed, los detalles y «Programar todo lo listo». Se carga al abrirla.
+const VistaMes = lazy(() => import("./calendario/VistaMes"));
 import { MonthGrid } from "./calendario/MonthGrid";
 import { CampanaMes } from "./calendario/campanaMes";
 import { RepeticionesMes } from "./calendario/repeticionesMes";
@@ -210,13 +212,22 @@ export default function CalendarView({
     return { programadas: r.programadas, fallidas: r.fallidas };
   };
 
-  const abrirDesdeLista = (postId) => {
+  const abrirDesdeLista = (postId, volver = null) => {
     setCapa(null);
     for (const day of cal?.days ?? []) {
       const post = (day.posts ?? []).find((p) => p.id === postId);
-      if (post) { setSidePanel({ post, day }); break; }
+      if (post) { setSidePanel({ post, day, volver }); break; }
     }
   };
+  // «Ver el mes como se verá»: tocar un aviso abre el panel (`volver` dice dónde se estaba) y, al cerrarlo, se vuelve
+  // a la vista previa en la misma publicación.
+  const [vistaVolver, setVistaVolver] = useState(null);
+  const cerrarPanel = () => {
+    const volver = sidePanel?.volver;
+    setSidePanel(null);
+    if (volver) { setVistaVolver(volver); setCapa("vistaMes"); }
+  };
+  const abrirVistaMes = () => { setVistaVolver(null); setCapa("vistaMes"); };
 
   const [filterStatus, setFilterStatus] = useState("all");
   const [filterFormat, setFilterFormat] = useState("all");
@@ -939,6 +950,22 @@ export default function CalendarView({
         </Suspense>
       )}
 
+      {capa === "vistaMes" && (
+        <Suspense fallback={<div className="panel-cargando" role="status">Abriendo la vista previa del mes…</div>}>
+          <VistaMes
+            client={client}
+            cal={cal}
+            cola={cola}
+            estadoRedes={redes}
+            soloLectura={Boolean(yoActual()?.soloLectura)}
+            inicial={vistaVolver}
+            onAbrirPost={abrirDesdeLista}
+            onProgramar={programarAprobadas}
+            onClose={() => { setVistaVolver(null); cerrarCapa(); }}
+          />
+        </Suspense>
+      )}
+
       {capa === "exportar" && (
         <Suspense fallback={null}>
           <ExportarContenido cal={cal} client={client} calName={calName} onError={setGenStatus} onClose={cerrarCapa} />
@@ -1006,6 +1033,11 @@ export default function CalendarView({
         </div>
 
         <span className="toolbar-spacer" />
+
+        {/* «Ver el mes como se verá»: revisar mirándolo (perfil, feed, detalles) y programar de una vez lo que está listo. */}
+        <button className="btn btn-secondary" onClick={abrirVistaMes} disabled={virtual} aria-label="Ver el mes como se verá" title="La cuadrícula del perfil, el feed y lo que falta: y programar de una vez lo que está listo">
+          <Icon name="image" size={18} /> <span>Ver el mes</span>
+        </button>
 
         <button
           className={`btn ${selectionMode ? "btn-accent" : "btn-secondary"} btn-sm`}
@@ -1079,6 +1111,12 @@ export default function CalendarView({
           {candidatas.length > 0 && (
             <button type="button" className="btn btn-primary btn-sm" onClick={() => abrirCapa("programarAprobadas")}>
               Programar lo aprobado
+            </button>
+          )}
+          {/* Para los clientes que no revisan: lo que ya está listo (pieza, hora y texto), sin pedir la aprobación. */}
+          {!virtual && (
+            <button type="button" className="btn btn-secondary btn-sm" onClick={abrirVistaMes}>
+              Ver y programar lo listo
             </button>
           )}
           <span className="interruptor-corto">
@@ -1659,6 +1697,7 @@ export default function CalendarView({
             completando={genLoading}
             estadoCompletar={genStatus}
             onEnviar={sendToClient}
+            onVerMes={abrirVistaMes}
             onAbrirPost={(postId) => {
               for (const day of cal.days ?? []) {
                 const post = (day.posts ?? []).find((p) => p.id === postId);
@@ -1690,7 +1729,7 @@ export default function CalendarView({
           <button
             type="button"
             aria-label="Cerrar panel de edición"
-            onClick={() => setSidePanel(null)}
+            onClick={cerrarPanel}
             style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", zIndex: 240, border: "none", cursor: "pointer" }}
           />
           <Suspense fallback={<div className="panel-cargando" role="status">Abriendo la publicación…</div>}>
@@ -1715,7 +1754,7 @@ export default function CalendarView({
             onMoveDate={movePost}
             onDuplicar={duplicarPost}
             onSendToBank={(post, date) => { addToBank(post, date); removePostFromDay(date, post.id); }}
-            onClose={() => setSidePanel(null)}
+            onClose={cerrarPanel}
             suggestion={suggestions[sidePanel.post.id] || null}
             onAcceptSuggestion={(postId, field, value) => {
               const post = (cal.days || []).flatMap((d) => d.posts || []).find((p) => p.id === postId);
