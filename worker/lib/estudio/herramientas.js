@@ -62,6 +62,7 @@ import { MODELOS_VOZ } from "../../../src/lib/voces.js";
 import { DEFINICIONES_VIDEO, crearHerramientasVideo } from "./herramientasVideo.js";
 import { miniaturasDe, MAX_PIEZAS_VISTAS } from "./miniaturas.js";
 import { vistaDeTrabajo } from "./vistaTrabajo.js";
+import { audioDeMuestra, lineasDeMedios } from "./vistaMedios.js";
 import { vistaDe, piezaDe } from "../mcpVista/modelo.js";
 
 /** Lo más que puede pedir una IA de una vez. La pantalla admite más (8 imágenes, 2 videos): ahí lo ve una persona. */
@@ -416,6 +417,15 @@ export function crearHerramientasEstudio({ env, acceso, resolverCliente, usuario
     return { texto, imagenes: [], vista: (await vistaDeEncargo(env, acceso, fila)).vista };
   }
 
+  /**
+   * La vista de un pedido recién creado (la muestra de una voz, la locución, la música): en marcha, con su hueco, y la
+   * vista previa del chat de Claude se pone al día sola hasta que suena. Null si el pedido no se encuentra.
+   */
+  async function vistaDelPedido(id, titulo = "") {
+    const fila = await acceso.leerUno("estudio_trabajos", { id: String(id ?? "") }).catch(() => null);
+    return fila ? (await vistaDeTrabajo(env, acceso, fila, { titulo })).vista : null;
+  }
+
   /** estado_trabajo de un ENCARGO (lo que crea crear_en_estudio de una imagen): cada pieza y, de las listas, las imágenes. */
   async function estadoDeEncargo(fila) {
     const { vistaDeEncargo } = await import("./vistaEstudio.js");
@@ -615,12 +625,14 @@ export function crearHerramientasEstudio({ env, acceso, resolverCliente, usuario
         estaVivo(t.estado) ? "Sigue en marcha: se hace solo." : "",
       ].filter(Boolean).join("\n");
       // Terminado: las imágenes van para que el modelo las MIRE (lo que se pide en curso no se enseña a medias). Son las
-      // mismas que enseña la vista previa del chat.
+      // mismas que enseña la vista previa del chat. Un audio o un video va con su reproductor en la vista y, en el texto,
+      // su dirección firmada (para dársela a la persona).
       const { imagenes, vista } = await vistaDeTrabajo(env, acceso, fila);
+      const conMedios = [texto, lineasDeMedios(vista)].filter(Boolean).join("\n");
       const conImagen = estaVivo(t.estado) ? [] : fichas.filter((f) => String(f.mime ?? "").startsWith("image/"));
-      if (!conImagen.length) return { texto, imagenes: [], vista };
-      if (!imagenes.length) return { texto: `${texto}\n(No pude enseñarte las imágenes ahora; están en la galería.)`, imagenes: [], vista };
-      return { texto: `${texto}\nVan ${imagenes.length === 1 ? "la imagen" : `las ${imagenes.length} imágenes`} (copia reducida), en el orden de arriba: míralas.`, imagenes, vista };
+      if (!conImagen.length) return { texto: conMedios, imagenes: [], vista };
+      if (!imagenes.length) return { texto: `${conMedios}\n(No pude enseñarte las imágenes ahora; están en la galería.)`, imagenes: [], vista };
+      return { texto: `${conMedios}\nVan ${imagenes.length === 1 ? "la imagen" : `las ${imagenes.length} imágenes`} (copia reducida), en el orden de arriba: míralas.`, imagenes, vista };
     },
 
     async ver_pieza({ cliente, archivo_ids: ids = [] }) {
@@ -679,9 +691,16 @@ export function crearHerramientasEstudio({ env, acceso, resolverCliente, usuario
           modelo: modelo ?? "v4", vozId: voz, texto: typeof texto === "string" ? texto : "", confirmado: confirmado === true, usuario, origen,
         });
         const oir = `/api/videos/${c.id}/voces/muestra?modelo=${r.modelo}&voz=${encodeURIComponent(r.voz.id)}${r.huella ? `&huella=${r.huella}` : ""}`;
-        if (r.lista) return `La muestra de ${r.voz.nombre} (${r.modelo}) ya está hecha: se oye en ${oir}. No costó nada.`;
-        return `Pedido creado: ${r.trabajoId} (muestra de ${r.voz.nombre}, ${r.modelo}, ${textoCosto(r.costo)}). Tarda menos de un minuto; ` +
+        const cliente = { id: c.id, nombre: c.name };
+        // La vista previa del chat de Claude la reproduce ahí mismo (ya hecha) o se pone al día sola hasta que lo esté.
+        if (r.lista) {
+          const audio = await audioDeMuestra(env, { modelo: r.modelo, vozId: r.voz.id, huella: r.huella, nombre: r.voz.nombre });
+          const vista = vistaDe({ tipo: "medios", titulo: audio.titulo, subtitulo: "Ya estaba hecha: no costó nada.", cliente, audios: [audio] });
+          return { texto: [`La muestra de ${r.voz.nombre} (${r.modelo}) ya está hecha: se oye en ${oir}. No costó nada.`, lineasDeMedios(vista)].filter(Boolean).join("\n"), imagenes: [], vista };
+        }
+        const pedido = `Pedido creado: ${r.trabajoId} (muestra de ${r.voz.nombre}, ${r.modelo}, ${textoCosto(r.costo)}). Tarda menos de un minuto; ` +
           `después se oye en ${oir} y en la pestaña del video. Para saber cómo va: estado_trabajo con el ID ${r.trabajoId}.`;
+        return { texto: pedido, imagenes: [], vista: await vistaDelPedido(r.trabajoId) };
       } catch (e) {
         return confirmacionDeVoz(e);
       }
@@ -693,11 +712,12 @@ export function crearHerramientasEstudio({ env, acceso, resolverCliente, usuario
       if (!video) throw new ErrorHerramientaEstudio(`No encontré el video «${id}» de ${c.name}.`);
       try {
         const r = await pedirLocucion(env, acceso, c, video, { modelo, vozId: voz, confirmado: confirmado === true, usuario, origen, por });
-        return [
+        const texto = [
           `Pedido creado: ${r.trabajoId} (locución de «${video.titulo || "el video"}», voz ${r.voz.nombre}, ${r.modelo}, ${r.caracteres} caracteres, ${textoCosto(r.costo)}).`,
           "Tarda uno o dos minutos y sigue solo. Al terminar, el video pasa a «Con voz» con los tiempos de cada palabra.",
           `Para saber cómo va: estado_trabajo con el ID ${r.trabajoId}.`,
         ].join("\n");
+        return { texto, imagenes: [], vista: await vistaDelPedido(r.trabajoId, `Locución de «${video.titulo || "el video"}»`) };
       } catch (e) {
         return confirmacionDeVoz(e);
       }
@@ -714,11 +734,12 @@ export function crearHerramientasEstudio({ env, acceso, resolverCliente, usuario
           estilo, instrumental: typeof instrumental === "boolean" ? instrumental : undefined, letra, duracion, titulo, evitar, modelo,
           video, confirmado: confirmado === true, usuario, origen,
         });
-        return [
+        const texto = [
           `Pedido creado: ${r.trabajoId} (música «${r.pedido.titulo}», ${r.pedido.duracion} s, ${r.pedido.instrumental ? "instrumental" : "con voz"}, ${textoCosto(r.costo)} aprox.).`,
           `Tarda unos minutos y sigue solo. Las versiones quedan en la galería (musicas)${video ? " y la primera, puesta en el video: para oírla, renderizar_video otra vez" : ""}.`,
           `Para saber cómo va: estado_trabajo con el ID ${r.trabajoId}.`,
         ].join("\n");
+        return { texto, imagenes: [], vista: await vistaDelPedido(r.trabajoId) };
       } catch (e) {
         if (e instanceof ErrorMusica) {
           if (e.codigo === "confirmar") {

@@ -20,6 +20,7 @@
 
 import { crearEncargo, accionDeReel, encargoPublico } from "./encargos.js";
 import { vistaDeEncargo } from "./vistaEstudio.js";
+import { lineasDeMedios } from "./vistaMedios.js";
 import { crearCarpeta } from "./galeria.js";
 import { guionDeReel } from "./reel.js";
 import { revisarVideo } from "./revisionVideo.js";
@@ -201,6 +202,8 @@ export function crearHerramientasReel({ env, acceso, resolverCliente, usuario, b
       m ? `Montaje: ${m.fase}${m.videoId ? ` (video animado ${m.videoId}: míralo con ver_video y ver_escenas)` : ""}${m.fase === "confirmar" ? ` · la voz cuesta ${m.costoTexto || "unos céntimos"}: pregúntale a la persona y, con su sí, montar_reel con confirmado_voz=true` : ""}${m.error ? ` · ${m.error}` : ""}${m.nota ? ` · ${m.nota}` : ""}.` : "",
       r.puesto?.postId ? `Ya está en su publicación ${r.puesto.postId}.` : "",
       imagenes.length ? "Van las imágenes del storyboard que ya están: MÍRALAS." : "",
+      // El mp4 (o los videos) se reproducen en la vista previa del chat; aquí, sus direcciones para la persona.
+      lineasDeMedios(vista),
       e.estado === "en_marcha" ? "Sigue en el servidor: vuelve a mirar en un minuto." : "",
     ].filter(Boolean).join("\n");
     return { texto: lineas, imagenes, vista };

@@ -30,7 +30,7 @@ import {
 } from "../lib/sesion.js";
 import { HERRAMIENTAS_MCP, crearHerramientasMCP } from "../lib/mcp.js";
 import { REGLA_RECETAS } from "../../src/lib/recetas.js";
-import { URI_VISTA, MIME_VISTA, conMetaDeVista, conEnlace } from "../lib/mcpVista/modelo.js";
+import { URI_VISTA, MIME_VISTA, conMetaDeVista, conEnlace, metaDeVista } from "../lib/mcpVista/modelo.js";
 import { PAGINA_VISTA } from "../lib/mcpVista/pagina.generada.js";
 
 const VERSIONES = ["2025-06-18", "2025-03-26", "2024-11-05"];
@@ -130,7 +130,8 @@ function sinAutorizar(req) {
 
 // ------------------------------------------------------------
 // La vista previa en el chat (MCP Apps): un recurso `ui://` que claude.ai pinta junto al resultado de las herramientas
-// que lo nombran (worker/lib/mcpVista/). La página no pide nada fuera: todo le llega por el chat.
+// que lo nombran (worker/lib/mcpVista/). Las imágenes le llegan por el chat; los audios y videos, por su dirección
+// firmada en ESTE origen, el único que declara su política de contenido (`metaDeVista`).
 // ------------------------------------------------------------
 
 /** Las herramientas como las ve un cliente MCP: las de imagen con su vista, las de la vista escondidas al modelo. */
@@ -140,11 +141,9 @@ const RECURSO_VISTA = Object.freeze({
   uri: URI_VISTA,
   name: "vista-previa",
   title: "Vista previa de Juancito Ads",
-  description: "Las piezas del Estudio (y los cuadros del video animado) dentro del chat, al día mientras se crean.",
+  description: "Las piezas del Estudio (y los cuadros del video animado) dentro del chat, al día mientras se crean; y las voces, la música y los videos, para oírlos y verlos ahí mismo.",
   mimeType: MIME_VISTA,
 });
-/** Lo que va con la página: un borde del chat alrededor; sin dominios de fuera (las imágenes llegan en el resultado). */
-const META_VISTA = Object.freeze({ ui: { prefersBorder: true, csp: { connectDomains: [], resourceDomains: [] } } });
 
 const rpc = (id, result) => ({ jsonrpc: "2.0", id, result });
 const rpcError = (id, code, message) => ({ jsonrpc: "2.0", id: id ?? null, error: { code, message } });
@@ -185,7 +184,7 @@ async function servidorMCP(req, env) {
         respuestas.push(rpc(m.id, { tools: HERRAMIENTAS_CON_VISTA }));
         break;
       case "resources/list":
-        respuestas.push(rpc(m.id, { resources: [{ ...RECURSO_VISTA, _meta: META_VISTA }] }));
+        respuestas.push(rpc(m.id, { resources: [{ ...RECURSO_VISTA, _meta: metaDeVista(origenDe(req)) }] }));
         break;
       case "resources/templates/list":
         respuestas.push(rpc(m.id, { resourceTemplates: [] }));
@@ -195,7 +194,7 @@ async function servidorMCP(req, env) {
           respuestas.push(rpcError(m.id, -32002, `No existe el recurso ${m.params?.uri ?? ""}`));
           break;
         }
-        respuestas.push(rpc(m.id, { contents: [{ uri: URI_VISTA, mimeType: MIME_VISTA, text: PAGINA_VISTA, _meta: META_VISTA }] }));
+        respuestas.push(rpc(m.id, { contents: [{ uri: URI_VISTA, mimeType: MIME_VISTA, text: PAGINA_VISTA, _meta: metaDeVista(origenDe(req)) }] }));
         break;
       case "tools/call": {
         const nombre = m.params?.name;
@@ -209,7 +208,8 @@ async function servidorMCP(req, env) {
           respuestas.push(rpc(m.id, { content: [{ type: "text", text: "Tu papel es de sólo lectura: puedo consultar, pero no cambiar nada." }], isError: true }));
           break;
         }
-        // La vista sabe abrir el Estudio del cliente en ESTA aplicación (la dirección del conector).
+        // La vista sabe abrir el Estudio del cliente en ESTA aplicación (la dirección del conector), y los audios y
+        // videos llevan su dirección firmada completa (en la vista y en el texto que lee Claude).
         respuestas.push(rpc(m.id, conEnlace(await herramientas.llamar(nombre, m.params?.arguments ?? {}), origenDe(req))));
         break;
       }
