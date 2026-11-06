@@ -201,7 +201,9 @@ export default function PorProgramar({ clients = [], pulso = 0, onAbrir, onCalen
                   <p className="prog-texto">{item.titulo}</p>
                   <p className="prog-cuando">{item.cuando ? fechaHora(item.cuando) : item.fecha}</p>
                   {item.tieneArchivo && (
-                    <p className="prog-motivo">Ya tiene su pieza: si el cliente la vio así, cuéntala como aprobada; si no, mándasela.</p>
+                    <p className="prog-motivo por-programar-cambio">
+                      <Icon name="image" size={13} /> Ya tiene su pieza: si el cliente la vio así, cuéntala como aprobada; si no, mándasela.
+                    </p>
                   )}
                 </span>
                 <span className="prog-acciones">
