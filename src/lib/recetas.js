@@ -273,7 +273,7 @@ export const RECETAS_CASA = Object.freeze([
       "1. ver_estudio: los IDs de los videos del cliente en la galería (si están en Drive, que primero los traigan a la galería). formato_video.",
       "2. crear_video con una escena por clip: capa «video» a sangre con su «desde» y «hasta» (el tramo bueno, sin las pausas del principio), «sonido» true si habla la persona, y encima el gancho escrito, un dato o un sello; sin «habla» (no lleva locución). El cierre con el logo y el llamado.",
       "3. ver_escenas y revisar_video: que el texto se lea sobre el video (oscurecer 0,3–0,5 o placa) y que nada tape la cara de quien habla.",
-      "4. Si va música, musicas o generar_musica (cuesta: confirma la cifra) y sonido_video; la música baja sola cuando habla el clip.",
+      "4. Si va música, musicas o generar_musica con el video_id y sin estilo (la propone el director musical escuchando el video y la música de la marca; cuesta: confirma la cifra) y sonido_video; la música baja sola cuando habla el clip.",
       "5. Enséñaselo a la persona: aprobar_video sólo con su «sí»; luego renderizar_video (no gasta IA). Dile dónde quedó el mp4.",
     ].join("\n"),
   },
