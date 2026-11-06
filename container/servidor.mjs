@@ -255,7 +255,7 @@ async function atender(ruta, p) {
     return {
       cuerpo: r.mp4, tipo: "video/mp4",
       cabeceras: {
-        "X-Duracion": r.duracion.toFixed(3), "X-Cuadros": String(r.cuadros), "X-Ancho": String(r.ancho), "X-Alto": String(r.alto),
+        "X-Bytes": String(r.mp4.length), "X-Duracion": r.duracion.toFixed(3), "X-Cuadros": String(r.cuadros), "X-Ancho": String(r.ancho), "X-Alto": String(r.alto),
         "X-Ms-Audio": String(r.ms.audio), "X-Ms-Video": String(r.ms.video),
         "X-Lufs": r.audio?.lufs === null || r.audio?.lufs === undefined ? "" : String(r.audio.lufs),
         "X-Lufs-Antes": r.audio?.antes === null || r.audio?.antes === undefined ? "" : String(r.audio.antes),
