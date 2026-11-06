@@ -192,6 +192,8 @@ src/
                           fundido y repetida (puro: Worker, Container y pantalla)
     musica.js             La música con SUNO por Kie: modelos V6, el pedido limpio, el cuerpo de createTask, leer las dos
                           pistas, el costo (puro; también el Worker)
+    directorMusical.js    El DIRECTOR MUSICAL: lo que el código cuenta del video (BPM por los cortes, silencios, momentos), el
+                          pedido a la IA con la música de la marca delante, leer su propuesta (sin artistas) y el respaldo (puro)
     efectosSonido.js      Los efectos del video animado: whoosh en las transiciones y pop en sellos y llamados, sintetizados
                           (sin archivos) y mezclados bajitos (puro: el Container)
     revisionEscenas.js    La revisión antes de renderizar: subtítulos que tapan, texto que se sale o se parte, fuera de la zona
@@ -568,6 +570,7 @@ src/
                           pagar, la nota (¿tiempos por palabra?), el audio, «Escuchar gratis» y «Fijar como voz de la marca»
                           (lazy; dentro de VideoAnimado)
     BibliotecaVoces.jsx   «Buscar voces en español»: la biblioteca de ElevenLabs (gratis), escuchar y «Añadir a mis voces»
+    MusicaDeMarca.jsx     La música de la marca en el kit (Marca → Kit y voz): cómo suena, lo que nunca suena y las que gustaron (lazy)
     VideoAnimado.jsx      «Animado con código»: los videos animados del cliente, el guion (errores con su sitio), la vista
                           previa en el lienzo y «Aprobar el guion» (lazy; dentro de FlujoReel)
     CrearVideoAnimado.jsx «Video nuevo»: idea o publicación, duración y formato → la IA escribe el guion (lazy)
@@ -787,6 +790,8 @@ worker/
   videosProyectos.js    Los proyectos de video animado: crear, guardar, editar UNA escena y aprobar (la ruta y las
                           herramientas van por aquí)
     estudio/reelDelMes.js  Los reels de un mes (el asistente del mes): el costo sin crear nada y, con el sí, el encargo de cada uno
+    estudio/directorMusical.js  El director musical: lee el video guardado, el kit y al cliente y propone la música de Suno
+                          (`proponerMusica`, guardada en R2 para la confirmación); «Me gusta» a la marca (`musicaALaMarca`)
     estudio/encargoReel.js  El REEL por planos como encargo (tipo «reel»): el storyboard en orden, se para a revisar y se retoma
                           (`continuarReel`), el video o los clips, el montaje (`montarReel`) y a su publicación
     estudio/montaje.js    El proyecto de video animado del montaje de un reel (`origen`: { tipo: "reel", encargoId })
@@ -4726,10 +4731,40 @@ son del servidor.
   descripción va en `style`, la letra en `lyrics` y NUNCA en `prompt` (se cantaría tal cual); una instrumental lleva las
   voces en `negative_tags`. Suno da DOS versiones: las dos van a la galería (`modelo: "musica-suno"`) y, con `videoId`,
   la primera queda en el SONIDO del video (sin subir la versión; no pisa otra música escogida DESPUÉS del pedido ni a un
-  video renderizando). Con video, el estilo y la duración salen del campo `musica` del guion (`estilo`, `instrumental`).
+  video renderizando). Con video, la duración es la del video y el estilo lo escribe el director musical (abajo).
   **El precio no viene en la documentación**: se cotiza `CREDITOS_SUNO` como aproximado y al entregar se apunta
   `creditsConsumed` si llega. Se confirma SIEMPRE (409 `confirmar`), como la voz. El render usa además la música del
   GUION por su clave si «Sonido» no tiene otra (`dbDeVolumenGuion`). **Nada de Suno se ha probado contra Kie real.**
+  · **La música la pide el DIRECTOR MUSICAL, no el `guion.musica.estilo`** (decisión de la agencia: con la voz los videos
+  quedaban perfectos y la música no casaba; `src/lib/directorMusical.js`, `worker/lib/estudio/directorMusical.js`;
+  `POST /api/videos/<c>/<id>/musica`, «Proponer la música para este video» en «Sonido»). Ese estilo lo escribía la IA
+  del guion en una línea («corporativa alegre») sin saber nada del video. Ahora una IA de texto (función «director
+  musical», hueco «guiones»; barata, sin confirmación) LEE el guion GUARDADO con su línea de tiempo —la de la locución
+  si está lista; si no, estimada y lo dice—, la ficha del cliente, el cerebro para escribir, el kit y el tipo de
+  contenido de su publicación, y escribe el pedido para Suno. Cosas que no se ven:
+  · **Lo que se puede contar lo cuenta el CÓDIGO** (`analisisDelVideo`): segundos por escena, cortes por minuto, el BPM
+  que casa con los cortes (`bpmPorCortes`: un compás de cuatro tiempos por escena llevado por octavas al rango del
+  `estilo.ritmo` del guion), los silencios (lo que queda de cada escena tras su última palabra) y dónde entran el
+  gancho, el beneficio y el llamado. La IA recibe eso y escoge género y subgénero, instrumentos y cómo sube la energía.
+  · **La MÚSICA DE LA MARCA manda** (`kit.musica`: { estilo, evitar, referencias }; `limpiarMusicaDeMarca` en kitMarca.js,
+  `fundirKit` la conserva; se edita en Marca → Kit y voz, `MusicaDeMarca.jsx`). «Me gusta: que sea la música de la
+  marca» en «Sonido» (`POST /api/videos/<c>/musicas/marca`, sobre el kit GUARDADO) pasa una música GENERADA a sus
+  referencias con lo que se le mandó a Suno (`ajustes.pedido.estilo`; `musicasDe` lo devuelve como `estilo`); una subida a
+  mano no lo sabe: 409. Como mucho tres, la más nueva primero; la siguiente propuesta las lee.
+  · **El estilo va en INGLÉS y siempre con su BPM** (`leerPropuestaMusical`): se le quitan los artistas («in the style
+  of…», «like» + nombre propio: Suno los rechaza y sería copiar) y las voces del «evitar» (lo de la marca va primero).
+  `cuerpoSuno` pone ahora las voces DELANTE en `negative_tags`: con un «evitar» largo, lo que no puede caerse en una
+  instrumental es «sin voces».
+  · **Por defecto, siempre**: `generar_musica` y la pantalla, para un video SIN estilo dicho, piden lo del director
+  (`pedirMusica`); con estilo dicho manda la persona (ni se le pregunta). Sin video ni estilo, la música de la marca.
+  **La cotización y la confirmación piden LO MISMO**: la propuesta se guarda en R2 (`musica-director/<espacio>/<video>.json`,
+  fuera de `clientes/`) con la huella de lo que la decide (`huellaMusical`: lo que se dice, la voz, la música de la marca)
+  y la confirmación la reusa 6 h sin pagar otra vez al director; si el guion cambió, se piensa de nuevo. La respuesta de
+  `generar_musica` (también al cotizar) dice qué pidió y por qué. Sin IA (sin llave, sin presupuesto, caída) sale el
+  RESPALDO (`propuestaDeRespaldo`: la música de la marca o la pista del guion con el tempo de los cortes) y el aviso.
+  · No toca el video: proponer no guarda nada en `videos_proyectos` (lo que se paga a Suno sigue su camino de siempre).
+  **Nada de esto se ha probado contra Anthropic ni Kie reales**: los tests (tests/migracion/musica.director.test.js)
+  usan un `fetch` de mentira.
   · **El HISTORIAL** (`videos_versiones`, 0060; `versionesDe`, `volverAVersion` en videosProyectos.js; `GET|POST
   /api/videos/<c>/<id>/versiones`, `versiones_video`, `volver_a_version`): cada cambio del guion guarda el de ANTES (hasta
   `MAX_VERSIONES`, 30). Volver crea una versión NUEVA con ese guion, en borrador; nunca se reescribe la historia.

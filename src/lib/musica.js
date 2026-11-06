@@ -98,7 +98,9 @@ export const duracionParaVideo = (segundos) =>
  */
 export function cuerpoSuno(pedido) {
   const m = modeloDeMusica(pedido.modelo) ?? MODELOS_MUSICA[MODELO_MUSICA_POR_DEFECTO];
-  const evitar = [pedido.evitar, pedido.instrumental ? SIN_VOZ : ""].filter(Boolean).join(", ").slice(0, TOPES_MUSICA.evitar);
+  // Las voces van PRIMERO: con un «evitar» largo (el del director musical y el de la marca) se cortaría lo de detrás, y
+  // en una instrumental lo que no puede caerse es «sin voces».
+  const evitar = [pedido.instrumental ? SIN_VOZ : "", pedido.evitar].filter(Boolean).join(", ").slice(0, TOPES_MUSICA.evitar);
   return {
     model: "ai-music-api/generate",
     input: {

@@ -42,8 +42,14 @@
 //   POST   /api/videos/<c>/musicas/generar  { estilo, instrumental?, letra?, duracion?, titulo?, evitar?, modelo?, videoId?,
 //                                           confirmado }: GENERARLA con Suno por Kie (un trabajo del Estudio; dos
 //                                           versiones a la galería). Siempre pide confirmar: sin `confirmado`, 409 con el
-//                                           costo. Con `videoId`, el estilo y la duración salen de su guion si no se dicen,
-//                                           y la primera versión queda puesta en su sonido
+//                                           costo. Con `videoId` y sin estilo, lo escribe el DIRECTOR MUSICAL (el 409 trae su
+//                                           `propuesta`), la duración es la del video y la primera versión queda en su sonido
+//   POST   /api/videos/<c>/musicas/marca    { archivoId }: «Me gusta esta»: una música GENERADA pasa a ser referencia de la
+//                                           música de la marca en el kit (su estilo; gratis)
+//   POST   /api/videos/<c>/<id>/musica      «Proponer la música para este video»: el DIRECTOR MUSICAL lee el guion guardado
+//                                           (con la locución si está lista), el kit y al cliente, y escribe el pedido para
+//                                           Suno con su porqué. No guarda nada en el video ni pide a Suno; texto, sin
+//                                           confirmación (worker/lib/estudio/directorMusical.js)
 //
 // El guion lo valida `validarGuion` (src/lib/videoEscenas.js) aquí, en el servidor: lo que llega del navegador, del
 // asistente o de Claude por MCP no se cree. Un guion con errores NO se guarda: vuelve 400 con la lista de errores,
@@ -70,6 +76,7 @@ import { ErrorMotor } from "../lib/estudio/gemini.js";
 import { escribirGuion, ErrorGuion } from "../lib/estudio/guionAnimado.js";
 import { ErrorIA } from "../lib/cerebro/ia.js";
 import { pedirMusica, ErrorMusica } from "../lib/estudio/musica.js";
+import { proponerMusica, musicaALaMarca, resumenDelAnalisis, ErrorDirectorMusical } from "../lib/estudio/directorMusical.js";
 import { pedidoConClips, alContenedor } from "../lib/estudio/cuadros.js";
 import { pedirRender, renderAlDia, ligarAPublicacion } from "../lib/estudio/render.js";
 import { costoDeVoz, fraseDeMuestra, modeloDeVoz, esIdDeVoz } from "../../src/lib/voces.js";
@@ -205,6 +212,20 @@ async function rutasDelCliente(req, env, { acceso, usuario, partes, metodo }) {
     return error("Método no permitido.", 405);
   }
 
+  // «Me gusta esta»: una música generada pasa a referencia de la música de la marca (en el kit guardado).
+  if (id === "musicas" && accion === "marca") {
+    if (metodo !== "POST") return error("Método no permitido.", 405);
+    const b = (await cuerpo(req)) ?? {};
+    try {
+      const musica = await musicaALaMarca(env, acceso, cliente, typeof b.archivoId === "string" ? b.archivoId : "");
+      difundir(env, acceso.ownerId, { tipo: "estudio", clientId: cliente.id, por: firma(usuario, req) });
+      return json({ musica });
+    } catch (e) {
+      if (e instanceof ErrorDirectorMusical || e instanceof ErrorEstudio) return error(e.message, e.estado ?? 400);
+      throw e;
+    }
+  }
+
   // Generar una música con Suno: siempre con su confirmación de costo.
   if (id === "musicas" && accion === "generar") {
     if (metodo !== "POST") return error("Método no permitido.", 405);
@@ -257,6 +278,18 @@ async function rutasDelCliente(req, env, { acceso, usuario, partes, metodo }) {
     const cabeceras = { "Content-Type": r.headers.get("Content-Type") ?? "image/jpeg", "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff" };
     for (const k of ["X-Escena", "X-Segundo", "X-Total", "X-Faltan"]) if (r.headers.get(k) !== null) cabeceras[k] = r.headers.get(k);
     return new Response(r.body, { headers: cabeceras });
+  }
+
+  // «Proponer la música para este video»: el director musical lee el guion GUARDADO (no lo que haya sin guardar en la
+  // pantalla) y propone; no toca el video ni pide nada a Suno, así que no pide la versión.
+  if (accion === "musica" && metodo === "POST") {
+    try {
+      const r = await proponerMusica(env, acceso, cliente, fila);
+      return json({ propuesta: r.propuesta, video: resumenDelAnalisis(r.analisis), aviso: r.aviso, modelo: r.modelo });
+    } catch (e) {
+      if (e instanceof ErrorDirectorMusical) return error(e.message, e.estado);
+      throw e;
+    }
   }
 
   const b = (await cuerpo(req)) ?? {};

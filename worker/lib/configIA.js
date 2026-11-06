@@ -77,7 +77,7 @@ export const MODELOS_POR_FUNCION = Object.freeze(["sonnet", "opus", "haiku", "mu
  */
 export const FUNCIONES_IA = Object.freeze({
   redaccion: ["calendario", "descripciones", "publicación", "ideas de anuncios", "ideas del estudio", "lote del mes", "estrategia del mes", "kit de WhatsApp"],
-  guiones: ["guiones", "guion de video", "fórmula UGC", "voz UGC", "director comercial"],
+  guiones: ["guiones", "guion de video", "fórmula UGC", "voz UGC", "director comercial", "director musical"],
   lectura: ["lectura de contenido"],
   // El director de arte (las fichas del lote, «Producir el mes», el post, los carruseles) diseña con el MISMO modelo que
   // el director del chat: con modelos distintos el chat daba un 8 y el lote menos.

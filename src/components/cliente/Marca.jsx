@@ -30,6 +30,7 @@ import "./cliente.css";
 const FichaCliente = lazy(() => import("../FichaCliente"));
 const EstudioKit = lazy(() => import("../EstudioKit"));
 const VozDeMarca = lazy(() => import("../VozDeMarca"));
+const MusicaDeMarca = lazy(() => import("../MusicaDeMarca"));
 const Cerebro = lazy(() => import("../Cerebro"));
 const PestanaContenido = lazy(() => import("../PestanaContenido"));
 const EditorSemana = lazy(() => import("../calendario/PlanSemanal").then((m) => ({ default: m.EditorSemana })));
@@ -62,6 +63,9 @@ function KitYVoz({ client, estudio, lectura, onCambio, onError }) {
     <div className="marca-kit">
       <section className="card" aria-label="Voz de la marca">
         <VozDeMarca client={client} kit={estudio.kit} lectura={lectura} onGuardar={guardar} />
+      </section>
+      <section className="card" aria-label="Música de la marca">
+        <MusicaDeMarca kit={estudio.kit} lectura={lectura} onGuardar={guardar} />
       </section>
       <EstudioKit
         client={client}
