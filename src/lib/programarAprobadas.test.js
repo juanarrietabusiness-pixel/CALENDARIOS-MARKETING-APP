@@ -66,6 +66,17 @@ describe("preparar las piezas al enviarlas, para que salgan solas al aprobar", (
     expect(cal.days[0].posts[0]).toMatchObject({ image: "a.jpg", descripcion: "nuevo", adaptados: { "feed|a.jpg": 1 } });
     expect(cal.days[0].posts[1].image).toBe("otra.png");
   });
+
+  it("la portada del reel pasada a JPEG también se pone; si alguien la cambió mientras tanto, no se pisa", () => {
+    const v = [{ src: "v.mp4", tipo: "video" }];
+    const antes = { days: [{ date: "2030-01-02", posts: [{ id: "r", format: "reel", medios: v, portada: "p.png" }, { id: "s", format: "reel", medios: v, portada: "q.png" }] }] };
+    const ahora = { days: [{ date: "2030-01-02", posts: [{ id: "r", format: "reel", medios: v, portada: "p.png" }, { id: "s", format: "reel", medios: v, portada: "otra.png" }] }] };
+    const cambiadas = new Map([["r", { id: "r", medios: v, portada: "p.jpg" }], ["s", { id: "s", medios: v, portada: "q.jpg" }]]);
+    const { cal, n } = conPreparadas(ahora, antes, cambiadas);
+    expect(n).toBe(1);
+    expect(cal.days[0].posts[0].portada).toBe("p.jpg");
+    expect(cal.days[0].posts[1].portada).toBe("otra.png");
+  });
 });
 
 describe("qué piezas se preparan al enviar", () => {

@@ -553,6 +553,29 @@ describe("programar al aprobar", () => {
     expect(p1.medios[0].src).toBe(alta.src); // el original no se toca
   });
 
+  it("con el Container, la PORTADA PNG de un reel se pasa a JPEG (Instagram no lee otra en `cover_url`) y entra en la cola", async () => {
+    const video = { src: "/api/media/clientes/c1/posts/v.mp4", tipo: "video", nombre: "v.mp4" };
+    await sembrar({ posts: [post({ format: "reel", medios: [video], portada: "/api/media/clientes/c1/estudio/portada.png", portadaMs: null })] });
+    db.sqlite.prepare("update clients set programar_al_aprobar = 1 where id = 'c1'").run();
+    db.sqlite.prepare("update calendars set share_token = ?, share_enabled = 1 where id = 'cal1'").run("t".repeat(48));
+    const pedidos = [];
+    env.VIDEO = contenedor(pedidos);
+    env.MEDIA = r2(new Map([["clientes/c1/estudio/portada.png", new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2, 3])]]));
+    expect((await aprobar()).status).toBe(200);
+    expect(pedidos.map((p) => p.salida)).toEqual([{ tipo: "jpeg" }]);
+    const p1 = JSON.parse(db.sqlite.prepare("select days from calendars where id = 'cal1'").get().days)[0].posts[0];
+    expect(p1.portada).toMatch(/^\/api\/media\/clientes\/c1\/posts\/[\w-]+\.jpg$/);
+    expect(p1.medios).toEqual([video]);
+    expect(filas()).toMatchObject([{ post_id: "p1", red: "instagram", estado: "programada" }]);
+  });
+
+  it("un reel con una imagen además de su video NO se programa: «Un reel no lleva imágenes: ¿es la portada?»", async () => {
+    const video = { src: "/api/media/clientes/c1/posts/v.mp4", tipo: "video", nombre: "v.mp4" };
+    await sembrar({ posts: [post({ format: "reel", medios: [video, { src: IMAGEN, tipo: "imagen", ancho: 1080, alto: 1920 }] })] });
+    await expect(programar(env, acceso(), { calendarId: "cal1", postId: "p1" })).rejects.toThrow(/Un reel no lleva imágenes: ¿es la portada\?/);
+    expect(filas()).toHaveLength(0);
+  });
+
   it("sin Container (en local), una PNG sigue sin programarse y el aviso dice por qué no se preparó", async () => {
     await sembrar({ posts: [post({ image: "/api/media/clientes/c1/posts/foto.png", medios: [{ src: "/api/media/clientes/c1/posts/foto.png", tipo: "imagen", ancho: 1080, alto: 1350 }] })] });
     db.sqlite.prepare("update clients set programar_al_aprobar = 1 where id = 'c1'").run();
