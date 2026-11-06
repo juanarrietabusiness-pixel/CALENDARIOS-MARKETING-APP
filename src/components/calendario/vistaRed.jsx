@@ -12,33 +12,14 @@
 // o el texto abajo—: lo importante de la imagen no debe caer ahí.
 // ============================================================
 
-import { useEffect, useState } from "react";
+import "./vistaRed.css";
+import { useEffect, useRef, useState } from "react";
 import Icon from "../Icon";
 import {
   REDES, mediosDe, historiasDe, conHistoria, textoPara, primerComentario, destinoInstagram, objetivoDe, claveAdaptado,
   conHistorias, esShortYouTube, tituloYouTube, descripcionYouTube,
 } from "../../lib/publicacion";
-import { vistaAjuste } from "../../lib/medios";
-
-// Lo ya dibujado, por imagen, objetivo y ajuste: cambiar de pestaña no
-// vuelve a pasar por el lienzo.
-const dibujadas = new Map();
-
-function useAjustada(src, objetivo, modo, color) {
-  const clave = `${src}|${objetivo}|${modo}|${color}`;
-  const [vista, setVista] = useState(() => dibujadas.get(clave) ?? null);
-  useEffect(() => {
-    if (!src || !objetivo) return undefined;
-    if (dibujadas.has(clave)) { setVista(dibujadas.get(clave)); return undefined; }
-    let vivo = true;
-    setVista(null);
-    vistaAjuste(src, objetivo, modo, color)
-      .then((v) => { dibujadas.set(clave, v); if (vivo) setVista(v); })
-      .catch(() => { if (vivo) setVista(src); });
-    return () => { vivo = false; };
-  }, [clave, src, objetivo, modo, color]);
-  return objetivo ? vista : src;
-}
+import { useAjustada } from "../../hooks/useAjustada";
 
 /** Las piezas que se pueden previsualizar: una por red elegida y, si la hay, la historia del post. */
 function piezasVista(post, redes) {
@@ -90,12 +71,19 @@ function VideoVista({ src, portada, vertical }) {
   );
 }
 
+/** Hasta dónde enseña Instagram el texto antes de «… más». */
+const CORTE_TEXTO = 125;
+
 export default function VistaRed({ post, redes, client }) {
   const piezas = piezasVista(post, redes);
   const [elegida, setElegida] = useState(piezas[0]?.clave ?? "instagram");
   const [i, setI] = useState(0);
+  // «… más» abre el texto entero, como en el teléfono.
+  const [textoAbierto, setTextoAbierto] = useState(false);
+  // El carrusel se desliza con el dedo (además de las flechas).
+  const toque = useRef(null);
   const pieza = piezas.find((p) => p.clave === elegida) ?? piezas[0];
-  useEffect(() => { setI(0); }, [elegida]);
+  useEffect(() => { setI(0); setTextoAbierto(false); }, [elegida]);
   if (!pieza) return null;
 
   const esHistoria = pieza.historia || post.format === "historia";
@@ -108,7 +96,20 @@ export default function VistaRed({ post, redes, client }) {
   const usuario = (client?.instagram || client?.name || "cuenta").replace(/^@/, "");
   // En YouTube, el título (la primera línea) y debajo la descripción entera.
   const texto = esHistoria && pieza.red !== "youtube" ? "" : pieza.red === "youtube" ? descripcionYouTube(post) : textoPara(post, pieza.red);
-  const corto = pieza.red === "instagram" && texto.length > 125 ? `${texto.slice(0, 125).trimEnd()}… más` : texto;
+  const cortado = pieza.red === "instagram" && texto.length > CORTE_TEXTO && !textoAbierto;
+  const corto = cortado ? `${texto.slice(0, CORTE_TEXTO).trimEnd()}…` : texto;
+  const deslizar = {
+    onTouchStart: (e) => { const t = e.touches[0]; toque.current = { x: t.clientX, y: t.clientY }; },
+    onTouchEnd: (e) => {
+      const ini = toque.current;
+      toque.current = null;
+      const t = e.changedTouches[0];
+      if (!ini || !t) return;
+      const dx = t.clientX - ini.x;
+      if (Math.abs(dx) < 40 || Math.abs(dx) < Math.abs(t.clientY - ini.y)) return;
+      setI((n) => Math.max(0, Math.min(medios.length - 1, n + (dx < 0 ? 1 : -1))));
+    },
+  };
   const comentario = pieza.red === "instagram" && !esHistoria ? primerComentario(post) : "";
 
   return (
@@ -129,7 +130,13 @@ export default function VistaRed({ post, redes, client }) {
             <strong>{pieza.red === "instagram" ? usuario : client?.name}</strong>
           </div>
         )}
-        <div className="vista-red-medio" data-vertical={vertical || undefined} data-libre={!vertical && !objetivo ? true : undefined}>
+        <div
+          className="vista-red-medio"
+          data-vertical={vertical || undefined}
+          data-libre={!vertical && !objetivo ? true : undefined}
+          data-carrusel={medios.length > 1 || undefined}
+          {...(medios.length > 1 ? deslizar : {})}
+        >
           {m ? <Medio medio={m} objetivo={objetivo} vertical={vertical} modo={post.ajusteIG || "difuminado"} color={client?.primaryColor} adaptados={post.adaptados} portada={post.portada} /> : <span>Sin imagen ni video</span>}
           {vertical && m && (
             <>
@@ -150,6 +157,12 @@ export default function VistaRed({ post, redes, client }) {
             {pieza.red === "instagram" && <strong>{usuario} </strong>}
             {pieza.red === "youtube" && <strong className="vista-previa-titulo">{tituloYouTube(post) || "Sin título"}</strong>}
             {corto || <em>Sin texto</em>}
+            {cortado && (
+              <>
+                {" "}
+                <button type="button" className="vista-previa-mas" onClick={() => setTextoAbierto(true)}>más</button>
+              </>
+            )}
           </p>
         )}
         {comentario && <p className="vista-previa-comentario"><strong>{usuario}</strong> {comentario}</p>}
