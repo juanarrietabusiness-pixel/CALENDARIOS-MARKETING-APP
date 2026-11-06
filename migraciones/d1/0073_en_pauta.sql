@@ -1,0 +1,21 @@
+-- ============================================================
+-- CERRAR EL CICLO: qué publicación del calendario es cada anuncio (curso de campañas, entrega 7)
+--
+-- Una columna más en `anuncios_clientes` (0041), la fila de lo que decide la agencia de los anuncios de un cliente
+-- (ya declarada en la capa de acceso con su `client_id`):
+--
+--   en_pauta: lo que corre en su Ads Manager casado con su publicación del calendario, por publicación
+--   («<calendario>|<publicación>»): el anuncio y la campaña, la etapa, el gasto, los resultados y el costo por
+--   resultado en 7 y 30 días, cuándo se vio, lo que se recuerda de la publicación (fecha, título, miniatura, tipo de
+--   contenido, composición, nivel) y si sigue corriendo. Lo que dejó de correr se queda con sus últimas cifras (es de lo
+--   que se aprende qué rinde) y se olvida a los 120 días. La forma la limpia src/lib/enPauta.js (`limpiarEnPauta`).
+--
+-- La escribe worker/lib/revision3q.js cada vez que se lee la revisión 3Q (y en su repaso diario del cron), con
+-- `actualizar` (sólo las columnas que nombra), en la MISMA sentencia que `revisada_at` o `alertas`: así no pisa el
+-- informe (0041), los números del negocio (0069), las ventas (0070), la revisión (0071) ni WhatsApp (0072). La lee
+-- GET /api/anuncios/clientes/<c>/en-pauta, que no pregunta a Meta.
+--
+-- Nada de lo que hay se toca: una columna con valor por defecto.
+-- ============================================================
+
+alter table anuncios_clientes add column en_pauta text not null default '{}' check (json_valid(en_pauta));

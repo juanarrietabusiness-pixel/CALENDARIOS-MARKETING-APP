@@ -57,6 +57,8 @@ const encargoDelPost = (post, { indicacion = "", proporcion = "", pieza = "", pl
   tipo: "imagen", pieza, formato: post.format === "historia" ? "historia" : "post", proporcion,
   texto: texto ?? (post.format === "carrusel" ? "" : post.textoPieza ?? ""),
   productoId: post.productoId ?? "", productoIds: productosDelPost(post), indicacion, ...(plantilla ? { plantilla } : {}),
+  // Va a pauta: el director lee lo que ya se probó en anuncios con esta marca (worker/lib/estudio/fichas.js).
+  ...(post.pauta && typeof post.pauta === "object" ? { pauta: true } : {}),
 });
 
 /**

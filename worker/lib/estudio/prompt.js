@@ -71,6 +71,7 @@ export async function mejorarIdea(env, acceso, cliente, datos = {}) {
       piezas: [{
         n: 1, idea, tipo: datos.pieza, formato: datos.formato, proporcion: datos.proporcion, texto: datos.texto,
         productoId: datos.productoId, productoIds: datos.productoIds, indicacion: datos.indicacion, sinTexto: datos.sinTexto === true, plantilla: datos.plantilla,
+        pauta: datos.pauta === true,
       }],
       vistas: datos.vistas,
       // La original (otra versión) o la pieza de otra marca (recrear): el director la MIRA antes de diseñar.

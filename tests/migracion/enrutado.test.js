@@ -1414,6 +1414,23 @@ describe("anuncios de Meta (/api/anuncios)", () => {
     expect((await worker.fetch(new Request("https://calendarios.test/api/anuncios/revision/pendientes"), env)).status).toBe(401);
   });
 
+  it("«En pauta» y «Para pautar» llegan a su rama SIN cuenta publicitaria (sólo D1, no es el 409 de las campañas)", async () => {
+    // La lógica entera, contra una D1 de verdad, está en enPauta.test.js.
+    const env = await entorno();
+    const r = await worker.fetch(conSesion("/api/anuncios/clientes/cliente-1/en-pauta"), env);
+    expect(r.status).toBe(200);
+    expect(await r.json()).toMatchObject({ publicaciones: [], leidoAt: null });
+    expect((await worker.fetch(conSesion("/api/anuncios/clientes/cliente-de-otro/en-pauta"), env)).status).toBe(404);
+    const pp = await worker.fetch(conSesion("/api/anuncios/clientes/cliente-1/para-pautar"), env);
+    expect(pp.status).toBe(200);
+    expect(await pp.json()).toMatchObject({ candidatas: [] });
+    const marcar = await worker.fetch(conSesion("/api/anuncios/clientes/cliente-1/para-pautar", {
+      method: "POST", body: JSON.stringify({}), headers: { "Content-Type": "application/json" },
+    }), env);
+    expect(marcar.status).toBe(400);
+    expect((await worker.fetch(new Request("https://calendarios.test/api/anuncios/clientes/cliente-1/en-pauta"), env)).status).toBe(401);
+  });
+
   it("una ruta que no existe es 404, y sin sesión 401", async () => {
     const env = await entorno();
     expect((await worker.fetch(conSesion("/api/anuncios/no-existe"), env)).status).toBe(404);

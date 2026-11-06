@@ -60,6 +60,7 @@ import { promptListo } from "../../lib/promptImagen";
 import GuionUgc from "./GuionUgc";
 import { ReferenciasPost } from "./referenciasPost";
 import { PautaPublicacion } from "./pautaPublicacion";
+import { EnPautaPublicacion } from "./enPautaPublicacion";
 import { vaAPauta } from "../../lib/pauta";
 
 // El asistente DENTRO de la publicación (lib/asistentePost.js): el mismo chat, sólo para este post.
@@ -404,6 +405,8 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
         {form.format !== "live" && (
           <PautaPublicacion form={form} sf={sf} clienteId={clientId} onEscribir={clientId ? () => generateField("anuncio") : null} escribiendo={Boolean(fieldLoading.anuncio)} />
         )}
+        {/* Lo que CORRE en su Ads Manager (la última revisión de campañas): «En pauta · etapa · costo» (entrega 7). */}
+        {form.format !== "live" && <EnPautaPublicacion clienteId={clientId} calId={cal?.dbId || cal?.id} postId={post.id} />}
 
         <div className="field">
           <div style={fieldHeaderStyle}>
