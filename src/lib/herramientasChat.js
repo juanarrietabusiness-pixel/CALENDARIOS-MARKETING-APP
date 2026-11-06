@@ -92,6 +92,20 @@ export function getChatTools(hasCalendar) {
             escena: { type: "string", description: "Nuevo «Qué se ve»: la escena de la imagen, sin texto dentro." },
             formato: { type: "string", enum: ["post", "reel", "carrusel", "historia", "live"], description: "Nuevo formato." },
             hora: { type: "string", description: "Hora de publicación. Se entiende «9am», «9:00», «21:30» o «6 pm». Escribe «quitar» para dejarla sin asignar." },
+            pauta: {
+              description: "Si se va a pautar en Meta: { etapa, como } para marcarla (su caption se escribe como ANUNCIO: en el Ads Manager ya no se cambia) o false para quitarla. etapa: presentacion (no conoce la marca), evaluacion (la compara), conversion (está por decidir) o ascension (ya compró); como: publicacion (se monta con la publicación), anuncio (subiendo la pieza) o vacío (las dos). Sólo si la persona lo pide.",
+              anyOf: [
+                {
+                  type: "object",
+                  properties: {
+                    etapa: { type: "string", enum: ["presentacion", "evaluacion", "conversion", "ascension"] },
+                    como: { type: "string", enum: ["publicacion", "anuncio", ""] },
+                  },
+                  required: ["etapa"],
+                },
+                { type: "boolean" },
+              ],
+            },
           },
           required: ["post_id"],
         },

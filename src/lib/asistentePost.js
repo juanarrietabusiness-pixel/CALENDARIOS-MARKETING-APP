@@ -15,6 +15,7 @@
 // ============================================================
 
 import { mediosDe } from "./publicacion.js";
+import { nombreEtapaCiclo } from "./cicloVentas.js";
 
 /** Lo que puede usar dentro de un post. Las de servidor (cerebro, web, ver_calendario) son de lectura y siguen. */
 export const HERRAMIENTAS_POST = Object.freeze(new Set([
@@ -56,8 +57,12 @@ export function bloqueDelPost(post, fecha = "") {
   const medios = mediosDe(post);
   return [
     `ESTÁS DENTRO DE UNA PUBLICACIÓN (post_id ${post?.id}${fecha ? `, del ${fecha}` : ""}). Todo lo que hagas es para ELLA: no crees, borres ni muevas otras, y no cambies ninguna otra. Los cambios se ven al momento en el panel que la persona tiene abierto.`,
-    "Para cambiar sus textos (título, idea, qué se ve, texto de la pieza, descripción, guion, hashtags, formato, hora) usa editar_publicacion. Para su imagen o una lámina concreta del carrusel, corregir_pieza con la clave de esa imagen (las de abajo, en orden: la 1 es la portada). Para una imagen nueva, disenar_piezas (va a esta publicación). Antes de cambiar algo grande, di en una línea qué vas a cambiar.",
+    "Para cambiar sus textos (título, idea, qué se ve, texto de la pieza, descripción, guion, hashtags, formato, hora, si va a pauta) usa editar_publicacion. Para su imagen o una lámina concreta del carrusel, corregir_pieza con la clave de esa imagen (las de abajo, en orden: la 1 es la portada). Para una imagen nueva, disenar_piezas (va a esta publicación). Antes de cambiar algo grande, di en una línea qué vas a cambiar.",
     `Formato: ${post?.format || "post"}${post?.publishTime ? ` · hora ${post.publishTime}` : ""}`,
+    // Va a pauta (lib/pauta.js): su caption ES el texto principal del anuncio, y en el Ads Manager ya no se cambia.
+    post?.pauta && typeof post.pauta === "object"
+      ? `VA A PAUTA (etapa ${nombreEtapaCiclo(post.pauta.etapa) || "presentación"}): su descripción ES el texto principal del anuncio y en el Ads Manager ya no se cambia. Escríbela como anuncio: el gancho en la primera línea (unos 125 caracteres), un llamado a escribir por WhatsApp, nada que caduque («hoy», un día, un horario), 3 hashtags como mucho y nada que afirme algo de quien lee.${post?.anuncio?.textos?.length ? ` Ya tiene ${post.anuncio.textos.length} textos de anuncio aparte.` : ""}`
+      : "",
     post?.title ? `Título: ${corto(post.title, 200)}` : "",
     post?.idea ? `Idea: ${corto(post.idea, 1500)}` : "",
     post?.escena ? `Qué se ve: ${corto(post.escena, 600)}` : "",

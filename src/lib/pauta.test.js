@@ -50,6 +50,19 @@ describe("la marca «Va a pauta»", () => {
   });
 });
 
+describe("el asistente lo sabe (api.js, sin importar esto: va en la carga inicial)", () => {
+  it("la línea de la publicación dice VA A PAUTA y, si hay alguna, cómo se escribe y cómo se marca", async () => {
+    const { buildChatSystemPrompt } = await import("../api");
+    const cal = { name: "Nov", year: 2026, month: 10, days: [{ date: "2026-11-02", posts: [post({ id: "a", pauta: { etapa: "conversion" } }), post({ id: "b" })] }] };
+    const t = buildChatSystemPrompt({ name: "Dcasa" }, cal, "", []);
+    expect(t).toMatch(/ID:a [^\n]*VA A PAUTA \(etapa conversion\)/);
+    expect(t).not.toMatch(/ID:b [^\n]*VA A PAUTA/);
+    expect(t).toMatch(/editar_publicacion con «pauta»/);
+    const sin = buildChatSystemPrompt({ name: "Dcasa" }, { ...cal, days: [{ date: "2026-11-02", posts: [post({ id: "b" })] }] }, "", []);
+    expect(sin).not.toMatch(/VA A PAUTA/);
+  });
+});
+
 describe("los textos de anuncio aparte", () => {
   it("hasta 5 textos sin repetir, títulos de 40 cortados en una palabra, descripción de 30 y el botón de su destino", () => {
     const a = limpiarAnuncio({
@@ -168,10 +181,14 @@ describe("qué se marca solo (decisión 9)", () => {
 
   it("marca las escogidas en los días", () => {
     const days = [{ date: "2026-11-02", posts: [post({ id: "a" }), post({ id: "b" })] }, { date: "2026-11-03", posts: [] }];
-    const d = conPautas(days, { a: { etapa: "presentacion", como: "" } });
-    expect(d[0].posts[0].pauta.etapa).toBe("presentacion");
+    const d = conPautas(days, { a: { etapa: "atraer", como: "" } });
+    expect(d[0].posts[0].pauta).toEqual({ etapa: "presentacion", como: "" });
     expect(d[0].posts[1].pauta).toBeUndefined();
     expect(d[1]).toBe(days[1]);
+    // Quitarla deja `false`: así no se vuelve a proponer.
+    const sin = conPautas(d, { a: false });
+    expect(sin[0].posts[0].pauta).toBe(false);
+    expect(sugerirPauta([{ ...sin[0].posts[0], pilar: "anuncio" }])).toEqual([]);
   });
 });
 

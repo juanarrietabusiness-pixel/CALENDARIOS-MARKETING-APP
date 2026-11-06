@@ -1,5 +1,5 @@
 import "./Resultados.css";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import Icon from "../components/Icon";
 import { GraficaLinea, GraficaBarras } from "../components/Graficas";
 import SeccionInformes from "../components/SeccionInformes";
@@ -32,6 +32,10 @@ const PERIODOS = [[7, "7 días"], [30, "30 días"], [90, "90 días"]];
 const irA = (ruta) => (e) => { e.preventDefault(); navegar(ruta); };
 const fechaLarga = (f) => new Date(`${f}T12:00:00`).toLocaleDateString("es", { day: "numeric", month: "long" });
 
+// «Versión para anuncio» de lo que mejor funcionó (lib/pauta.js), en su chunk: sólo al pulsarla.
+const VersionAnuncio = lazy(() => import("../components/VersionAnuncio"));
+const FORMATO_DE_TIPO = { imagen: "post", carrusel: "carrusel", reel: "reel", video: "reel", short: "reel", texto: "post" };
+
 function Cambio({ valor, invertir = false }) {
   if (valor == null || !Number.isFinite(valor)) return <span className="kpi-cambio">sin comparación</span>;
   const sube = valor >= 0;
@@ -62,6 +66,18 @@ export default function Resultados({ client, pulso = 0, onPersistClient }) {
   const [datos, setDatos] = useState(null);
   const [fallo, setFallo] = useState("");
   const [actualizando, setActualizando] = useState("");
+  const [version, setVersion] = useState(null);
+  /** La publicación de lo que se midió: la del calendario si salió de él; si no, su texto y su formato. */
+  const versionDe = (p) => {
+    for (const cal of client?.calendars ?? []) {
+      if (!p.postId || (p.calendarId && cal.id !== p.calendarId && cal.dbId !== p.calendarId)) continue;
+      for (const d of cal.days ?? []) {
+        const post = (d.posts ?? []).find((x) => x.id === p.postId);
+        if (post) return { client, cal, post, day: d };
+      }
+    }
+    return { client, cal: null, post: { id: String(p.id), format: FORMATO_DE_TIPO[p.tipo] ?? "post", descripcion: p.texto || "" }, day: {} };
+  };
 
   const cargar = useCallback(() => {
     db.metricasCliente(clientId, dias).then((d) => { setDatos(d); setFallo(""); }).catch((e) => setFallo(e.message));
@@ -217,6 +233,12 @@ export default function Resultados({ client, pulso = 0, onPersistClient }) {
                         {p.vistas > 0 && <> · {numeroCorto(p.vistas)} vistas</>}
                       </p>
                       {p.enlace && <a href={p.enlace} target="_blank" rel="noreferrer" className="top-enlace">Ver publicación <Icon name="link" size={12} /></a>}
+                      {/* Lo que funcionó es lo que se pauta: su texto como anuncio y sus textos aparte, para copiar. */}
+                      {p.tipo !== "historia" && (p.texto || p.postId) && (
+                        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setVersion(versionDe(p))}>
+                          <Icon name="megaphone" size={14} /> Versión para anuncio
+                        </button>
+                      )}
                     </div>
                   </li>
                 ))}
@@ -323,6 +345,11 @@ export default function Resultados({ client, pulso = 0, onPersistClient }) {
           </table>
         )}
       </section>
+      {version && (
+        <Suspense fallback={null}>
+          <VersionAnuncio {...version} onClose={() => setVersion(null)} />
+        </Suspense>
+      )}
     </div>
   );
 }

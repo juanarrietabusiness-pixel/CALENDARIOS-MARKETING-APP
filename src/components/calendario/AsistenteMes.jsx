@@ -26,6 +26,8 @@ import { semanaDelMes } from "../../lib/semanas";
 import { mediosDe } from "../../lib/publicacion";
 import { costoDeReels, lanzarReelDelMes, reelsLanzados, apuntarReels } from "../../lib/asistenteMesApi";
 import { TimePicker } from "./primitivas";
+import { sugerirPauta, conPautas, vaAPauta, describirPauta } from "../../lib/pauta";
+import { nombreEtapaCiclo } from "../../lib/cicloVentas";
 import "./RevisionMes.css";
 import "./AsistenteMes.css";
 
@@ -46,6 +48,13 @@ import "./AsistenteMes.css";
 // que le toca al mes (`pasoQueToca`). Todo lo escribe `escribir(cambiar)`, que
 // parte del calendario MÁS NUEVO (lo de otras personas no se pisa) y va por el
 // guardado agrupado de siempre (y sus avisos de tiempo real).
+//
+// LO QUE VA A PAUTA (lib/pauta.js, decisión 9): al poner el plan, las del tipo
+// «Anuncio» y las de la oferta del mes salen marcadas «Va a pauta» (se dice y
+// se quitan antes de ponerlas: las quitadas quedan con `pauta: false` y no se
+// vuelven a proponer); en el paso de las ideas, lo que YA estaba en el
+// calendario se propone con su lista, nunca se marca solo sin verse. Las
+// marcadas se escriben como anuncio (el motor lee su `pauta`).
 //
 // Diseñar no escribe el calendario desde aquí: lo hace el SERVIDOR al terminar
 // cada encargo (se ponen solas, worker/lib/estudio/ponerEnPost.js). Por eso en
@@ -253,6 +262,8 @@ function PasoPlan({ client, cal, onGuardarPlan, onPoner, onPlanificarAMano, onPr
   const [aceptadas, setAceptadas] = useState(a.aceptadas);
   const [llenar, setLlenar] = useState(a.llenarOcupados);
   const [mercado, setMercado] = useState(undefined);
+  // Las propuestas de «Va a pauta» que alguien quitó (por su clave): se ponen con `pauta: false`.
+  const [sinPauta, setSinPauta] = useState(() => new Set());
   useEffect(() => { leerPlantillas().catch(() => []).then(setLista); }, []);
   useEffect(() => {
     let vivo = true;
@@ -280,16 +291,29 @@ function PasoPlan({ client, cal, onGuardarPlan, onPoner, onPlanificarAMano, onPr
   const aceptada = (s) => aceptadas.some((x) => x.fecha === s.fecha);
 
   /** La matriz (producto, nivel, deseo, perfil) sobre el plan ENTERO, como «Planificar mes»; la nota del día manda su producto. */
-  const poner = () => {
+  const calcularMatriz = () => {
     const general = limpiarEstudio(mercado?.estudio)?.general;
     const productos = productosParaPlan(mercado?.catalogo ?? [], mercado?.inventario);
     const conNotas = conNotasDelDia(casillas.map((c) => ({ clave: c.clave, fecha: c.fecha, pilar: c.pilar })), notas, productos)
       .map(({ notaDia: _n, fecha: _f, ...c }) => c);
     const foco = limpiarEstrategia(cal.opciones?.estrategia)?.focoId ?? "";
-    const matriz = new Map(asignarMatriz(conNotas, { productos, deseos: general?.deseos ?? [], perfiles: general?.perfiles ?? [], foco })
+    return new Map(asignarMatriz(conNotas, { productos, deseos: general?.deseos ?? [], perfiles: general?.perfiles ?? [], foco })
       .map(({ clave, ...m }) => [clave, Object.fromEntries(CAMPOS_MATRIZ.map((k) => [k, m[k] ?? ""]))]));
+  };
+  const matriz = mercado === undefined ? new Map() : calcularMatriz();
+  // Las que van a pauta solas (decisión 9): las del tipo «Anuncio» del plan y las de la oferta del mes, con su etapa.
+  const enPauta = new Map(sugerirPauta(
+    casillas.map((c) => ({ id: c.clave, post: { format: c.format, pilar: c.pilar, nivel: matriz.get(c.clave)?.nivel ?? "" } })),
+    { ofertas: cal.offers, codigo: cal.promoCode },
+  ).map((x) => [x.id, x]));
+  const vanAPauta = [...enPauta.keys()].filter((k) => !sinPauta.has(k)).length;
+  const poner = () => {
     onPoner(
-      casillas.map((c) => ({ fecha: c.fecha, especial: c.especial ?? "", post: publicacionDeCasilla(c, { id: uid(), matriz: matriz.get(c.clave) ?? {} }) })),
+      casillas.map((c) => {
+        const post = publicacionDeCasilla(c, { id: uid(), matriz: matriz.get(c.clave) ?? {} });
+        const s = enPauta.get(c.clave);
+        return { fecha: c.fecha, especial: c.especial ?? "", post: s ? { ...post, pauta: sinPauta.has(c.clave) ? false : s.pauta } : post };
+      }),
       { aceptadas: aceptadas.map((s) => ({ id: s.id, fecha: s.fecha, de: s.de, a: s.a, motivo: s.motivo })), llenarOcupados: llenar },
     );
   };
@@ -359,12 +383,37 @@ function PasoPlan({ client, cal, onGuardarPlan, onPoner, onPlanificarAMano, onPr
                   <span>{nombreDePilar(c.pilar)}</span>
                   {c.hora && <span className="hint">{horaCorta(c.hora)}</span>}
                   {c.especial && <span className="hint">· {c.especial}</span>}
+                  {enPauta.has(c.clave) && !sinPauta.has(c.clave) && <span className="hint"><Icon name="megaphone" size={12} style={{ display: "inline-block", verticalAlign: "-2px" }} /> a pauta</span>}
                 </li>
               ))}
             </ul>
           </div>
         ))}
       </section>
+
+      {!pasado && enPauta.size > 0 && (
+        <fieldset className="asistente-mes-bloque">
+          <legend className="label">Van a pauta</legend>
+          <p style={{ margin: 0 }}>
+            <strong>{vanAPauta} {vanAPauta === 1 ? "publicación va" : "publicaciones van"} a pauta: se escribirán como anuncio.</strong>
+          </p>
+          <p className="hint" style={{ margin: 0 }}>
+            Las del tipo «Anuncio» y las de la oferta del mes. En el Ads Manager el texto de una publicación ya no se cambia: su caption
+            nace escrito como anuncio y lleva, aparte, sus textos para subir la pieza. Quita las que no se van a pautar.
+          </p>
+          {casillas.filter((c) => enPauta.has(c.clave)).map((c) => {
+            const x = enPauta.get(c.clave);
+            return (
+              <label key={c.clave} className="asistente-mes-casilla">
+                <input type="checkbox" checked={!sinPauta.has(c.clave)}
+                  onChange={(e) => setSinPauta((l) => { const n = new Set(l); if (e.target.checked) n.delete(c.clave); else n.add(c.clave); return n; })} />
+                {fechaCorta(c.fecha)} · {c.rostro ? "UGC" : FORMATS[c.format]?.label ?? c.format} · {nombreDePilar(c.pilar)} → {nombreEtapaCiclo(x.pauta.etapa)}
+                <span className="hint"> ({x.motivo.toLowerCase()})</span>
+              </label>
+            );
+          })}
+        </fieldset>
+      )}
 
       <div className="asistente-mes-acciones">
         {!pasado && casillas.length > 0 && (
@@ -459,6 +508,8 @@ function PasoIdeas({ client, cal, escribir, onCompletarTextos, completando, esta
 
   return (
     <div className="asistente-mes-paso">
+      {/* Lo que va a pauta, ANTES de escribir las ideas: así salen escritas como anuncio. */}
+      <BloquePauta cal={cal} escribir={escribir} />
       {sinIdea.length > 0 && (
         <section className="notice asistente-mes-bloque" style={{ display: "block" }}>
           <p style={{ margin: 0 }}><strong>{sinIdea.length} {sinIdea.length === 1 ? "publicación del plan sin idea" : "publicaciones del plan sin idea"}.</strong></p>
@@ -489,6 +540,68 @@ function PasoIdeas({ client, cal, escribir, onCompletarTextos, completando, esta
         </button>
       </details>
     </div>
+  );
+}
+
+/**
+ * Lo que va a pauta en el mes (lib/pauta.js): las marcadas, con «Quitar», y las que podrían ir (las del tipo «Anuncio»
+ * y las de la oferta del mes) con su casilla: NUNCA se marcan solas sin que se vean. Escribe por `escribir`, sobre el
+ * calendario más nuevo.
+ */
+function BloquePauta({ cal, escribir }) {
+  const ids = useId();
+  const todas = (cal.days ?? []).flatMap((d) => (d.posts ?? []).map((post) => ({ date: d.date, post })));
+  const marcadas = todas.filter(({ post }) => vaAPauta(post));
+  const propuestas = sugerirPauta(todas.map(({ post }) => ({ id: post.id, post })), { ofertas: cal.offers, codigo: cal.promoCode });
+  const [fuera, setFuera] = useState(() => new Set());
+  const fecha = (id) => todas.find((x) => x.post.id === id)?.date ?? "";
+  const titulo = (post) => String(post.title || post.idea || nombreDePilar(post.pilar) || "").slice(0, 60);
+  const cambiar = (pautas) => escribir((c) => ({ ...c, days: conPautas(c.days ?? [], pautas) }));
+  const marcar = () => {
+    const pautas = Object.fromEntries(propuestas.filter((x) => !fuera.has(x.id)).map((x) => [x.id, x.pauta]));
+    if (Object.keys(pautas).length) cambiar(pautas);
+    setFuera(new Set());
+  };
+  if (!marcadas.length && !propuestas.length) return null;
+  const aMarcar = propuestas.filter((x) => !fuera.has(x.id)).length;
+  return (
+    <section className="asistente-mes-bloque" aria-labelledby={`${ids}-t`}>
+      <h3 id={`${ids}-t`}><Icon name="megaphone" size={16} style={{ display: "inline-block", verticalAlign: "-3px" }} /> Lo que va a pauta</h3>
+      {marcadas.length > 0 && (
+        <>
+          <p style={{ margin: 0 }}><strong>{marcadas.length} {marcadas.length === 1 ? "publicación va" : "publicaciones van"} a pauta: se escribirán como anuncio.</strong></p>
+          <ul className="asistente-mes-chips">
+            {marcadas.map(({ date, post }) => (
+              <li key={post.id}>
+                {fechaCorta(date)} · {titulo(post)} · {describirPauta(post.pauta)}
+                <button type="button" className="btn btn-ghost btn-sm" aria-label={`Quitar de la pauta: ${titulo(post) || fechaCorta(date)}`} onClick={() => cambiar({ [post.id]: false })}>
+                  <Icon name="close" size={12} /> Quitar
+                </button>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+      {propuestas.length > 0 && (
+        <fieldset className="asistente-mes-bloque" style={{ border: "none", padding: 0 }}>
+          <legend className="label">Podrían ir a pauta ({propuestas.length})</legend>
+          <p className="hint" style={{ margin: 0 }}>Las del tipo «Anuncio» y las de la oferta del mes que aún no están marcadas. Nada se marca sin que lo confirmes.</p>
+          {propuestas.map((x) => {
+            const post = todas.find((t) => t.post.id === x.id)?.post ?? {};
+            return (
+              <label key={x.id} className="asistente-mes-casilla">
+                <input type="checkbox" checked={!fuera.has(x.id)}
+                  onChange={(e) => setFuera((l) => { const n = new Set(l); if (e.target.checked) n.delete(x.id); else n.add(x.id); return n; })} />
+                {fechaCorta(fecha(x.id))} · {titulo(post)} → {nombreEtapaCiclo(x.pauta.etapa)} <span className="hint">({x.motivo.toLowerCase()})</span>
+              </label>
+            );
+          })}
+          <button type="button" className="btn btn-secondary btn-sm" disabled={!aMarcar} onClick={marcar}>
+            <Icon name="megaphone" size={14} /> {aMarcar ? `Marcar ${aMarcar === 1 ? "la" : `las ${aMarcar}`} «Va a pauta»` : "Ninguna escogida"}
+          </button>
+        </fieldset>
+      )}
+    </section>
   );
 }
 

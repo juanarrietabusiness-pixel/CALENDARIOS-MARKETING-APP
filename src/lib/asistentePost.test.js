@@ -39,5 +39,13 @@ describe("el asistente dentro de una publicación sólo cambia ESA", () => {
     expect(t).toMatch(/post_id p1, del 2026-11-10/);
     expect(t).toMatch(/1\. imagen · clave clientes\/c\/posts\/1\.jpg · 1080×1350\n2\. imagen · clave clientes\/c\/posts\/2\.jpg/);
     expect(t).toMatch(/Descripción: Texto/);
+    expect(t).not.toMatch(/VA A PAUTA/);
+  });
+
+  it("si va a pauta, lo sabe y sabe cómo escribirla (lib/pauta.js)", () => {
+    const t = bloqueDelPost({ id: "p1", format: "post", descripcion: "Texto", pauta: { etapa: "conversion" }, anuncio: { textos: ["a", "b", "c"] } });
+    expect(t).toMatch(/VA A PAUTA \(etapa Conversión\): su descripción ES el texto principal del anuncio/);
+    expect(t).toMatch(/Ya tiene 3 textos de anuncio aparte/);
+    expect(bloqueDelPost({ id: "p1", format: "post", pauta: false })).not.toMatch(/VA A PAUTA/);
   });
 });

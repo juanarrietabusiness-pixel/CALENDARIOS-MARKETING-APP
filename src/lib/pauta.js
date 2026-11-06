@@ -310,14 +310,14 @@ export function sugerirPauta(items = [], { ofertas = "", codigo = "" } = {}) {
   });
 }
 
-/** Los días con las publicaciones de `ids` marcadas «Va a pauta» (`pautas`: id → pauta). Lo que no está, igual. Pura. */
+/** Los días con la pauta de las publicaciones de `pautas` (id → pauta, o `false` para quitarla y que no se vuelva a proponer). Lo que no está, igual. Pura. */
 export function conPautas(days = [], pautas = {}) {
   return (days ?? []).map((d) => {
     let cambio = false;
     const posts = (d.posts ?? []).map((p) => {
-      if (!pautas[p.id]) return p;
+      if (!Object.hasOwn(pautas, p.id)) return p;
       cambio = true;
-      return { ...p, pauta: pautas[p.id] };
+      return { ...p, pauta: pautas[p.id] ? limpiarPauta(pautas[p.id]) : false };
     });
     return cambio ? { ...d, posts } : d;
   });
