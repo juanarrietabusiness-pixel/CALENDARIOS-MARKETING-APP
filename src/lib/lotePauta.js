@@ -18,6 +18,7 @@
 export function loteDeLaDireccion(q) {
   const lote = q?.get?.("lote");
   if (lote === "mes") return { alcance: "mes", mes: q.get("mes") ?? "" };
+  if (lote !== "anuncios" && lote !== "pauta") return false;
   const etapa = String(q.get("etapa") ?? "").slice(0, 20);
   if (lote === "anuncios") {
     const niveles = String(q.get("niveles") ?? "").split(",").map((n) => n.trim().slice(0, 20)).filter(Boolean).slice(0, 5);
