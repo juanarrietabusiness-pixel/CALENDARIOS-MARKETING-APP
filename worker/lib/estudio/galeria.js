@@ -295,10 +295,15 @@ export const MODELO_MUSICA_SUBIDA = "musica-subida";
 export async function musicasDe(acceso, clienteId) {
   const filas = await acceso.leerColumnas("estudio_archivos", ["id", "clave", "prompt", "modelo", "bytes", "ajustes", "created_at"],
     { client_id: clienteId, tipo: "audio", borrado_at: NULO }, "created_at desc", 100);
-  return filas.filter((f) => String(f.modelo).startsWith("musica")).map((f) => ({
-    id: f.id, nombre: String(f.prompt || "Música").replace(/\.[a-z0-9]+$/i, "").slice(0, 80), src: `/api/media/${f.clave}`,
-    bytes: f.bytes, modelo: f.modelo, fecha: f.created_at,
-  }));
+  return filas.filter((f) => String(f.modelo).startsWith("musica")).map((f) => {
+    // Lo que se le pidió a Suno (sólo las generadas): «Me gusta esta» lo guarda como música de la marca.
+    let estilo = "";
+    try { estilo = String(JSON.parse(f.ajustes || "{}")?.pedido?.estilo ?? "").slice(0, 600); } catch { /* sin ajustes */ }
+    return {
+      id: f.id, nombre: String(f.prompt || "Música").replace(/\.[a-z0-9]+$/i, "").slice(0, 80), src: `/api/media/${f.clave}`,
+      bytes: f.bytes, modelo: f.modelo, fecha: f.created_at, ...(estilo ? { estilo } : {}),
+    };
+  });
 }
 
 export async function subirArchivo(env, acceso, cliente, archivo, { carpetaId = null, origenId = null, plantilla = null, musica = false } = {}) {

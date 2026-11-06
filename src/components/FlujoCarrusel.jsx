@@ -1,6 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import Icon from "./Icon";
-import { textoCosto, costoDePieza, CONFIRMAR_DESDE } from "../lib/estudioCatalogo";
+import { textoCosto, costoDePieza } from "../lib/estudioCatalogo";
 import * as api from "../lib/estudio";
 import { AJUSTES_DE_TEXTO, IGUALAR_TEXTO, ejemploParaIgualar } from "../lib/estudio";
 import { TIPOS_PRESET, ESTILOS_VISUALES, estiloDeMarca, limpiarKit, referenciasDePersonajes, referenciaDeTipografia } from "../lib/kitMarca";
@@ -80,6 +80,13 @@ export default function FlujoCarrusel({ client, estudio, inicial = {}, onPoner =
   // La lista va del más barato al más caro; si nadie escoge, el recomendado (Nano Banana).
   const modelo = modelos.find((m) => m.id === modeloId) ?? modelos.find((m) => m.id === modeloParaCarrusel(estudio?.activos ?? {}).id) ?? modelos[0] ?? null;
   const total = costoCarrusel(laminas, modelo?.costo);
+  // El «¿Seguro?»: desde 0,50 $, salvo «crear imágenes sin preguntar» del espacio (Ajustes → IA) dentro de su tope.
+  const pedirCrear = async () => {
+    const { decidir } = await import("../lib/sinPreguntarApi");
+    const d = await decidir({ costo: total, tipo: "imagen" }).catch(() => ({ preguntar: true }));
+    if (d.preguntar) setConfirmar(true);
+    else void crear();
+  };
   const productos = estudio?.productos ?? [];
   const delGuion = partirGuion(guion);
 
@@ -437,7 +444,7 @@ export default function FlujoCarrusel({ client, estudio, inicial = {}, onPoner =
             <>
               <button type="button" className="btn btn-ghost" onClick={() => setPaso("guion")}>Volver</button>
               <p className="lote-costo">{laminas.length} láminas · <strong>{textoCosto(total)}</strong> (aprox.){modelo?.motor === "prueba" ? " · prueba: tarjetas, no imágenes" : ""}</p>
-              <button type="button" className="btn btn-primary" disabled={!modelo || !listas} onClick={() => (total >= CONFIRMAR_DESDE ? setConfirmar(true) : crear())}>
+              <button type="button" className="btn btn-primary" disabled={!modelo || !listas} onClick={() => void pedirCrear()}>
                 <Icon name="image" size={18} /> {primeroPortada && laminas.length > 2 ? "Crear la portada" : `Crear ${laminas.length} láminas`}
               </button>
             </>

@@ -706,11 +706,12 @@ export async function recrear(env, acceso, usuario, { clave, clienteId, camino: 
       throw e;
     }
     const archivo = await traerArchivo(env, acceso, cliente, p, { miniatura: p.formato !== "video" }).catch(() => null);
-    const post = { ...base, referencias: referenciaDe(p, archivo) };
+    // La publicación recuerda la estructura de guion que siguió la voz (`post.estructuraVoz`, lib/formulasUgc.js).
+    const post = { ...base, referencias: referenciaDe(p, archivo), ...(g.estructura?.id ? { estructuraVoz: g.estructura.id } : {}) };
     const { calendarId } = await meterPublicacion(env, acceso, cliente, fecha, post);
     let video = null;
     try {
-      video = (await crearProyecto(acceso, cliente, { guion: g.guion, titulo: post.title, calendarId, postId: post.id, usuario })).video;
+      video = (await crearProyecto(acceso, cliente, { guion: g.guion, titulo: post.title, calendarId, postId: post.id, usuario, estructuraId: g.estructura?.id ?? "" })).video;
       difundir(env, acceso.ownerId, { tipo: "videos", clientId: cliente.id, id: video.id, por: { userId: "sistema", nombre: "Lo mejor", color: "", tab: null } });
     } catch (e) {
       if (!(e instanceof ErrorVideo)) throw e;

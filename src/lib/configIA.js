@@ -23,7 +23,7 @@ export const MODELOS_FUNCION = Object.freeze([
 /** Cada función de la IA de texto, con lo que abarca. Las claves son las del servidor (FUNCIONES_IA). */
 export const FUNCIONES_IA = Object.freeze([
   { id: "redaccion", nombre: "Redacción", nota: "Ideas del mes, descripciones y captions" },
-  { id: "guiones", nombre: "Guiones", nota: "Guiones de reels y videos" },
+  { id: "guiones", nombre: "Guiones", nota: "Guiones de reels y videos, y la música que propone el director musical" },
   { id: "lectura", nombre: "Escribir mirando el contenido", nota: "Lo que la IA escribe a partir de las imágenes subidas" },
   { id: "asistente", nombre: "Asistente y director creativo", nota: "El chat y el diseño de cada pieza (el lote, el mes, el post, los carruseles): el mismo modelo en todo. Mejor con Opus o Sonnet alto (con Meta no hay búsqueda web)" },
   { id: "prompts", nombre: "Escenas de imagen", nota: "«Otra versión distinta» del visor y la mejora corta de un video" },
@@ -58,6 +58,8 @@ export const CONFIG_IA_POR_DEFECTO = Object.freeze({
   ia_modelos: {},
   presupuesto_usd: 30,
   al_limite: "avisar",
+  // «Crear imágenes sin preguntar»: el tope por pedido (0 = apagado; src/lib/sinPreguntar.js).
+  sin_preguntar_usd: 0,
 });
 
 /** Qué pasa al llegar al presupuesto del mes. */

@@ -59,7 +59,7 @@ export const sinVozPropia = (modelo) => /^(seedance|wan)/.test(String(modelo?.id
 const corto = (t, n) => String(t ?? "").replace(/\s+/g, " ").trim().slice(0, n);
 
 /** Lo que se le pide a la IA para el guion por planos. Pura. */
-export function pedidoDeReel({ marca = "la marca", rubro = "", idea = "", segundos = 10, tipo = "", estilo = "", producto = "", personajes = [], identidad = "", contexto = "", musica = "", locucion = "", estructura = "", criterio = "", guionPost = "", montaje = false }) {
+export function pedidoDeReel({ marca = "la marca", rubro = "", idea = "", segundos = 10, tipo = "", estilo = "", producto = "", personajes = [], identidad = "", contexto = "", musica = "", locucion = "", estructura = "", criterio = "", guionPost = "", montaje = false, estructuraGuion = "", campoEstructura = false }) {
   const clips = Math.ceil(segundos / SEGUNDOS_POR_CLIP);
   return [
     `Eres director creativo de reels. Escribe el guion de UN reel vertical (9:16) de ${segundos} segundos para ${marca}${rubro ? ` (${rubro})` : ""}, para generarlo con un modelo de video con IA que hace varios planos con cortes en una sola pieza.`,
@@ -75,6 +75,9 @@ export function pedidoDeReel({ marca = "la marca", rubro = "", idea = "", segund
     locucion ? `Locución que se quiere (respétala si cabe): ${corto(locucion, 500)}` : "",
     // Un anuncio que ya funciona: su forma, no su marca ni sus palabras.
     estructura ? `ESTRUCTURA A SEGUIR (es la de un anuncio que ya funciona, de otra marca): copia su forma —el orden de los momentos, el ritmo, el tipo de gancho y de cierre— con el producto y la marca de ${marca}; nunca su marca, sus personajes ni su texto.\n${corto(estructura, 1500)}` : "",
+    // La ESTRUCTURA de guion de la agencia para la voz en off (lib/formulasUgc.js): la escogida, en esta duración, o la
+    // lista para que la IA escoja y diga cuál en el campo «estructura» del JSON. Es la forma; la voz de la marca, aparte.
+    estructuraGuion ? `ESTRUCTURA DEL GUION (la voz en off y los planos siguen sus tramos):\n${String(estructuraGuion).trim().slice(0, 3000)}` : "",
     // El guion que ya tiene la publicación: el reel lo SIGUE (lo que dice, el orden), repartido en planos.
     lineaDelGuionPost(guionPost),
     // Con montaje, cada plano es un clip aparte (o un tramo) y lo que se dice y se lee lo pone la aplicación encima.
@@ -83,9 +86,11 @@ export function pedidoDeReel({ marca = "la marca", rubro = "", idea = "", segund
     "",
     `Reglas: de ${MIN_PLANOS + 1} a ${maxPlanos(segundos)} planos que sumen ${segundos} s exactos, contiguos desde 0. El primero detiene el scroll (gancho); el del medio muestra el producto o el resultado; el último cierra con el producto o el resultado y deja ganas de escribir (el logo y el llamado no los dibuja el modelo de video: los modelos los deforman). El video va LIMPIO: ningún plano lleva texto, letras ni subtítulos en pantalla. Nada de reseñas, cifras ni urgencias inventadas. La locución (voz en off) dura lo que el video: como mucho ${Math.floor(segundos * PALABRAS_POR_SEGUNDO)} palabras, en español latino neutro, o vacía si el reel va sólo con música.`,
     "",
-    montaje
+    (montaje
       ? 'Responde SOLO con JSON: {"hilo":"lo que comparten todos los planos (personaje, luz, paleta, lugar), en una frase","gancho":"el texto del gancho","llamado":"el llamado del cierre","planos":[{"desde":0,"hasta":2,"escena":"qué se ve (sujeto, acción, lugar, luz)","camara":"movimiento de cámara","dice":"lo que dice la voz en este plano, o vacío","pantalla":"lo que se lee en este plano, o vacío"}],"musica":"estilo, ritmo y ánimo de la música","locucion":"todo lo que dice la voz, junto","efectos":"sonido ambiente o efectos, o vacío","descripcion":"el texto del post, de 2 a 4 frases, sin hashtags"}'
-      : 'Responde SOLO con JSON: {"hilo":"lo que comparten todos los planos (personaje, luz, paleta, lugar), en una frase","planos":[{"desde":0,"hasta":2,"escena":"qué se ve (sujeto, acción, lugar, luz)","camara":"movimiento de cámara"}],"musica":"estilo, ritmo y ánimo de la música","locucion":"lo que dice la voz en off, o vacío","efectos":"sonido ambiente o efectos, o vacío","descripcion":"el texto del post, de 2 a 4 frases, sin hashtags"}',
+      : 'Responde SOLO con JSON: {"hilo":"lo que comparten todos los planos (personaje, luz, paleta, lugar), en una frase","planos":[{"desde":0,"hasta":2,"escena":"qué se ve (sujeto, acción, lugar, luz)","camara":"movimiento de cámara"}],"musica":"estilo, ritmo y ánimo de la música","locucion":"lo que dice la voz en off, o vacío","efectos":"sonido ambiente o efectos, o vacío","descripcion":"el texto del post, de 2 a 4 frases, sin hashtags"}')
+      // Cuando la IA escoge la estructura de guion, dice cuál en el mismo JSON.
+      .replace(/\}$/, campoEstructura ? ',"estructura":"el nombre exacto de la estructura de guion que seguiste"}' : "}"),
   ].filter((l) => l !== "").join("\n");
 }
 
@@ -119,6 +124,8 @@ export function leerReel(texto, segundos = 10) {
     efectos: corto(d?.efectos, 300),
     descripcion: String(d?.descripcion ?? "").trim().slice(0, 1000),
     gancho: corto(d?.gancho, 80), llamado: corto(d?.llamado, 30),
+    // El NOMBRE de la estructura de guion que dice la IA que siguió (quien llama lo vuelve id).
+    ...(corto(d?.estructura, 80) ? { estructura: corto(d.estructura, 80) } : {}),
   };
 }
 

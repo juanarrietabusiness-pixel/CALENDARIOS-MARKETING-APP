@@ -6,13 +6,18 @@
 // Sólo rellena: lo que escribió una persona gana siempre (la misma regla que «Generar guiones»).
 // ============================================================
 
+import { imagenDelReelAPortada } from "./publicacion.js";
+
 const vacio = (v) => !String(v ?? "").trim();
 
-/** Los campos de texto que se rellenan (sólo si están vacíos) y cómo se llaman en la publicación. */
-const CAMPOS = Object.freeze({ descripcion: "descripcion", guion: "guion", portada: "portada", hashtags: "hashtagsFinales" });
+/**
+ * Los campos de texto que se rellenan (sólo si están vacíos) y cómo se llaman en la publicación. `estructura`: el id de
+ * la ESTRUCTURA de guion de la agencia que siguió la voz en off (lib/formulasUgc.js), que la publicación recuerda.
+ */
+const CAMPOS = Object.freeze({ descripcion: "descripcion", guion: "guion", portada: "portada", hashtags: "hashtagsFinales", estructura: "estructuraVoz" });
 
 /**
- * La publicación con `campos` puestos donde está vacía: { descripcion, guion, portada, hashtags }. Una descripción
+ * La publicación con `campos` puestos donde está vacía: { descripcion, guion, portada, hashtags, estructura }. Una descripción
  * vacía que tenía el campo heredado `script` cuenta como escrita. → { post, rellenados: [nombres] }. Pura.
  */
 export function rellenarVacios(post = {}, campos = {}) {
@@ -45,5 +50,8 @@ export function conVideoEnPost(post = {}, medio, esSuyo = () => false) {
   const vistos = new Set();
   const limpia = lista.filter((m) => !vistos.has(m.src) && vistos.add(m.src));
   const primeraImagen = limpia.find((m) => m.tipo !== "video")?.src ?? null;
-  return { ...post, medios: limpia, image: primeraImagen, mediosCambiadosAt: new Date().toISOString() };
+  const con = { ...post, medios: limpia, image: primeraImagen, mediosCambiadosAt: new Date().toISOString() };
+  // Un REEL no lleva imágenes: la que estaba esperando al video (la portada que Claude diseñó antes de que el reel
+  // terminara) pasa a su portada, si aún no tenía. Con varias, o con portada ya puesta, se queda: lo dice la revisión.
+  return con.format === "reel" && !String(con.portada ?? "").trim() ? imagenDelReelAPortada(con) : con;
 }

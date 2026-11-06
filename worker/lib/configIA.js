@@ -27,6 +27,7 @@
 // ============================================================
 
 import { fechaEnZona } from "../../src/lib/agenda.js";
+import { limpiarSinPreguntar } from "../../src/lib/sinPreguntar.js";
 
 export const MODELO_SONNET = "claude-sonnet-5";
 
@@ -77,7 +78,7 @@ export const MODELOS_POR_FUNCION = Object.freeze(["sonnet", "opus", "haiku", "mu
  */
 export const FUNCIONES_IA = Object.freeze({
   redaccion: ["calendario", "descripciones", "publicación", "ideas de anuncios", "ideas del estudio", "lote del mes", "estrategia del mes", "kit de WhatsApp"],
-  guiones: ["guiones", "guion de video", "fórmula UGC", "voz UGC", "director comercial"],
+  guiones: ["guiones", "guion de video", "fórmula UGC", "voz UGC", "director comercial", "director musical"],
   lectura: ["lectura de contenido"],
   // El director de arte (las fichas del lote, «Producir el mes», el post, los carruseles) diseña con el MISMO modelo que
   // el director del chat: con modelos distintos el chat daba un 8 y el lote menos.
@@ -106,6 +107,8 @@ export const POR_DEFECTO = Object.freeze({
   ia_modelos: {},
   presupuesto_usd: 30,
   al_limite: "avisar",
+  // «Crear imágenes sin preguntar»: el tope por pedido en US$; 0 = apagado (src/lib/sinPreguntar.js, 0074).
+  sin_preguntar_usd: 0,
 });
 
 /**
@@ -204,7 +207,17 @@ export async function leerConfigIA(acceso) {
     ia_modelos: modelos,
     presupuesto_usd: Number.isFinite(presupuesto) && presupuesto >= 0 && fila?.presupuesto_usd != null ? presupuesto : POR_DEFECTO.presupuesto_usd,
     al_limite: ACCIONES_LIMITE.includes(fila?.al_limite) ? fila.al_limite : POR_DEFECTO.al_limite,
+    sin_preguntar_usd: limpiarSinPreguntar(fila?.sin_preguntar_usd),
   };
+}
+
+/**
+ * El tope de «crear imágenes sin preguntar» del espacio (0 = apagado). Una lectura: se llama sólo cuando un pedido
+ * preguntaría, no en cada pedido.
+ */
+export async function topeSinPreguntar(acceso) {
+  if (!acceso) return 0;
+  return (await leerConfigIA(acceso).catch(() => POR_DEFECTO)).sin_preguntar_usd ?? 0;
 }
 
 /** `ia_modelos` como se guarda (texto JSON) → sólo funciones y modelos que existen. */

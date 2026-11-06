@@ -4,7 +4,9 @@
 //   · formato_video    el formato de escenas v1 contado a la IA (sale del mismo vocabulario que valida)
 //   · listar_videos    los proyectos de un cliente, con su estado y su versión
 //   · ver_video        uno entero: estado, qué falta, la línea de tiempo por escena, la locución y el guion (JSON)
-//   · crear_video      un proyecto nuevo (borrador), ligado o no a una publicación
+//   · crear_video      un proyecto nuevo (borrador), ligado o no a una publicación, y la estructura de guion que siguió
+//   · ver_estructuras  las ESTRUCTURAS DE GUION de la agencia (para todos los clientes), de voz en off o de UGC, con sus
+//                      tramos repartidos en la duración pedida: Claude las ofrece y pasa la escogida (estructura_id)
 //   · guardar_video    reescribe el guion y/o el título (con la versión que se leyó)
 //   · editar_escena    cambia, añade, mueve o quita escenas sin reescribir el resto: una, o varias en una versión (`cambios`)
 //   · aprobar_video    aprueba el guion de esa versión: con eso generar_locucion ya puede hacer la voz
@@ -50,6 +52,9 @@ import { instanteLleno } from "../../../src/lib/revisionEscenas.js";
 import { pedidoConClips, alContenedor, respuestaEnBase64 } from "./cuadros.js";
 import { pedirRender, renderAlDia, ligarAPublicacion } from "./render.js";
 import { vistaDe, piezaDe } from "../mcpVista/modelo.js";
+import { vistaDeVideo, lineasDeMedios } from "./vistaMedios.js";
+import { leerEstructuras, estructuraExistente } from "../estructurasGuion.js";
+import { paraDe, tramosEnDuracion, USOS_ESTRUCTURA } from "../../../src/lib/formulasUgc.js";
 
 const clienteParam = { cliente: { type: "string", description: "Nombre del cliente. En el asistente de un cliente se puede omitir: es ese cliente." } };
 const videoParam = { video_id: { type: "string", description: "ID del proyecto de video (de listar_videos o crear_video)." } };
@@ -74,15 +79,27 @@ export const DEFINICIONES_VIDEO = Object.freeze([
   },
   {
     name: "crear_video",
-    description: "Crea un video animado (borrador) para un cliente con su guion en el formato de escenas v1 (lee formato_video antes). Opcional: publicacion_id para ligarlo a su post del calendario. Si el guion tiene errores no se crea y la respuesta dice cada uno con su sitio. No gasta nada.",
+    description: "Crea un video animado (borrador) para un cliente con su guion en el formato de escenas v1 (lee formato_video antes). Opcional: publicacion_id para ligarlo a su post del calendario; estructura_id, la estructura de guion de la agencia que sigue su voz en off (de ver_estructuras: queda apuntada en el video). Si el guion tiene errores no se crea y la respuesta dice cada uno con su sitio. No gasta nada.",
     input_schema: {
       type: "object",
       properties: {
         ...clienteParam, guion: guionParam,
         titulo: { type: "string", description: "Nombre del video (si se omite, el del guion)." },
         publicacion_id: { type: "string", description: "ID de la publicación del calendario a la que va (de ver_calendario)." },
+        estructura_id: { type: "string", description: "La ESTRUCTURA de guion de la agencia que sigue la voz en off (de ver_estructuras con para=voz). Reparte las escenas en sus tramos antes de crearlo." },
       },
       required: ["guion"],
+    },
+  },
+  {
+    name: "ver_estructuras",
+    description: "Las ESTRUCTURAS DE GUION de la agencia, para TODOS los clientes: la forma de un guion que funciona —sus tramos con el papel de cada uno, el tipo de gancho, por qué funciona y cuándo conviene—, sin contenido. para=voz: las de VOZ EN OFF (video animado y reel); para=ugc: las del guion para grabar. Con segundos, los tramos ya repartidos en esa duración. Ofrécelas a la persona antes de escribir un guion y pasa la escogida en crear_video o crear_reel (estructura_id); el tono de cada marca va aparte. No gasta nada.",
+    input_schema: {
+      type: "object",
+      properties: {
+        para: { type: "string", enum: ["voz", "ugc"], description: "voz: voz en off (video animado, reel); ugc: guion para grabar. Si se omite, todas." },
+        segundos: { type: "integer", description: "La duración del video: los tramos de cada una, repartidos en ella." },
+      },
     },
   },
   {
@@ -314,7 +331,24 @@ export function crearHerramientasVideo({ env, acceso, resolverCliente, usuario, 
 
   return {
     async formato_video() {
-      return formatoParaLaIA();
+      return `${formatoParaLaIA()}\n\nLa FORMA de la voz en off (el orden de los momentos) puede seguir una estructura de guion de la agencia: ver_estructuras con para=voz, y su ID en crear_video (estructura_id).`;
+    },
+
+    async ver_estructuras({ para = "", segundos } = {}) {
+      const uso = ["voz", "ugc"].includes(para) ? para : "";
+      const lista = await leerEstructuras(acceso, { para: uso });
+      const nombreUso = uso ? ` para ${USOS_ESTRUCTURA[uso].toLowerCase()}` : "";
+      if (!lista.length) return `La agencia no tiene estructuras de guion${nombreUso} todavía (se guardan en Ajustes → Cómo trabajamos → Estructuras de guion). Sin ninguna, escribe el guion con el criterio de siempre.`;
+      const s = Number(segundos) > 0 ? Number(segundos) : 0;
+      return [
+        `Estructuras de guion de la agencia${nombreUso} (para todos los clientes; el tono de cada marca va aparte):`,
+        ...lista.map((f) => [
+          `· ${f.id} — «${f.nombre}» · sirve para: ${paraDe(f).map((u) => USOS_ESTRUCTURA[u]).join(" y ")}${f.cuando ? ` · conviene: ${f.cuando}` : ""}`,
+          `  ${s ? `En ${s} s: ` : `Original (${f.duracion} s): `}${(s ? tramosEnDuracion(f, s) : f.tramos).map((t) => `${t.desde != null && t.hasta != null ? `[${t.desde}–${t.hasta} s] ` : ""}${t.funcion}`).join(" · ")}`,
+          f.gancho || f.porQue ? `  ${[f.gancho && `Gancho: ${f.gancho}`, f.porQue && `Por qué funciona: ${f.porQue}`].filter(Boolean).join(" · ")}` : "",
+        ].filter(Boolean).join("\n")),
+        "Para usar una: su ID en crear_video o crear_reel (estructura_id). Sin escoger, crear_reel deja que la IA escoja la que encaje.",
+      ].join("\n");
     },
 
     async listar_videos({ cliente }) {
@@ -328,12 +362,16 @@ export function crearHerramientasVideo({ env, acceso, resolverCliente, usuario, 
     async ver_video({ cliente, video_id: id }) {
       const c = await resolverCliente(cliente);
       return conErrores(async () => {
-        const video = deFila(await renderAlDia(acceso, await proyectoDe(acceso, c.id, id)));
-        return textoDelVideo({ ...video, locucion: await locucionAlDia(acceso, video.locucion) });
+        const v = deFila(await renderAlDia(acceso, await proyectoDe(acceso, c.id, id)));
+        const video = { ...v, locucion: await locucionAlDia(acceso, v.locucion) };
+        // La vista previa del chat de Claude reproduce el mp4 y la locución ahí mismo (y se pone al día mientras se
+        // hacen); el texto lleva sus direcciones firmadas. El asistente de la aplicación sólo recibe el texto.
+        const vista = await vistaDeVideo(env, { video, clienteId: c.id, cliente: { id: c.id, nombre: c.name } });
+        return { texto: [textoDelVideo(video), lineasDeMedios(vista)].filter(Boolean).join("\n"), imagenes: [], vista };
       });
     },
 
-    async crear_video({ cliente, guion, titulo, publicacion_id: postId }) {
+    async crear_video({ cliente, guion, titulo, publicacion_id: postId, estructura_id: estructuraPedida = "" }) {
       const c = await resolverCliente(cliente);
       return conErrores(async () => {
         let liga = null;
@@ -341,7 +379,9 @@ export function crearHerramientasVideo({ env, acceso, resolverCliente, usuario, 
           liga = await publicacionDelCliente(acceso, c.id, postId);
           if (!liga) throw new ErrorVideo(`No encontré la publicación «${postId}» en los calendarios de ${c.name} (los IDs salen de ver_calendario).`, 404);
         }
-        const r = await crearProyecto(acceso, c, { guion, titulo, calendarId: liga?.calendarId, postId: liga?.postId, usuario });
+        const estructuraId = estructuraPedida ? await estructuraExistente(acceso, estructuraPedida) : "";
+        if (estructuraPedida && !estructuraId) throw new ErrorVideo(`No encontré la estructura de guion «${estructuraPedida}» (los IDs salen de ver_estructuras).`, 404);
+        const r = await crearProyecto(acceso, c, { guion, titulo, calendarId: liga?.calendarId, postId: liga?.postId, usuario, estructuraId });
         avisar(c.id, r.video.id);
         return [
           `Creado el video «${r.video.titulo}» (ID ${r.video.id}), versión 1, en borrador. Se ve en el Estudio de ${c.name} → Video → Animado con código.`,
@@ -401,7 +441,10 @@ export function crearHerramientasVideo({ env, acceso, resolverCliente, usuario, 
           fila = await proyectoDe(acceso, c.id, id);
         }
         const r = await pedirRender(env, acceso, c, fila, { version, usuario, por });
-        return `Render encargado: «${r.video.titulo}» (versión ${r.video.version}) se está renderizando; tarda menos de un minuto. Míralo con ver_video.${fila.post_id ? ` Al terminar, el mp4 se pone en la publicación ${fila.post_id}.` : " No va ligado a ninguna publicación: queda en la galería (ligar_video para ponerlo en una)."}`;
+        const texto = `Render encargado: «${r.video.titulo}» (versión ${r.video.version}) se está renderizando; tarda menos de un minuto. Míralo con ver_video.${fila.post_id ? ` Al terminar, el mp4 se pone en la publicación ${fila.post_id}.` : " No va ligado a ninguna publicación: queda en la galería (ligar_video para ponerlo en una)."}`;
+        // La vista previa del chat de Claude espera el mp4 y lo reproduce ahí mismo cuando sale.
+        const video = { ...r.video, locucion: await locucionAlDia(acceso, r.video.locucion) };
+        return { texto, imagenes: [], vista: await vistaDeVideo(env, { video, clienteId: c.id, cliente: { id: c.id, nombre: c.name } }) };
       });
     },
 

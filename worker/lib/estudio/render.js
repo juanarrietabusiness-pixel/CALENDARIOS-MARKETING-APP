@@ -99,7 +99,9 @@ export async function ponerEnPublicacion(env, acceso, fila, medio, { rellenar = 
     clienteId: fila.client_id, calendarId: fila.calendar_id, postId: fila.post_id, por: SISTEMA,
     cambiar: (post) => {
       const con = conVideoEnPost(post, medio, esSuyo);
-      return rellenar ? rellenarVacios(con, rellenar).post : con;
+      // La estructura de guion que siguió la voz: la publicación la recuerda (si no tenía otra).
+      const campos = { ...(rellenar ?? {}), ...(origen.estructuraId ? { estructura: origen.estructuraId } : {}) };
+      return Object.keys(campos).length ? rellenarVacios(con, campos).post : con;
     },
   });
   if (r?.aviso) {

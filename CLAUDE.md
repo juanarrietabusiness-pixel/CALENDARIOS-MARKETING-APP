@@ -140,6 +140,11 @@ src/
     estudioCatalogo.js    El Estudio: modelos (Google, fal.ai, Higgsfield), ajustes, costo estimado,
                           validar un pedido, ordenar/filtrar la lista, papelera (puro; también lo
                           importa el Worker)
+    sinPreguntar.js       «Crear imágenes sin preguntar»: CONFIRMAR_DESDE (0,50 $), el tope del espacio, ¿se pregunta este
+                          pedido? (sólo imágenes, con el modelo del cliente, dentro del tope; otro motor sugerido se
+                          pregunta) y sus frases (puro; también el Worker)
+    sinPreguntarApi.js    El tope del espacio desde la pantalla (recordado un minuto), el «¿Sigo?» con el ajuste delante y
+                          «No volver a preguntar» (lo enciende el administrador)
     estudioHiggsfield.json  Los modelos de Higgsfield (también los que siguen un video), GENERADOS de su esquema: no se edita a mano
                           (`node scripts/estudio/generar-higgsfield.mjs`)
     estudioMercado.js     El estudio de mercado: catálogo (productos y precios), lo general (perfiles, deseos de
@@ -162,9 +167,10 @@ src/
     ugc.js                UGC · guion para grabar: tramos «[0–3 s] VOZ: «…» | SE VE: … | TEXTO: …», duración (15–60 s, 2,5
                           palabras/s), ganchos, copiar voz y tomas; transcribir un video y adaptarlo; la «Voz UGC» de cada
                           cliente; «Guiones para grabar» (los UGC sin video y el mensaje de la sesión) (puro; también el Worker)
-    formulasUgc.js        Las fórmulas UGC de la agencia: limpiar, repartir en otra duración, la línea para la IA, que la IA
-                          escoja y diga cuál, sacarla de un video transcrito (puro; también el Worker)
-    formulasUgcApi.js     Cliente de /api/formulas-ugc
+    formulasUgc.js        Las ESTRUCTURAS DE GUION de la agencia (antes «fórmulas UGC»): para qué sirve cada una (`para`: UGC y/o
+                          voz en off), limpiar, repartir en cualquier duración, la línea para la IA, que la IA escoja y diga
+                          cuál, sacarla de un video transcrito o de una voz en off que salió bien (puro; también el Worker)
+    formulasUgcApi.js     Cliente de /api/formulas-ugc (= /api/estructuras-guion; también «proponer» desde una voz en off)
     videoCorto.js         Guiones de video de 8 s (Veo por fal) o 10 s (Omni): gancho, beneficio y cierre; el pedido
                           al modelo sin texto largo ni logo (puro; también lo importa el Worker)
     videoProducto.js      La receta «Video del producto» (10–15 s): tramos, el guion con la voz en español, las escenas del
@@ -192,6 +198,8 @@ src/
                           fundido y repetida (puro: Worker, Container y pantalla)
     musica.js             La música con SUNO por Kie: modelos V6, el pedido limpio, el cuerpo de createTask, leer las dos
                           pistas, el costo (puro; también el Worker)
+    directorMusical.js    El DIRECTOR MUSICAL: lo que el código cuenta del video (BPM por los cortes, silencios, momentos), el
+                          pedido a la IA con la música de la marca delante, leer su propuesta (sin artistas) y el respaldo (puro)
     efectosSonido.js      Los efectos del video animado: whoosh en las transiciones y pop en sellos y llamados, sintetizados
                           (sin archivos) y mezclados bajitos (puro: el Container)
     revisionEscenas.js    La revisión antes de renderizar: subtítulos que tapan, texto que se sale o se parte, fuera de la zona
@@ -361,6 +369,7 @@ src/
                           REAL del producto (y si es de otra marca), el producto que nombra la idea (puro)
     galeriaPura.js        Lo PURO de la galería que necesitan la pantalla y el Worker: fotos de un producto, piezas de un
                           carrusel en orden, poner piezas en un post, igualar el texto (lib/estudio.js lo re-exporta)
+                          y la regla de la PORTADA de un reel al poner piezas (`postConPiezas` con `como`)
     estudio.js            Cliente de /api/estudio y lo puro de la pantalla: filtros (también «Usadas / Sin usar»),
                           trabajos en curso, carruseles y reels agrupados en una tarjeta (`agruparGaleria`),
                           de una publicación al Estudio y del Estudio a una publicación
@@ -480,11 +489,12 @@ src/
     cliente/Marca.jsx     La pestaña Marca: semáforo del kit, ficha, kit y voz, cerebro, plan semanal, fechas y Drive (lazy)
     cliente/SemaforoKit.jsx  El semáforo del kit en pantalla (plegado; «Subir el logo» ahí mismo) y su aviso corto
     cliente/cliente.css   Los estilos de esas tres pestañas, de las sub-pestañas y del semáforo (van con sus chunks)
-    SeccionComoTrabajamos.jsx  Ajustes → «Cómo trabajamos»: recetas, fórmulas UGC, plantillas de plan y manuales
+    SeccionComoTrabajamos.jsx  Ajustes → «Cómo trabajamos»: recetas, estructuras de guion (UGC y voz en off), plantillas de plan y manuales
     Drive.css / FichaCliente.css / PestanaContenido.css  Estilos que salieron de index.css (el CSS inicial estaba en su tope)
     Presencia.jsx         Avatares, estado de la conexión, «X está editando»
     SelectorFecha.jsx     Calendario del mes para escoger una fecha (portal)
     SeccionIA.jsx         Ajustes → IA: modelo, nivel al escribir, nivel del asistente
+    SinPreguntarAjuste.jsx  Ajustes → IA → «Crear imágenes sin preguntar»: la casilla y el tope por pedido (sólo el administrador)
     SeccionPresupuesto.jsx  Ajustes → presupuesto, qué pasa al llegar, consumo por día/cliente
     SeccionDrive.jsx      Ajustes → Integraciones: conectar Google Drive
     SeccionMeta.jsx       Ajustes → Integraciones: conectar Meta y asignar cuentas
@@ -560,6 +570,7 @@ src/
                           en la publicación» y «Mandar el carrusel a la papelera» (lazy)
     FuenteDeMarca.jsx     La fuente de la marca en el kit: subir el archivo, dibujar la muestra, guardar las dos
     GaleriaSelector.jsx   «De la galería» del panel de una publicación: imágenes sueltas o un carrusel entero, en orden (lazy)
+                          y, con `una`, UNA imagen: la portada de un reel («Portada del video» → «De la galería»)
     SelectorModelo.jsx    «Con qué modelo (sólo esta vez)»: visor, post; marca los que no hacen la proporción; y el filtro
                           «Modelo» de la galería (`FiltroDeModelo`)
     IdeasDeFormato.jsx    «Dame ideas» en el paso 1 del carrusel y del reel IA
@@ -568,9 +579,14 @@ src/
                           pagar, la nota (¿tiempos por palabra?), el audio, «Escuchar gratis» y «Fijar como voz de la marca»
                           (lazy; dentro de VideoAnimado)
     BibliotecaVoces.jsx   «Buscar voces en español»: la biblioteca de ElevenLabs (gratis), escuchar y «Añadir a mis voces»
+    MusicaDeMarca.jsx     La música de la marca en el kit (Marca → Kit y voz): cómo suena, lo que nunca suena y las que gustaron (lazy)
     VideoAnimado.jsx      «Animado con código»: los videos animados del cliente, el guion (errores con su sitio), la vista
                           previa en el lienzo y «Aprobar el guion» (lazy; dentro de FlujoReel)
-    CrearVideoAnimado.jsx «Video nuevo»: idea o publicación, duración y formato → la IA escribe el guion (lazy)
+    CrearVideoAnimado.jsx «Video nuevo»: idea o publicación, duración, formato y la estructura de guion → la IA escribe el guion (lazy)
+    SelectorEstructura.jsx  «Estructura del guion» al escribir una voz en off (Video nuevo, el reel por planos): la IA escoge o una
+                          de las de la agencia; «Ver las estructuras» (en el reel, lazy: el Estudio precarga el reel)
+    GuardarEstructura.jsx «Guardar como estructura» de una voz en off (video animado o reel): la IA la abstrae y se abre en el
+                          editor de las estructuras con «Voz en off» marcado (lazy)
     EditorEscenas.jsx     «Editar los textos»: lo que se dice, lo que se lee, tipo, pausa, orden de las escenas (lazy)
     LocucionVideo.jsx     «La voz» del video en su pantalla: ver el costo y generarla (lazy)
     RenderVideo.jsx       «Renderizar a mp4»: pedirlo, esperarlo (relee cada 4 s), verlo, descargarlo y a qué publicación va
@@ -592,6 +608,7 @@ src/
     DisenoDirector.jsx    «¿Qué quieres crear?» de Crear (era la pestaña Diseño): el asistente incrustado como director creativo, con atajos (lazy)
     PlanDePiezas.jsx      El plan de una tanda del director: las fichas, el costo, «Crear» y cada pieza según sale
     PonerEnPublicacion.jsx  «Poner en una publicación…» del visor, del carrusel y de la galería con varias escogidas (lazy)
+                          y «Como portada del video» cuando va UNA imagen a un reel con su video
     GuardarPlantilla.jsx  «Guardar como plantilla» del visor: la IA lee su sistema de diseño y la pieza pasa al kit (lazy)
     calendario/OpcionesCrearAqui.jsx  Tipo, estilo, modelo y plantilla de «Crear la imagen aquí» (lazy)
     Cerebro.jsx           Marca → Cerebro (era la pestaña Cerebro): las notas de un cliente, ficha desactualizada, datos que no cuadran, añadir
@@ -614,8 +631,9 @@ src/
     calendario/navegadorMes.jsx ‹ Octubre 2026 › Hoy: recorrer el calendario siempre activo
     calendario/GuionUgc.jsx  El guion de un UGC en el panel: columnas, duración, ganchos, copiar, «Extraer guion de un video»
     calendario/ExtraerUgc.jsx  «Extraer guion y adaptar»: el video (de la publicación, la galería o subido), producto,
-                          duración; el original transcrito y el adaptado → la publicación o el banco; «Guardar como fórmula» (lazy)
-    calendario/FormulasUgc.jsx  Las fórmulas UGC de la agencia: la lista, corregir, quitar, escribir una (lazy)
+                          duración; el original transcrito y el adaptado → la publicación o el banco; «Guardar como estructura» (lazy)
+    calendario/FormulasUgc.jsx  «Estructuras de guion de la agencia» (antes fórmulas UGC): la lista con su filtro UGC / Voz en off,
+                          corregir, quitar, escribir una escogiendo para qué sirve (lazy)
     calendario/GuionesParaGrabar.jsx  «Guiones para grabar»: los UGC del mes sin video, escoger y ordenar, copiar o compartir
                           todo en un mensaje; pasan a «En producción» (lazy)
     calendario/tipoContenido.jsx  «Tipo de contenido» del panel: tipo, producto, nivel, perfil y deseo
@@ -738,6 +756,8 @@ worker/
     mcpVista/             La VISTA PREVIA en el chat de Claude (MCP Apps): modelo.js (qué herramientas la llevan, el
                           `structuredContent`, cómo la página lee un resultado; puro), navegador.js (la página del iframe),
                           estilos.css y pagina.generada.js (GENERADA: `node scripts/mcp/generar-vista.mjs`)
+    medioVista.js         La dirección FIRMADA y de corta vida (12 h) de un audio o video de R2 para esa vista, con el secreto
+                          que se crea solo en R2 (`firmas/vista-medios.key`); qué claves se pueden servir
     competencia.js        `business_discovery` de un competidor (sus últimas publicaciones) y «traer» su archivo del CDN de Meta
                           a la galería («Competencia»), también desde un enlace de Instagram SIN @ (memoria, cuentas fijas,
                           página pública) y la miniatura de un reel con música
@@ -784,9 +804,13 @@ worker/
                           web, el cerebro (notas cortas enteras), calendarios, tareas, ideas
     equipo.js             Avisos (guardar y anunciar), historial y asignaciones
     ids.js                UUID, testigos, huellas
+    estructurasGuion.js   Las estructuras de guion del espacio para quien escribe en el Worker: leerlas por `para`, qué va al
+                          pedido de una voz en off (la escogida o la lista para que la IA escoja) y cuál siguió
   videosProyectos.js    Los proyectos de video animado: crear, guardar, editar UNA escena y aprobar (la ruta y las
                           herramientas van por aquí)
     estudio/reelDelMes.js  Los reels de un mes (el asistente del mes): el costo sin crear nada y, con el sí, el encargo de cada uno
+    estudio/directorMusical.js  El director musical: lee el video guardado, el kit y al cliente y propone la música de Suno
+                          (`proponerMusica`, guardada en R2 para la confirmación); «Me gusta» a la marca (`musicaALaMarca`)
     estudio/encargoReel.js  El REEL por planos como encargo (tipo «reel»): el storyboard en orden, se para a revisar y se retoma
                           (`continuarReel`), el video o los clips, el montaje (`montarReel`) y a su publicación
     estudio/montaje.js    El proyecto de video animado del montaje de un reel (`origen`: { tipo: "reel", encargoId })
@@ -795,6 +819,8 @@ worker/
     estudio/guionVideo.js El contexto común de los guiones de video (`contextoDeGuion`): producto, cerebro, criterio, publicación
     estudio/herramientasReel.js  El video por MCP: crear_reel, estado_reel, continuar_reel, montar_reel, video_listo y
                           extraer_guion_ugc (sólo MCP: desde herramientas.js sería el ciclo de siempre)
+    estudio/vistaMedios.js  Los AUDIOS y VIDEOS de la vista previa del chat de Claude: la muestra, la locución, la música, el mp4
+                          de un video animado y los de un reel, con su dirección firmada; renovar una que caducó
     bandeja/              La Bandeja: webhook.js (la firma del webhook de Meta y qué dice un aviso;
                           puro), almacen.js (de quién es cada aviso y guardarlo fundiendo lo que
                           había), graph.js (suscribir la página, «Actualizar», responder, ocultar,
@@ -833,13 +859,16 @@ worker/
                           reintentar), archivos, papelera y carpetas
     mcp.js                El servidor MCP (/mcp), su OAuth (/oauth/*, /.well-known/*) y
                           el permiso y las conexiones (/api/mcp/*)
+    vistaMedio.js         /api/vista-medio/<testigo>/<nombre>: un audio o video firmado para la vista previa del chat de
+                          Claude, sin sesión y por trozos
     avisos.js             /api/avisos: la bandeja de quien pregunta y marcar leídos
     bandeja.js            /api/bandeja (comentarios y mensajes) y el webhook de Meta
                           (/api/webhooks/meta, sin sesión)
     anuncios.js           /api/anuncios: cuentas, campañas, estadísticas, crear, activar (admin + confirmado)
     plantillas.js         /api/plantillas-plan: listar, guardar (cambiar una de arranque o crear) y borrar/restaurar
     recetas.js            /api/recetas: listar, guardar (cambiar una de la casa o crear), borrar/restaurar y el handoff
-    formulasUgc.js        /api/formulas-ugc: las fórmulas UGC de la agencia (listar, guardar, corregir, quitar, proponer)
+    formulasUgc.js        /api/formulas-ugc (y /api/estructuras-guion, la misma): las estructuras de guion de la agencia (listar
+                          con `?para=`, guardar, corregir, quitar, proponer desde un video transcrito o desde una voz en off)
     inspiracion.js        /api/inspiracion/<cliente>: el feed, actualizar, traer un archivo, el resumen
     loMejor.js            /api/lo-mejor: la ventana, clasificar, recrear (409 «confirmar» con el costo), traer, «Crear con Claude»,
                           el tope de créditos, releer los anuncios y el proxy de los videos del CDN de Meta
@@ -851,7 +880,7 @@ container/                El Container del video animado (Node + @napi-rs/canvas
                           /render (render.mjs) con el MISMO motor de src/lib; los clips de video (clips.mjs, PUT /clip/<id>);
                           probar.mjs, probarAudio.mjs y probarClips.mjs son sus pruebas (job «contenedor»)
 migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales, 0033 kit de marca, 0034 estudio de mercado, 0035 ritmo de contenido, 0036 inventario, 0037 plantillas de plan, 0038 campañas con varios conjuntos y anuncios, 0039 estratega, 0040 historial de anuncios, 0041 informe de anuncios, 0042 galería agrupada y repetidos, 0043 conversaciones del asistente, 0044 banco de ideas único, 0045 fórmulas UGC, 0046 inspiración, 0047 conversaciones de diseño, 0048 historias automáticas, 0049 encargos del Estudio: lote y carrusel, 0050 historias apartadas, 0051 notas fijas de los días, 0052 programar al aprobar por cliente, 0053 qué se le cambió a una nota, 0054 qué redes entran en el informe, 0055 hasta 5 historias automáticas al día, 0056 los días fijos de cada empresa, 0057 la lista aplicada de una auditoría, 0058 la caché de Scrape Creators, 0059 proyectos de video animado, 0060 sonido e historial de los videos, 0061 recetas y «Crear con Claude», 0062 «Lo mejor del momento»)
-migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales, 0033 kit de marca, 0034 estudio de mercado, 0035 ritmo de contenido, 0036 inventario, 0037 plantillas de plan, 0038 campañas con varios conjuntos y anuncios, 0039 estratega, 0040 historial de anuncios, 0041 informe de anuncios, 0042 galería agrupada y repetidos, 0043 conversaciones del asistente, 0044 banco de ideas único, 0045 fórmulas UGC, 0046 inspiración, 0047 conversaciones de diseño, 0048 historias automáticas, 0049 encargos del Estudio: lote y carrusel, 0050 historias apartadas, 0051 notas fijas de los días, 0052 programar al aprobar por cliente, 0053 qué se le cambió a una nota, 0054 qué redes entran en el informe, 0055 hasta 5 historias automáticas al día, 0056 los días fijos de cada empresa, 0057 la lista aplicada de una auditoría, 0058 la caché de Scrape Creators, 0059 proyectos de video animado, 0060 sonido e historial de los videos, 0061 recetas y «Crear con Claude», 0063 de dónde sale un video animado, 0066 el plan semanal único, 0068 TikTok y tendencias por Scrape Creators, 0069 números del negocio, 0070 las ventas de la semana, 0071 la revisión 3Q, 0072 WhatsApp y la voz del cliente, 0073 qué publicación es cada anuncio)
+migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales, 0033 kit de marca, 0034 estudio de mercado, 0035 ritmo de contenido, 0036 inventario, 0037 plantillas de plan, 0038 campañas con varios conjuntos y anuncios, 0039 estratega, 0040 historial de anuncios, 0041 informe de anuncios, 0042 galería agrupada y repetidos, 0043 conversaciones del asistente, 0044 banco de ideas único, 0045 fórmulas UGC, 0046 inspiración, 0047 conversaciones de diseño, 0048 historias automáticas, 0049 encargos del Estudio: lote y carrusel, 0050 historias apartadas, 0051 notas fijas de los días, 0052 programar al aprobar por cliente, 0053 qué se le cambió a una nota, 0054 qué redes entran en el informe, 0055 hasta 5 historias automáticas al día, 0056 los días fijos de cada empresa, 0057 la lista aplicada de una auditoría, 0058 la caché de Scrape Creators, 0059 proyectos de video animado, 0060 sonido e historial de los videos, 0061 recetas y «Crear con Claude», 0063 de dónde sale un video animado, 0066 el plan semanal único, 0068 TikTok y tendencias por Scrape Creators, 0069 números del negocio, 0070 las ventas de la semana, 0071 la revisión 3Q, 0072 WhatsApp y la voz del cliente, 0073 qué publicación es cada anuncio, 0074 crear imágenes sin preguntar)
 scripts/migracion/        Volcado desde Supabase, conversión e importación
 tests/
   utils/                  Lector de wrangler.jsonc y _headers, fallos e informe
@@ -1526,7 +1555,8 @@ son del servidor.
 - **El asistente crea imágenes y videos POR EL ESTUDIO y los entrega en el chat** (`generar_imagen` con `tipo`, `estilo`,
   `confirmado`; `src/lib/piezaChat.js`). Con un cliente abierto va por el camino de UNA pieza (kit, logo, fotos del
   producto que nombra, modelo fijado) y el navegador espera el trabajo; desde 0,50 $ devuelve «NO SE CREÓ NADA» con la
-  cifra y sólo con el «sí» se repite. Sin cliente, la imagen de Gemini de siempre. El video llega como `[[video: clave]]`.
+  cifra y sólo con el «sí» se repite (salvo «crear imágenes sin preguntar» del espacio: ver «La confirmación de 0,50 $ se
+  puede fijar»). Sin cliente, la imagen de Gemini de siempre. El video llega como `[[video: clave]]`.
 - **Lo que no es prosa en el chat viaja DENTRO del texto, como marca.**
   `chat_messages.content` es texto, así que las piezas copiables
   (`[[pieza: …]]`), las imágenes generadas (`[[imagen: clave | formato]]`)
@@ -1665,8 +1695,9 @@ son del servidor.
   aproximado» en la pantalla). Un modelo con tarifa por tokens conocida (`PRECIOS_GEMINI`)
   cuenta tokens; el resto, el precio del catálogo. Desde `CONFIRMAR_DESDE` (0,50 $) el
   SERVIDOR exige `confirmado: true` (409 `confirmar`), no sólo la pantalla: un asistente o
-  Claude por MCP tampoco se salta el segundo toque. Con el presupuesto agotado y «detener»
-  se rechaza antes de crear, y otra vez antes de cada imagen.
+  Claude por MCP tampoco se salta el segundo toque (una IMAGEN con el modelo del cliente dentro del tope de «crear sin
+  preguntar», si el espacio lo fijó, no lo pide: ver «La confirmación de 0,50 $ se puede fijar»). Con el presupuesto
+  agotado y «detener» se rechaza antes de crear, y otra vez antes de cada imagen.
   · **`/api/generar-imagen` sigue con su contrato** (`{ clave, mimeType }`) pero llama a la
   misma `llamarGemini()` y apunta la imagen en la galería (`origen: "app"`). De esas la
   papelera quita la FILA y nunca el objeto de R2: lo puede estar usando una publicación
@@ -1941,6 +1972,41 @@ son del servidor.
   · **Un diálogo que cambia de vista se queda con el foco** (efecto en `FormulasUgc`): al guardar, el botón pulsado
   desaparece y el foco caía al `<body>`; Escape y Tab dejaban de funcionar (los escucha el nodo del diálogo). Lo cazó
   Chromium, no los tests.
+- **Las fórmulas UGC son ahora ESTRUCTURAS DE GUION, para UGC y para VOZ EN OFF** (decisión de la agencia: «sólo puedo
+  guardar estilos de guiones por cliente»; `src/lib/formulasUgc.js`, `worker/lib/estructurasGuion.js`,
+  `SelectorEstructura.jsx`, `GuardarEstructura.jsx`; sin migración). Cosas que no se ven:
+  · **`para` va dentro de `datos`** (`["ugc"]`, `["voz"]` o las dos; `paraDe`). Una de antes, sin `para`, vale para las
+  DOS (decisión: la forma gancho → problema → demostración → llamado sirve igual a una locución, y así la voz en off no
+  arranca vacía). La tabla, la ruta y `post.formulaUgc` conservan su nombre; `/api/estructuras-guion` es la MISMA ruta
+  (worker/index.js las manda a las dos a `rutasFormulasUgc`). En la pantalla se llaman «Estructuras de guion» y dicen «de la
+  agencia, para todos los clientes», con su filtro UGC / Voz en off (Ajustes → Cómo trabajamos).
+  · **El tono del cliente se SUMA, no se sustituye**: la «Voz UGC» del cerebro y el estilo de la locución de su ficha
+  siguen; la estructura es la forma.
+  · **La voz en off la sigue**: «Video nuevo» del video animado (`POST /api/videos/<c>/escribir` con `estructuraId`) y el
+  reel por planos (`POST …/reel/guion`, `guionDeReel`). Escogida, va su línea (`lineaDeFormula(…, { uso: "voz" })`)
+  repartida en la duración del video (`tramosEnDuracion` acepta ya cualquiera de 3 a 600 s; a medios segundos si los
+  tramos no caben a uno por segundo). Sin escoger, la lista de las de voz (`bloqueDeFormulas(…, { uso: "voz", campo:
+  "estructura" })`) y la IA dice cuál en el campo «estructura» de su JSON, que se SACA antes de validar el guion del video
+  animado (si no, `validarGuion` lo quitaría con un aviso) y se vuelve id (`usadaEn`). Una escogida que ya no existe es un
+  400 sin llamar a la IA (el selector la vuelve a «La IA escoge» en cuanto ve que no está).
+  · **Lo escrito recuerda cuál**: el proyecto del video animado en `origen.estructuraId` (`crearProyecto`; la ruta la
+  comprueba con `estructuraExistente`: lo que llega no se cree), el guion del reel en `estructuraId`/`estructuraNombre`
+  (`limpiarGuionReel` los conserva: viajan al encargo y al montaje) y la publicación en `post.estructuraVoz`, sólo si no
+  tenía otra (`rellenarVacios` con `estructura`, al poner el mp4 del render o el video del reel; también lo que crea «Lo
+  mejor» por el camino «animado»).
+  · **El motor de ideas sólo ofrece las de UGC a un guion UGC** (`bloqueDeFormulas(…, { uso: "ugc" })` en lote.js); la
+  escogida a mano en la publicación se busca entre todas: la escogió una persona.
+  · **«Guardar como estructura»** (VideoAnimado y el paso «Planos» del reel; sólo quien cambia lo de la agencia):
+  `tramosDeEscenas` (con `lineaDeTiempo`: los tiempos de la voz si ya la tiene) o `tramosDeReel` → `POST
+  /api/formulas-ugc/proponer` con `voz` (`pedidoDeEstructuraVoz`, función «fórmula UGC», no guarda) → el editor con «Voz en
+  off» marcado. Las etiquetas de emoción de v3 («[feliz]») se quitan antes.
+  · **Claude**: `ver_estructuras` (para=voz|ugc y segundos; sin cliente: está en la lista de mcp.js que no lo exige) y
+  `estructura_id` en `crear_video` (la apunta) y `crear_reel` (la sigue al escribir el guion, o la apunta en un guion dado).
+  `formato_video` la nombra al final.
+  · **El selector del reel es LAZY dentro de FlujoReel**: el Estudio precarga el reel, y un import fijo sumaba sus archivos
+  (el selector y su cliente de la API) a la lista de precarga del chunk del Estudio, que está en su tope. Por lo mismo el
+  selector no lleva hoja de estilos propia (estilos en línea con los tokens).
+  · **Nada de esto se ha probado contra Anthropic real**: tests/migracion/estructurasGuion.test.js usa un `fetch` de mentira.
 - **«Me gusta» (la estrella de antes, `favorito`) y la papelera enseñan al kit** (`src/lib/aprendizajeVisual.js`,
   `worker/lib/estudio/aprender.js`, `POST /api/estudio/<c>/kit/aprender`, en Cerebro → Lo que aprende → «Lo visual»).
   La IA MIRA las imágenes (hasta 8 que gustan y 4 descartadas, función «aprendizaje visual») y PROPONE reglas; nada
@@ -2032,7 +2098,8 @@ son del servidor.
 - **«Crear la imagen aquí», «Corregir esta» y «¿Qué quieres?» en la pestaña Subir** (`crearImagenDelPost` en
   lib/otraVersion.js; seccionPublicar.jsx). Un post o una historia SIN archivos se crea ahí, sin abrir el Estudio: el
   pedido listo (o la publicación mejorada una vez, que se queda en el post), el modelo fijado del cliente, su kit, las
-  fotos de su producto, su tipo, el control y el logo; confirma desde 0,50 $ como «Otra versión» y «Deshacer» la quita.
+  fotos de su producto, su tipo, el control y el logo; confirma desde 0,50 $ como «Otra versión» (salvo dentro del tope de
+  «crear sin preguntar») y «Deshacer» la quita.
   «Crear con IA» sigue para revisarlo antes. «¿Qué quieres?» (opcional, no se guarda) lo suman «Crear la imagen aquí»,
   «Otra versión» y «Recrear con mi marca» (`lineaDeIndicacion`: también a la IA que escribe la escena nueva);
   «Corregir esta» lo NECESITA y EDITA la misma imagen (`rehacerConComentario`, como «Rehacer con lo que pidió el
@@ -3492,6 +3559,35 @@ son del servidor.
   `cover_url` de Instagram y `poster` de la página de aprobación) y como
   milisegundo (`portadaMs`: `thumb_offset` de Instagram si no hay imagen). A
   TikTok no va: PostPeer no recibe portada.
+- **Una imagen en un reel es su PORTADA, no un archivo más** (`postConPiezas` en src/lib/galeriaPura.js; `esReelConVideo`,
+  `conPortada`, `imagenDelReelAPortada` y `portadaPorConvertir` en src/lib/publicacion.js). Claude diseñó seis portadas 9:16
+  y las puso con `poner_en_publicacion`: cada reel quedó con `medios: [video, imagen]` y `portada: null`, salió sin portada
+  y uno como un carrusel. Un reel de Instagram es UN video. Cosas que no se ven:
+  · **La regla es UNA** (`postConPiezas`, con `como`), y la usan el chat (`poner_en_publicacion` y lo que pone
+  `disenar_piezas`/`generar_imagen` con `post_id`), el MCP, «Poner en una publicación…» del Estudio (POST
+  /api/estudio/<c>/poner con `como`) y lo que el servidor pone solo (`ponerResultados` de encargos.js). «Sale como reel con
+  su video» = formato reel con un video, o un post con UN solo video (Instagram lo publica como reel); un carrusel, una
+  historia o un directo, no. A uno así, UNA imagen va a `portada` (sin `portadaMs` ni encuadre), en «añadir» y en
+  «reemplazar» (no le quita el video); varias son un error que lo dice (`REEL_SIN_IMAGENES`) y la publicación no cambia (en
+  lo que se pone solo, el aviso queda en `puestos`). `como: "portada"` lo pide explícito (una imagen; si el post no la lleva,
+  error); `como: "medio"` es lo que escogió una persona (un carrusel mixto en un post con un video), pero un formato «reel»
+  nunca se queda con su video y una imagen al lado.
+  · **Una historia NO lleva portada** (la API no la admite en las historias): una imagen en una historia con video sale como
+  otra historia, como siempre.
+  · **El video que llega DESPUÉS** (`conVideoEnPost` en resultadoEnPost.js: el reel del encargo, el render): si el reel
+  tenía UNA imagen esperando y no tenía portada, pasa a su portada (la de Claude gana al primer fotograma).
+  · **La red de seguridad**: `revisarPublicacion` da ERROR (también en el panel, y por eso no se programa ni sale de la
+  cola) si un reel que va a Instagram tiene imágenes además de su video: con una, el arreglo «Usar la imagen como portada»
+  (`portada-reel`); con varias, «Publicarlo como carrusel». TikTok, Facebook y YouTube siguen con su aviso de que publican
+  sólo el video. Mejor que no salga a que salga mal.
+  · **La portada va en JPEG a Instagram** (`cover_url` no lee otra; las piezas del Estudio son PNG o WEBP):
+  `portadaPorConvertir` la pide en `prepararParaRedes` (navegador, al programar) y en `normalizacionesDe`/`conNormalizadas`
+  (el Container, «Programar al aprobar»); `conPreparadas` y `prepararYGuardar` la escriben (y la cuentan en su huella). Sin
+  Container ni pantalla, una portada PNG sigue saliendo como antes (es un aviso, no un error): no se ha probado qué hace
+  Meta con ella.
+  · **«De la galería» en «Portada del video»** abre `GaleriaSelector` con `una` y pasa el archivo a `onPortada(cambios,
+  { archivo })` para apuntar su uso (en «Subir», al guardar). «Corregir» una portada desde el chat la cambia en su sitio.
+  **Nada de esto se ha probado contra Meta real**: los tests usan la cola de siempre con un `fetch` de mentira.
 - **El calendario es UNO por cliente; el mes, un cajón que no se ve.**
   Las publicaciones siguen guardadas por meses (`calendars`, una fila por
   cliente y mes) porque cada guardado reescribe la fila entera, dos
@@ -3814,9 +3910,10 @@ son del servidor.
   pestaña Cerebro para borrarlas. Si vuelve a aparecer «prompt maestro» en un pedido, es una regresión.
 - **La VISTA PREVIA en el chat de Claude (MCP Apps): las piezas se ven DENTRO del chat, en la web y en el teléfono, como
   con Higgsfield** (`worker/lib/mcpVista/`, `worker/lib/estudio/vistaEstudio.js` y `vistaTrabajo.js`; especificación de
-  MCP Apps 2026-01-26). El conector declara `resources` y sirve UN recurso `ui://juancito-ads/vista-1.html` (`resources/list`,
+  MCP Apps 2026-01-26). El conector declara `resources` y sirve UN recurso `ui://juancito-ads/vista-2.html` (`resources/list`,
   `resources/read`, tipo `text/html;profile=mcp-app`); las herramientas que crean o miran piezas (`CON_VISTA`: ver_pieza,
-  estado_trabajo, estado_encargo, crear_en_estudio, corregir_pieza, disenar_piezas, ver_cuadro, ver_escenas) lo nombran en
+  estado_trabajo, estado_encargo, crear_en_estudio, corregir_pieza, disenar_piezas, ver_cuadro, ver_escenas, el reel) y las
+  que SUENAN o se reproducen (previsualizar_voz, generar_locucion, generar_musica, renderizar_video, ver_video) lo nombran en
   `_meta.ui.resourceUri` (y en la clave plana de antes), y claude.ai pinta esa página junto al resultado. Cosas que no se ven:
   · **Las imágenes NO van dos veces:** siguen como bloques de imagen en `content` (las mira Claude) y la vista
   (`structuredContent`, `vistaDe`/`piezaDe`) sólo dice qué pieza es cada una por su índice (`imagen`). **El texto va
@@ -3830,8 +3927,9 @@ son del servidor.
   · **Lo que toca la persona no se salta la confirmación:** «Cambiar» y «Crear» del plan ESCRIBEN en el chat (`ui/message`:
   «En la pieza a2 de …: …», «Sí, créalo (vi el costo: unos …)») y Claude sigue con sus herramientas; «Abrir en el Estudio»
   es `ui/open-link` con la dirección que pone `conEnlace` (rutas/mcp.js) con el origen del conector.
-  · **La página va ENTERA dentro del recurso** (el iframe de claude.ai no deja cargar nada de fuera: `resourceDomains`
-  vacío): navegador.js + modelo.js empaquetados con esbuild y estilos.css, en `pagina.generada.js`. Un test la regenera y
+  · **La página va ENTERA dentro del recurso** (el iframe de claude.ai no deja cargar nada de fuera salvo lo que declara
+  `_meta.ui.csp`: sólo el origen del conector, para los audios y videos; ver abajo): navegador.js + modelo.js empaquetados
+  con esbuild y estilos.css, en `pagina.generada.js`. Un test la regenera y
   compara; si se toca cualquiera de los tres, `node scripts/mcp/generar-vista.mjs`. El protocolo (JSON-RPC por
   `postMessage`: `ui/initialize`, `ui/notifications/tool-result`, `size-changed`…) va escrito a mano, sin el SDK (pesa
   418 kB): se probó contra el `AppBridge` OFICIAL de `@modelcontextprotocol/ext-apps` 2.0.3 en Chromium (el anfitrión que
@@ -3841,14 +3939,48 @@ son del servidor.
   · `herramientas.js` (la comparte el asistente de la aplicación) importa `vistaTrabajo.js` y NO `vistaEstudio.js`:
   éste lee encargos.js, que por fichas.js → mercado.js → herramientasServidor.js vuelve a herramientas.js (el ciclo deja
   `DEFINICIONES_ESTUDIO` sin iniciar). El asistente de la aplicación recibe sólo el texto cuando no hay imágenes.
-  · Los videos (el mp4 del render) aún no se reproducen en la vista: las direcciones de R2 van con sesión y la firmada de
-  Meta no contesta por trozos (el iPhone no la reproduciría). Pendiente.
+  · **Los AUDIOS y VIDEOS se oyen y se ven en la vista** (vista-2; decisión de la agencia: «previsualizar las locuciones
+  casi como las imágenes»). La muestra de una voz, la locución, las dos versiones de la música de Suno, el mp4 de un video
+  animado (y su locución), un video del Estudio y el reel montado van como `audios`/`videos` del `structuredContent`
+  (`medioDe`; worker/lib/estudio/vistaMedios.js) y la página los pinta con `<audio controls>` y `<video controls
+  playsinline>`. No caben en el resultado como una imagen: van por su DIRECCIÓN FIRMADA, que también va en el texto
+  (`lineasDeMedios`) para que Claude se la dé a la persona si su cliente no pinta vistas. El asistente de la aplicación
+  sigue recibiendo sólo el texto (`{ texto, imagenes: [], vista }`). Lo que no se ve:
+  · **La dirección es `/api/vista-medio/<testigo>/<nombre>`** (worker/rutas/vistaMedio.js, ANTES de la sesión: el iframe no
+  la tiene): abre sólo la clave del testigo, sólo audio o video, sólo de `clientes/` o `voces/` (no `voces/pendientes/`), y
+  caduca a las 12 h. Contesta por TROZOS (`Range` → 206, con `rangoServido` como `sirveMedia`: sin eso el iPhone no
+  reproduce). No es la de Meta (`/api/medio-publico/`): ésa necesita `META_APP_SECRET`, que un espacio sin Meta no tiene, y
+  no contestaba por trozos. Se firma con un secreto que SIEMPRE existe porque se crea solo: 32 bytes al azar en R2
+  (`firmas/vista-medios.key`, fuera de `clientes/`: ni /api/media ni esta ruta lo sirven), leído una vez por instancia.
+  · **El recurso declara el origen del conector, y nada más** (`metaDeVista(origen)` en modelo.js: `csp.resourceDomains`
+  = [el origen de la petición a /mcp], `connectDomains` vacío: la página no hace `fetch`). Sin eso el anfitrión pone
+  `media-src 'self' data:` y ningún audio carga (la prueba en Chromium lo comprueba: con la CSP de vista-1 sale «Abrir»).
+  Por eso subió a vista-2: claude.ai puede guardar la de antes.
+  · **`conEnlace` (rutas/mcp.js) pone el origen** en las direcciones (las herramientas las dan relativas: en la aplicación
+  valen tal cual) y en el texto. La página sólo acepta http(s) absolutas (`direccionValida`).
+  · **Un reproductor se REUTILIZA al repintar** (`reproductores` en navegador.js) y una vuelta no le cambia la dirección
+  (`mediosConLosDeAntes`): cada vuelta trae otra firma, y cambiar el `src` cortaba lo que se estaba oyendo.
+  · **Lo que se está haciendo se espera solo**: la locución, la muestra y la música, con `vista_trabajo` (el hueco «Se está
+  generando la voz…» hasta que suena); un video animado, con `vista_video` (sólo de la vista) mientras renderiza o genera su
+  voz; el reel, con `vista_encargo` (`videosDelReel`: el mp4 montado o, si no, el video o los clips).
+  · **Una dirección caducada se renueva**: si el reproductor no carga y su `caduca` pasó (o no se sabe), la página llama
+  `vista_medios` (sólo de la vista) con su `ref` (`archivo:<id>`, por la capa de acceso; o `muestra:<modelo>:<voz>:<huella>`,
+  que tiene que existir) UNA vez; si aun así no carga, «Abrir» (`ui/open-link`) en vez de una caja rota.
+  · **Sin `sandbox` en la ruta** (sí `default-src 'none'; media-src 'self'` y `nosniff`): con `sandbox`, Chromium le da al
+  documento de medios (un mp4 abierto suelto, que es «Abrir») un origen opaco, su <video> pide el archivo con CORS y se
+  queda vacío. Lo cazó la prueba en Chromium, no los tests.
+  · Probado en Chromium con el `AppBridge` oficial de `@modelcontextprotocol/ext-apps` 2.0.3, la página servida desde otro
+  origen con la CSP que arma el anfitrión según la especificación y la RUTA REAL del Worker (empaquetado con esbuild) en
+  un tercer origen: el audio y el video cargan por trozos, repintar no corta lo que suena, la dirección caducada se renueva,
+  «Abrir», tema oscuro y ancho del teléfono. **No se ha probado en claude.ai de verdad hasta que se despliega**, ni con un
+  mp4 de producción en el iPhone.
 - **El DIRECTOR también por MCP: Claude en claude.ai diseña en lote, ve, corrige y pone en el post**
   (`worker/lib/estudio/herramientasDiseno.js`; sólo en el MCP: el asistente de la aplicación tiene las suyas con el mismo
   nombre, en el navegador). `guia_de_diseno` da lo que el chat recibe en su sistema (el manual, la ficha, el kit, el
   catálogo, lo que la agencia corrige; `instruccionDeDiseno(manual, { canal: "mcp" })`, con la confirmación por TEXTO) y,
   como imágenes, sus plantillas y sus «Me gusta». `disenar_piezas`: cada pieza con la ficha de Claude o sólo con su idea
-  (la diseña el director de la agencia, `fichasDeDiseno`); la primera llamada devuelve el plan con su costo y NO crea nada,
+  (la diseña el director de la agencia, `fichasDeDiseno`); la primera llamada devuelve el plan con su costo y NO crea nada
+  (salvo con «crear sin preguntar» fijado y dentro de su tope: entonces crea a la primera y lo dice),
   y sólo `confirmado: true` crea un ENCARGO del servidor (encargos.js: trabajo, proporción, control y una corrección). Un
   carrusel, en orden y en su carpeta de tipo carrusel (con tema y sin fichas, `propuesta`). Cada pieza se arma con el
   MISMO `apoyosDePieza` + `pedidoDePieza` que la pantalla, con la escena en «{{ESCENA}}»: por eso `pieza.js` importa de
@@ -3861,7 +3993,8 @@ son del servidor.
   ficha, sus herramientas y lo que exige su kit (o que NO tiene kit: lo dice y ofrece prepararlo) —`instruccionDeDiseno`,
   `resumenDelKit` en worker/rutas/chat.js—. Cosas que no se ven:
   · **`disenar_piezas` (1–12 fichas) espera un BOTÓN**: la herramienta enseña el plan con su costo y su promesa no se
-  resuelve hasta «Crear» o «Cambiar algo» (como `guardar_en_cerebro`). El botón es la confirmación del costo, como en el
+  resuelve hasta «Crear» o «Cambiar algo» (como `guardar_en_cerebro`); con «crear sin preguntar» fijado y dentro del tope,
+  la tarjeta llega ya creando, sin botón. El botón es la confirmación del costo, como en el
   lote; «Con qué modelo» escoge entre el del cliente y otra opción (`MODELOS_FINALES`). NO son «borrador» y «final»
   (decisión de la agencia: lo de Muse casi siempre ES la pieza que se usa); el asistente no ofrece `version_final` por
   su cuenta, sólo si la persona pide otro modelo. Se crea de 3 en 3 (`crearPlan`) con el control
@@ -4077,7 +4210,7 @@ son del servidor.
   («asistente», «claude») llega a cada trabajo (`datos.origen` en encargos.js). encargos.js y vistaEstudio.js se importan
   en el momento (`import()`): estáticos cerrarían el ciclo con herramientasServidor.js. Un video, sin cambios.
   · **Las historias con IA enseñan el costo y piden el sí** (`costoDeHistorias`, `modelosParaHistorias` → `costos`; el
-  botón dice «· unos X $» y un segundo toque las crea) y van en UN encargo de tres piezas. «¿Qué quieres?» del post les
+  botón dice «· unos X $» y un segundo toque las crea, salvo dentro del tope de «crear sin preguntar») y van en UN encargo de tres piezas. «¿Qué quieres?» del post les
   llega, y también al diálogo «Crear con IA» (que entonces no usa el pedido listo) y al director del carrusel
   (`indicacion` en `pedidoDeCarrusel`). «Crear con IA» lleva los productos secundarios (`inicial.post.productoIds`) y la
   plantilla que escoge el director va al motor (compositor, «Crear la imagen aquí», «Otra versión», «Recrear»).
@@ -4726,10 +4859,40 @@ son del servidor.
   descripción va en `style`, la letra en `lyrics` y NUNCA en `prompt` (se cantaría tal cual); una instrumental lleva las
   voces en `negative_tags`. Suno da DOS versiones: las dos van a la galería (`modelo: "musica-suno"`) y, con `videoId`,
   la primera queda en el SONIDO del video (sin subir la versión; no pisa otra música escogida DESPUÉS del pedido ni a un
-  video renderizando). Con video, el estilo y la duración salen del campo `musica` del guion (`estilo`, `instrumental`).
+  video renderizando). Con video, la duración es la del video y el estilo lo escribe el director musical (abajo).
   **El precio no viene en la documentación**: se cotiza `CREDITOS_SUNO` como aproximado y al entregar se apunta
   `creditsConsumed` si llega. Se confirma SIEMPRE (409 `confirmar`), como la voz. El render usa además la música del
   GUION por su clave si «Sonido» no tiene otra (`dbDeVolumenGuion`). **Nada de Suno se ha probado contra Kie real.**
+  · **La música la pide el DIRECTOR MUSICAL, no el `guion.musica.estilo`** (decisión de la agencia: con la voz los videos
+  quedaban perfectos y la música no casaba; `src/lib/directorMusical.js`, `worker/lib/estudio/directorMusical.js`;
+  `POST /api/videos/<c>/<id>/musica`, «Proponer la música para este video» en «Sonido»). Ese estilo lo escribía la IA
+  del guion en una línea («corporativa alegre») sin saber nada del video. Ahora una IA de texto (función «director
+  musical», hueco «guiones»; barata, sin confirmación) LEE el guion GUARDADO con su línea de tiempo —la de la locución
+  si está lista; si no, estimada y lo dice—, la ficha del cliente, el cerebro para escribir, el kit y el tipo de
+  contenido de su publicación, y escribe el pedido para Suno. Cosas que no se ven:
+  · **Lo que se puede contar lo cuenta el CÓDIGO** (`analisisDelVideo`): segundos por escena, cortes por minuto, el BPM
+  que casa con los cortes (`bpmPorCortes`: un compás de cuatro tiempos por escena llevado por octavas al rango del
+  `estilo.ritmo` del guion), los silencios (lo que queda de cada escena tras su última palabra) y dónde entran el
+  gancho, el beneficio y el llamado. La IA recibe eso y escoge género y subgénero, instrumentos y cómo sube la energía.
+  · **La MÚSICA DE LA MARCA manda** (`kit.musica`: { estilo, evitar, referencias }; `limpiarMusicaDeMarca` en kitMarca.js,
+  `fundirKit` la conserva; se edita en Marca → Kit y voz, `MusicaDeMarca.jsx`). «Me gusta: que sea la música de la
+  marca» en «Sonido» (`POST /api/videos/<c>/musicas/marca`, sobre el kit GUARDADO) pasa una música GENERADA a sus
+  referencias con lo que se le mandó a Suno (`ajustes.pedido.estilo`; `musicasDe` lo devuelve como `estilo`); una subida a
+  mano no lo sabe: 409. Como mucho tres, la más nueva primero; la siguiente propuesta las lee.
+  · **El estilo va en INGLÉS y siempre con su BPM** (`leerPropuestaMusical`): se le quitan los artistas («in the style
+  of…», «like» + nombre propio: Suno los rechaza y sería copiar) y las voces del «evitar» (lo de la marca va primero).
+  `cuerpoSuno` pone ahora las voces DELANTE en `negative_tags`: con un «evitar» largo, lo que no puede caerse en una
+  instrumental es «sin voces».
+  · **Por defecto, siempre**: `generar_musica` y la pantalla, para un video SIN estilo dicho, piden lo del director
+  (`pedirMusica`); con estilo dicho manda la persona (ni se le pregunta). Sin video ni estilo, la música de la marca.
+  **La cotización y la confirmación piden LO MISMO**: la propuesta se guarda en R2 (`musica-director/<espacio>/<video>.json`,
+  fuera de `clientes/`) con la huella de lo que la decide (`huellaMusical`: lo que se dice, la voz, la música de la marca)
+  y la confirmación la reusa 6 h sin pagar otra vez al director; si el guion cambió, se piensa de nuevo. La respuesta de
+  `generar_musica` (también al cotizar) dice qué pidió y por qué. Sin IA (sin llave, sin presupuesto, caída) sale el
+  RESPALDO (`propuestaDeRespaldo`: la música de la marca o la pista del guion con el tempo de los cortes) y el aviso.
+  · No toca el video: proponer no guarda nada en `videos_proyectos` (lo que se paga a Suno sigue su camino de siempre).
+  **Nada de esto se ha probado contra Anthropic ni Kie reales**: los tests (tests/migracion/musica.director.test.js)
+  usan un `fetch` de mentira.
   · **El HISTORIAL** (`videos_versiones`, 0060; `versionesDe`, `volverAVersion` en videosProyectos.js; `GET|POST
   /api/videos/<c>/<id>/versiones`, `versiones_video`, `volver_a_version`): cada cambio del guion guarda el de ANTES (hasta
   `MAX_VERSIONES`, 30). Volver crea una versión NUEVA con ese guion, en borrador; nunca se reescribe la historia.
@@ -5222,6 +5385,35 @@ son del servidor.
   lectura.
   · **Nada se ha probado contra Meta real.** Lo primero con una cuenta: abrir la revisión y mirar en `en_pauta` qué ids trajo
   cada creativo.
+- **La confirmación de 0,50 $ se puede fijar: «Crear imágenes sin preguntar»** (decisión de la agencia: «que no me
+  pregunten cada vez»; `ajustes_espacio.sin_preguntar_usd`, 0074; la regla, `decidirConfirmacion` en
+  `src/lib/sinPreguntar.js`, la misma en el Worker y en la pantalla; Ajustes → IA, `SinPreguntarAjuste.jsx`). Nulo o 0 =
+  apagado, como siempre. Encendido es un TOPE por pedido: una IMAGEN (pieza suelta, tanda del director, carrusel, las
+  historias, otra versión, corregir, recrear, el lote) con el modelo del cliente que no pase del tope se crea sin el
+  segundo «sí». Cosas que no se ven:
+  · **El SERVIDOR decide, no la pantalla** (Claude por MCP no pasa por ella): `crearTrabajo` (el 409 `confirmar` lleva
+  ahora `motivo`: «tope», «otro_motor»…), `crear_en_estudio` (`imagenPorEncargo`) y `disenar_piezas` por MCP leen el
+  ajuste con `topeSinPreguntar` (una lectura, y sólo cuando el pedido preguntaría) y, si crean sin preguntar, la respuesta
+  lo dice (`textoSinPreguntar`: «Se creó sin preguntar: la agencia lo tiene fijado en Ajustes → IA…»). La primera llamada
+  de `disenar_piezas` por MCP ya crea; un carrusel con tema se compara con lo MÁS que puede costar (8 láminas).
+  · **«El modelo del cliente»** es el fijado de su kit (`kit.modelos.imagen`) o, sin él, el predeterminado, más su relevo
+  automático de proporción (cambiar al que hace la proporción no es escoger). En `crearTrabajo` lo dice
+  `esModeloDelCliente` (estudioCatalogo.js: también el fijado para las historias y los de `RELEVO_PROPORCION`). En las
+  herramientas, «otro motor» es sólo el que pidió el ASISTENTE (`modelo` distinto del del cliente): con el ajuste
+  encendido se pregunta SIEMPRE, aunque sea barato, con «El asistente sugiere usar X en vez de Y (porque …)»
+  (`textoSugerencia`, el porqué en `motivo_modelo`, que aceptan `disenar_piezas` —chat y MCP—, `generar_imagen` y
+  `crear_en_estudio`). Si la persona se queda con el suyo, el asistente repite SIN modelo y sale directo. Con el ajuste
+  apagado, otro motor barato sale como siempre (lo decide el costo). Lo que escoge una PERSONA para esta vez («Con qué
+  modelo», el compositor) no es «otro motor»: ya lo decidió ella.
+  · **Video, voz y música preguntan siempre** (`tipo` distinto de «imagen» no entra; locucion.js y musica.js ni miran el
+  ajuste, y un test lo vigila). El presupuesto del mes («detener») se mira después, como siempre: sin presupuesto no se crea.
+  · **En la pantalla**: el «¿Sigo?» del panel (`sigue` en otraVersion.js), el segundo toque de las historias, «Diseñar las
+  aprobadas» (un video entre las piezas pregunta), «Carrusel con IA» y el compositor (GET /api/estudio trae `sinPreguntar`)
+  leen el tope con `src/lib/sinPreguntarApi.js`, recordado UN minuto (si no se puede leer, se pregunta). En el chat, la
+  tarjeta del plan (`PlanDePiezas`) llega ya «creando» sin botón; si pregunta, la casilla «No volver a preguntar» la ve
+  sólo el administrador (`fijarSinPreguntar`: el doble del pedido redondeado, o 3 $) y a los demás se les dice dónde.
+  Encenderlo o cambiarlo lo hace PUT /api/ajustes, sólo el administrador (403 a los demás), con el mismo CHECK que la base
+  (0 a 1000). Las «Recrear para…» de «Lo mejor» siguen preguntando: crean además una publicación en un día.
 
 ## Documentos relacionados
 

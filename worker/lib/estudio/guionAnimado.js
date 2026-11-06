@@ -15,6 +15,7 @@ import { leerMercado } from "../mercado.js";
 import { productosActivos, lineaDeProducto } from "../../../src/lib/estudioMercado.js";
 import { validarGuion } from "../../../src/lib/videoEscenas.js";
 import { pedidoDeGuionAnimado, leerGuionAnimado, textoDePublicacion, duracionAnimado, MAX_IDEA_ANIMADO } from "../../../src/lib/guionAnimadoIA.js";
+import { estructuraDeVoz, usadaEn, ErrorEstructura } from "../estructurasGuion.js";
 
 /** Un error de lo pedido, con su estado HTTP. */
 export class ErrorGuion extends Error {
@@ -41,12 +42,28 @@ async function catalogoConFotos(acceso, clienteId) {
   }
 }
 
+/** El nombre de la estructura que dice la IA (campo «estructura» de su JSON) sale del guion: no es del formato. */
+function sinEstructura(g) {
+  if (!g || typeof g !== "object" || !("estructura" in g)) return { guion: g, nombre: "" };
+  const { estructura, ...guion } = g;
+  return { guion, nombre: typeof estructura === "string" ? estructura : String(estructura?.nombre ?? "") };
+}
+
 /**
- * Escribe el guion. `datos`: { idea, segundos, formato, postId? }. → { guion, avisos, corregido, modelo, aviso }.
- * Lanza ErrorGuion (400 sin idea ni publicación; 502 si la IA no da un guion válido ni al segundo intento).
+ * Escribe el guion. `datos`: { idea, segundos, formato, postId?, estructuraId? }. → { guion, avisos, corregido, modelo,
+ * aviso, estructura: { id, nombre } | null }. `estructuraId`: la ESTRUCTURA de guion de la agencia que sigue la voz
+ * (sin ella, la IA escoge entre las de voz en off y dice cuál). Lanza ErrorGuion (400 sin idea ni publicación, o con una
+ * estructura que ya no está; 502 si la IA no da un guion válido ni al segundo intento).
  */
 export async function escribirGuion(env, acceso, cliente, datos = {}) {
   const idea = String(datos.idea ?? "").trim().slice(0, MAX_IDEA_ANIMADO);
+  let eleccion;
+  try {
+    eleccion = await estructuraDeVoz(acceso, { estructuraId: datos.estructuraId ?? datos.formulaId ?? "", segundos: duracionAnimado(datos.segundos) });
+  } catch (e) {
+    if (e instanceof ErrorEstructura) throw new ErrorGuion(e.message, e.estado);
+    throw e;
+  }
   // El contexto común de todo guion de video: la publicación (con su guion), el cerebro y el criterio comercial.
   const ctx = await contextoDeGuion(env, acceso, cliente, {
     postId: String(datos.postId ?? ""), consulta: `${idea} video animado guion`, presupuesto: 4000,
@@ -59,9 +76,11 @@ export async function escribirGuion(env, acceso, cliente, datos = {}) {
   const productos = await catalogoConFotos(acceso, cliente.id);
   const personaje = kitDe(cliente).personajeVideo ?? null;
 
-  const base = { marca: cliente.name, idea, publicacion: delPost, segundos, formato: datos.formato, contexto, productos, personaje, criterio: ctx.criterio };
+  const base = { marca: cliente.name, idea, publicacion: delPost, segundos, formato: datos.formato, contexto, productos, personaje, criterio: ctx.criterio, estructura: eleccion.texto };
   let r = await llamarIA(env, acceso, cliente, { prompt: pedidoDeGuionAnimado(base), salida: 8000, funcion: "guion de video" });
-  let g = leerGuionAnimado(r.texto);
+  let leido = sinEstructura(leerGuionAnimado(r.texto));
+  let nombre = leido.nombre;
+  let g = leido.guion;
   let v = g ? validarGuion(g) : { ok: false, errores: [{ donde: "guion", mensaje: "No es un JSON que se pueda leer." }] };
   let corregido = false;
   if (!v.ok) {
@@ -70,12 +89,17 @@ export async function escribirGuion(env, acceso, cliente, datos = {}) {
     r = await llamarIA(env, acceso, cliente, {
       prompt: pedidoDeGuionAnimado({ ...base, errores: v.errores, anterior: g ? JSON.stringify(g) : r.texto }), salida: 8000, funcion: "guion de video",
     });
-    g = leerGuionAnimado(r.texto);
+    leido = sinEstructura(leerGuionAnimado(r.texto));
+    nombre = leido.nombre || nombre;
+    g = leido.guion;
     v = g ? validarGuion(g) : v;
   }
   if (!v.ok) {
     const lista = (v.errores ?? []).slice(0, 4).map((e) => `${e.donde}: ${e.mensaje}`).join("; ");
     throw new ErrorGuion(`La IA no escribió un guion válido ni al corregirlo${lista ? ` (${lista})` : ""}. Prueba con otra idea o más detalle.`, 502);
   }
-  return { guion: v.guion, avisos: v.avisos, corregido, modelo: r.modelo, aviso: r.aviso ?? null, postId: post ? String(datos.postId) : null };
+  return {
+    guion: v.guion, avisos: v.avisos, corregido, modelo: r.modelo, aviso: r.aviso ?? null, postId: post ? String(datos.postId) : null,
+    estructura: usadaEn(eleccion, nombre),
+  };
 }

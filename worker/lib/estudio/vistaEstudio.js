@@ -8,8 +8,12 @@
 //   · vista_encargo / vista_trabajo: lo mismo que estado_encargo / estado_trabajo, pero sólo con las imágenes que la
 //     página aún no tiene (`ya`). Mandar las seis cada cinco segundos serían megas para nada.
 //   · me_gusta_pieza: el «Me gusta» de la galería (enseña al kit, como en la aplicación).
-// Las tres pasan por la misma capa de acceso que el resto del conector: un encargo o una pieza de otro espacio (o de un
-// cliente que el colaborador no lleva) no existe.
+//   · vista_video: cómo va un video animado (el mp4 y la locución, con sus reproductores) mientras se renderiza o se
+//     genera su voz.
+//   · vista_medios: otra dirección firmada para un audio o video cuya dirección caducó (la conversación se reabrió al
+//     día siguiente): sin ella, el reproductor se quedaría roto.
+// Todas pasan por la misma capa de acceso que el resto del conector: un encargo, una pieza o un video de otro espacio (o
+// de un cliente que el colaborador no lleva) no existe.
 // ============================================================
 
 import { encargoPublico } from "./encargos.js";
@@ -17,6 +21,7 @@ import { cambiarArchivo } from "./galeria.js";
 import { difundir } from "../vivo.js";
 import { vistaDe, piezaDe } from "../mcpVista/modelo.js";
 import { vistaDeTrabajo, imagenesNuevas, clienteDe, listaDeIds, esImagen } from "./vistaTrabajo.js";
+import { videosDelReel, vistaDeVideo, videoParaVista, renovarMedios } from "./vistaMedios.js";
 
 export { vistaDeTrabajo };
 
@@ -56,6 +61,8 @@ export async function vistaDeEncargo(env, acceso, fila, { ya = [] } = {}) {
   });
   const vivo = e.estado === "en_marcha";
   const listas = piezas.filter((p) => p.estado === "lista").length;
+  // Un reel: su mp4 montado (o el video o los clips que salieron), con su reproductor.
+  const videos = e.tipo === "reel" ? await videosDelReel(env, acceso, e) : [];
   const vista = vistaDe({
     tipo: "piezas",
     titulo: e.titulo || (carrusel ? "Carrusel" : "Piezas del director"),
@@ -63,6 +70,7 @@ export async function vistaDeEncargo(env, acceso, fila, { ya = [] } = {}) {
     cliente: await clienteDe(acceso, fila.client_id),
     estado: vivo ? "en_marcha" : e.estado,
     piezas,
+    videos,
     // Mientras siga, o mientras queden imágenes por mandar (como mucho seis por vuelta).
     seguir: vivo || quedan > 0 ? { herramienta: "vista_encargo", argumentos: { encargo_id: e.id }, cada: vivo ? 5 : 1 } : null,
     aviso: e.error ?? "",
@@ -82,6 +90,18 @@ export const DEFINICIONES_VISTA = Object.freeze([
     name: "vista_trabajo",
     description: "Sólo para la vista previa del chat (la llama ella): cómo va un pedido del Estudio, con las imágenes que la vista aún no tiene. Para mirar un pedido, usa estado_trabajo.",
     inputSchema: { type: "object", properties: { trabajo_id: { type: "string" }, titulo: { type: "string" }, ya: { type: "array", items: { type: "string" } } }, required: ["trabajo_id"] },
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  },
+  {
+    name: "vista_video",
+    description: "Sólo para la vista previa del chat (la llama ella): cómo va un video animado, con el mp4 y la locución para reproducirlos. Para mirar un video, usa ver_video.",
+    inputSchema: { type: "object", properties: { video_id: { type: "string" } }, required: ["video_id"] },
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  },
+  {
+    name: "vista_medios",
+    description: "Sólo para la vista previa del chat (la llama ella cuando la dirección de un audio o un video caducó): las direcciones nuevas. No la uses por tu cuenta.",
+    inputSchema: { type: "object", properties: { refs: { type: "array", items: { type: "string" }, description: "Lo que identifica cada audio o video (su «ref» en la vista)." } }, required: ["refs"] },
     annotations: { readOnlyHint: true, openWorldHint: false },
   },
   {
@@ -107,6 +127,19 @@ export function crearHerramientasVista({ env, acceso, por }) {
       if (!fila) throw new ErrorVista(`No encontré el pedido «${id}».`);
       const { imagenes, vista } = await vistaDeTrabajo(env, acceso, fila, { ya, titulo: String(titulo ?? "").slice(0, 80) });
       return { texto: vista.subtitulo || vista.titulo, imagenes, vista };
+    },
+
+    async vista_video({ video_id: id }) {
+      const v = await videoParaVista(acceso, id);
+      if (!v) throw new ErrorVista(`No encontré el video «${id}».`);
+      const vista = await vistaDeVideo(env, v);
+      return { texto: vista.subtitulo || vista.titulo, imagenes: [], vista };
+    },
+
+    async vista_medios({ refs = [] }) {
+      const { audios, videos } = await renovarMedios(env, acceso, refs);
+      const n = audios.length + videos.length;
+      return { texto: n ? `${n === 1 ? "Una dirección nueva" : `${n} direcciones nuevas`}.` : "Nada que renovar.", imagenes: [], vista: vistaDe({ tipo: "medios", titulo: "", audios, videos }) };
     },
 
     async me_gusta_pieza({ archivo_id: id, me_gusta: gusta }) {

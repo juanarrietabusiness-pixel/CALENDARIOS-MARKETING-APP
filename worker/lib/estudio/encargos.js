@@ -370,14 +370,20 @@ async function ponerResultados(env, acceso, fila, pasos, datos) {
     const filas = new Map((await acceso.leerVarios("estudio_archivos", COLUMNAS_ARCHIVO, "id", g.ids, { client_id: cliente.id })).map((f) => [f.id, archivoPublico(f)]));
     const piezas = g.ids.map((id) => filas.get(id)).filter(Boolean);
     if (!piezas.length) continue;
+    // La regla de la portada (galeriaPura.js): a un reel que ya tiene su video, la pieza va de PORTADA; varias, no se ponen.
+    let rechazo = "";
     const r = await cambiarPublicacion(env, acceso, {
       clienteId: cliente.id, calendarId: g.calendarId, postId,
       cambiar: async (post) => {
-        const con = postConPiezas(post, piezas, "reemplazar").post;
-        return conHistoriaEncajada(env, { antes: post, despues: con, clienteId: cliente.id, colorMarca: cliente.primary_color }).catch(() => con);
+        const res = postConPiezas(post, piezas, "reemplazar");
+        if (res.error) { rechazo = res.error; return null; }
+        if (res.portada) return res.post;
+        return conHistoriaEncajada(env, { antes: post, despues: res.post, clienteId: cliente.id, colorMarca: cliente.primary_color }).catch(() => res.post);
       },
     });
-    if (r?.postId) {
+    if (rechazo) {
+      salida.push({ postId, aviso: `No se puso: ${rechazo} Quedó en la galería.` });
+    } else if (r?.postId) {
       for (const a of piezas) await marcarUso(acceso, cliente.id, a.id, { calendarId: r.calendarId, postId }).catch(() => null);
       salida.push({ postId, archivos: piezas.map((a) => a.id) });
     } else {

@@ -26,7 +26,7 @@
 //   POST   /<cliente>/carrusel/propuesta           { guion?, tema?, preset?, estilo?, productoId?, personajes?, estructura? }: el plan por láminas (texto)
 //   POST   /<cliente>/carrusel/ideas               { preset?, tema?, productoId?, n?, usados? }: ideas de carrusel con su guion (texto)
 //   POST   /<cliente>/reel/ideas                   { preset?, tema?, productoId?, n?, usados?, segundos? }: ideas de reel IA (texto)
-//   POST   /<cliente>/reel/guion                   { idea, segundos?, preset?, estilo?, productoId?, personajes? }: el guion por planos (texto)
+//   POST   /<cliente>/reel/guion                   { idea, segundos?, preset?, estilo?, productoId?, personajes?, estructuraId? }: el guion por planos (texto), con la estructura de guion de la agencia
 //   POST   /<cliente>/reel/mes                     { calendarId, postIds | postId, confirmado? }: los reels del mes (asistente del mes)
 //   POST   /<cliente>/guion-corto                  { idea, segundos, post? }: guion de un video de 8 o 10 s (texto)
 //   POST   /<cliente>/video-producto/guion         { productoId, segundos?, idea?, post? }: la receta «Video del producto» (texto)
@@ -101,12 +101,13 @@ import {
 } from "../lib/estudio/galeria.js";
 import { crearEncargo, avanzarEncargo, cancelarEncargo, finalesDePaso, encargoPublico, encargoConArchivos, accionDeReel } from "../lib/estudio/encargos.js";
 import { ponerPiezasEnPost, ErrorPoner } from "../lib/estudio/ponerPiezas.js";
+import { topeSinPreguntar } from "../lib/configIA.js";
 
 const ID = /^[\w-]{1,80}$/;
 
 
 /** Una respuesta de error de este módulo: lleva además el `codigo` y el costo, que la pantalla usa para pedir confirmación. */
-const fallo = (e) => json({ error: e.message, ...(e.codigo ? { codigo: e.codigo } : {}), ...(e.costo != null ? { costo: e.costo } : {}), ...(e.usos != null ? { usos: e.usos } : {}), ...(e.que ? { que: e.que } : {}) }, e.estado ?? 400);
+const fallo = (e) => json({ error: e.message, ...(e.codigo ? { codigo: e.codigo } : {}), ...(e.costo != null ? { costo: e.costo } : {}), ...(e.usos != null ? { usos: e.usos } : {}), ...(e.que ? { que: e.que } : {}), ...(e.motivo ? { motivo: e.motivo } : {}) }, e.estado ?? 400);
 
 export async function rutasEstudio(req, env, { acceso, usuario, partes, metodo }) {
   const [, a, b, c, d] = partes;
@@ -148,6 +149,9 @@ export async function rutasEstudio(req, env, { acceso, usuario, partes, metodo }
         ...(perdidas.size ? { perdidas: [...perdidas].map((c) => ({ clave: c, ...protegidas.get(c) })) } : {}),
         // Cuándo se aprobó el estudio de mercado: el semáforo de Marca pide revisarlo cada mes (curso, entrega 8).
         estudioMercado: { aprobadoAt: mercado?.estudio?.aprobadoAt ?? null, conBorrador: Boolean(mercado?.borrador) },
+        // «Crear imágenes sin preguntar» del espacio (Ajustes → IA): el tope por pedido, 0 = apagado. El compositor lo
+        // mira antes de su «¿Seguimos?» (src/lib/sinPreguntar.js).
+        sinPreguntar: await topeSinPreguntar(acceso),
       });
     }
 
@@ -266,7 +270,7 @@ export async function rutasEstudio(req, env, { acceso, usuario, partes, metodo }
       try {
         return json(await ponerPiezasEnPost(env, acceso, cliente, {
           postId: datos.postId, calendarId: datos.calendarId ?? null, carpetaId: datos.carpetaId ?? "",
-          archivoIds: datos.archivoIds ?? [], modo: datos.modo,
+          archivoIds: datos.archivoIds ?? [], modo: datos.modo, como: typeof datos.como === "string" ? datos.como : "",
         }));
       } catch (e) {
         if (e instanceof ErrorPoner) return fallo(e);

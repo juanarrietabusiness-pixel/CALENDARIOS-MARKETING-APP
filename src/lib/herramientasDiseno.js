@@ -10,7 +10,7 @@
 export const HERRAMIENTAS_DISENO = Object.freeze([
     {
       name: "disenar_piezas",
-      description: "Diseña de 1 a 12 piezas de imagen con diseño gráfico (posts, historias, portadas, anuncios, las láminas de un carrusel) para este cliente, una FICHA DE DISEÑO cada una. Los productos, SÓLO del catálogo y con sus ids en «productos». La persona ve las fichas y el costo y aprueba con un botón (no le pidas el «sí» antes). Al terminar recibes cada imagen para revisarla.",
+      description: "Diseña de 1 a 12 piezas de imagen con diseño gráfico (posts, historias, portadas, anuncios, las láminas de un carrusel) para este cliente, una FICHA DE DISEÑO cada una. Los productos, SÓLO del catálogo y con sus ids en «productos». La persona ve las fichas y el costo y aprueba con un botón (no le pidas el «sí» antes); si la agencia fijó «crear sin preguntar» (Ajustes → IA), con el modelo del cliente y dentro de su tope se crean directo. Va con el modelo del cliente: sugiere otro (modelo + motivo_modelo) sólo si de verdad conviene, y la tarjeta se lo pregunta a la persona. Al terminar recibes cada imagen para revisarla.",
       input_schema: {
         type: "object",
         properties: {
@@ -18,6 +18,8 @@ export const HERRAMIENTAS_DISENO = Object.freeze([
           carrusel: { type: "boolean", description: "true si las piezas son las láminas de UN carrusel, en su orden (portada primero): quedan agrupadas en la galería como un carrusel. Todas en formato vertical 4:5." },
           post_id: { type: "string", description: "Con carrusel=true: la publicación del calendario donde va el carrusel ENTERO. Al terminar, sus láminas quedan puestas en ella, en orden y listas para revisar (reemplazan lo que tuviera; lo de antes sigue en la galería)." },
           productos: { type: "array", items: { type: "string" }, maxItems: 6, description: "Los ids del CATÁLOGO del cliente (los del sistema) de los productos que enseña la tanda o el carrusel: sus fotos reales van de referencia en cada pieza que no diga los suyos. Sólo ids que existan; si no sabes cuál, pregúntale a la persona antes." },
+          modelo: { type: "string", description: "Opcional: el ID de OTRO modelo de imagen que sugieres en vez del del cliente (un texto exacto largo que el suyo escribe mal, una proporción que no hace). Sólo con motivo_modelo: la persona lo ve y escoge." },
+          motivo_modelo: { type: "string", description: "Por qué sugieres ese modelo, en una frase corta: se le enseña a la persona en la tarjeta." },
           piezas: {
             type: "array",
             minItems: 1,
@@ -28,7 +30,7 @@ export const HERRAMIENTAS_DISENO = Object.freeze([
                 titulo: { type: "string", description: "Nombre corto de la pieza (para la tarjeta)." },
                 ficha: { type: "string", description: "La ficha de diseño completa, una línea por apartado: Pieza, Composición, Fondo, Imagen principal, Texto (exacto, entre «»), Marca, Evitar." },
                 formato: { type: "string", enum: ["vertical", "story", "square", "horizontal"], description: "vertical 4:5 (post del feed, por defecto), story 9:16 (historia o reel), square 1:1, horizontal 16:9." },
-                post_id: { type: "string", description: "La publicación del calendario a la que va (opcional): se pone en ella al salir." },
+                post_id: { type: "string", description: "La publicación del calendario a la que va (opcional): se pone en ella al salir. Si es un REEL que ya tiene su video, la pieza (story 9:16) se pone como su PORTADA, no como una imagen más." },
                 estilo: { type: "string", enum: ["anuncio", "beneficios", "servicios", "educativo", "diferenciador", "maletas", "humano"], description: "El tipo de contenido (opcional)." },
                 plantilla_id: { type: "string", description: "El id de una plantilla del kit a seguir (opcional)." },
                 productos: { type: "array", items: { type: "string" }, maxItems: 6, description: "Los ids del catálogo de los productos que salen en ESTA pieza (puede ser más de uno); manda sobre los de la tanda." },
@@ -64,7 +66,7 @@ export const HERRAMIENTAS_DISENO = Object.freeze([
     },
     {
       name: "poner_en_publicacion",
-      description: "Pone piezas que YA ESTÁN en la galería en una publicación del calendario (de cualquier mes), listas para revisar y programar: un carrusel entero en su orden (carrusel_id) o imágenes sueltas en el orden que pases (archivo_ids). NO crea nada ni cuesta nada: úsala siempre que la persona pida poner en un post algo ya diseñado; nunca lo vuelvas a crear para ponerlo. Con dos imágenes o más, el post pasa a carrusel.",
+      description: "Pone piezas que YA ESTÁN en la galería en una publicación del calendario (de cualquier mes), listas para revisar y programar: un carrusel entero en su orden (carrusel_id) o imágenes sueltas en el orden que pases (archivo_ids). NO crea nada ni cuesta nada: úsala siempre que la persona pida poner en un post algo ya diseñado; nunca lo vuelvas a crear para ponerlo. Con dos imágenes o más, el post pasa a carrusel. Una PORTADA de reel va con como: \"portada\" (UNA imagen 9:16): un reel es UN video y nunca lleva imágenes, así que una imagen puesta en un reel que ya tiene su video va sola de portada, y varias se rechazan.",
       input_schema: {
         type: "object",
         properties: {
@@ -72,6 +74,7 @@ export const HERRAMIENTAS_DISENO = Object.freeze([
           carrusel_id: { type: "string", description: "El carrusel_id que te devolvió disenar_piezas (o el archivo_id de cualquiera de sus láminas): van todas, en orden." },
           archivo_ids: { type: "array", items: { type: "string" }, maxItems: 10, description: "Ids (o claves) de imágenes sueltas de la galería, en el orden en que van." },
           modo: { type: "string", enum: ["reemplazar", "anadir"], description: "Si la publicación ya tiene archivos: reemplazar (lo de antes sigue en la galería) o añadir al final. Si ya tiene y no sabes qué quiere la persona, pregúntale antes." },
+          como: { type: "string", enum: ["portada", "medio"], description: "«portada»: la imagen (una) es la PORTADA del video del reel (su cover en Instagram), no un archivo más. «medio»: entre los archivos aunque el post tenga un video (un carrusel mixto; en un reel no se puede). Sin esto, la regla de la descripción." },
         },
         required: ["post_id"],
       },

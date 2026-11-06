@@ -19,8 +19,9 @@ import * as api from "../lib/estudio";
 import { MEDIOS_VACIOS, recortarMedios, clavesDe, formularioInicial } from "../lib/estudio";
 import { estampaSola, estamparEnGaleria } from "../lib/logoEstudio";
 import {
-  modeloPorId, nombreDelModelo, estimar, textoCosto, pideConfirmar, ajustesDe, estaVivo, maxPorPedido, PRECIOS_AL, MAX_PROMPT,
+  modeloPorId, nombreDelModelo, estimar, textoCosto, ajustesDe, estaVivo, maxPorPedido, PRECIOS_AL, MAX_PROMPT,
 } from "../lib/estudioCatalogo";
+import { decidirConfirmacion } from "../lib/sinPreguntar";
 import {
   filtrarArchivos, contarFiltros, trabajosVisibles, fraseDeTrabajo, hace, nombreDeDescarga,
   proporcionDeMedidas, originalDe, FILTROS_GALERIA, agruparGaleria, esGrupo, estaUsado, textoDeGrupo,
@@ -433,7 +434,8 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
       promptRef.current?.focus();
       return;
     }
-    if (!confirmado && pideConfirmar(costo)) { setConfirmando(costo); return; }
+    // Desde 0,50 $ se pregunta, salvo «crear imágenes sin preguntar» del espacio con una imagen dentro del tope.
+    if (!confirmado && decidirConfirmacion({ tope: datos?.sinPreguntar, costo, tipo: form.tipo }).preguntar) { setConfirmando(costo); return; }
     setConfirmando(null);
     setEnviando(true);
     setAviso(null);

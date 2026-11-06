@@ -62,6 +62,40 @@ describe("«Poner en una publicación…» desde el Estudio", () => {
     expect(postDe("p1").medios.map((m) => m.src)).toEqual(["/api/media/clientes/c1/vieja.png", "/api/media/clientes/c1/estudio/a3.png"]);
   });
 
+  describe("a un reel con su video, una imagen es su PORTADA", () => {
+    const VIDEO = { src: "/api/media/clientes/c1/reel.mp4", tipo: "video" };
+    beforeEach(() => {
+      db.sqlite.prepare("update calendars set days = ? where id = 'cal-dic'").run(dias([
+        { id: "p1", format: "post", title: "Sofá", status: "pending", medios: [{ src: "/api/media/clientes/c1/vieja.png", tipo: "imagen" }] },
+        { id: "r1", format: "reel", title: "Reel", status: "pending", medios: [VIDEO] },
+      ]));
+    });
+
+    it("«Como portada del video» (como: portada): a `portada`, el video se queda y se apunta el uso", async () => {
+      const r = await pedir("/estudio/c1/poner", { postId: "r1", archivoIds: ["a3"], modo: "reemplazar", como: "portada" });
+      expect(r.status).toBe(200);
+      expect(await r.json()).toMatchObject({ postId: "r1", portada: true, formato: "reel", n: 1 });
+      expect(postDe("r1")).toMatchObject({ portada: "/api/media/clientes/c1/estudio/a3.png", portadaMs: null, medios: [VIDEO] });
+      const uso = JSON.parse(db.sqlite.prepare("select usado_en from estudio_archivos where id = 'a3'").get().usado_en);
+      expect(uso[0]).toMatchObject({ postId: "r1" });
+    });
+
+    it("sin «como», UNA imagen va de portada igual; un carrusel entero a un reel se rechaza (409) y no toca nada", async () => {
+      expect((await pedir("/estudio/c1/poner", { postId: "r1", archivoIds: ["a3"], modo: "anadir" })).status).toBe(200);
+      expect(postDe("r1")).toMatchObject({ portada: "/api/media/clientes/c1/estudio/a3.png", medios: [VIDEO] });
+      const r = await pedir("/estudio/c1/poner", { postId: "r1", carpetaId: "k1", modo: "anadir" });
+      expect(r.status).toBe(409);
+      expect((await r.json()).error).toMatch(/Un reel es UN video/);
+      expect(postDe("r1").medios).toEqual([VIDEO]);
+    });
+
+    it("«medio» (la persona escogió reemplazar): el video se cambia por la imagen", async () => {
+      expect((await pedir("/estudio/c1/poner", { postId: "r1", archivoIds: ["a3"], modo: "reemplazar", como: "medio" })).status).toBe(200);
+      expect(postDe("r1").medios.map((m) => m.src)).toEqual(["/api/media/clientes/c1/estudio/a3.png"]);
+      expect(postDe("r1").portada).toBeUndefined();
+    });
+  });
+
   it("lo de otro cliente no se pone, y un post que no existe lo dice", async () => {
     expect((await pedir("/estudio/c1/poner", { postId: "p1", archivoIds: ["z9"] })).status).toBe(404);
     expect(postDe("p1").medios).toHaveLength(1);

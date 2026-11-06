@@ -294,6 +294,66 @@ describe("poner_en_publicacion", () => {
     delete env.VIDEO;
   });
 
+  describe("la PORTADA de un reel (una imagen en un reel con su video no es un archivo más)", () => {
+    const VIDEO = { src: "/api/media/clientes/c1/posts/v.mp4", tipo: "video", nombre: "v.mp4" };
+    const conReel = (extra = {}) => {
+      const dias = JSON.parse(db.sqlite.prepare("select days from calendars where id = 'cal1'").get().days);
+      dias[0].posts.push({ id: "r1", format: "reel", title: "Reel del estuche", status: "pending", medios: [VIDEO], ...extra });
+      db.sqlite.prepare("update calendars set days = ? where id = 'cal1'").run(JSON.stringify(dias));
+    };
+    const reelGuardado = () => JSON.parse(db.sqlite.prepare("select days from calendars where id = 'cal1'").get().days)[0].posts.find((p) => p.id === "r1");
+
+    it("con como: «portada», la imagen va a `portada` y el video se queda solo; se apunta su uso", async () => {
+      conReel({ portadaMs: 1500 });
+      pieza("a1", "c1");
+      const r = await mcp().llamar("poner_en_publicacion", { post_id: "r1", archivo_ids: ["a1"], como: "portada" });
+      expect(r.isError).toBeUndefined();
+      expect(textoDe(r)).toMatch(/PORTADA del reel r1/);
+      const post = reelGuardado();
+      expect(post.portada).toBe("/api/media/clientes/c1/estudio/a1.png");
+      expect(post.portadaMs).toBeNull();
+      expect(post.medios).toEqual([VIDEO]);
+      expect(post.format).toBe("reel");
+      expect(post.historiaTambien).toBeUndefined();
+      const uso = JSON.parse(db.sqlite.prepare("select usado_en from estudio_archivos where id = 'a1'").get().usado_en);
+      expect(uso[0]).toMatchObject({ postId: "r1" });
+    });
+
+    it("sin como, UNA imagen a un reel con su video también va de portada (lo que pasó en producción, en «añadir» y en «reemplazar»)", async () => {
+      conReel();
+      pieza("a1", "c1");
+      await mcp().llamar("poner_en_publicacion", { post_id: "r1", archivo_ids: ["a1"], modo: "anadir" });
+      expect(reelGuardado()).toMatchObject({ portada: "/api/media/clientes/c1/estudio/a1.png", medios: [VIDEO] });
+      pieza("a2", "c1");
+      await mcp().llamar("poner_en_publicacion", { post_id: "r1", archivo_ids: ["a2"] });
+      expect(reelGuardado()).toMatchObject({ portada: "/api/media/clientes/c1/estudio/a2.png", medios: [VIDEO] });
+    });
+
+    it("varias imágenes a un reel con su video: error claro y la publicación no cambia", async () => {
+      conReel();
+      pieza("a1", "c1");
+      pieza("a2", "c1");
+      const r = await mcp().llamar("poner_en_publicacion", { post_id: "r1", archivo_ids: ["a1", "a2"], modo: "anadir" });
+      expect(r.isError).toBe(true);
+      expect(textoDe(r)).toMatch(/Un reel es UN video: no lleva imágenes.*portada/);
+      expect(reelGuardado()).toMatchObject({ medios: [VIDEO] });
+      expect(reelGuardado().portada).toBeUndefined();
+    });
+
+    it("como: «portada» a un post de imágenes: error (no lleva portada)", async () => {
+      pieza("a1", "c1");
+      const r = await mcp().llamar("poner_en_publicacion", { post_id: "p1", archivo_ids: ["a1"], como: "portada" });
+      expect(r.isError).toBe(true);
+      expect(textoDe(r)).toMatch(/no lleva portada/);
+    });
+
+    it("la herramienta lo dice: una portada de reel va con como: «portada»", () => {
+      const d = DEFINICIONES_DISENO_MCP.find((x) => x.name === "poner_en_publicacion");
+      expect(d.description).toMatch(/una portada de reel va con como: "portada"/i);
+      expect(d.inputSchema.properties.como.enum).toEqual(["portada", "medio"]);
+    });
+  });
+
   it("lo publicado no se toca, y lo de otro cliente no se pone", async () => {
     pieza("a1", "c1");
     pieza("b1", "c2");

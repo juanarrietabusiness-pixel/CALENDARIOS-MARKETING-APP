@@ -194,9 +194,9 @@ export default function SubirRapido({ clients = [], clienteInicial = null, onCal
       onCalendarioGuardado(cliente.id, guardado);
       // Lo que se creó en el Estudio y sigue en la publicación: que la papelera del Estudio sepa que se usa.
       // Si falla no importa aquí (la publicación ya está guardada): se pierde la protección, no la subida.
-      await Promise.all(mediosDe(nuevo)
-        .filter((m) => delEstudio.current.has(m.src))
-        .map((m) => apuntarUso(clienteDb, delEstudio.current.get(m.src), { calendarId: guardado.dbId || guardado.id, postId: nuevo.id }).catch(() => null)));
+      await Promise.all([...mediosDe(nuevo).map((m) => m.src), ...(nuevo.portada ? [nuevo.portada] : [])]
+        .filter((src) => delEstudio.current.has(src))
+        .map((src) => apuntarUso(clienteDb, delEstudio.current.get(src), { calendarId: guardado.dbId || guardado.id, postId: nuevo.id }).catch(() => null)));
       if (modo !== "mano") {
         setTrabajando(modo === "ahora" ? "Publicando…" : "Programando…");
         await publicar({ calendarId: guardado.dbId || guardado.id, postId: nuevo.id, redes: destino, ahora: modo === "ahora" });
@@ -268,7 +268,11 @@ export default function SubirRapido({ clients = [], clienteInicial = null, onCal
                 onChange={alCambiarMedios}
                 onError={setFallo}
                 entradaRef={entrada}
-                onPortada={mediosDe(post).some((m) => m.tipo === "video") ? (c) => setPost((p) => ({ ...p, ...c })) : null}
+                onPortada={mediosDe(post).some((m) => m.tipo === "video") ? (c, { archivo } = {}) => {
+                  // La de la galería del Estudio: su uso se apunta al guardar, como lo creado con «Crear con IA».
+                  if (archivo?.id) delEstudio.current.set(archivo.src, archivo.id);
+                  setPost((p) => ({ ...p, ...c }));
+                } : null}
                 onCrearConIA={abrirCreacion}
               />
             )}

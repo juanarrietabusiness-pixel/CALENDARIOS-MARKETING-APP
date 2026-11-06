@@ -50,6 +50,7 @@ import { rutaGenerarImagen } from "./rutas/imagen.js";
 import { rutaAnalizarVideo } from "./rutas/video.js";
 import { rutasDrive, rutaDriveCallback } from "./rutas/drive.js";
 import { rutasRedes, rutasPublicar, rutaMetaCallback, rutaMedioPublico, rutaWebhookPostPeer } from "./rutas/redes.js";
+import { rutaVistaMedio } from "./rutas/vistaMedio.js";
 import { rutasYouTube, rutaYouTubePublica } from "./rutas/youtube.js";
 import { procesarCola, programarAlAprobar, cancelarPendientes } from "./lib/publicador.js";
 import { rutasMetricas } from "./rutas/metricas.js";
@@ -307,6 +308,11 @@ export default {
       if (partes[0] === "medio-publico" && metodo === "GET") {
         return rutaMedioPublico(env, partes);
       }
+      // Lo que oye y ve la vista previa del chat de Claude (un iframe de claude.ai, sin sesión): un audio o un video,
+      // por trozos, sólo el que dice su testigo firmado y sólo unas horas. Ver worker/rutas/vistaMedio.js.
+      if (partes[0] === "vista-medio" && (metodo === "GET" || metodo === "HEAD")) {
+        return await rutaVistaMedio(req, env, partes);
+      }
       // Los comentarios y mensajes que manda Meta: sin sesión, firmados con
       // META_APP_SECRET. Ver worker/rutas/bandeja.js.
       if (partes[0] === "webhooks" && partes[1] === "meta" && partes.length === 2) {
@@ -401,8 +407,9 @@ export default {
       if (partes[0] === "banco-ideas") {
         return await rutasBancoIdeas(req, env, { acceso, usuario, partes, metodo });
       }
-      // Las fórmulas UGC de la agencia (la receta de un video, sin su contenido).
-      if (partes[0] === "formulas-ugc") {
+      // Las ESTRUCTURAS DE GUION de la agencia (antes «fórmulas UGC»: la forma de un guion, sin su contenido), para
+      // UGC y voz en off. Las dos direcciones son la misma ruta.
+      if (partes[0] === "formulas-ugc" || partes[0] === "estructuras-guion") {
         return await rutasFormulasUgc(req, env, { acceso, usuario, partes, metodo });
       }
       // Los videos animados de un cliente: el guion por escenas, su aprobación (la voz y el render, aparte).

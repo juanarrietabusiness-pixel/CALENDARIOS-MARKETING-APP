@@ -9,6 +9,11 @@
 // con `modelo: "musica-suno"` (así las lista `musicasDe` junto a las subidas). Si se pidió para un video, la primera
 // queda puesta en su SONIDO (`videos_proyectos.sonido`, aparte del guion): no sube la versión ni pide otra voz, sólo
 // volver a renderizar. Si el video estaba renderizando o ya tenía otra música escogida DESPUÉS de pedirla, no se pisa.
+//
+// QUÉ SE PIDE: lo que diga la persona manda. Para un video SIN estilo dicho, el pedido lo escribe el DIRECTOR MUSICAL
+// (worker/lib/estudio/directorMusical.js), que lee el video ya hecho y la música de la marca; el `guion.musica.estilo`
+// queda de pista para él. La cotización (409) ya trae su propuesta y la guarda: la confirmación pide lo MISMO. Sin
+// video y sin estilo, la música de la marca del kit si la agencia la escribió.
 // ============================================================
 
 import { uuid } from "../ids.js";
@@ -25,6 +30,9 @@ import {
   limpiarPedidoMusica, costoDeMusica, costoCobrado, modeloDeMusica, duracionParaVideo, MODELO_MUSICA_GENERADA,
 } from "../../../src/lib/musica.js";
 import { textoCosto } from "../../../src/lib/estudioCatalogo.js";
+import { limpiarMusicaDeMarca } from "../../../src/lib/kitMarca.js";
+import { kitDe } from "./kit.js";
+import { proponerMusica } from "./directorMusical.js";
 
 /** Lo más que pesa una pista (6 minutos en MP3 de 320 kbps son ~14 MB). */
 export const TOPE_MUSICA = 20 * 1024 * 1024;
@@ -42,37 +50,61 @@ export class ErrorMusica extends Error {
 const leerJSON = (t, def) => { try { return typeof t === "string" ? JSON.parse(t) : (t ?? def); } catch { return def; } };
 
 /**
- * Lo que el guion de un video dice de su música (`musica.estilo`, `musica.instrumental`) y lo que dura: es lo que se
- * usa cuando el pedido no lo dice. → { estilo, instrumental, segundos }.
+ * Lo que el guion de un video dice de su música (`musica.estilo`, `musica.instrumental`) y lo que dura (la pista del
+ * director musical y el respaldo si no hay video). → { estilo, instrumental, segundos, valido }.
  */
 function delGuion(video) {
   const v = validarGuion(leerJSON(video?.guion, null));
-  if (!v.ok) return { estilo: "", instrumental: true, segundos: 0 };
+  if (!v.ok) return { estilo: "", instrumental: true, segundos: 0, valido: false };
   const m = v.guion.musica ?? {};
-  return { estilo: m.estilo ?? "", instrumental: m.instrumental !== false, segundos: v.guion.escenas.length ? lineaDeTiempo(v.guion).total : 0 };
+  // Lo que dura de verdad: con los tiempos de la locución si están listos (si no, estimado).
+  const l = leerJSON(video?.locucion, {}) ?? {};
+  const palabras = l.estado === "lista" && Array.isArray(l.palabras) ? l.palabras : null;
+  return { estilo: m.estilo ?? "", instrumental: m.instrumental !== false, segundos: v.guion.escenas.length ? lineaDeTiempo(v.guion, palabras).total : 0, valido: true };
 }
 
+/** Lo que el director musical decidió, para la pantalla, el asistente y el trabajo (sin el estilo, que va en `pedido`). */
+const delDirector = (pr) => (pr ? {
+  porque: pr.porque, genero: pr.genero, bpm: pr.bpm, instrumentos: pr.instrumentos, energia: pr.energia,
+  ...(pr.deRespaldo ? { deRespaldo: true } : {}),
+} : null);
+
 /**
- * Pide una música: con `video` (una fila de videos_proyectos), el estilo y la duración salen de su guion si no se dicen.
- * Sin `confirmado: true` contesta 409 con el costo; con él, crea el trabajo. → { trabajoId, costo, pedido }.
+ * Pide una música. Lo dicho manda; con `video` (una fila de videos_proyectos) y sin estilo, lo escribe el director
+ * musical (y la duración sale de lo que dura el video). Sin `confirmado: true` contesta 409 con el costo y la propuesta;
+ * con él, crea el trabajo. → { trabajoId, costo, pedido, propuesta, aviso }.
  */
 export async function pedirMusica(env, acceso, cliente, { estilo, letra, instrumental, duracion, titulo, evitar, modelo, video = null, confirmado = false, usuario = null, origen = "persona" } = {}) {
   if (!MOTORES.kie?.activo(env)) {
     throw new ErrorMusica("La música con Suno va por Kie.ai, y este servidor no tiene su llave (KIE_API_KEY). El administrador la pone como secreto del Worker.", 503, { codigo: "sin_llave" });
   }
-  const g = video ? delGuion(video) : { estilo: "", instrumental: true, segundos: 0 };
+  const g = video ? delGuion(video) : { estilo: "", instrumental: true, segundos: 0, valido: false };
+  const dicho = String(estilo ?? "").trim();
+  let propuesta = null;
+  let aviso = null;
+  // Un video sin estilo dicho: el director musical lo escucha (o se reusa lo que ya propuso para esta cotización).
+  if (!dicho && video && g.valido) {
+    const d = await proponerMusica(env, acceso, cliente, video, { reusar: true });
+    propuesta = d.propuesta;
+    aviso = d.aviso;
+  }
+  // Sin video ni estilo: la música de la marca, si la agencia la escribió.
+  const marca = !dicho && !propuesta ? limpiarMusicaDeMarca(kitDe(cliente).musica) : null;
   const r = limpiarPedidoMusica({
-    estilo: estilo || g.estilo, letra, instrumental: instrumental ?? g.instrumental, titulo, evitar, modelo,
+    estilo: dicho || propuesta?.estilo || marca?.estilo || g.estilo, letra,
+    instrumental: instrumental ?? propuesta?.instrumental ?? g.instrumental,
+    titulo: titulo || propuesta?.titulo, evitar: evitar ?? (propuesta?.evitar || marca?.evitar || undefined), modelo,
     duracion: duracion ?? (g.segundos ? duracionParaVideo(g.segundos) : undefined),
   });
   if (r.error) throw new ErrorMusica(r.error);
   const p = r.pedido;
   const m = modeloDeMusica(p.modelo);
   const costo = costoDeMusica();
+  const director = delDirector(propuesta);
   if (confirmado !== true) {
     throw new ErrorMusica(
       `La música «${p.titulo}» (${p.duracion} s, ${p.instrumental ? "instrumental" : "con voz"}, ${m.nombre}) cuesta ${textoCosto(costo.usd)} aproximadamente (${costo.creditos} ${costo.unidad}; Suno entrega dos versiones). Confírmalo para generarla.`,
-      409, { codigo: "confirmar", costo: costo.usd, creditos: costo.creditos, unidad: costo.unidad, pedido: p },
+      409, { codigo: "confirmar", costo: costo.usd, creditos: costo.creditos, unidad: costo.unidad, pedido: p, ...(director ? { propuesta: director } : {}), ...(aviso ? { aviso } : {}) },
     );
   }
   const bloqueo = await bloqueoPorPresupuesto(acceso);
@@ -81,13 +113,13 @@ export async function pedirMusica(env, acceso, cliente, { estilo, letra, instrum
   const fila = await acceso.insertar("estudio_trabajos", {
     id: uuid(), client_id: cliente.id, estado: "en_cola", tipo: "audio", motor: "kie", modelo: m.id,
     prompt: p.titulo, n: 1,
-    ajustes: JSON.stringify({ para: "musica", pedido: p, ...(video ? { videoId: video.id } : {}) }),
+    ajustes: JSON.stringify({ para: "musica", pedido: p, ...(video ? { videoId: video.id } : {}), ...(director ? { director } : {}) }),
     medios: "{}", remoto: "[]", archivos: "[]", nota: "", intentos: 0, bloqueado_hasta: "",
     costo_estimado: costo.usd, costo: 0, error: "", origen, creado_por: usuario?.id ?? null,
     calendar_id: null, post_id: null, carpeta_id: null, created_at: ahora, updated_at: ahora, terminado_at: null,
   });
   await despertar(env, acceso.ownerId);
-  return { trabajoId: fila.id, costo: costo.usd, creditos: costo.creditos, pedido: p };
+  return { trabajoId: fila.id, costo: costo.usd, creditos: costo.creditos, pedido: p, propuesta: director, aviso };
 }
 
 /**

@@ -32,7 +32,7 @@ import { lazy, Suspense, useId, useMemo, useRef, useState } from "react";
 import Icon from "../Icon";
 import {
   revisarPublicacion, aplicarArreglo, REDES, mediosDe, objetivoDe, necesitaAjuste, conMedios, destinoInstagram,
-  historiasDe, contarHashtags, colaboradoresDe, LIMITES, redesDe,
+  historiasDe, contarHashtags, colaboradoresDe, LIMITES, redesDe, esReelConVideo, conPortada as ponerDePortada,
 } from "../../lib/publicacion";
 import { EditorMedios, CamposRedes, Plegable } from "./editorPublicacion";
 import AjusteImagen from "./ajusteImagen";
@@ -166,6 +166,18 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
   const ponerDeGaleria = (archivos, { reemplazar }) => {
     setGaleria(false);
     if (!archivos.length) return;
+    // Un reel con su video no lleva imágenes (la regla de `postConPiezas`): una es su PORTADA; varias, no se ponen.
+    // «Reemplazar lo que ya tiene» es la decisión de quitar el video: entonces sí van como archivos.
+    if (!reemplazar && esReelConVideo(post) && archivos.every((a) => medioDeArchivo(a).tipo === "imagen")) {
+      if (archivos.length > 1) {
+        onError?.("Un reel es UN video: no lleva imágenes. Escoge una sola si es su portada, o cambia el formato a carrusel.");
+        return;
+      }
+      setForm((p) => ponerDePortada(p, archivos[0].src));
+      if (cal && post.id) apuntarUso(clientId, archivos[0].id, { calendarId: cal.dbId || cal.id, postId: post.id }).catch(() => {});
+      setEscrito("Puesta como portada del reel (un reel es un video: la imagen va de portada, no como un archivo más).");
+      return;
+    }
     setForm((p) => {
       const nuevos = archivos.map(medioDeArchivo);
       const medios = (reemplazar ? nuevos : [...mediosDe(p), ...nuevos]).slice(0, LIMITES.instagram.carruselMax);
@@ -226,6 +238,8 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
   const conModelo = (a) => (a?.modelo ? ` con ${nombreDelModelo(a.modelo)}` : "");
   const uso = cal && post.id ? cal.dbId || cal.id : null;
   const costoDe = (costo) => costo.toFixed(2).replace(".", ",");
+  // Sólo sale si el espacio no tiene fijado «crear imágenes sin preguntar» (o el pedido pasa de su tope): dice dónde se fija.
+  const SIN_PREGUNTAR = "\n\n(Para que no pregunte: «Crear imágenes sin preguntar» en Ajustes → IA, lo fija el administrador.)";
   /** La pieza nueva ocupa el sitio de `medio` (o se añade, si no había), con «Deshacer». */
   const ponerEnSuSitio = (medio, nueva) => {
     const puesto = medioDeArchivo(nueva);
@@ -250,7 +264,7 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
       const hacer = recrear ? recrearConLaMarca : otraVersionDelPost;
       const nueva = await hacer({
         client, post, medio, indicacion, modelo: modeloAccion, calendarId: uso, alProgresar: setProgresoVersion,
-        confirmar: (costo) => window.confirm(`${recrear ? "Recrearla" : "Esta versión"} cuesta unos ${costoDe(costo)} $. ¿Sigo?`),
+        confirmar: (costo) => window.confirm(`${recrear ? "Recrearla" : "Esta versión"} cuesta unos ${costoDe(costo)} $. ¿Sigo?${SIN_PREGUNTAR}`),
       });
       if (nueva) {
         ponerEnSuSitio(medio, nueva);
@@ -277,7 +291,7 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
       const nueva = await crearImagenDelPost({
         client, post, indicacion, opciones: { ...opcionesCrear, modelo: modeloAccion }, calendarId: uso, alProgresar: setProgresoVersion,
         alMejorar: (idea) => setForm((p) => conPromptListo(p, idea)),
-        confirmar: (costo) => window.confirm(`Esta imagen cuesta unos ${costoDe(costo)} $. ¿Sigo?`),
+        confirmar: (costo) => window.confirm(`Esta imagen cuesta unos ${costoDe(costo)} $. ¿Sigo?${SIN_PREGUNTAR}`),
       });
       if (nueva) {
         ponerEnSuSitio(null, nueva);
@@ -583,7 +597,11 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
             onError={onError}
             entradaRef={entrada}
             abrirBancoRef={abrirBanco}
-            onPortada={conPortada ? (c) => setForm((p) => ({ ...p, ...c })) : null}
+            onPortada={conPortada ? (c, { archivo } = {}) => {
+              setForm((p) => ({ ...p, ...c }));
+              // La portada que viene de la galería del Estudio: que su papelera sepa que la usa esta publicación.
+              if (archivo?.id && cal && post.id) apuntarUso(clientId, archivo.id, { calendarId: cal.dbId || cal.id, postId: post.id }).catch(() => {});
+            } : null}
             onCrearConIA={(o) => abrirCreacion({ ...o, indicacion })}
             onOtraVersion={client ? (m) => otraVersion(m) : null}
             onRecrear={client ? (m) => otraVersion(m, { recrear: true }) : null}

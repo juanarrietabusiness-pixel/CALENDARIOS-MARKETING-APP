@@ -7,7 +7,8 @@
 // `updated_at` como condición (no pisa a quien guarda a la vez), la cola se mueve y las pantallas abiertas releen. Lo
 // que cambia en la publicación es lo de `poner_en_publicacion` de Claude (`postConPiezas`: un carrusel entero en su
 // orden o piezas sueltas, reemplazando o añadiendo; con dos imágenes o más el post pasa a carrusel), con su historia
-// encajada si recibe su primera imagen, y se apunta el uso de cada pieza (la papelera no se la lleva).
+// encajada si recibe su primera imagen, y se apunta el uso de cada pieza (la papelera no se la lleva). Una imagen a un
+// REEL con su video va como su PORTADA («Como portada del video», o sola por la regla de `postConPiezas`).
 // No crea ni cobra nada.
 // ============================================================
 
@@ -56,21 +57,31 @@ async function piezasPedidas(acceso, cliente, { carpetaId = "", archivoIds = [] 
 
 /**
  * Pone las piezas en la publicación `postId` del cliente (en `calendarId`, o en el mes en que esté). `modo`:
- * «reemplazar» (lo de antes sigue en la galería) o «anadir» al final. → { calendarId, postId, n, formato, carrusel }.
+ * «reemplazar» (lo de antes sigue en la galería) o «anadir» al final. `como`: «portada» (UNA imagen, la portada del
+ * video de un reel), «medio» (entre los archivos: lo escogió la persona) o nada (la regla de `postConPiezas`: a un reel
+ * con su video, una imagen va de portada). → { calendarId, postId, n, formato, puestas, portada }.
  */
-export async function ponerPiezasEnPost(env, acceso, cliente, { postId, calendarId = null, carpetaId = "", archivoIds = [], modo = "reemplazar" } = {}) {
+export async function ponerPiezasEnPost(env, acceso, cliente, { postId, calendarId = null, carpetaId = "", archivoIds = [], modo = "reemplazar", como = "" } = {}) {
   if (!ID.test(String(postId ?? ""))) throw new ErrorPoner("Falta la publicación.");
   const piezas = await piezasPedidas(acceso, cliente, { carpetaId, archivoIds });
+  // La galería con varias escogidas no dice de qué tipo es la única que se pone: un video no es una portada, va por la regla.
+  if (como === "portada" && piezas.some((a) => a.tipo !== "imagen")) como = "";
+  let rechazo = "";
+  let portada = false;
   const r = await cambiarPublicacion(env, acceso, {
     clienteId: cliente.id, calendarId: calendarId && ID.test(String(calendarId)) ? String(calendarId) : null, postId: String(postId),
     cambiar: async (post) => {
-      const con = postConPiezas(post, piezas, modo === "anadir" ? "anadir" : "reemplazar").post;
+      const res = postConPiezas(post, piezas, modo === "anadir" ? "anadir" : "reemplazar", { como: ["portada", "medio"].includes(como) ? como : "" });
+      if (res.error) { rechazo = res.error; return null; }
+      portada = Boolean(res.portada);
+      if (portada) return res.post;
       // Si el post RECIBE su primera imagen, su historia encajada (9:16), como el panel: en el Container (si no hay, sin ella).
-      return conHistoriaEncajada(env, { antes: post, despues: con, clienteId: cliente.id, colorMarca: cliente.primary_color }).catch(() => con);
+      return conHistoriaEncajada(env, { antes: post, despues: res.post, clienteId: cliente.id, colorMarca: cliente.primary_color }).catch(() => res.post);
     },
   });
+  if (rechazo) throw new ErrorPoner(rechazo, 409);
   if (!r?.postId) throw new ErrorPoner(r?.aviso ?? "No se pudo poner en la publicación.", 409);
   for (const a of piezas) await marcarUso(acceso, cliente.id, a.id, { calendarId: r.calendarId, postId: r.postId }).catch(() => null);
   const medios = Array.isArray(r.post?.medios) ? r.post.medios : [];
-  return { calendarId: r.calendarId, postId: r.postId, n: medios.length, formato: r.post?.format ?? "", puestas: piezas.length };
+  return { calendarId: r.calendarId, postId: r.postId, n: medios.length, formato: r.post?.format ?? "", puestas: piezas.length, portada };
 }

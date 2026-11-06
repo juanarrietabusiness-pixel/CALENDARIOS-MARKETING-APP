@@ -2,7 +2,7 @@ import "./PonerEnPublicacion.css";
 import { useId, useMemo, useState } from "react";
 import Icon from "./Icon";
 import { useDialogA11y } from "../hooks/useDialogA11y";
-import { publicacionesParaPoner, ponerEnPublicacion, direccionDePublicacion } from "../lib/ponerPiezas";
+import { publicacionesParaPoner, ponerEnPublicacion, direccionDePublicacion, modoDePoner } from "../lib/ponerPiezas";
 import { fechaEnZona } from "../lib/agenda";
 import { navegar } from "../lib/rutas";
 
@@ -11,7 +11,8 @@ import { navegar } from "../lib/rutas";
 //
 // Desde el visor (una pieza), el visor de un carrusel (entero, en su orden) y la galería con varias escogidas. Se
 // escoge la publicación y, si ya tiene archivos, si se reemplazan (lo de antes sigue en la galería) o se añaden al
-// final. Lo pone el servidor (lib/ponerPiezas.js): no crea ni cobra nada y apunta el uso de cada pieza.
+// final; UNA imagen a un reel con su video va, por defecto, «Como portada del video» (un reel no lleva imágenes). Lo
+// pone el servidor (lib/ponerPiezas.js): no crea ni cobra nada y apunta el uso de cada pieza.
 // ============================================================
 
 /**
@@ -25,13 +26,18 @@ export default function PonerEnPublicacion({ cliente, archivoIds = [], carpetaId
   const id = useId();
   const [buscar, setBuscar] = useState("");
   const [elegida, setElegida] = useState(null);
-  const [modo, setModo] = useState("reemplazar");
+  // null: el de por defecto (`modoDePoner`); cambia al escoger otra publicación.
+  const [modo, setModo] = useState(null);
   const [ocupado, setOcupado] = useState(false);
   const [error, setError] = useState("");
   const [hecho, setHecho] = useState(null);
   const hoy = fechaEnZona();
   const lista = useMemo(() => publicacionesParaPoner(cliente?.calendars ?? [], { hoy, tipo, buscar }), [cliente?.calendars, hoy, tipo, buscar]);
   const sel = lista.find((p) => p.postId === elegida) ?? null;
+  const unaImagen = !carpetaId && archivoIds.length === 1 && tipo === "imagen";
+  const portadaPosible = Boolean(unaImagen && sel?.llevaPortada);
+  const pedido = modoDePoner({ unaImagen, llevaPortada: Boolean(sel?.llevaPortada), medios: sel?.medios ?? 0, escogido: modo });
+  const efectivo = pedido.como === "portada" ? "portada" : pedido.modo;
 
   const poner = async () => {
     if (!sel || ocupado) return;
@@ -39,7 +45,7 @@ export default function PonerEnPublicacion({ cliente, archivoIds = [], carpetaId
     setError("");
     try {
       const r = await ponerEnPublicacion(cliente.dbId || cliente.id, {
-        postId: sel.postId, calendarId: sel.calendarId, modo: sel.medios ? modo : "reemplazar",
+        postId: sel.postId, calendarId: sel.calendarId, ...pedido,
         ...(carpetaId ? { carpetaId } : { archivoIds }),
       });
       setHecho({ ...r, etiqueta: sel.etiqueta });
@@ -59,7 +65,7 @@ export default function PonerEnPublicacion({ cliente, archivoIds = [], carpetaId
         </div>
         {hecho ? (
           <div role="status" className="poner-publicacion-hecho">
-            <p><Icon name="checkCircle" size={16} /> Puesto en <strong>{hecho.etiqueta}</strong>{hecho.formato === "carrusel" ? " (ahora es un carrusel)" : ""}. Queda lista para revisar y programar.</p>
+            <p><Icon name="checkCircle" size={16} /> {hecho.portada ? "Puesta como portada del video en " : "Puesto en "}<strong>{hecho.etiqueta}</strong>{hecho.formato === "carrusel" && !hecho.portada ? " (ahora es un carrusel)" : ""}. Queda lista para revisar y programar.</p>
             <div className="poner-publicacion-botones">
               <button type="button" className="btn btn-primary" onClick={() => { onCerrar(); navegar(direccionDePublicacion(cliente.id, hecho.calendarId, hecho.postId)); }}>
                 <Icon name="calendar" size={16} /> Abrir la publicación
@@ -79,7 +85,7 @@ export default function PonerEnPublicacion({ cliente, archivoIds = [], carpetaId
                 <legend className="sr-only">Publicaciones del cliente</legend>
                 {lista.map((p) => (
                   <label key={`${p.calendarId}-${p.postId}`} className="poner-publicacion-opcion" data-elegida={p.postId === elegida || undefined}>
-                    <input type="radio" name={`${id}-p`} value={p.postId} checked={p.postId === elegida} onChange={() => setElegida(p.postId)} />
+                    <input type="radio" name={`${id}-p`} value={p.postId} checked={p.postId === elegida} onChange={() => { setElegida(p.postId); setModo(null); }} />
                     <span>{p.etiqueta}</span>
                     {p.medios > 0 && <small className="hint">ya tiene {p.medios} archivo{p.medios === 1 ? "" : "s"}</small>}
                   </label>
@@ -90,9 +96,15 @@ export default function PonerEnPublicacion({ cliente, archivoIds = [], carpetaId
             )}
             {sel?.medios > 0 && (
               <fieldset className="poner-publicacion-modo">
-                <legend className="label">Ya tiene archivos</legend>
-                <label><input type="radio" name={`${id}-m`} checked={modo === "reemplazar"} onChange={() => setModo("reemplazar")} /> Reemplazarlos (lo de antes sigue en la galería)</label>
-                <label><input type="radio" name={`${id}-m`} checked={modo === "anadir"} onChange={() => setModo("anadir")} /> Añadirlo al final</label>
+                <legend className="label">{portadaPosible ? "Ya tiene su video" : "Ya tiene archivos"}</legend>
+                {/* Un reel es UN video: la imagen que se le pone es su portada (su cover en Instagram), no un archivo más. */}
+                {portadaPosible && (
+                  <label><input type="radio" name={`${id}-m`} checked={efectivo === "portada"} onChange={() => setModo("portada")} /> Como portada del video</label>
+                )}
+                <label><input type="radio" name={`${id}-m`} checked={efectivo === "reemplazar"} onChange={() => setModo("reemplazar")} /> {portadaPosible ? "Reemplazar el video por la imagen" : "Reemplazarlos (lo de antes sigue en la galería)"}</label>
+                {!(portadaPosible && sel.formato === "reel") && (
+                  <label><input type="radio" name={`${id}-m`} checked={efectivo === "anadir"} onChange={() => setModo("anadir")} /> Añadirlo al final</label>
+                )}
               </fieldset>
             )}
             {error && <p role="alert" className="cerebro-error">{error}</p>}

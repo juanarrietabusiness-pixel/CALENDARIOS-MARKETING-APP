@@ -6,6 +6,7 @@ import { COOKIE } from "../../worker/lib/sesion.js";
 import { cifrar, firmarEstado, olvidarToken } from "../../worker/lib/google.js";
 import { firmar as firmarComoMeta } from "../../worker/lib/bandeja/webhook.js";
 import { cifrarMeta } from "../../worker/lib/meta.js";
+import { direccionDeVista } from "../../worker/lib/medioVista.js";
 
 // ============================================================
 // La puerta del Worker, pedida de verdad
@@ -78,12 +79,16 @@ function r2Falso(inicial = {}) {
       const cabecera = opciones?.range?.get?.("Range") ?? "";
       const m = /^bytes=(\d+)-(\d*)$/.exec(cabecera);
       const range = m ? { offset: Number(m[1]), length: (m[2] ? Number(m[2]) : cuerpo.length - 1) - Number(m[1]) + 1 } : undefined;
+      const trozo = range ? cuerpo.slice(range.offset, range.offset + range.length) : cuerpo;
       return {
-        body: range ? cuerpo.slice(range.offset, range.offset + range.length) : cuerpo,
+        body: trozo,
         size: cuerpo.length,
         range,
         httpEtag: '"abc"',
         writeHttpMetadata: (h) => h.set("content-type", "image/jpeg"),
+        // El tipo por la extensión (lo que lee la ruta de la vista previa del chat, que sólo sirve audio y video).
+        httpMetadata: { contentType: /\.mp3$/.test(clave) ? "audio/mpeg" : /\.mp4$/.test(clave) ? "video/mp4" : "image/jpeg" },
+        arrayBuffer: async () => (trozo instanceof Uint8Array ? trozo.slice().buffer : new TextEncoder().encode(String(trozo)).buffer),
       };
     },
     async put(clave, cuerpo) { objetos.set(clave, cuerpo); },
@@ -311,6 +316,32 @@ describe("leer y borrar un archivo", () => {
   });
 });
 
+describe("lo que oye y ve la vista previa del chat de Claude (/api/vista-medio)", () => {
+  const VOZ = "clientes/cliente-1/estudio/voz.mp3";
+
+  it("se atiende ANTES de la sesión: la dirección firmada sirve por trozos sin cookie", async () => {
+    const env = await entorno({ r2: { [VOZ]: "0123456789" } });
+    const { url } = await direccionDeVista(env, VOZ);
+    const res = await worker.fetch(new Request(`https://calendarios.test${url}`, { headers: { Range: "bytes=0-1" } }), env);
+    expect(res.status).toBe(206);
+    expect(res.headers.get("Content-Range")).toBe("bytes 0-1/10");
+    expect(res.headers.get("Content-Type")).toBe("audio/mpeg");
+  });
+
+  it("sin firma dice 404, no 401: no es una ruta con sesión", async () => {
+    const env = await entorno({ r2: { [VOZ]: "0123456789" } });
+    const res = await worker.fetch(new Request("https://calendarios.test/api/vista-medio/inventado/voz.mp3"), env);
+    expect(res.status).toBe(404);
+  });
+
+  it("firmada, pero lo que no es audio ni video no sale", async () => {
+    const foto = "clientes/cliente-1/posts/foto.jpg";
+    const env = await entorno({ r2: { [foto]: "bytes" } });
+    const { url } = await direccionDeVista(env, foto);
+    expect((await worker.fetch(new Request(`https://calendarios.test${url}`), env)).status).toBe(404);
+  });
+});
+
 describe("descartar una imagen generada", () => {
   const GENERADA = "clientes/cliente-1/generadas/img.png";
   const pedir = (cuerpo) => conSesion("/api/feedback-imagen", {
@@ -446,10 +477,10 @@ describe("tareas terminadas, responsables y ajustes", () => {
 
   it("sin ajustes guardados, las terminadas no se borran solas", async () => {
     const res = await worker.fetch(pedirJSON("/api/ajustes", "GET"), await entorno());
-    // Y la IA en sus valores por defecto: Sonnet 5 con razonamiento alto.
+    // Y la IA en sus valores por defecto: Sonnet 5 con razonamiento alto, y las imágenes preguntando (sin_preguntar 0).
     expect(await res.json()).toEqual({
       purga_tareas: "nunca", ia_modelo: "sonnet", ia_razonamiento: "alto",
-      ia_razonamiento_chat: null, ia_modelos: {}, presupuesto_usd: 30, al_limite: "avisar", meta: false,
+      ia_razonamiento_chat: null, ia_modelos: {}, presupuesto_usd: 30, al_limite: "avisar", sin_preguntar_usd: 0, meta: false,
     });
   });
 

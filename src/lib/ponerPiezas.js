@@ -9,6 +9,7 @@
 // ============================================================
 
 import { pedir } from "./db";
+import { esReelConVideo } from "./publicacion.js";
 
 const MESES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
 const FORMATO = { post: "Post", carrusel: "Carrusel", reel: "Reel", historia: "Historia", live: "Directo" };
@@ -22,7 +23,21 @@ function moverDia(fecha, dias) {
 }
 
 /**
- * Las publicaciones donde se puede poner algo: [{ postId, calendarId, fecha, etiqueta, medios, formato }]. `tipo`
+ * El modo de «Poner en una publicación…» y lo que se manda: con UNA imagen y una publicación que lleva portada, por
+ * defecto «portada»; si la persona escoge otro, va como «medio» (lo decidió ella). Sin portada posible, sin `como` (la
+ * regla de `postConPiezas`). → { modo, como? }. Pura.
+ */
+export function modoDePoner({ unaImagen = false, llevaPortada = false, medios = 0, escogido = null }) {
+  const portadaPosible = unaImagen && llevaPortada;
+  const modo = escogido ?? (portadaPosible ? "portada" : "reemplazar");
+  if (modo === "portada" && portadaPosible) return { modo: "reemplazar", como: "portada" };
+  const base = medios > 0 && modo === "anadir" ? "anadir" : "reemplazar";
+  return portadaPosible ? { modo: base, como: "medio" } : { modo: base };
+}
+
+/**
+ * Las publicaciones donde se puede poner algo: [{ postId, calendarId, fecha, etiqueta, medios, formato, llevaPortada }]
+ * (`llevaPortada`: sale como reel con su video, así que una imagen puede ir como su PORTADA). `tipo`
  * («imagen» | «video» | «carrusel») ordena primero las que encajan dentro de cada día; `buscar` filtra por fecha,
  * formato o título (sin tildes) y entonces también entran las pasadas. Pura.
  */
@@ -40,7 +55,10 @@ export function publicacionesParaPoner(calendars = [], { hoy = "", tipo = "image
         const etiqueta = `${dia} ${MESES[m - 1] ?? ""} · ${FORMATO[p.format] ?? "Post"} · ${titulo}`;
         if (q ? !sinTildes(`${d.date} ${etiqueta}`).includes(q) : d.date < limite) continue;
         const medios = Array.isArray(p.medios) ? p.medios.filter((x) => x?.src).length : p.image ? 1 : 0;
-        todas.push({ postId: p.id, calendarId: cal.dbId || cal.id, fecha: d.date, etiqueta, medios, formato: p.format || "post", orden: encaja(p.format) ? 0 : 1 });
+        todas.push({
+          postId: p.id, calendarId: cal.dbId || cal.id, fecha: d.date, etiqueta, medios, formato: p.format || "post",
+          llevaPortada: esReelConVideo(p), orden: encaja(p.format) ? 0 : 1,
+        });
       }
     }
   }
@@ -48,7 +66,10 @@ export function publicacionesParaPoner(calendars = [], { hoy = "", tipo = "image
   return todas.slice(0, max).map(({ orden: _, ...x }) => x);
 }
 
-/** Pone en la publicación lo de la galería: `{ postId, calendarId, carpetaId | archivoIds, modo }`. → { calendarId, postId, n, formato }. */
+/**
+ * Pone en la publicación lo de la galería: `{ postId, calendarId, carpetaId | archivoIds, modo, como? }` (`como`:
+ * «portada» o «medio», ver `postConPiezas`). → { calendarId, postId, n, formato, portada }.
+ */
 export const ponerEnPublicacion = (clienteId, datos) =>
   pedir(`/estudio/${encodeURIComponent(clienteId)}/poner`, { method: "POST", body: JSON.stringify(datos) });
 

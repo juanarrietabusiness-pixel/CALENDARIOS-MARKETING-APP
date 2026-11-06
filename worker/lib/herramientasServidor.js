@@ -470,6 +470,7 @@ export function describirUso(nombre, entrada = {}) {
     case "generar_locucion": return `Pidió la locución de un video animado${entrada.confirmado === true ? "" : " (sin confirmar)"}`;
     case "generar_musica": return `Pidió una música de fondo con Suno${entrada.confirmado === true ? "" : " (sin confirmar)"}`;
     case "formato_video": return "Leyó el formato de escenas del video animado";
+    case "ver_estructuras": return `Miró las estructuras de guion de la agencia${entrada.para === "voz" ? " (voz en off)" : entrada.para === "ugc" ? " (UGC)" : ""}`;
     case "listar_videos": return `Miró los videos animados${entrada.cliente ? ` de ${entrada.cliente}` : ""}`;
     case "ver_video": return "Miró un video animado";
     case "crear_reel": return entrada.confirmado === true ? "Creó un reel por planos en el servidor" : "Escribió el guion de un reel y su costo (sin crear nada)";

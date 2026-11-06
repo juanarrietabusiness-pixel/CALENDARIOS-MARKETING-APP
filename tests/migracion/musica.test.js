@@ -150,13 +150,14 @@ describe("generar la música con Suno", () => {
     expect(consumo[0].costo_usd).toBeCloseTo(0.07, 5);
   });
 
-  it("con un video: estilo y duración de su guion, y la primera versión queda en su sonido sin tocar la versión", async () => {
+  it("con un video: el estilo lo propone el director (aquí, sin IA, el respaldo con la pista del guion y el tempo de los cortes), la duración es la del video y la primera versión queda en su sonido sin tocar la versión", async () => {
     suno();
     const g = ejemplo();
     g.musica = { estilo: "Acústica cálida con ukelele" };
     const { video: v } = await (await pedir("/videos/bc", { method: "POST", body: { guion: g } })).json();
     const cot = await (await pedir("/videos/bc/musicas/generar", { method: "POST", body: { videoId: v.id } })).json();
-    expect(cot.pedido.estilo).toBe("Acústica cálida con ukelele");
+    expect(cot.pedido.estilo).toMatch(/^Acústica cálida con ukelele, \d+ BPM, soft intro under the hook/);
+    expect(cot.propuesta).toMatchObject({ deRespaldo: true });
     expect(cot.pedido.duracion).toBeGreaterThanOrEqual(10);
     const { trabajoId } = await (await pedir("/videos/bc/musicas/generar", { method: "POST", body: { videoId: v.id, confirmado: true } })).json();
     const t = await hastaElFinal(trabajoId);
@@ -196,7 +197,10 @@ describe("el asistente y Claude (MCP)", () => {
     expect(sin).toMatch(/confirmado=true/);
     expect(trabajos()).toHaveLength(0);
     expect(await h.generar_musica({ estilo: "pop alegre", confirmado: "sí" })).toMatch(/^NO SE CREÓ NADA/);
-    expect(await h.generar_musica({ estilo: "pop alegre", confirmado: true })).toMatch(/^Pedido creado: /);
+    const con = await h.generar_musica({ estilo: "pop alegre", confirmado: true });
+    expect(con.texto).toMatch(/^Pedido creado: /);
+    expect(con.vista).toMatchObject({ tipo: "medios", estado: "en_marcha", seguir: { herramienta: "vista_trabajo" } });
+    expect(con.vista.titulo).toMatch(/Música/);
     expect(trabajos()[0]).toMatchObject({ tipo: "audio", origen: "asistente", modelo: "suno-v6-kie" });
     await expect(h.generar_musica({ video_id: "no-existe", estilo: "x" })).rejects.toThrow(/No encontré el video/);
   });

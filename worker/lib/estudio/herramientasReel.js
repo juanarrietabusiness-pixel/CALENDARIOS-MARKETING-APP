@@ -20,6 +20,7 @@
 
 import { crearEncargo, accionDeReel, encargoPublico } from "./encargos.js";
 import { vistaDeEncargo } from "./vistaEstudio.js";
+import { lineasDeMedios } from "./vistaMedios.js";
 import { crearCarpeta } from "./galeria.js";
 import { guionDeReel } from "./reel.js";
 import { revisarVideo } from "./revisionVideo.js";
@@ -29,6 +30,7 @@ import { estadoMotores } from "./motores.js";
 import { ErrorEstudio } from "./trabajos.js";
 import { ErrorDiseno } from "./herramientasDiseno.js";
 import { proyectoDe } from "../videosProyectos.js";
+import { estructuraExistente } from "../estructurasGuion.js";
 import { duracionesDeReel, rutaDeDuracion, duracionDeClip, haceDuracion, DURACION_REEL_POR_DEFECTO } from "../../../src/lib/duracionesVideo.js";
 import { pedidoDeVideo, pedidoDeClip, modelosParaReel, modeloParaClips } from "../../../src/lib/reelPedidos.js";
 import { MODELOS, modeloPorId, porPrecio, estimar, textoCosto, nombreDelModelo } from "../../../src/lib/estudioCatalogo.js";
@@ -81,6 +83,7 @@ export function planDeReel({ guion, activos, kit, salida, modeloVideoId = "" }) 
 /** El guion como lo lee Claude (y lo devuelve tal cual en la segunda llamada). */
 const textoDelGuion = (g) => [
   `Gancho: «${ganchoDe(g)}» · Llamado: «${llamadoDe(g)}» · ${g.segundos} s, ${g.planos.length} planos.`,
+  g.estructuraId ? `Sigue la estructura de guion de la agencia «${g.estructuraNombre || g.estructuraId}» (ID ${g.estructuraId}).` : "",
   textoDelGuionReel(g),
   g.descripcion ? `Caption: ${g.descripcion}` : "",
 ].filter(Boolean).join("\n");
@@ -97,6 +100,7 @@ export const DEFINICIONES_REEL_MCP = Object.freeze([
         segundos: { type: "integer", description: "8, 10, 15, 20, 30, 45 o 60. Lo que un modelo no hace en un video va por clips y montaje." },
         publicacion_id: { type: "string", description: "La publicación del calendario (de ver_calendario): el guion sigue el que ya tiene y el resultado se pone en ella." },
         producto_id: { type: "string", description: "Un producto del catálogo (de guia_de_diseno): su precio exacto y sus fotos reales." },
+        estructura_id: { type: "string", description: "La ESTRUCTURA de guion de la agencia que sigue la voz en off (de ver_estructuras con para=voz). Si se omite, la IA escoge la que encaje y la respuesta dice cuál." },
         salida: { type: "string", enum: ["uno", "clips"], description: "uno: un solo video con todo; clips: un clip por plano (para montar). Si se omite, la que mejor sale con esa duración." },
         montar: { type: "boolean", description: "true (por defecto): montarlo con la voz, el texto, los subtítulos y el logo, y renderizarlo a mp4." },
         revisar: { type: "boolean", description: "true: se para tras el storyboard para que la persona lo revise (luego continuar_reel)." },
@@ -201,13 +205,15 @@ export function crearHerramientasReel({ env, acceso, resolverCliente, usuario, b
       m ? `Montaje: ${m.fase}${m.videoId ? ` (video animado ${m.videoId}: míralo con ver_video y ver_escenas)` : ""}${m.fase === "confirmar" ? ` · la voz cuesta ${m.costoTexto || "unos céntimos"}: pregúntale a la persona y, con su sí, montar_reel con confirmado_voz=true` : ""}${m.error ? ` · ${m.error}` : ""}${m.nota ? ` · ${m.nota}` : ""}.` : "",
       r.puesto?.postId ? `Ya está en su publicación ${r.puesto.postId}.` : "",
       imagenes.length ? "Van las imágenes del storyboard que ya están: MÍRALAS." : "",
+      // El mp4 (o los videos) se reproducen en la vista previa del chat; aquí, sus direcciones para la persona.
+      lineasDeMedios(vista),
       e.estado === "en_marcha" ? "Sigue en el servidor: vuelve a mirar en un minuto." : "",
     ].filter(Boolean).join("\n");
     return { texto: lineas, imagenes, vista };
   }
 
   return {
-    async crear_reel({ cliente, idea = "", segundos, publicacion_id: postId = "", producto_id: productoId = "", salida, montar = true, revisar = false, guion: guionDado, confirmado, confirmado_voz: confirmadoVoz }) {
+    async crear_reel({ cliente, idea = "", segundos, publicacion_id: postId = "", producto_id: productoId = "", estructura_id: estructuraId = "", salida, montar = true, revisar = false, guion: guionDado, confirmado, confirmado_voz: confirmadoVoz }) {
       const c = await resolverCliente(cliente);
       return conErrores(async () => {
         const activos = activosDe(env);
@@ -216,8 +222,13 @@ export function crearHerramientasReel({ env, acceso, resolverCliente, usuario, b
         let guion = guionDado && typeof guionDado === "object" && Array.isArray(guionDado.planos) ? guionDado : null;
         let escrito = false;
         if (!guion) {
-          guion = await guionDeReel(env, acceso, c, { idea, segundos: Number(segundos) || DURACION_REEL_POR_DEFECTO, productoId, postId, montaje: montar !== false });
+          guion = await guionDeReel(env, acceso, c, { idea, segundos: Number(segundos) || DURACION_REEL_POR_DEFECTO, productoId, postId, montaje: montar !== false, estructuraId });
           escrito = true;
+        } else if (estructuraId && !guion.estructuraId) {
+          // Un guion que escribió Claude con una estructura: se apunta si existe en el espacio.
+          const id = await estructuraExistente(acceso, estructuraId);
+          if (!id) throw new ErrorReel(`No encontré la estructura de guion «${estructuraId}» (de ver_estructuras).`);
+          guion = { ...guion, estructuraId: id };
         }
         const plan = planDeReel({ guion, activos, kit, salida });
         if (!plan.imagen) throw new ErrorReel("No hay ningún modelo de imagen con llave para los fotogramas (Ajustes → IA).");
