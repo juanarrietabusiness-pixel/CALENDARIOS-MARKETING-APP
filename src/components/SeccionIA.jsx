@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useId } from "react";
 import Icon from "./Icon";
 import * as db from "../lib/db";
 import { MODELOS_IA, NIVELES_IA, CONFIG_IA_POR_DEFECTO, MODELOS_FUNCION, FUNCIONES_IA, MOTORES_IMAGEN, MOTORES_VIDEO } from "../lib/configIA";
+import SinPreguntarAjuste from "./SinPreguntarAjuste";
 
 // ============================================================
 // Ajustes → Inteligencia artificial
@@ -197,6 +198,13 @@ export default function SeccionIA({ esAdmin, pulso = 0 }) {
               : "Cada mensaje lleva el calendario entero como contexto. Si el gasto sube, bajar sólo el chat a Medio es lo que menos se nota."}
           </p>
         </div>
+
+        <SinPreguntarAjuste
+          valor={config.sin_preguntar_usd}
+          esAdmin={esAdmin}
+          guardando={guardando}
+          onGuardar={(v) => cambiar("sin_preguntar_usd", v)}
+        />
 
         <div role="status" aria-live="polite">
           {mensaje && <p className="notice notice-ok" style={{ margin: 0 }}>{mensaje}</p>}

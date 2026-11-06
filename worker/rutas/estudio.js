@@ -101,6 +101,7 @@ import {
 } from "../lib/estudio/galeria.js";
 import { crearEncargo, avanzarEncargo, cancelarEncargo, finalesDePaso, encargoPublico, encargoConArchivos, accionDeReel } from "../lib/estudio/encargos.js";
 import { ponerPiezasEnPost, ErrorPoner } from "../lib/estudio/ponerPiezas.js";
+import { topeSinPreguntar } from "../lib/configIA.js";
 
 const ID = /^[\w-]{1,80}$/;
 
@@ -148,6 +149,9 @@ export async function rutasEstudio(req, env, { acceso, usuario, partes, metodo }
         ...(perdidas.size ? { perdidas: [...perdidas].map((c) => ({ clave: c, ...protegidas.get(c) })) } : {}),
         // Cuándo se aprobó el estudio de mercado: el semáforo de Marca pide revisarlo cada mes (curso, entrega 8).
         estudioMercado: { aprobadoAt: mercado?.estudio?.aprobadoAt ?? null, conBorrador: Boolean(mercado?.borrador) },
+        // «Crear imágenes sin preguntar» del espacio (Ajustes → IA): el tope por pedido, 0 = apagado. El compositor lo
+        // mira antes de su «¿Seguimos?» (src/lib/sinPreguntar.js).
+        sinPreguntar: await topeSinPreguntar(acceso),
       });
     }
 

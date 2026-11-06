@@ -7,7 +7,7 @@ import { mediosDe, conMedios } from "../../lib/publicacion";
 import { presetDePilar, nombreDePilar, productosDelPost } from "../../lib/pilares";
 import { estiloDeMarca, limpiarKit, nombreDePreset } from "../../lib/kitMarca";
 import { apoyosDePieza, pedidoDePieza } from "../../lib/pieza";
-import { validarPedido, textoCosto, CONFIRMAR_DESDE, modeloPorId } from "../../lib/estudioCatalogo";
+import { validarPedido, textoCosto, modeloPorId } from "../../lib/estudioCatalogo";
 import * as api from "../../lib/estudio";
 import { partirGuion, costoCarrusel, MODOS_TEXTO, PLANTILLAS_TEXTO } from "../../lib/carrusel";
 import { modeloParaCarrusel } from "../../lib/carruselEstudio";
@@ -198,6 +198,14 @@ export default function ProducirMes({ client, cal, onPoner, onClose, incrustado 
   // Sólo cuenta lo que se ve: escoger «semana 2» no pide lo marcado de las otras.
   const elegidas = visibles.filter((c) => marcadas?.has(c.post.id));
   const total = elegidas.reduce((s, c) => s + c.costo * (c.tipo === "imagen" ? versiones : 1), 0);
+  // El «¿Seguro?» del total: desde 0,50 $, salvo «crear imágenes sin preguntar» del espacio (Ajustes → IA) con todo
+  // dentro del tope. Un video entre las piezas pregunta como siempre (src/lib/sinPreguntar.js).
+  const pedirCrear = async () => {
+    const { decidir } = await import("../../lib/sinPreguntarApi");
+    const d = await decidir({ costo: total, tipo: elegidas.some((c) => c.tipo === "video") ? "video" : "imagen" }).catch(() => ({ preguntar: true }));
+    if (d.preguntar) setPaso("confirmar");
+    else void crear();
+  };
   const soloPrueba = elegidas.some((c) => c.modelo.motor === "prueba");
 
   const crear = async () => {
@@ -439,7 +447,7 @@ export default function ProducirMes({ client, cal, onPoner, onClose, incrustado 
                 {elegidas.length} {elegidas.length === 1 ? "pieza" : "piezas"} · {textoCosto(total)} (aproximado){soloPrueba ? " · motor de prueba: tarjetas, no imágenes" : ""}
               </span>
               <button type="button" className="btn btn-primary" disabled={creando || !elegidas.length}
-                onClick={() => (total >= CONFIRMAR_DESDE ? setPaso("confirmar") : crear())}>
+                onClick={() => void pedirCrear()}>
                 <Icon name="sparkles" size={16} /> {creando ? "Creando…" : `Crear ${elegidas.length}`}
               </button>
             </>

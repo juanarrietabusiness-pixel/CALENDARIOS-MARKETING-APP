@@ -70,7 +70,8 @@ export default function HistoriasDelPost({ post, sf, clientId, cliente = null, c
     setTrabajando("");
   };
 
-  // Lo que cuestan las tres con el modelo escogido: se enseña y se confirma ANTES de crear (segundo toque).
+  // Lo que cuestan las tres con el modelo escogido: se enseña y se confirma ANTES de crear (segundo toque), salvo que el
+  // espacio tenga fijado «crear imágenes sin preguntar» (Ajustes → IA) y las tres quepan en su tope: entonces, directo.
   const [confirmando, setConfirmando] = useState(false);
   const costo = modelos?.costos?.[modelos?.fijado ?? ""] ?? null;
   const textoCosto = costo != null ? `${costo.toFixed(2).replace(".", ",")} $` : "";
@@ -94,6 +95,12 @@ export default function HistoriasDelPost({ post, sf, clientId, cliente = null, c
     }
     window.dispatchEvent(new Event("ia:gasto"));
     setTrabajando("");
+  };
+  const pedirConIA = async () => {
+    const { decidir } = await import("../../lib/sinPreguntarApi");
+    const d = await decidir({ costo: costo ?? 0, tipo: "imagen", siempre: true }).catch(() => ({ preguntar: true }));
+    if (d.preguntar) setConfirmando(true);
+    else void crearConIA();
   };
 
   // SIEMPRE ACTIVO: cuando el post RECIBE su primera imagen (no al abrir uno que ya la tenía), la encajada en el acto; si
@@ -208,7 +215,7 @@ export default function HistoriasDelPost({ post, sf, clientId, cliente = null, c
           <Icon name="image" size={16} /> {trabajando === "post" ? "Preparando…" : "Usar la imagen del post"}
         </button>
         {!confirmando && (
-          <button type="button" className="btn btn-secondary btn-sm" disabled={!base || !cliente || !!trabajando || historias.length >= maximo} onClick={() => setConfirmando(true)}>
+          <button type="button" className="btn btn-secondary btn-sm" disabled={!base || !cliente || !!trabajando || historias.length >= maximo} onClick={() => void pedirConIA()}>
             <Icon name="sparkles" size={16} /> {trabajando === "ia" ? "Creando 3 propuestas…" : `${candidatas.length ? "Otras 3 con IA" : "Crear 3 con IA"}${textoCosto ? ` · unos ${textoCosto}` : ""}`}
           </button>
         )}

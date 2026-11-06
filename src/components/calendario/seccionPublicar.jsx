@@ -226,6 +226,8 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
   const conModelo = (a) => (a?.modelo ? ` con ${nombreDelModelo(a.modelo)}` : "");
   const uso = cal && post.id ? cal.dbId || cal.id : null;
   const costoDe = (costo) => costo.toFixed(2).replace(".", ",");
+  // Sólo sale si el espacio no tiene fijado «crear imágenes sin preguntar» (o el pedido pasa de su tope): dice dónde se fija.
+  const SIN_PREGUNTAR = "\n\n(Para que no pregunte: «Crear imágenes sin preguntar» en Ajustes → IA, lo fija el administrador.)";
   /** La pieza nueva ocupa el sitio de `medio` (o se añade, si no había), con «Deshacer». */
   const ponerEnSuSitio = (medio, nueva) => {
     const puesto = medioDeArchivo(nueva);
@@ -250,7 +252,7 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
       const hacer = recrear ? recrearConLaMarca : otraVersionDelPost;
       const nueva = await hacer({
         client, post, medio, indicacion, modelo: modeloAccion, calendarId: uso, alProgresar: setProgresoVersion,
-        confirmar: (costo) => window.confirm(`${recrear ? "Recrearla" : "Esta versión"} cuesta unos ${costoDe(costo)} $. ¿Sigo?`),
+        confirmar: (costo) => window.confirm(`${recrear ? "Recrearla" : "Esta versión"} cuesta unos ${costoDe(costo)} $. ¿Sigo?${SIN_PREGUNTAR}`),
       });
       if (nueva) {
         ponerEnSuSitio(medio, nueva);
@@ -277,7 +279,7 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
       const nueva = await crearImagenDelPost({
         client, post, indicacion, opciones: { ...opcionesCrear, modelo: modeloAccion }, calendarId: uso, alProgresar: setProgresoVersion,
         alMejorar: (idea) => setForm((p) => conPromptListo(p, idea)),
-        confirmar: (costo) => window.confirm(`Esta imagen cuesta unos ${costoDe(costo)} $. ¿Sigo?`),
+        confirmar: (costo) => window.confirm(`Esta imagen cuesta unos ${costoDe(costo)} $. ¿Sigo?${SIN_PREGUNTAR}`),
       });
       if (nueva) {
         ponerEnSuSitio(null, nueva);
