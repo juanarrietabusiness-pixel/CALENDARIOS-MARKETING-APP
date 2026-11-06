@@ -36,7 +36,11 @@ import { fileURLToPath } from "node:url";
 import WebSocket from "ws";
 import { hashearContrasena } from "../../worker/lib/sesion.js";
 
-const ejecutar = promisify(execFile);
+// Con 64 MB de margen: `wrangler d1 migrations apply` vuelve a pintar la tabla ENTERA de migraciones tras cada una, así que
+// su salida crece con el cuadrado de cuántas hay. Con 72 pasó del 1 MB que execFile admite por defecto y la prueba moría
+// con «stdout maxBuffer length exceeded» antes de arrancar el Worker (sin que el SQL tuviera nada mal).
+const ejecutarSinMargen = promisify(execFile);
+const ejecutar = (comando, args, opciones = {}) => ejecutarSinMargen(comando, args, { maxBuffer: 64 * 1024 * 1024, ...opciones });
 const RAIZ = fileURLToPath(new URL("../..", import.meta.url));
 
 /** La contraseña de las dos cuentas de prueba. Larga porque el alta lo exige. */

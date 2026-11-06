@@ -86,7 +86,7 @@ function useSeguirReel({ post, setForm, clientId }) {
       }
       if (v?.estado === "fallido" || v?.estado === "borrado") {
         setForm(quitar);
-        setMensaje({ ok: false, texto: v.estado === "borrado" ? "El video ya no está: vuelve a pedirlo." : `No salió el video: ${v.render?.error || "el render falló"}. Vuelve a intentarlo.` });
+        setMensaje({ ok: false, texto: v.estado === "borrado" ? "El video ya no está: vuelve a pedirlo." : `No salió el video: ${String(v.render?.error || "el render falló").replace(/[.\s]+$/, "")}. Vuelve a intentarlo.` });
         return;
       }
       // Pasado un rato se deja de mirar desde aquí: sigue en el servidor y se pone solo (otra vez que se abra, se mira).
