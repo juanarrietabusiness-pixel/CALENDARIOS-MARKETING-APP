@@ -5482,6 +5482,9 @@ son del servidor.
   · **El asistente y Claude**: `publicar_con_musica` (herramientasVideo.js): un post de una foto → el reel (no gasta: lo dice);
   un carrusel → a mano con la canción. No está en `CON_VISTA` (la vista previa del chat): el mp4 se mira con `ver_video`.
   · **Nada de esto se ha probado contra Instagram**: que el reel salga como «audio original» lo dice su documentación.
+- **`wrangler d1 migrations apply` pinta la tabla ENTERA de migraciones tras cada una**: su salida crece con el cuadrado de
+  cuántas hay, y con la 0076 (72 migraciones) pasó del 1 MB que `execFile` admite por defecto. `npm run test:vivo` moría con
+  «stdout maxBuffer length exceeded» antes de arrancar el Worker, con el SQL perfecto. `tests/vivo/espacio.js` le da 64 MB.
 
 ## Documentos relacionados
 
