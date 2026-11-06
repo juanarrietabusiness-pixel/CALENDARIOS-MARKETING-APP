@@ -47,7 +47,8 @@ const Tareas = lazy(() => import("./pages/Tareas"));
 // Igual Equipo y Ajustes, que no se abren en cada visita.
 const Equipo = lazy(() => import("./pages/Equipo"));
 const Ajustes = lazy(() => import("./pages/Ajustes"));
-const Resultados = lazy(() => import("./pages/Resultados"));
+// Resultados de un cliente: Redes (pages/Resultados.jsx) y Anuncios (la revisión 3Q), como sub-secciones.
+const Resultados = lazy(() => import("./components/cliente/ResultadosCliente"));
 const Programacion = lazy(() => import("./pages/Programacion"));
 const Bandeja = lazy(() => import("./pages/Bandeja"));
 const ResumenAgencia = lazy(() => import("./pages/Resultados").then((m) => ({ default: m.ResumenAgencia })));
@@ -1711,7 +1712,7 @@ function Workspace({ session, ruta }) {
                 )}
 
                 {pestana === "resultados" && (
-                  <Resultados client={client} pulso={pulso} onPersistClient={persistClient} />
+                  <Resultados client={client} seccion={ruta.seccion} pulso={pulso} yo={yo} onIr={(p, seccion) => irAPestana(p, seccion)} onPersistClient={persistClient} />
                 )}
                 </Suspense>
 

@@ -1,7 +1,9 @@
 // ============================================================
 // El diagnóstico de las campañas activas (puro)
 //
-// Lo que la agencia miraba a ojo en el Administrador cada pocos días:
+// Lo que la agencia miraba a ojo en el Administrador cada pocos días. Desde la entrega 5 del curso son la BASE de la
+// revisión 3Q (src/lib/tresQ.js), que las llama con lo que aguanta cada etapa y le suma el método (el efecto desglose,
+// la fase de aprendizaje, las métricas secundarias y qué hacer con cada una). Lo de aquí sigue igual:
 // qué apagar, qué escalar y qué anuncio está cansado. Son REGLAS sobre las
 // cifras de los últimos 7 días comparadas con las de 30 y con el costo
 // máximo por resultado (el del estratega, o el promedio de la campaña si
@@ -56,10 +58,11 @@ export function cifrasDe(fila, objetivo) {
 
 /**
  * Lo que dicen las reglas de UN elemento (conjunto o anuncio). `ref` es el costo por resultado aceptable; `nivel`,
- * «conjunto» o «anuncio». → { accion, motivo, sugerencia? } o null si está bien. Pura.
+ * «conjunto» o «anuncio». `umbrales` cambia los de arriba (la revisión 3Q pasa los del Manual: la frecuencia de su
+ * etapa, cuándo se pausa). → { accion, motivo, sugerencia? } o null si está bien. Pura.
  */
-export function evaluar({ nivel, estado, presupuestoDiario = null, i7, i30, objetivo }, { ref = 0, moneda = "USD" } = {}) {
-  const u = UMBRALES;
+export function evaluar({ nivel, estado, presupuestoDiario = null, i7, i30, objetivo }, { ref = 0, moneda = "USD", umbrales = null } = {}) {
+  const u = umbrales ? { ...UMBRALES, ...umbrales } : UMBRALES;
   const d = (n) => formatoMoneda(n, moneda);
   const r7 = cifrasDe(i7, objetivo);
   const r30 = cifrasDe(i30, objetivo);
@@ -74,7 +77,7 @@ export function evaluar({ nivel, estado, presupuestoDiario = null, i7, i30, obje
   }
   // Con el doble de lo aceptable gastado ya hay con qué juzgar: no hace falta esperar a tres resultados caros.
   if (ref > 0 && r7.resultados && r7.gasto >= u.gastoSinResultado * ref && cpr > u.apagar * ref) {
-    return { accion: "apagar", motivo: `Cada resultado le cuesta ${d(cpr)}, más de 1,5 veces lo aceptable (${d(ref)}).` };
+    return { accion: "apagar", motivo: `Cada resultado le cuesta ${d(cpr)}, más de ${String(u.apagar).replace(".", ",")} veces lo aceptable (${d(ref)}).` };
   }
   if (nivel === "anuncio") {
     if (r7.frecuencia >= u.frecuenciaFatiga) {

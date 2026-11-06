@@ -76,7 +76,9 @@ const LAMINAS_APROX = 6;
 const PLANOS_APROX = 5;
 
 /**
- * @param inicial  { alcance, mes }: desde «Producir el mes» del calendario abre en «Mes completo» con ESE mes.
+ * @param inicial  { alcance, mes }: desde «Producir el mes» del calendario abre en «Mes completo» con ESE mes; desde la
+ *                 revisión 3Q, { alcance: "anuncios", niveles: "problema,solucion", pide }: anuncios de esos niveles con lo
+ *                 que se pide ya escrito en «Indicación para toda la tanda».
  */
 export default function EstudioLote({ client, motores, productosConFotos = [], archivos = [], papelera = [], kit, inicial = null, onCerrar, onHecho, onLlevar = null }) {
   const ids = useId();
@@ -91,11 +93,13 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
   const [mercado, setMercado] = useState(null); // { catalogo, general }
   const [productoId, setProductoId] = useState("");
   // Anuncios: la matriz del estudio (si lo hay) o por niveles.
-  const [porMatriz, setPorMatriz] = useState(true);
+  // Desde la revisión 3Q («Mejorar los ganchos», `inicial.niveles`): por niveles, sólo los de la etapa de esa campaña.
+  const nivelesPedidos = String(inicial?.niveles ?? "").split(",").filter((n) => CLAVES_NIVEL.includes(n));
+  const [porMatriz, setPorMatriz] = useState(!nivelesPedidos.length);
   const [deseosSel, setDeseosSel] = useState(null);
   const [perfilesSel, setPerfilesSel] = useState(null);
   const [nivelesSel, setNivelesSel] = useState(CLAVES_NIVEL);
-  const [cuantas, setCuantas] = useState(cuantasPorDefecto);
+  const [cuantas, setCuantas] = useState(() => (nivelesPedidos.length ? Object.fromEntries(nivelesPedidos.map((n) => [n, 3])) : cuantasPorDefecto()));
   const [tipos, setTipos] = useState(() => Object.fromEntries(PILARES.map((p) => [p.id, p.id === "anuncio" ? 0 : 2])));
   // Los meses que se ofrecen: este y los dos siguientes, más el que pidió el calendario si es más adelante.
   const meses = useMemo(() => {
@@ -125,7 +129,7 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
   const [variantes, setVariantes] = useState(1);
   const [mejorar, setMejorar] = useState(true);
   // Lo que la agencia pide para TODA la tanda (lo lee el director de arte al diseñar cada pieza).
-  const [indicacion, setIndicacion] = useState("");
+  const [indicacion, setIndicacion] = useState(() => String(inicial?.pide ?? "").slice(0, 400));
   // Una plantilla del kit para toda la tanda ("" = la que escoja el director, si alguna encaja).
   const [plantillaLote, setPlantillaLote] = useState("");
   // El control de calidad de cada pieza (y corregir el texto solo): se recuerda por navegador.

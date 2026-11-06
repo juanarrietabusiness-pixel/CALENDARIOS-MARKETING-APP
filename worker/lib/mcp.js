@@ -61,6 +61,7 @@ export const HERRAMIENTAS_MCP = Object.freeze([
   { name: "leer_nota_cerebro", description: "Lee ENTERA una nota del cerebro de un cliente, por su ruta (la que da buscar_cerebro entre corchetes) o por su título. Para cuando buscar_cerebro dio sólo pasajes de una nota larga.", inputSchema: { type: "object", properties: { ...clienteParam, nota: { type: "string", description: "La ruta de la nota o su título." } }, required: ["cliente", "nota"] }, annotations: soloLectura },
   { name: "ver_resultados", description: "Cómo le va en redes a un cliente: seguidores, alcance, interacción, mejores publicaciones, formatos, horarios y competencia.", inputSchema: { type: "object", properties: { ...clienteParam, dias: { type: "integer", description: "7 a 90. Por defecto 30." } }, required: ["cliente"] }, annotations: soloLectura },
   { name: "kit_whatsapp", description: "El kit de WhatsApp Business de un cliente tal como lo guardó la agencia: bienvenida, ausencia, respuestas rápidas con su atajo (con las objeciones del estudio de mercado), etiquetas por etapa del ciclo de ventas y un guion de ventas por producto. Úsala antes de escribir mensajes de WhatsApp para un cliente.", inputSchema: { type: "object", properties: { ...clienteParam }, required: ["cliente"] }, annotations: soloLectura },
+  { name: "revisar_campanas", description: "La revisión 3Q de los anuncios que corren en el Ads Manager de un cliente: su número mágico, lo real en 30, 14 y 7 días y cada campaña activa con su etapa y qué hacer con cada conjunto y anuncio (qué pasó, por qué, qué cambiar). Sólo lee de Meta: no cambia nada ni gasta.", inputSchema: { type: "object", properties: { ...clienteParam }, required: ["cliente"] }, annotations: { readOnlyHint: true, openWorldHint: true } },
   {
     name: "crear_publicacion",
     description: "Añade una publicación al calendario del cliente para ese día (el calendario de ese mes tiene que existir). Queda pendiente de aprobación.",
@@ -394,7 +395,7 @@ export function crearHerramientasMCP({ env, acceso, usuario }) {
         }
         return { content: [{ type: "text", text: r }] };
       }
-      if (["ver_calendario", "ver_tareas", "ver_banco_ideas", "ver_resultados", "buscar_cerebro", "leer_nota_cerebro", "kit_whatsapp"].includes(nombre)) {
+      if (["ver_calendario", "ver_tareas", "ver_banco_ideas", "ver_resultados", "buscar_cerebro", "leer_nota_cerebro", "kit_whatsapp", "revisar_campanas"].includes(nombre)) {
         const r = await consultas.ejecutar({ id: "mcp", name: nombre, input: entrada ?? {} });
         return { content: [{ type: "text", text: String(r.content) }], ...(r.is_error ? { isError: true } : {}) };
       }

@@ -56,3 +56,6 @@ scripts/migracion/datos/
 
 # Los worktrees de los agentes de Claude Code: cada uno es un clon aparte.
 .claude/worktrees/
+
+# Capturas de la herramienta de Playwright (MCP) al probar las pantallas
+.playwright-mcp/

@@ -43,6 +43,7 @@ import { rutasInspiracion } from "./rutas/inspiracion.js";
 import { inspiracionPendiente } from "./lib/inspiracion.js";
 import { rutasLoMejor } from "./rutas/loMejor.js";
 import { loMejorPendiente } from "./lib/loMejor.js";
+import { revision3qPendiente } from "./lib/revision3q.js";
 import { rutaModelos, rutaConsumo, rutaGasto } from "./rutas/iaEspacio.js";
 import { rutaADN, rutaImagenADN } from "./rutas/adn.js";
 import { rutaGenerarImagen } from "./rutas/imagen.js";
@@ -569,7 +570,11 @@ export default {
       if (inspiracion) return;
       // «Lo mejor»: los anuncios de las búsquedas guardadas una vez por semana (con su tope de créditos) o, si no, unas
       // pocas piezas sin clasificar (una llamada barata a la IA). Sólo si nada de lo de arriba tuvo trabajo.
-      await loMejorPendiente(env, cuando).catch((e) => console.error("cron lo mejor:", e));
+      const loMejor = await loMejorPendiente(env, cuando).catch((e) => { console.error("cron lo mejor:", e); return 1; });
+      if (loMejor) return;
+      // La revisión 3Q: lo GRAVE de las campañas de UN cliente al día (no gasta, anuncio rechazado, el doble del número
+      // mágico sin una conversación) a la campana. Lo último: tres lecturas de Meta y sólo si nada más tuvo trabajo.
+      await revision3qPendiente(env, cuando).catch((e) => console.error("cron revisión 3Q:", e));
     })());
   },
 };

@@ -24,6 +24,7 @@ import { ELEMENTOS_MERCADO, elementosConAlias } from "./estudioMercado.js";
 import { ETAPAS_CICLO, idEtapaCiclo } from "./cicloVentas.js";
 import { OBJETIVOS, DESTINOS, TIPOS_CONJUNTO, MAX_CONJUNTOS, MAX_ANUNCIOS, MAX_TARJETAS, EDAD_MIN, EDAD_MAX, MAX_TEXTO, MAX_TITULO } from "./anuncios.js";
 import { TASA_CIERRE_DEFECTO } from "./numerosNegocio.js";
+import { limpiarUmbrales3q } from "./umbrales3q.js";
 
 /** Las mejoras de oferta que la agencia propone (como sugerencia: la decide el cliente). */
 export const TIPOS_OFERTA = Object.freeze({
@@ -90,6 +91,8 @@ export function limpiarManual(m = {}) {
     diseno: largo(m?.diseno, MAX_MANUAL),
     // Cómo se diseña cada tipo de contenido (lib/director.js, DISENO_POR_TIPO); lo vacío vale el de la casa.
     disenoTipos: limpiarDisenoTipos(m?.disenoTipos),
+    // Los umbrales de la revisión 3Q de las campañas (lib/umbrales3q.js); lo que no está, el de partida.
+    umbrales3q: limpiarUmbrales3q(m?.umbrales3q),
   };
 }
 

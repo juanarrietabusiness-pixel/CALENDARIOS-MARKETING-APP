@@ -568,26 +568,36 @@ describe("una campaña con varios públicos y anuncios, a WhatsApp", () => {
 });
 
 describe("el diagnóstico de las campañas activas", () => {
-  const ins = (gasto, res, extra = {}) => ({ data: [{ spend: String(gasto), impressions: "4000", reach: "2000", ctr: "2", clicks: "80", actions: [{ action_type: "link_click", value: String(res) }], ...extra }] });
-  // La campaña 800 (activa, de tráfico): un conjunto que funciona (901) y uno caro (9012); un anuncio cansado (9031).
+  // Desde la revisión 3Q (worker/lib/revision3q.js) se lee la cuenta POR NIVEL (/act_…/insights con `level`, una
+  // ventana por llamada) y no campaña a campaña: lo de abajo contesta como esa lectura.
+  const ins = (gasto, res, extra = {}) => ({ spend: String(gasto), impressions: "4000", reach: "2000", ctr: "2", clicks: "80", actions: [{ action_type: "link_click", value: String(res) }], ...extra });
+  // La campaña 800 (activa, de tráfico): un conjunto que funciona (901) y uno caro (9012); un anuncio cansado (9031) en el que funciona.
   async function conDiagnostico() {
     await conCuenta();
     const original = globalThis.fetch;
     vi.stubGlobal("fetch", vi.fn(async (e, init = {}) => {
       const u = new URL(String(e));
       const ruta = u.pathname.replace(/^\/v[\d.]+/, "");
-      const de7 = (u.searchParams.get("fields") ?? "").includes("last_7d");
+      const de7 = u.searchParams.get("date_preset") === "last_7d";
+      const nivel = u.searchParams.get("level");
       const metodo = init.method ?? "GET";
-      if (ruta === "/800/adsets" && metodo === "GET") {
+      if (metodo === "GET" && (ruta === "/act_111/adsets" || ruta === "/act_111/ads" || (ruta === "/act_111/insights" && nivel))) {
         llamadas.push({ metodo, ruta, params: Object.fromEntries(u.searchParams), cuerpo: {} });
-        return respuesta({ data: [
-          { id: "901", name: "Intereses", effective_status: "ACTIVE", daily_budget: "1000", insights: de7 ? ins(15, 12, { frequency: "1.4" }) : ins(60, 40) },
-          { id: "9012", name: "Abierto", effective_status: "ACTIVE", daily_budget: "1000", insights: de7 ? ins(20, 2) : ins(60, 30) },
-        ] });
-      }
-      if (ruta === "/800/ads" && metodo === "GET") {
-        llamadas.push({ metodo, ruta, params: Object.fromEntries(u.searchParams), cuerpo: {} });
-        return respuesta({ data: [{ id: "9031", name: "Reel", effective_status: "ACTIVE", adset_id: "901", insights: de7 ? ins(10, 8, { frequency: "3.6" }) : ins(40, 30) }] });
+        if (ruta === "/act_111/adsets") {
+          return respuesta({ data: [
+            { id: "901", name: "Intereses", campaign_id: "800", status: "ACTIVE", effective_status: "ACTIVE", daily_budget: "1000" },
+            { id: "9012", name: "Abierto", campaign_id: "800", status: "ACTIVE", effective_status: "ACTIVE", daily_budget: "1000" },
+          ] });
+        }
+        if (ruta === "/act_111/ads") return respuesta({ data: [{ id: "9031", name: "Reel", campaign_id: "800", adset_id: "901", status: "ACTIVE", effective_status: "ACTIVE" }] });
+        if (nivel === "campaign") return respuesta({ data: [{ campaign_id: "800", ...(de7 ? ins(35, 14) : ins(120, 70)) }] });
+        if (nivel === "adset") {
+          return respuesta({ data: [
+            { campaign_id: "800", adset_id: "901", ...(de7 ? ins(15, 12, { frequency: "1.4" }) : ins(60, 40)) },
+            { campaign_id: "800", adset_id: "9012", ...(de7 ? ins(20, 2) : ins(60, 30)) },
+          ] });
+        }
+        return respuesta({ data: [{ campaign_id: "800", adset_id: "901", ad_id: "9031", ...(de7 ? ins(10, 8, { frequency: "3.6" }) : ins(40, 30)) }] });
       }
       if (ruta === "/9012" && metodo === "GET") return respuesta({ id: "9012", name: "Abierto", account_id: "111", daily_budget: "1000" });
       if (ruta === "/7777" && metodo === "GET") return respuesta({ id: "7777", name: "Ajeno", account_id: "999", daily_budget: "1000" });
@@ -595,16 +605,20 @@ describe("el diagnóstico de las campañas activas", () => {
     }));
   }
 
-  it("dice qué apagar, qué escalar y qué renovar, sin tocar nada", async () => {
+  it("dice qué apagar y qué escalar, sin tocar nada; el anuncio cansado de un conjunto que va bien no se toca", async () => {
     await conDiagnostico();
     const res = await pedir(EDITOR, "/clientes/c1/diagnostico", { method: "POST", body: { costoMax: 2 } });
     expect(res.status).toBe(200);
     const d = await res.json();
-    expect(d.hallazgos.map((h) => [h.accion, h.nombre])).toEqual([["apagar", "Abierto"], ["renovar", "Reel"], ["escalar", "Intereses"]]);
+    // Antes salía también «renovar» el Reel (frecuencia 3,6): con la revisión 3Q, su conjunto (Intereses) va bien y
+    // por el efecto desglose sus anuncios no se tocan.
+    expect(d.hallazgos.map((h) => [h.accion, h.nombre])).toEqual([["apagar", "Abierto"], ["escalar", "Intereses"]]);
     expect(d.hallazgos.find((h) => h.accion === "escalar").sugerencia).toEqual({ diarioActual: 10, diarioNuevo: 12 });
+    expect(d.revision.campanas[0].anuncios[0].veredicto).toMatchObject({ id: "sano", desglose: true });
     expect(d.moneda).toBe("USD");
-    // Sólo lecturas: dos de la lista y cuatro de la campaña activa.
+    // Sólo lecturas: las tres listas y nueve de /insights (tres niveles × 30, 14 y 7 días), las tenga la cuenta que tenga.
     expect(llamadas.filter((l) => l.metodo !== "GET")).toHaveLength(0);
+    expect(llamadas).toHaveLength(12);
   });
 
   it("pausar un conjunto de la cuenta, sí; uno de otra cuenta, no existe", async () => {

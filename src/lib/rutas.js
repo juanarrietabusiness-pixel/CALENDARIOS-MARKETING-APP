@@ -102,6 +102,7 @@ export const SECCIONES_DEL_CLIENTE = Object.freeze({
   crear: ["director", "galeria"],
   referencias: ["ideas", "inspiracion", "competencia"],
   marca: ["ficha", "kit", "negocio", "whatsapp", "cerebro", "plan", "fechas", "drive"],
+  resultados: ["redes", "anuncios"],
 });
 
 /**
