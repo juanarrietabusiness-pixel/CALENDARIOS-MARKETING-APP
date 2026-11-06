@@ -21,6 +21,7 @@ import { difundir } from "./vivo.js";
 import { uuid, ahora } from "./ids.js";
 import { programar, programarLote, cancelarPendientes, resincronizarCalendario, filaPublica, filaConResumen, ErrorPublicar } from "./publicador.js";
 import { normalizarHora } from "../../src/lib/horas.js";
+import { limpiarPauta, vaAPauta, describirPauta } from "../../src/lib/pauta.js";
 import { nuevaIdea } from "../../src/lib/bancoIdeas.js";
 import { aprobadasSinProgramar, fechaHora } from "../../src/lib/cola.js";
 import { fechaEnZona, sumarDias } from "../../src/lib/agenda.js";
@@ -87,6 +88,13 @@ export const HERRAMIENTAS_MCP = Object.freeze([
         texto_pieza: { type: "string", description: "Lo que va escrito encima del diseño (no el caption): titular, apoyo y precio, una línea cada uno." },
         hashtags: { type: "string" }, hora: { type: "string" }, formato: { type: "string", enum: FORMATOS },
         redes: { type: "array", items: { type: "string", enum: REDES } }, nota_interna: { type: "string" },
+        pauta: {
+          description: "Si se va a pautar en Meta: { etapa, como } para marcarla (su caption se escribe como ANUNCIO: en el Ads Manager ya no se cambia) o false para quitarla. etapa: presentacion, evaluacion, conversion o ascension; como: publicacion, anuncio o vacío (las dos).",
+          anyOf: [
+            { type: "object", properties: { etapa: { type: "string", enum: ["presentacion", "evaluacion", "conversion", "ascension"] }, como: { type: "string", enum: ["publicacion", "anuncio", ""] } }, required: ["etapa"] },
+            { type: "boolean" },
+          ],
+        },
       },
       required: ["publicacion_id"],
     },
@@ -176,7 +184,7 @@ export function crearHerramientasMCP({ env, acceso, usuario }) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(String(f ?? ""))) throw new ErrorHerramienta("La fecha va como AAAA-MM-DD.");
     return f;
   };
-  const describir = (p, fecha) => `${fecha} · ${p.format} · «${p.title || p.idea || "sin título"}»${p.publishTime ? ` a las ${p.publishTime}` : ""} (ID ${p.id})`;
+  const describir = (p, fecha) => `${fecha} · ${p.format} · «${p.title || p.idea || "sin título"}»${p.publishTime ? ` a las ${p.publishTime}` : ""}${vaAPauta(p) ? ` · va a pauta (${describirPauta(p.pauta)})` : ""} (ID ${p.id})`;
 
   const acciones = {
     async listar_clientes() {
@@ -244,12 +252,15 @@ export function crearHerramientasMCP({ env, acceso, usuario }) {
       return `Creada: ${describir(post, fecha)} en el calendario de ${c.name}.`;
     },
 
-    async editar_publicacion({ publicacion_id: id, titulo, idea, descripcion, guion, texto_pieza: textoPieza, hashtags, hora: h, formato, redes, nota_interna: nota }) {
+    async editar_publicacion({ publicacion_id: id, titulo, idea, descripcion, guion, texto_pieza: textoPieza, hashtags, hora: h, formato, redes, nota_interna: nota, pauta: p }) {
       const { cal, days, dia, indice, post } = await buscar(id);
       if (formato !== undefined && !FORMATOS.includes(formato)) throw new ErrorHerramienta(`Formato no válido: ${formato}.`);
+      // «Va a pauta» (src/lib/pauta.js): { etapa, como } limpio, o false para quitarla (y que no se vuelva a proponer).
+      const pauta = p === undefined ? undefined : p === false ? false : limpiarPauta(p);
+      if (pauta === null) throw new ErrorHerramienta("«pauta» es { etapa, como } (etapa: presentacion, evaluacion, conversion o ascension) o false para quitarla.");
       const cambios = Object.fromEntries(Object.entries({
         title: titulo, idea, descripcion, guion, textoPieza, hashtagsFinales: hashtags, publishTime: hora(h), format: formato,
-        redes: Array.isArray(redes) ? redes.filter((r) => REDES.includes(r)) : undefined, comment: nota,
+        redes: Array.isArray(redes) ? redes.filter((r) => REDES.includes(r)) : undefined, comment: nota, pauta,
       }).filter(([, v]) => v !== undefined));
       if (!Object.keys(cambios).length) throw new ErrorHerramienta("No indicaste nada que cambiar.");
       dia.posts[indice] = { ...post, ...cambios };

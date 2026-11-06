@@ -203,6 +203,16 @@ describe("el protocolo y las herramientas", () => {
     await llamar(tk, "editar_publicacion", { publicacion_id: nueva.id, descripcion: "Nuevo texto" });
     expect(dias().find((d) => d.date === "2026-10-08").posts[0].descripcion).toBe("Nuevo texto");
 
+    // «Va a pauta» (src/lib/pauta.js): limpia con los alias de antes, se cuenta al describirla y se quita con false.
+    const conPauta = await llamar(tk, "editar_publicacion", { publicacion_id: nueva.id, pauta: { etapa: "tibio", como: "anuncio" } });
+    expect(conPauta.content[0].text).toMatch(/va a pauta \(Evaluación · subiendo la pieza\)/);
+    expect(dias().find((d) => d.date === "2026-10-08").posts[0].pauta).toEqual({ etapa: "evaluacion", como: "anuncio" });
+    expect((await llamar(tk, "editar_publicacion", { publicacion_id: nueva.id, pauta: "sí" })).isError).toBe(true);
+    const visto = await llamar(tk, "ver_calendario", { cliente: "Café Luna", mes: "2026-10" });
+    expect(visto.content[0].text).toMatch(new RegExp(`ID ${nueva.id} .*VA A PAUTA \\(Evaluación · subiendo la pieza; su descripción ES el texto del anuncio, sin sus textos de anuncio aparte\\)`));
+    await llamar(tk, "editar_publicacion", { publicacion_id: nueva.id, pauta: false });
+    expect(dias().find((d) => d.date === "2026-10-08").posts[0].pauta).toBe(false);
+
     await llamar(tk, "mover_publicacion", { publicacion_id: nueva.id, fecha: "2026-10-09" });
     expect(dias().find((d) => d.date === "2026-10-09").posts.map((p) => p.id)).toEqual([nueva.id]);
     // Calendario siempre activo: a otro mes también se mueve, y el mes

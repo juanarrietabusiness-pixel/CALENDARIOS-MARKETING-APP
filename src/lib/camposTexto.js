@@ -21,6 +21,13 @@
 // (`pedidoDeCampos`), su lectura (`leerCampos`) y ponerlo en la publicación
 // (`aplicarCampos`: sólo RELLENA lo vacío, salvo el campo que se pidió con
 // su botón, que se reescribe).
+//
+// LO QUE VA A PAUTA (lib/pauta.js): una publicación con `pauta` viaja con su
+// etapa y su caption se escribe como ANUNCIO (`REGLA_ANUNCIO`: el texto ya no
+// se puede cambiar en el Ads Manager), sin hashtags dentro y con 3 como mucho
+// aparte. Y existe un campo más, «anuncio»: sus textos para montarlo subiendo
+// la pieza (3–5 textos, títulos, descripción y botón), que sólo se pide si va
+// a pauta (`pideCampo`).
 // ============================================================
 
 import {
@@ -28,9 +35,10 @@ import {
 } from "./loteAnuncios.js";
 import { CAMPOS_TEXTO, llevaCampo } from "./reglasFormato.js";
 import { reglaUgc, duracionUgc, palabrasQueCaben, leerGuionConGanchos, limpiarGanchos } from "./ugc.js";
+import { limpiarPauta, lineaDePauta, bloqueDeAnuncio, limpiarAnuncio, recortarHashtags, tieneTextosAnuncio, CAMPO_ANUNCIO, MAX_HASHTAGS_PAUTA } from "./pauta.js";
 
-/** Los campos que el motor sabe escribir, en el orden en que se piden. */
-export const ORDEN_CAMPOS = Object.freeze(["titulo", "idea", "textoPieza", "guion", "descripcion", "hashtags"]);
+/** Los campos que el motor sabe escribir, en el orden en que se piden. «anuncio» sólo en lo que va a pauta. */
+export const ORDEN_CAMPOS = Object.freeze(["titulo", "idea", "textoPieza", "guion", "descripcion", "hashtags", "anuncio"]);
 /** Los formatos que escribe este modo: los del lote y el directo. */
 export const FORMATOS_CAMPOS = Object.freeze(["post", "historia", "carrusel", "reel", "live"]);
 /** Cuánto de lo ya escrito viaja al pedido, por campo. */
@@ -45,7 +53,13 @@ const corto = (t, max) => String(t ?? "").replace(/\s+/g, " ").trim().slice(0, m
 const conLineas = (t, max) => String(t ?? "").replace(/\\n/g, "\n").replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim().slice(0, max).trim();
 const lleno = (t) => Boolean(String(t ?? "").trim());
 /** El valor de un campo del motor en la publicación (el caption, con el `script` de antes de respaldo). */
-const valorEnPost = (post, campo) => (campo === "descripcion" ? post?.descripcion || post?.script || "" : post?.[CAMPOS_TEXTO[campo]] ?? "");
+const valorEnPost = (post, campo) => (campo === "descripcion" ? post?.descripcion || post?.script || "" : CAMPOS_TEXTO[campo] ? post?.[CAMPOS_TEXTO[campo]] ?? "" : "");
+
+/**
+ * ¿Se le pide este campo a una publicación de este formato? La regla de cada formato (lib/reglasFormato.js) y, el
+ * campo «anuncio» (los textos aparte), sólo si va a PAUTA y no es un directo. Pura.
+ */
+export const pideCampo = (formato, campo, pauta = null) => (campo === "anuncio" ? Boolean(limpiarPauta(pauta)) && formato !== "live" : llevaCampo(formato, campo));
 
 /**
  * Una publicación del calendario → su casilla del modo «campos»: su formato, su tipo y su matriz, su semana y su
@@ -55,7 +69,8 @@ const valorEnPost = (post, campo) => (campo === "descripcion" ? post?.descripcio
  */
 export function casillaDeCampos(post = {}, day = {}, { campos = [], semana = "", especial = "", pide = "" } = {}) {
   const formato = FORMATOS_CAMPOS.includes(post.format) ? post.format : "post";
-  const pedidos = ORDEN_CAMPOS.filter((c) => campos.includes(c) && llevaCampo(formato, c));
+  const pauta = limpiarPauta(post.pauta);
+  const pedidos = ORDEN_CAMPOS.filter((c) => campos.includes(c) && pideCampo(formato, c, pauta));
   if (!pedidos.length) return null;
   const escrito = {};
   const antes = {};
@@ -74,6 +89,8 @@ export function casillaDeCampos(post = {}, day = {}, { campos = [], semana = "",
     ...(especial || day?.specialDate ? { especial: especial || day.specialDate } : {}),
     ...(formato === "reel" && post.rostro ? { rostro: true, duracionUgc: duracionUgc(post.duracionUgc), ...(post.formulaUgc ? { formulaUgc: String(post.formulaUgc) } : {}) } : {}),
     ...(String(pide).trim() ? { pide: String(pide).trim().slice(0, 300) } : {}),
+    // Va a pauta: su etapa viaja y el caption se escribe como anuncio (lib/pauta.js).
+    ...(pauta ? { pauta } : {}),
     // La estructura de un video de la competencia que sigue su guion (la escoge «Planificar mes»).
     ...(pedidos.includes("guion") && lleno(post.estructuraRef) ? { estructuraRef: String(post.estructuraRef).trim().slice(0, 900) } : {}),
     escrito, campos: pedidos, antes,
@@ -83,6 +100,7 @@ export function casillaDeCampos(post = {}, day = {}, { campos = [], semana = "",
 /** Cómo es cada campo, dicho a la IA (sólo los que se piden en este pedido). */
 function comoEsCadaCampo(pedidos, plan) {
   const formatos = new Set(plan.filter((r) => r.campos.includes("guion")).map((r) => (r.rostro ? "ugc" : r.formato)));
+  const conPauta = plan.some((r) => r.pauta);
   return [
     pedidos.has("titulo") ? `- "titulo": cómo la llamarías en el calendario, en pocas palabras (${MAX_TITULO} caracteres).` : "",
     pedidos.has("idea") ? `- "idea": qué comunica la publicación y por qué funciona, en una o dos frases (${MAX_BRIEF} caracteres). Si ya tiene una, MEJÓRALA conservando su tema, su producto, su oferta y su enfoque: no la cambies por otra idea ni por otro formato.` : "",
@@ -90,8 +108,9 @@ function comoEsCadaCampo(pedidos, plan) {
     ...[...formatos].map((f) => (f === "ugc"
       ? '- "guion" (en las UGC): el guion para GRABAR, por tramos, uno por línea, con la forma de «PARA LAS UGC» de abajo; y "ganchos": 3 ganchos alternativos para el primer tramo (lo que dice, palabra por palabra).'
       : GUION_DE_FORMATO[f] ? GUION_DE_FORMATO[f].replace('- "guion":', `- "guion" (en ${f === "live" ? "un directo" : `un ${f}`}):`) : "")),
-    pedidos.has("descripcion") ? '- "descripcion": el texto de la publicación (caption), de 2 a 4 frases: gancho en la primera línea, emojis con medida y un llamado a la acción con el contacto de la ficha si el tipo lo pide. SIN hashtags (van aparte).' : "",
-    pedidos.has("hashtags") ? '- "hashtags": de 5 a 10 hashtags útiles (del tema, del rubro y de la zona; los de la marca si la ficha los trae; ninguno de otra marca), separados por espacios.' : "",
+    pedidos.has("descripcion") ? `- "descripcion": el texto de la publicación (caption), de 2 a 4 frases: gancho en la primera línea, emojis con medida y un llamado a la acción con el contacto de la ficha si el tipo lo pide. SIN hashtags (van aparte).${conPauta ? " En las que VAN A PAUTA es el texto principal del anuncio: sigue LO QUE VA A PAUTA." : ""}` : "",
+    pedidos.has("hashtags") ? `- "hashtags": de 5 a 10 hashtags útiles (del tema, del rubro y de la zona; los de la marca si la ficha los trae; ninguno de otra marca), separados por espacios.${conPauta ? ` En las que van a pauta, ${MAX_HASHTAGS_PAUTA} como mucho (o ninguno).` : ""}` : "",
+    pedidos.has("anuncio") ? `- ${CAMPO_ANUNCIO}` : "",
   ].filter(Boolean);
 }
 
@@ -102,9 +121,13 @@ function comoEsCadaCampo(pedidos, plan) {
  */
 export function pedidoDeCampos({
   marca = "la marca", plan = [], productos = {}, perfiles = {}, estudio = "", contexto = "", usados = [], fechasEspeciales = [],
-  estrategia = null, falta = "", ugc = "", cliente = "",
+  estrategia = null, falta = "", ugc = "", cliente = "", pauta = "",
 }) {
   const pedidos = new Set(plan.flatMap((r) => r.campos ?? []));
+  // Lo que va a pauta: la regla del anuncio con el tipo de negocio y el destino del cliente (lo pone el Worker con sus
+  // números del negocio; sin él, la regla sola). El campo «anuncio» se explica en «Cada campo».
+  const conPauta = plan.filter((r) => r.pauta);
+  const bloquePauta = conPauta.length ? String(pauta || bloqueDeAnuncio({ etapas: conPauta.map((r) => r.pauta.etapa), conCampo: false })) : "";
   const formatos = [...new Set(plan.map((r) => r.formato))].filter((f) => REGLA_FORMATO[f]);
   const perfilesUsados = [...new Set(plan.map((r) => r.perfil).filter(Boolean))].filter((n) => perfiles[n]);
   const ugcs = plan.filter((r) => r.rostro && r.campos.includes("guion"));
@@ -112,7 +135,7 @@ export function pedidoDeCampos({
     const escrito = Object.entries(r.escrito ?? {}).map(([k, v]) => `     ${NOMBRE[k] ?? k}: «${conLineas(v, MAX_ESCRITO)}»`);
     const antes = Object.entries(r.antes ?? {}).map(([k, v]) => `   lo que tiene ahora en «${NOMBRE[k] ?? k}» (escribe una versión mejor que conserve su intención; lo que va entre comillas se dice TAL CUAL): «${conLineas(v, MAX_ESCRITO)}»`);
     return [
-      lineaDePieza({ ...r, rostro: false }, productos),
+      lineaDePieza({ ...r, rostro: false, lineaPauta: r.pauta ? lineaDePauta(r.pauta, r) : "" }, productos),
       r.rostro ? `   UGC: lo GRABA una persona de la marca hablando a cámara (no se hace con IA); guion para grabar de ${r.duracionUgc} s, unas ${palabrasQueCaben(r.duracionUgc)} palabras de voz en total.` : "",
       r.formulaLinea ? `   ${r.formulaLinea}` : "",
       escrito.length ? `   YA ESCRITO (manda: lo que escribas encaja con esto, no lo repite ni lo contradice):\n${escrito.join("\n")}` : "",
@@ -126,6 +149,7 @@ export function pedidoDeCampos({
     ...formatos.map((f) => `- ${f === "live" ? "Directo" : f[0].toUpperCase() + f.slice(1)}: ${REGLA_FORMATO[f]}`),
     cliente ? String(cliente).slice(0, 4000) : "",
     textoEstrategiaDelMes(estrategia),
+    bloquePauta,
     perfilesUsados.length ? `Los perfiles:\n${perfilesUsados.map((n) => `- ${n}: ${perfiles[n]}`).join("\n")}` : "",
     fechasEspeciales.length ? `Fechas especiales:\n${fechasEspeciales.map((f) => `- ${f}`).join("\n")}` : "",
     "",
@@ -145,7 +169,7 @@ export function pedidoDeCampos({
     estudio ? `ESTUDIO DE MERCADO:\n${String(estudio).slice(0, 8000)}\n` : "",
     contexto ? `LO QUE SE SABE DE LA MARCA:\n${String(contexto).slice(0, 6000)}\n` : "",
     ugcs.length ? `PARA LAS UGC:\n${[...duraciones.map((d) => `${duraciones.length > 1 ? `De ${d} s:\n` : ""}${reglaUgc(d)}`), String(ugc ?? "").slice(0, 7000)].filter(Boolean).join("\n\n")}\n` : "",
-    `Responde SOLO con JSON, una por número y sólo con los campos que pide cada una, así: {"textos":[{"n":1,"descripcion":"…","hashtags":"#… #…"}]}`,
+    `Responde SOLO con JSON, una por número y sólo con los campos que pide cada una, así: {"textos":[{"n":1,"descripcion":"…","hashtags":"#… #…"${pedidos.has("anuncio") ? ',"anuncio":{"textos":["…","…","…"],"titulos":["…"],"descripcion":"…","boton":"WHATSAPP_MESSAGE"}' : ""}}]}`,
   ].filter((l, i, t) => l !== "" || t[i - 1] !== "").join("\n").replace(/\n{3,}/g, "\n\n");
 }
 
@@ -160,9 +184,10 @@ const deJSON = (texto) => {
 /**
  * La respuesta → [{ clave, n, campos: { campo → texto }, ganchos?, formula? }], una por casilla que trajo algo, con
  * la regla de su formato: sólo los campos pedidos, el caption sin hashtags (los del final se pasan a «hashtags» si se
- * pidieron; si no, se quitan: saldrían dos veces), el guion de una UGC por tramos. Pura.
+ * pidieron; si no, se quitan: saldrían dos veces), el guion de una UGC por tramos. Lo que va a pauta, con 3 hashtags
+ * como mucho y su «anuncio» (un objeto, no un texto: `limpiarAnuncio`). Pura.
  */
-export function leerCampos(texto, plan = []) {
+export function leerCampos(texto, plan = [], { destino = "" } = {}) {
   const d = deJSON(texto);
   const lista = Array.isArray(d?.textos) ? d.textos : Array.isArray(d?.ideas) ? d.ideas : Array.isArray(d) ? d : [];
   const porNumero = new Map();
@@ -191,7 +216,13 @@ export function leerCampos(texto, plan = []) {
     if (pide.has("descripcion") || pide.has("hashtags")) {
       const { descripcion, hashtags } = captionYHashtags(x, r.formato);
       if (pide.has("descripcion") && descripcion) campos.descripcion = descripcion;
-      if (pide.has("hashtags") && hashtags) campos.hashtags = hashtags;
+      // Lo que va a pauta: 3 hashtags como mucho (decisión 10), aunque la IA traiga más.
+      const tags = r.pauta ? recortarHashtags(hashtags) : hashtags;
+      if (pide.has("hashtags") && tags) campos.hashtags = tags;
+    }
+    if (pide.has("anuncio")) {
+      const a = limpiarAnuncio(x.anuncio, { destino });
+      if (a?.textos.length) campos.anuncio = a;
     }
     if (!Object.keys(campos).length) return [];
     return [{
@@ -210,6 +241,12 @@ export function leerCampos(texto, plan = []) {
 export function aplicarCampos(post = {}, textos = {}, { reemplazar = [] } = {}) {
   const cambios = {};
   for (const [campo, valor] of Object.entries(textos?.campos ?? {})) {
+    if (campo === "anuncio") {
+      // Los textos de anuncio aparte: un objeto. Rellenan si no había; con su botón, se reescriben.
+      const a = limpiarAnuncio(valor);
+      if (a && (!tieneTextosAnuncio(post) || reemplazar.includes("anuncio"))) cambios.anuncio = a;
+      continue;
+    }
     const clave = CAMPOS_TEXTO[campo];
     if (!clave || !lleno(valor) || !llevaCampo(post.format, campo)) continue;
     if (lleno(valorEnPost(post, campo)) && !reemplazar.includes(campo)) continue;
@@ -220,6 +257,6 @@ export function aplicarCampos(post = {}, textos = {}, { reemplazar = [] } = {}) 
     cambios.duracionUgc = duracionUgc(post.duracionUgc);
     if (textos.formulaUgc && !post.formulaUgc) cambios.formulaUgc = textos.formulaUgc;
   }
-  const NOMBRES = { title: "título", idea: "idea", textoPieza: "texto de la pieza", guion: "guion", descripcion: "descripción", hashtagsFinales: "hashtags" };
+  const NOMBRES = { title: "título", idea: "idea", textoPieza: "texto de la pieza", guion: "guion", descripcion: "descripción", hashtagsFinales: "hashtags", anuncio: "textos del anuncio" };
   return { cambios, campos: Object.keys(cambios).map((k) => NOMBRES[k]).filter(Boolean) };
 }

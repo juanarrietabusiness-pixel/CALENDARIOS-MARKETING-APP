@@ -645,6 +645,8 @@ export function buildChatSystemPrompt(client, calendar, adnExtra = "", memories 
         if (post.guion) parts.push(`Guion: «${post.guion}»`);
         if (post.hashtagsFinales) parts.push(`Hashtags: ${post.hashtagsFinales}`);
         if (post.status && post.status !== "pending") parts.push(`[${post.status}]`);
+        // Va a pauta (lib/pauta.js): su descripción ES el texto del anuncio. Aquí sin importarlo: es la carga inicial.
+        if (post.pauta && typeof post.pauta === "object") parts.push(`VA A PAUTA (etapa ${post.pauta.etapa || "presentacion"})`);
         postLines.push("  · " + parts.join(" | "));
       }
     }
@@ -664,7 +666,8 @@ CAMPAÑA DE CADA SEMANA: ${Number.isInteger(calendar.month) && calendar.year
   bloqueFechasEspeciales(client, calendar) ? `\n${bloqueFechasEspeciales(client, calendar)}` : ""
 }
 PUBLICACIONES (${postLines.length}):
-${postLines.length ? postLines.join("\n") : "  (vacío)"}`;
+${postLines.length ? postLines.join("\n") : "  (vacío)"}${postLines.some((l) => l.includes("VA A PAUTA")) ? `
+Las marcadas VA A PAUTA se pautan en Meta y su descripción ES el texto del anuncio (en el Ads Manager ya no se cambia): escríbela como anuncio de su etapa, con el gancho en la primera línea, un llamado a escribir por WhatsApp, nada que caduque ni que afirme algo de quien lee, y 3 hashtags como mucho. Para marcar o quitar una, editar_publicacion con «pauta».` : ""}`;
   }
 
   let memoriesBlock = "";

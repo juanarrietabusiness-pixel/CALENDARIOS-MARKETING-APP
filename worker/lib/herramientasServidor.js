@@ -31,6 +31,7 @@
 // ============================================================
 
 import { fechaEnZona, sumarDias } from "../../src/lib/agenda.js";
+import { vaAPauta, describirPauta, limpiarAnuncio } from "../../src/lib/pauta.js";
 import { buscar as buscarCerebro, leerNota } from "./cerebro/cerebro.js";
 import { pack } from "./cerebro/memoria.js";
 import { lineaDeIdea, ideaDeFila as publicaIdea } from "../../src/lib/bancoIdeas.js";
@@ -203,7 +204,7 @@ export function crearEjecutor({ env, acceso, clienteActual = null, estudio = nul
       for (const d of dias) {
         for (const p of d.posts ?? []) {
           lineas.push([
-            `${d.date} · ID ${p.id} · ${p.format}${p.category ? ` · ${p.category}` : ""}${p.publishTime ? ` · ${p.publishTime}` : ""} · ${p.status ?? "pending"}`,
+            `${d.date} · ID ${p.id} · ${p.format}${p.category ? ` · ${p.category}` : ""}${p.publishTime ? ` · ${p.publishTime}` : ""} · ${p.status ?? "pending"}${vaAPauta(p) ? ` · VA A PAUTA (${describirPauta(p.pauta)}; su descripción ES el texto del anuncio${limpiarAnuncio(p.anuncio)?.textos.length ? `, con ${limpiarAnuncio(p.anuncio).textos.length} textos de anuncio aparte` : ", sin sus textos de anuncio aparte"})` : ""}`,
             p.idea ? `  Idea: ${recorta(p.idea, 300)}` : "",
             (p.descripcion || p.script) ? `  Descripción: ${recorta(p.descripcion || p.script, 600)}` : "",
             p.guion ? `  Guion: ${recorta(p.guion, 600)}` : "",

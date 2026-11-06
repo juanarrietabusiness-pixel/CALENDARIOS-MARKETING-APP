@@ -12,6 +12,8 @@ import PorProgramar from "../components/PorProgramar";
 
 // Las historias automáticas, en su chunk: sólo las mira quien abre esta página.
 const HistoriasAutomaticas = lazy(() => import("../components/HistoriasAutomaticas"));
+// «Versión para anuncio» de lo ya publicado (lib/pauta.js), en su chunk: sólo al pulsarla.
+const VersionAnuncio = lazy(() => import("../components/VersionAnuncio"));
 
 // ============================================================
 // Producción (era «Programación»; `/programacion` sigue abriéndola), como en Meta Business Suite
@@ -79,6 +81,7 @@ export default function Programacion({ clients = [], pulso = 0, onAbrir, onSubir
   const [formato, setFormato] = useState("");
   const [texto, setTexto] = useState("");
   const [marcadas, setMarcadas] = useState(() => new Set());
+  const [version, setVersion] = useState(null);
 
   // Al entrar, si algo NO se publicó, se abre esa pestaña: es lo único que pide hacer algo (y adonde llevan los avisos
   // de Mi día y el número rojo de la navegación). Después manda lo que escoja la persona.
@@ -126,6 +129,18 @@ export default function Programacion({ clients = [], pulso = 0, onAbrir, onSubir
     void accion(f, (x) => db.publicar({ calendarId: x.calendarId, postId: x.postId, redes: [x.red], ahora: true }), "Publicándose ahora. Pasa a «Publicadas» cuando salga.");
   };
   const abrir = (f) => onAbrir?.({ clientId: f.clientId, calendarId: f.calendarId, postId: f.postId });
+  /** La publicación de una fila en su calendario (para «Versión para anuncio»), o null. */
+  const publicacionDe = (f) => {
+    const c = porId.get(f.clientId);
+    for (const cal of c?.calendars ?? []) {
+      if (cal.id !== f.calendarId && cal.dbId !== f.calendarId) continue;
+      for (const d of cal.days ?? []) {
+        const post = (d.posts ?? []).find((x) => x.id === f.postId);
+        if (post) return { client: c, cal, post, day: d };
+      }
+    }
+    return null;
+  };
 
   const alternar = (id) => setMarcadas((m) => { const n = new Set(m); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const cancelarMarcadas = async () => {
@@ -248,6 +263,13 @@ export default function Programacion({ clients = [], pulso = 0, onAbrir, onSubir
                         </a>
                       )}
                       {f.calendarId && <button type="button" className="btn btn-ghost btn-sm" onClick={() => abrir(f)}>Abrir</button>}
+                      {/* Pautarla después: el motor escribe su texto como anuncio y sus textos aparte, para copiar. */}
+                      {f.calendarId && f.variante !== "historia" && publicacionDe(f) && (
+                        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setVersion(publicacionDe(f))}
+                          title="El texto de esta pieza escrito como anuncio y sus textos de anuncio aparte, para copiar">
+                          <Icon name="megaphone" size={14} /> Versión para anuncio
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -367,6 +389,11 @@ export default function Programacion({ clients = [], pulso = 0, onAbrir, onSubir
       <Suspense fallback={null}>
         <HistoriasAutomaticas clients={clients} onCambio={cargar} />
       </Suspense>
+      {version && (
+        <Suspense fallback={null}>
+          <VersionAnuncio {...version} onClose={() => setVersion(null)} />
+        </Suspense>
+      )}
 
       <p className="hint">
         <a href="/ajustes#integraciones" onClick={(e) => { e.preventDefault(); navegar("/ajustes#integraciones"); }}>Cuentas conectadas</a>

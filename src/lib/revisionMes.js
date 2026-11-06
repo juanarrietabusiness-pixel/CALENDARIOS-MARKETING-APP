@@ -15,11 +15,17 @@
 //
 // La revisión con IA (opcional, unos centavos) y la de las imágenes contra
 // el kit de marca las hace la pantalla (RevisionMes.jsx) con lo de aquí.
+//
+// Lo que VA A PAUTA sale además aparte, con la revisión de ANUNCIO
+// (lib/pauta.js: lo que caduca, la primera línea, el llamado a WhatsApp o a
+// la web, los hashtags, lo que dice de quien lee, «casi igual a otra de su
+// etapa»). Su llamado se revisa ahí, más estricto: aquí no se repite.
 // ============================================================
 
 import { faltaParaEnviar } from "./completitud";
+import { vaAPauta, revisarPauta, resumenPauta, aplicarArregloPauta } from "./pauta.js";
 
-export { faltaParaEnviar };
+export { faltaParaEnviar, revisarPauta, resumenPauta, aplicarArregloPauta };
 
 /** Formas del voseo que se cuelan cuando el modelo imita un ADN o un ejemplo rioplatense → su forma de tú. */
 export const VOSEO = Object.freeze({
@@ -104,7 +110,9 @@ export function revisarMes(days = [], { catalogo = [], competidores = [], delica
   const salida = [];
   for (const d of [...(days ?? [])].sort((a, b) => (a.date < b.date ? -1 : 1))) {
     for (const post of d?.posts ?? []) {
-      const problemas = problemasDeTexto(post, { precios, competidores, delicada: delicadas[d.date] ?? null });
+      const problemas = problemasDeTexto(post, { precios, competidores, delicada: delicadas[d.date] ?? null })
+        // Lo que va a pauta revisa su llamado en la revisión de anuncio (a WhatsApp o a la web, no cualquiera).
+        .filter((p) => !(p.codigo === "cta" && vaAPauta(post)));
       const falta = faltaParaEnviar(post);
       if (problemas.length || falta.length) salida.push({ date: d.date, post, problemas, falta });
     }
