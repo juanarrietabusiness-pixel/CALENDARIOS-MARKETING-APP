@@ -519,8 +519,9 @@ export function nombreCarpetaLote(producto = "", fecha = new Date()) {
 /**
  * La publicación que sale de una pieza: título, brief (la idea), qué se ve (`escena`: para diseñarla después con el
  * mismo camino), el texto de la pieza, el guion (carrusel o reel), la descripción, su tipo y su matriz, y los archivos
- * escogidos. Sin archivos es una IDEA: el cliente aprueba la idea (`aprobacion: "idea"`). Pendiente: la revisa el
- * equipo y la aprueba el cliente. Pura.
+ * escogidos. Sin archivos es una IDEA: el cliente aprueba la idea, y SIN marca `aprobacion` (`tipoAprobacion` ya da
+ * «idea» sin archivo): con ella, cuando llegara su pieza el cliente la seguiría viendo como idea y su «sí» quedaría «por
+ * producir». Pendiente: la revisa el equipo y la aprueba el cliente. Pura.
  */
 export function publicacionDePieza({ id, idea, archivo = null, archivos = null, formato = "post", producto = null }) {
   formato = idea.formato && FORMATOS_LOTE[idea.formato] ? idea.formato : formato;
@@ -555,7 +556,7 @@ export function publicacionDePieza({ id, idea, archivo = null, archivos = null, 
     ...(idea.pauta ? { pauta: idea.pauta } : {}),
     ...(idea.pauta && idea.anuncio ? { anuncio: idea.anuncio } : {}),
     status: "pending",
-    ...(lista.length ? { medios: lista.map(medioDe) } : { aprobacion: "idea" }),
+    ...(lista.length ? { medios: lista.map(medioDe) } : {}),
   };
   // Sin archivo todavía: el pedido de su imagen, listo para «Crear con IA» desde el post.
   return idea.imagen && !lista.length && !esGuiado(formato) ? { ...pub, ...camposDePromptListo(pub, idea.imagen) } : pub;

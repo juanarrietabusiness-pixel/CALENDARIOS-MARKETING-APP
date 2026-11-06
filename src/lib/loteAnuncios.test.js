@@ -9,6 +9,7 @@ import { pedidoDeLote, ideaDeLote, colaDeLote } from "./loteEstudio";
 import { ideaParaMejorar, ideaSinMejorar, pedidoDePieza, apoyosDePieza } from "./pieza";
 import { modeloPorId } from "./estudioCatalogo";
 import { ideaDelPedido } from "./kitMarca";
+import { tipoAprobacion } from "./aprobacion";
 
 describe("las casillas del lote", () => {
   it("por niveles: cinco en cada uno por defecto, sólo niveles que existen y con tope", () => {
@@ -193,8 +194,13 @@ describe("cada pieza", () => {
     expect(nombreCarpetaLote("Sofá cama", new Date("2026-10-12T15:00:00Z"))).toBe("Lote Sofá cama · 12 oct");
     // Sólo la idea (sin diseño): el cliente aprueba la idea; con el guion de un carrusel, va en la publicación.
     const soloIdea = publicacionDePieza({ id: "p2", idea: { ...idea, guion: "Portada: x\nCTA: y" }, formato: "carrusel" });
-    expect(soloIdea).toMatchObject({ format: "carrusel", aprobacion: "idea", guion: "Portada: x\nCTA: y", escena: "Un sofá cama abierto en un estudio" });
+    expect(soloIdea).toMatchObject({ format: "carrusel", guion: "Portada: x\nCTA: y", escena: "Un sofá cama abierto en un estudio" });
     expect(soloIdea.medios).toBeUndefined();
+    // Sin archivos ya es una idea para el cliente, y SIN la marca «idea»: si la llevara, al recibir su pieza (el
+    // servidor, el panel, «Diseñar las aprobadas») el cliente la seguiría viendo como idea y su «sí» quedaría «por producir».
+    expect("aprobacion" in soloIdea).toBe(false);
+    expect(tipoAprobacion(soloIdea)).toBe("idea");
+    expect(tipoAprobacion({ ...soloIdea, medios: [{ src: "/api/media/clientes/c1/b.jpg", tipo: "imagen" }] })).toBe("pieza");
     // Varias láminas (un carrusel hecho) o un video (un reel).
     expect(publicacionDePieza({ id: "p3", idea, formato: "reel", archivos: [{ src: "/v.mp4", tipo: "video" }] }).medios).toEqual([{ src: "/v.mp4", tipo: "video" }]);
   });
@@ -231,7 +237,8 @@ describe("el plan del mes en el lote: hashtags, estrategia y lo que se guarda en
     const { publicacionDePieza } = await import("./loteAnuncios.js");
     const idea = { titulo: "T", titular: "¿Visitas?", escena: "Sala", brief: "B", composicion: "uso", tactica: "pregunta", hashtags: "#a", formato: "carrusel", guion: "Portada: x" };
     const p = publicacionDePieza({ id: "p", idea, formato: "post" });
-    expect(p).toMatchObject({ format: "carrusel", composicion: "uso", tactica: "pregunta", hashtagsFinales: "#a", guion: "Portada: x", aprobacion: "idea" });
+    expect(p).toMatchObject({ format: "carrusel", composicion: "uso", tactica: "pregunta", hashtagsFinales: "#a", guion: "Portada: x" });
+    expect(p.aprobacion).toBeUndefined();
     expect(p.textoPieza).toBeUndefined();
     expect(publicacionDePieza({ id: "q", idea: { ...idea, formato: undefined }, formato: "post" }).textoPieza).toBe("¿Visitas?");
   });

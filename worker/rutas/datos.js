@@ -39,6 +39,7 @@ import { limpiarPlanSemanal } from "../../src/lib/planSemanal.js";
 import { limpiarPlanCliente } from "../../src/lib/plantillasPlan.js";
 import { limpiarRitmo } from "../../src/lib/pilares.js";
 import { TOPE_MAXIMO_SIN_PREGUNTAR } from "../../src/lib/sinPreguntar.js";
+import { motivoParaNoContar, huellaPieza } from "../../src/lib/aprobacion.js";
 
 /**
  * Lo que va después de responder (avisos, historial): con el `waitUntil`
@@ -49,6 +50,14 @@ function despues(ctx, promesa) {
   const segura = promesa.catch((e) => console.error("después de responder:", e));
   if (ctx.exec?.waitUntil) { ctx.exec.waitUntil(segura); return Promise.resolve(); }
   return segura;
+}
+
+/** La publicación con ese id dentro de la fila de un calendario (`days` en texto), o null. */
+function publicacionDelCalendario(cal, postId) {
+  let days = [];
+  try { days = JSON.parse(cal?.days || "[]"); } catch { days = []; }
+  for (const d of days ?? []) for (const p of d?.posts ?? []) if (p?.id === postId) return p;
+  return null;
 }
 
 /** Borrar un cliente o un calendario entero, sólo quien administra. */
@@ -661,6 +670,34 @@ export async function rutasDatos(req, env, ctx) {
         suggested_guion: a.suggested_guion,
         tipo: a.tipo ?? null, huella: a.huella ?? null,
       })));
+    }
+
+    // «El cliente vio la pieza: contarla como aprobada» (el aviso del panel). El cliente aprobó la publicación cuando
+    // era una IDEA (la marca «idea» del sistema no se iba con la pieza: ver CLAUDE.md) y ya tiene su archivo. La agencia,
+    // que sabe que la vio así, la cuenta como PIEZA aprobada: el tipo y la huella con la publicación de AHORA, y la fecha
+    // de ahora (si no, todo archivo puesto después de su «sí» saldría como «cambiaste los archivos después de que el
+    // cliente la aprobara»). NO programa nada: queda «por programar», como cualquier pieza aprobada.
+    if (sub === "aprobaciones" && subId && metodo === "PATCH") {
+      const { tipo } = (await cuerpo(req)) ?? {};
+      if (tipo !== "pieza") return error("Sólo se puede contar como pieza aprobada.");
+      const cal = await acceso.leerUno("calendars", { id });
+      if (!cal) return noEncontrado("Calendario");
+      const post = publicacionDelCalendario(cal, subId);
+      if (!post) return noEncontrado("Publicación");
+      const fila = await acceso.leerUno("approvals", { calendar_id: id, post_id: subId });
+      const motivo = motivoParaNoContar(post, fila);
+      if (motivo) return error(motivo, 409);
+      const huella = huellaPieza(post);
+      const t = ahora();
+      const n = await acceso.actualizar("approvals", { calendar_id: id, post_id: subId }, { tipo: "pieza", huella, updated_at: t });
+      if (!n) return noEncontrado("Aprobación");
+      difundir(env, acceso.ownerId, { tipo: "aprobacion", calId: id, postId: subId, estado: "aprobado", motivo: "pieza", por: firma(ctx.usuario, req) });
+      // Quién lo decidió, en el historial de la publicación. Nunca tumba la respuesta.
+      await despues(ctx, acceso.insertar("historial", {
+        id: uuid(), calendar_id: id, post_id: subId, user_id: ctx.usuario?.id ?? "", nombre: ctx.usuario?.nombre ?? "",
+        accion: "Contó como aprobada la pieza: el cliente la vio así.", created_at: t,
+      }));
+      return json({ tipo: "pieza", huella, updated_at: t });
     }
   }
 

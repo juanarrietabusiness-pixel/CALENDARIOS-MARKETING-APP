@@ -595,7 +595,7 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
               </button>
             ))}
           </div>
-          <QueAprueba post={form} sf={sf} setForm={setForm} />
+          <QueAprueba post={form} setForm={setForm} calId={cal?.dbId || cal?.id} />
         </fieldset>
 
 
