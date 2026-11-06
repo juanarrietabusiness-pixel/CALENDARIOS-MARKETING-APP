@@ -210,6 +210,7 @@ export function sinArtistas(texto) {
   return String(texto ?? "")
     .replace(/\b(?:in the style of|style of|inspired by|reminiscent of|a la manera de|al estilo de|à la)\s+[^,.;]+/gi, "")
     .replace(/\b(?:[Ss]ounds? [Ll]ike|[Ll]ike|[Bb]y)\s+(?=[A-Z])[^,.;]+/g, "")
+    .replace(/\s+([,.;])/g, "$1")
     .replace(/\s*,\s*(?:,\s*)+/g, ", ")
     .replace(/^[\s,.;]+|[\s,;]+$/g, "")
     .replace(/\s+/g, " ")
