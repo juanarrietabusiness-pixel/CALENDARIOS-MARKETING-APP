@@ -48,10 +48,11 @@ export default function ReelIA({ client, post, cal = null, forma = "guion", onPo
       <div ref={ref} role="dialog" aria-modal="true" aria-labelledby={`${ids}-t`} className="sheet revision-mes carrusel-ia" tabIndex={-1}>
         <div className="sheet-header">
           <div>
-            <h2 id={`${ids}-t`} style={{ fontSize: "var(--fs-md)", margin: 0 }}>{{ producto: "Video del producto", animado: "Video animado" }[forma] ?? "Crear reel con IA"}</h2>
+            <h2 id={`${ids}-t`} style={{ fontSize: "var(--fs-md)", margin: 0 }}>{{ producto: "Video del producto", animado: "Video animado", cancion: "Video con canción" }[forma] ?? "Crear reel con IA"}</h2>
             <p className="hint" style={{ margin: 0 }}>{{
               producto: "10 a 15 s: el primer fotograma y el cierre con la foto real del producto y el logo, y el video entre los dos.",
               animado: "Escenas dibujadas con código, una locución y subtítulos. La IA escribe el guion de esta publicación; el mp4 se pone en ella al renderizar.",
+              cancion: "Tu canción ya grabada (el fragmento del reel) con su letra sincronizada, en el estilo guardado del cliente. No se genera voz; el mp4 se pone en esta publicación al renderizar.",
             }[forma] ?? "Guion por planos, el storyboard para revisar y el video, montado aquí con la voz de la marca, el texto y el logo. Se hace en el servidor: puedes cerrar y volver."}</p>
           </div>
           <button type="button" className="btn-icon" onClick={onCerrar} disabled={creando} aria-label="Cerrar"><Icon name="close" /></button>

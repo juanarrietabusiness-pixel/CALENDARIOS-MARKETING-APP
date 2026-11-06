@@ -54,6 +54,9 @@ const FORMAS = [
   ["guion", "Por planos", "La idea, el storyboard, el video y el montaje con voz, texto y logo"],
   ["producto", "Del producto", "10–15 s que terminan en su foto real y el logo"],
   ["animado", "Animado con código", "Escenas dibujadas, una locución y subtítulos: 30 s a 2 min"],
+  // La categoría «Video con canción» (lyric video): el video animado sobre una canción ya grabada, con su letra
+  // sincronizada y el estilo guardado del cliente (VideoAnimado con `inicio` «cancion»).
+  ["cancion", "Con canción", "Tu canción ya grabada con su letra sincronizada, en el estilo guardado del cliente"],
 ];
 const FASE_MONTAJE = {
   nuevo: "Montando…", aprobar: "Aprobando el montaje…", voz: "Pidiendo la voz…", esperaVoz: "Generando la voz de la marca…",
@@ -62,7 +65,7 @@ const FASE_MONTAJE = {
 
 export default function FlujoReel({ client, estudio, inicial = {}, onPoner = null, onListo = null, cabecera = null, onCreando = () => {} }) {
   const ids = useId();
-  const [forma, setForma] = useState(["producto", "animado"].includes(inicial.forma) ? inicial.forma : "guion");
+  const [forma, setForma] = useState(["producto", "animado", "cancion"].includes(inicial.forma) ? inicial.forma : "guion");
   const [abrirVideoId, setAbrirVideoId] = useState(null);
   const clienteId = client?.dbId || client?.id;
   const kit = limpiarKit(estudio?.kit);
@@ -492,15 +495,16 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
       ))}
     </div>
   );
-  // El video animado no gasta en ningún motor de video: sus escenas las dibuja el código (VideoAnimado.jsx).
-  if (forma === "animado") {
+  // El video animado no gasta en ningún motor de video: sus escenas las dibuja el código (VideoAnimado.jsx). «Con canción»
+  // es el mismo, abierto en «Video nuevo» con la canción.
+  if (forma === "animado" || forma === "cancion") {
     return (
-      <section className="card flujo-carrusel flujo-reel" aria-label="Video animado con código">
+      <section className="card flujo-carrusel flujo-reel" aria-label={forma === "cancion" ? "Video con canción" : "Video animado con código"}>
         {cabecera}
         {selectorForma}
         {abrirVideoId && <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setForma("guion"); setAbrirVideoId(null); }}><Icon name="chevronLeft" size={14} /> Volver al reel</button>}
         <Suspense fallback={<p className="hint">Cargando…</p>}>
-          <VideoAnimado client={client?.dbId ? { ...client, id: client.dbId } : client} estudio={estudio} abrirId={abrirVideoId}
+          <VideoAnimado key={forma} client={client?.dbId ? { ...client, id: client.dbId } : client} estudio={estudio} abrirId={abrirVideoId} inicio={forma === "cancion" ? "cancion" : ""}
             publicacion={inicial.postId && !abrirVideoId ? { postId: inicial.postId, calendarId: inicial.calendarId ?? null, idea: inicial.idea ?? "" } : null} />
         </Suspense>
       </section>

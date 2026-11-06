@@ -75,3 +75,8 @@
 /* Anuncios (pages/Anuncios.jsx): la cabecera de Campañas lleva cuatro o cinco botones; en el teléfono no cabían en una
    fila y la página entera desplazaba de lado. */
 .anuncios .page-header-actions { flex-wrap: wrap; }
+
+/* Los estilos de video guardados del cliente (Marca → Kit y voz). */
+.estilos-video { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--sp-3); }
+.estilo-video { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: var(--sp-3); }
+.estilo-video > ul { margin: var(--sp-1) 0 var(--sp-2); padding-left: var(--sp-4); }

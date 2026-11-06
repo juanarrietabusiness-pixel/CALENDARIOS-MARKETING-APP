@@ -31,6 +31,8 @@ import { fondosPendientes } from "../../../src/lib/fondosVideo.js";
 import { alContenedor, aBase64 } from "./cuadros.js";
 import { limpiarGolpes } from "../../../src/lib/golpes.js";
 import { crearProyecto, publicacionDelCliente, deFila, ErrorVideo } from "../videosProyectos.js";
+import { estiloDelCliente, ErrorEstilo } from "./estilosVideo.js";
+import { aplicarEstilo } from "../../../src/lib/estilosVideo.js";
 import { ErrorIA } from "../cerebro/ia.js";
 import { palabrasDe, MIN_SEGUNDOS, MAX_SEGUNDOS_CANCION } from "../../../src/lib/videoEscenas.js";
 import { USD_POR_CARACTER_ELEVENLABS, leerTranscripcionConTiempos } from "../../../src/lib/voces.js";
@@ -263,9 +265,20 @@ export function locucionDeSincronia(s, guion, version, { desplazamiento = 0 } = 
 /**
  * Crea el borrador con la canción como su locución: la PRUEBA DE SINCRONÍA (`modo` «karaoke», gratis) o las escenas
  * diseñadas por la IA (`modo` «ia», texto). `huella`: la de `sincronizarCancion` (se lee de R2, no del navegador).
- * → { video, avisos, corregido, aviso }.
+ * `estiloId`: un ESTILO GUARDADO del cliente (src/lib/estilosVideo.js): la IA escribe el contenido con él delante y el
+ * código impone su forma (también a la prueba de sincronía, que sigue gratis); el video recuerda cuál (`origen`).
+ * → { video, avisos, corregido, aviso, fondos, estilo }.
  */
-export async function crearVideoConCancion(env, acceso, cliente, { huella, modo = "karaoke", formato = "9:16", titulo = "", postId = "", calendarId = "", desplazamiento = 0, indicacion = "", conFondos = false, usuario = null }) {
+export async function crearVideoConCancion(env, acceso, cliente, { huella, modo = "karaoke", formato = "9:16", titulo = "", postId = "", calendarId = "", desplazamiento = 0, indicacion = "", conFondos = false, estiloId = "", usuario = null }) {
+  let estilo = null;
+  if (estiloId) {
+    try {
+      estilo = estiloDelCliente(cliente, estiloId);
+    } catch (e) {
+      if (e instanceof ErrorEstilo) throw new ErrorCancion(e.message, e.estado);
+      throw e;
+    }
+  }
   const s = await leerSincronia(env, acceso.ownerId, cliente.id, String(huella ?? ""));
   if (!s) throw new ErrorCancion("No encuentro esa sincronización de la letra: vuelve a sincronizarla.", 404);
   // La canción tiene que seguir en la biblioteca (si se quitó, el render no tendría audio).
@@ -286,7 +299,7 @@ export async function crearVideoConCancion(env, acceso, cliente, { huella, modo 
   if (modo === "ia") {
     try {
       // «Con imágenes de fondo»: la IA pone un fondo por crear por sección (src/lib/fondosVideo.js); se crean después.
-      const r = await escribirGuionCancion(env, acceso, cliente, { sincronia: s, lineas, huecos, formato, titulo, postId: liga?.postId ?? "", indicacion, conFondos: conFondos === true, golpes: s.golpes ?? [], bpm: s.bpm ?? 0 });
+      const r = await escribirGuionCancion(env, acceso, cliente, { sincronia: s, lineas, huecos, formato, titulo, postId: liga?.postId ?? "", indicacion, conFondos: conFondos === true, golpes: s.golpes ?? [], bpm: s.bpm ?? 0, estilo });
       ({ guion, avisos, corregido, aviso } = r);
     } catch (e) {
       if (e instanceof ErrorGuion || e instanceof ErrorIA) throw new ErrorCancion(e.message, e.estado ?? 502);
@@ -294,12 +307,19 @@ export async function crearVideoConCancion(env, acceso, cliente, { huella, modo 
     }
   } else {
     guion = guionKaraoke({ titulo: titulo || s.nombre, lineas, duracion: s.duracion, cancion: { archivo: s.archivo, nombre: s.nombre }, formato });
+    // La prueba de sincronía con la forma del estilo guardado (sin fondos: sigue gratis).
+    if (estilo) guion = aplicarEstilo(guion, estilo).guion;
   }
   const r = await crearProyecto(acceso, cliente, {
     guion, titulo: titulo || guion.titulo, calendarId: liga?.calendarId ?? null, postId: liga?.postId ?? null, usuario,
-    origen: { tipo: "cancion" }, locucion: locucionDeSincronia(s, guion, 1, { desplazamiento: d }),
+    origen: { tipo: "cancion", ...(estilo ? { estiloId: estilo.id } : {}) }, locucion: locucionDeSincronia(s, guion, 1, { desplazamiento: d }),
+    // Sin efectos si el estilo no los lleva.
+    ...(estilo?.efectos === false ? { sonido: { efectos: false } } : {}),
   });
-  return { video: r.video, avisos: [...avisos, ...r.avisos], corregido, aviso, fondos: fondosPendientes(guion).length };
+  return {
+    video: r.video, avisos: [...avisos, ...r.avisos], corregido, aviso, fondos: fondosPendientes(guion).length,
+    ...(estilo ? { estilo: { id: estilo.id, nombre: estilo.nombre } } : {}),
+  };
 }
 
 /** El ajuste fino de la canción de un video (±1,5 s): se aplica al leer, sin pagar otra vez ni subir la versión. → { video }. */

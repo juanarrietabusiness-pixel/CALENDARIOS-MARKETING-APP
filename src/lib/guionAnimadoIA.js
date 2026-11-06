@@ -47,7 +47,7 @@ export function textoDePublicacion(post) {
  * catálogo con los IDs de la galería de sus fotos; `personaje`: el aspecto del kit (o null); `errores`: los del intento
  * anterior, para corregirlos sobre `anterior`. Pura.
  */
-export function pedidoDeGuionAnimado({ marca, idea, publicacion = "", segundos, formato = "9:16", contexto = "", productos = "", personaje = null, errores = [], anterior = "", criterio = "", estructura = "", marcaVideo = "", referencias = 0, conFondos = false, galeria = "" }) {
+export function pedidoDeGuionAnimado({ marca, idea, publicacion = "", segundos, formato = "9:16", contexto = "", productos = "", personaje = null, errores = [], anterior = "", criterio = "", estructura = "", marcaVideo = "", referencias = 0, conFondos = false, galeria = "", estiloGuardado = "", maxFondos = undefined }) {
   const f = FORMATOS_VIDEO[formato] ? formato : "9:16";
   const s = duracionAnimado(segundos);
   const partes = [
@@ -70,7 +70,9 @@ export function pedidoDeGuionAnimado({ marca, idea, publicacion = "", segundos, 
     "· Cada escena con su «pantalla» (lo que se lee) y capas que se dibujen de verdad: texto, sello, icono, cifra, anillo, dibujo, forma, imagen (sólo con IDs de la galería que estén abajo), logo, llamado y personaje.",
     personaje ? `· La marca tiene PERSONAJE${personaje.nombre ? ` («${personaje.nombre}»)` : ""}: úsalo con «personaje» (variante, pose y expresión según lo que pase en la escena). Su aspecto lo pone el kit: no escribas estilo.personaje.` : "",
     "· Sin paleta propia: los colores salen del kit por sus tokens.",
-    conFondos ? `\n${lineaDeFondos({ galeria })}` : "",
+    // El ESTILO GUARDADO del cliente (src/lib/estilosVideo.js): la forma que el código impone después.
+    estiloGuardado ? `\n${estiloGuardado}` : "",
+    conFondos ? `\n${lineaDeFondos({ galeria, ...(maxFondos ? { maxFondos } : {}) })}` : "",
     // El criterio comercial de la agencia: el mismo de todo guion de video (lib/guionVideo.js).
     criterio ? `\n${String(criterio).trim()}` : "",
     // La ESTRUCTURA de guion de la agencia (lib/formulasUgc.js): la escogida, en esta duración, o la lista para que la
@@ -136,7 +138,7 @@ export function letraParaLaIA(lineas = [], huecos = [], golpes = []) {
  * visual y el texto en pantalla corto. `lineas` y `huecos`: los de videoCancion.js; `errores`/`anterior`: la vuelta de
  * corrección. Pura.
  */
-export function pedidoDeGuionCancion({ marca, titulo = "", nombre = "", duracion, lineas = [], huecos = [], formato = "9:16", contexto = "", productos = "", personaje = null, indicacion = "", errores = [], anterior = "", marcaVideo = "", referencias = 0, conFondos = false, galeria = "", golpes = [], bpm = 0 }) {
+export function pedidoDeGuionCancion({ marca, titulo = "", nombre = "", duracion, lineas = [], huecos = [], formato = "9:16", contexto = "", productos = "", personaje = null, indicacion = "", errores = [], anterior = "", marcaVideo = "", referencias = 0, conFondos = false, galeria = "", golpes = [], bpm = 0, estiloGuardado = "", maxFondos = undefined }) {
   const f = FORMATOS_VIDEO[formato] ? formato : "9:16";
   const coro = lineas.some((l) => l.coro);
   return [
@@ -160,7 +162,8 @@ export function pedidoDeGuionCancion({ marca, titulo = "", nombre = "", duracion
     personaje ? `· La marca tiene PERSONAJE${personaje.nombre ? ` («${personaje.nombre}»)` : ""}: úsalo en el coro o en los huecos (variante, pose y expresión según la letra). Su aspecto lo pone el kit.` : "",
     "· Sin paleta propia: los colores salen del kit por sus tokens.",
     "· La letra en pantalla con CARÁCTER: el coro o la frase clave en rol «gigante» o con *énfasis* en la palabra clave; con «porPalabra» y la entrada «golpe», cada palabra entra cuando se canta.",
-    conFondos ? `\n${lineaDeFondos({ galeria, cancion: true })}` : "",
+    estiloGuardado ? `\n${estiloGuardado}` : "",
+    conFondos ? `\n${lineaDeFondos({ galeria, cancion: true, ...(maxFondos ? { maxFondos } : {}) })}` : "",
     indicacion ? `\nLO QUE PIDE LA AGENCIA (manda): ${String(indicacion).trim().slice(0, 600)}` : "",
     "",
     `LA CANCIÓN${nombre ? ` «${nombre}»` : ""}: dura ${Number(duracion).toFixed(1)} s${bpm > 0 ? `, a unos ${bpm} BPM` : ""}. Formato principal: ${f} (formatos: ["${f}"]).${titulo ? ` Título del video: «${titulo}».` : ""}`,

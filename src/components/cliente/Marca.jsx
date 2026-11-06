@@ -34,6 +34,8 @@ const VozDeMarca = lazy(() => import("../VozDeMarca"));
 const MusicaDeMarca = lazy(() => import("../MusicaDeMarca"));
 // El estilo de los videos animados de la marca y sus imágenes de referencia (lo sigue la IA del guion como obligatorio).
 const EstiloVideoMarca = lazy(() => import("../EstiloVideoMarca"));
+// Los ESTILOS DE VIDEO guardados de un video que salió bien (src/lib/estilosVideo.js): nombre, uso y quitar.
+const EstilosVideoGuardados = lazy(() => import("../EstilosVideoGuardados"));
 // La biblioteca de sonido del cliente: su música (Suno, subidas) y sus efectos, con «Usar de la agencia».
 const BibliotecaSonido = lazy(() => import("../BibliotecaSonido"));
 // Las canciones de Instagram que le van (para lo que se publica a mano con su música: src/lib/cancionesInstagram.js).
@@ -77,6 +79,9 @@ function KitYVoz({ client, estudio, lectura, onCambio, onError }) {
       </section>
       <section className="card" aria-label="Estilo de los videos">
         <EstiloVideoMarca kit={estudio.kit} archivos={estudio.archivos ?? []} lectura={lectura} onGuardar={guardar} />
+      </section>
+      <section className="card" aria-label="Estilos de video guardados">
+        <EstilosVideoGuardados client={client} lectura={lectura} />
       </section>
       <section className="card" aria-label="Canciones de Instagram">
         <CancionesInstagram kit={estudio.kit} lectura={lectura} onGuardar={guardar} />

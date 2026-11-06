@@ -196,6 +196,10 @@ src/
                           letra, nunca, reglas, lo aprendido, logo, música y el ESTILO DEL VIDEO obligatorio (`kit.estiloVideo`) (puro)
     fondosVideo.js        Las IMÁGENES DE FONDO por sección: los fondos por crear (capas imagen con «pide» y sin archivo),
                           ponerlos en el guion, las reglas para la IA y lo que recibe el director (puro; también el Worker)
+    estilosVideo.js       Los ESTILOS DE VIDEO guardados de un cliente (`kit.estilosVideo`): sacar las reglas de un video que salió bien
+                          (`estiloDeGuion`), contarlas a la persona y a la IA (`resumenDeEstilo`, `lineaDeEstilo`) e imponerlas a otro
+                          guion (`aplicarEstilo`) sin tocar lo que se dice ni lo que se lee (puro; también el Worker)
+    estilosVideoApi.js    Cliente de /api/videos/<c>/estilos y de «Guardar como estilo» / «Aplicar» de un video
     golpes.js             El RITMO de una canción: el BPM y los golpes por energía (envolvente de ataques, picos, autocorrelación)
                           y el «pulso» de una capa (puro: Container, Worker y pantalla)
     motorVideoNavegador.js  Lo que ese motor necesita en el navegador: las imágenes de la galería, el logo, la letra del kit
@@ -615,6 +619,9 @@ src/
     MusicaDeMarca.jsx     La música de la marca en el kit (Marca → Kit y voz): cómo suena, lo que nunca suena y las que gustaron (lazy)
     EstiloVideoMarca.jsx  «Estilo de los videos de la marca» en el kit (Marca → Kit y voz): el texto obligatorio y hasta 6 imágenes
                           de la galería de referencia (lazy)
+    EstilosVideoGuardados.jsx  Los estilos de video guardados del cliente en Marca → Kit y voz: lo que hace cada uno, nombre, uso y quitar (lazy)
+    SelectorEstiloVideo.jsx  «Estilo del video» al crear uno (con canción o con voz en off): el primero que sirva, o ninguno
+    GuardarEstiloVideo.jsx  «Estilo del video» de un video abierto: «Guardar como estilo» y «Aplicar un estilo guardado» (lazy)
     CancionesInstagram.jsx  Las canciones de Instagram que le van a un cliente (Marca → Kit y voz, junto a la música de la marca; lazy)
     VideoAnimado.jsx      «Animado con código»: los videos animados del cliente, el guion (errores con su sitio), la vista
                           previa en el lienzo y «Aprobar el guion» (lazy; dentro de FlujoReel)
@@ -882,6 +889,8 @@ worker/
     estudio/ponerPiezas.js  «Poner en una publicación…» del Estudio (POST /api/estudio/<c>/poner): lo de la galería a un post
     estudio/fondosVideo.js  Crear las IMÁGENES DE FONDO de un video animado con el director (un encargo del servidor, con su costo) y,
                           al cerrarse, ponerlas en el guion guardado (`ponerFondosEnVideo`)
+    estudio/estilosVideo.js  Los ESTILOS DE VIDEO guardados: guardar uno de un video, renombrar, quitar y aplicarlo a otro (el kit, sólo
+                          por aquí: `guardarKit(…, { conEstilos: true })`)
     estudio/guionVideo.js El contexto común de los guiones de video (`contextoDeGuion`): producto, cerebro, criterio, publicación
     estudio/herramientasReel.js  El video por MCP: crear_reel, estado_reel, continuar_reel, montar_reel, video_listo y
                           extraer_guion_ugc (sólo MCP: desde herramientas.js sería el ciclo de siempre)
@@ -3988,7 +3997,7 @@ son del servidor.
   presets, aquí con los métodos de la AGENCIA (escritos con sus palabras: los de Higgsfield no tienen licencia) y lo del
   cliente dentro. Cosas que no se ven:
   · **Una receta es texto, no código**: el método lo lee quien diseña (el director de la aplicación o Claude por el
-  conector) y usa las herramientas que ya existen. Hay 15 de la casa (imagen, carrusel, video con IA, video animado y
+  conector) y usa las herramientas que ya existen. Hay 16 de la casa (imagen, carrusel, video con IA, video animado y
   guion); una nueva de la casa es añadir un objeto a `RECETAS_CASA`, sin migración ni pantalla. Las de la casa en el código; una fila de `recetas` con su id la
   sustituye (con `oculta`, la saca) y borrarla la restaura; las propias van detrás. Las cambian admin y editores (403 a un
   colaborador), como las plantillas de plan.
@@ -5789,6 +5798,28 @@ son del servidor.
   sistema sobre un WAV y un MP3 (120 BPM, un golpe por bombo); `container/probarAudio.mjs` lo prueba dentro de la imagen.
   · **Nada de esto se ha probado contra Anthropic, Meta ni los motores de imagen reales**: tests/migracion/videos.estilo.test.js
   y videos.cancion.test.js usan un `fetch` de mentira (también el 400 del modelo que no recibe imágenes).
+- **Los ESTILOS DE VIDEO guardados y la categoría «Video con canción»** (decisión de la agencia, tras el video de 57DMC: «guardar el
+  estilo por cliente, sin código»; `src/lib/estilosVideo.js`, `worker/lib/estudio/estilosVideo.js`; sin migración). Lo que no se ve:
+  · **Un estilo son REGLAS sacadas del guion, no una plantilla de escenas** (`estiloDeGuion`): el texto principal (rol, mayúsculas,
+  palabra por palabra, entrada, pulso, color, si lleva *énfasis*), el apoyo y las etiquetas, los fondos (imagen a sangre, tratamiento,
+  velo, movimientos y una imagen cada N escenas), las transiciones (la de DENTRO de un mismo fondo y las de AL CAMBIAR, por turnos), el
+  cierre MUDO (color, el logo con su sitio y su tamaño, su transición), el grano, el ritmo, la ilustración, los subtítulos y los
+  efectos. Nunca la letra, los textos ni las imágenes (un test lo busca). Un cierre que se dice es una escena más.
+  · **Al crear con uno, la IA escribe el CONTENIDO y el código impone la FORMA**: `lineaDeEstilo` va en el pedido (`estiloGuardado`
+  de `pedidoDeGuionCancion` y `pedidoDeGuionAnimado`) y `aplicarEstilo` se pasa ANTES de validar, también en la vuelta de corrección.
+  «porPalabra» sólo se pone si las palabras del texto se dicen en esa escena (`seDiceEnElHabla`): si no, ninguna tendría cuándo entrar.
+  Con fondos en el estilo, el video los pide aunque no se marcara «con imágenes de fondo», agrupados por su cadencia (una imagen para
+  cada N escenas seguidas, la del primero del grupo; la escena sin fondo recibe el del grupo); el código no INVENTA ninguno.
+  · **El tope de fondos por video pasa a 16 con un estilo** (`TOPE_FONDOS_ESTILO`; sin estilo la IA sigue con 8) y el encargo de
+  `fondos_video` crea hasta 16 de una vez (antes 8: el de 57DMC necesitó dos encargos). La cadencia sube sola si pasaría del tope.
+  · **Vive en el kit pero sólo lo escriben sus rutas**: `guardarKit` conserva los guardados salvo con `conEstilos: true` (el PUT de
+  otra pestaña con el kit de antes no se los lleva) y `fundirKit` los conserva. Hasta 8 por cliente, nombre único.
+  · **La categoría**: «Con canción» en las formas de video del Estudio (FlujoReel) y «Video con canción» en la pestaña Pieza de un reel
+  o una historia (entre las principales si el cliente tiene un estilo para canciones; si no, en «Más formas»): abren VideoAnimado con
+  `inicio="cancion"` (directo en «Video nuevo» con la canción) y el selector escoge su estilo. Receta de la casa «video-con-cancion».
+  · El video recuerda con qué estilo se hizo (`origen.estiloId`); un estilo sin efectos crea el video con `sonido.efectos: false`.
+  · Claude: `estilos_video`, `guardar_estilo_video`, `aplicar_estilo_video` (una versión nueva en borrador) y `estilo_id` en
+  `video_con_cancion` y `crear_video`. **Nada de esto se ha probado contra Anthropic real**: los tests usan un `fetch` de mentira.
 - **`wrangler d1 migrations apply` pinta la tabla ENTERA de migraciones tras cada una**: su salida crece con el cuadrado de
   cuántas hay, y con la 0076 (72 migraciones) pasó del 1 MB que `execFile` admite por defecto. `npm run test:vivo` moría con
   «stdout maxBuffer length exceeded» antes de arrancar el Worker, con el SQL perfecto. `tests/vivo/espacio.js` le da 64 MB.

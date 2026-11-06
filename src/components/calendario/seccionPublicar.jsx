@@ -489,12 +489,26 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
           : post.format === "reel" ? { accion: () => setReel("guion"), detalle: "Guion por planos, fotogramas y el video, en el servidor." }
             : null;
     const lleno = mediosDe(post).length >= LIMITES.instagram.carruselMax;
+    // «Video con canción» (la categoría del lyric video): entre las principales si el cliente tiene un ESTILO DE VIDEO
+    // guardado para canciones (es un cliente que hace videos con su canción); si no, en «Más formas».
+    const conEstiloCancion = vertical && clientId && (() => {
+      try {
+        const k = typeof client?.kitMarca === "string" ? JSON.parse(client.kitMarca) : client?.kitMarca;
+        return (k?.estilosVideo ?? []).some((e) => e?.para !== "voz");
+      } catch { return false; }
+    })();
     const principales = (
       <div className="pieza-principales" role="group" aria-label="Cómo poner la pieza">
         {disenar && (
           <button type="button" className="btn btn-primary pieza-boton" onClick={disenar.accion} disabled={Boolean(versionando)} aria-busy={disenar.ocupado || undefined}>
             <Icon name="sparkles" size={20} />
             <span><strong>{disenar.ocupado ? "Diseñando…" : "Diseñar con el director"}</strong><small>{disenar.detalle}</small></span>
+          </button>
+        )}
+        {conEstiloCancion && (
+          <button type="button" className="btn btn-secondary pieza-boton" onClick={() => setReel("cancion")}>
+            <Icon name="music" size={20} />
+            <span><strong>Video con canción</strong><small>Tu canción con su letra sincronizada, en el estilo guardado del cliente.</small></span>
           </button>
         )}
         <button type="button" className="btn btn-secondary pieza-boton" onClick={() => entrada.current?.click()} disabled={lleno}>
@@ -526,6 +540,11 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
               <button type="button" className="btn btn-secondary btn-sm" onClick={() => setReel("animado")} title="Escenas dibujadas con código, una locución y subtítulos: la IA escribe el guion de esta publicación">
                 <Icon name="sparkles" size={16} /> Video animado
               </button>
+              {!conEstiloCancion && (
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => setReel("cancion")} title="Tu canción ya grabada con su letra sincronizada: el lyric video">
+                  <Icon name="music" size={16} /> Video con canción
+                </button>
+              )}
             </>
           )}
           {post.format === "historia" && clientId && (

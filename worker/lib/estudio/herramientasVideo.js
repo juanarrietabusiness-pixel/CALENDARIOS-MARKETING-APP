@@ -23,6 +23,8 @@
 //   · versiones_video  el historial del guion; volver_a_version vuelve a una (versión nueva, en borrador)
 //   · publicar_con_musica  «con música»: un post de UNA foto → un reel con su música (crea, aprueba y renderiza; no gasta
 //                      IA); un carrusel → a mano con la música de Instagram y la canción sugerida (worker/lib/estudio/conMusica.js)
+//   · estilos_video    los ESTILOS DE VIDEO guardados del cliente (src/lib/estilosVideo.js): las reglas de un video que
+//                      salió bien; guardar_estilo_video guarda uno de un video y aplicar_estilo_video lo impone a otro
 //   · video_con_cancion «VIDEO CON TU CANCIÓN»: sincroniza la letra con una canción ya grabada (siempre pide confirmar el
 //                      costo) y crea el borrador con ella de locución: la prueba de sincronía o las escenas de la IA
 //                      (worker/lib/estudio/cancion.js, importado en el momento: lee guionAnimado.js → mercado.js, que
@@ -67,6 +69,9 @@ import { vistaDe, piezaDe } from "../mcpVista/modelo.js";
 import { vistaDeVideo, lineasDeMedios } from "./vistaMedios.js";
 import { leerEstructuras, estructuraExistente } from "../estructurasGuion.js";
 import { paraDe, tramosEnDuracion, USOS_ESTRUCTURA } from "../../../src/lib/formulasUgc.js";
+import { estilosDelCliente, estiloDelCliente, guardarEstilo, aplicarEstiloAVideo, ErrorEstilo } from "./estilosVideo.js";
+import { aplicarEstilo, lineaDeEstilo, USOS_ESTILO_VIDEO } from "../../../src/lib/estilosVideo.js";
+import { conFondosPorCrear } from "../../../src/lib/fondosVideo.js";
 
 const clienteParam = { cliente: { type: "string", description: "Nombre del cliente. En el asistente de un cliente se puede omitir: es ese cliente." } };
 const videoParam = { video_id: { type: "string", description: "ID del proyecto de video (de listar_videos o crear_video)." } };
@@ -99,6 +104,7 @@ export const DEFINICIONES_VIDEO = Object.freeze([
         titulo: { type: "string", description: "Nombre del video (si se omite, el del guion)." },
         publicacion_id: { type: "string", description: "ID de la publicación del calendario a la que va (de ver_calendario)." },
         estructura_id: { type: "string", description: "La ESTRUCTURA de guion de la agencia que sigue la voz en off (de ver_estructuras con para=voz). Reparte las escenas en sus tramos antes de crearlo." },
+        estilo_id: { type: "string", description: "Un ESTILO DE VIDEO guardado del cliente (de estilos_video): escribe el guion siguiendo sus reglas y la aplicación impone su forma al crearlo (texto principal, fondos, transiciones, cierre)." },
       },
       required: ["guion"],
     },
@@ -280,9 +286,38 @@ export const DEFINICIONES_VIDEO = Object.freeze([
         indicacion: { type: "string", description: "Sólo con disenar: lo que pide la agencia del diseño (≤ 600)." },
         con_fondos: { type: "boolean", description: "Sólo con disenar: «con imágenes de fondo». La IA pone de fondo de cada sección (verso, coro, puente) una imagen a sangre con «pide» (lo que muestra, en el estilo del kit) y sin archivo; después fondos_video las crea con el director (con su costo)." },
         desplazamiento: { type: "number", description: `El ajuste fino de la letra, de −${DESPLAZAMIENTO_MAX} a ${DESPLAZAMIENTO_MAX} s (0 por defecto).` },
+        estilo_id: { type: "string", description: "Un ESTILO DE VIDEO guardado del cliente (de estilos_video): la IA diseña con sus reglas y la aplicación impone su forma (también a la prueba de sincronía). Si el estilo lleva imágenes de fondo, el video las pide aunque no pongas con_fondos. Si el cliente tiene uno para canciones, ofrécelo." },
         confirmado: { type: "boolean", description: "SÓLO true si la persona dijo que sí al costo de sincronizar que dio la llamada anterior." },
       },
       required: ["musica_id", "letra"],
+    },
+  },
+  {
+    name: "estilos_video",
+    description: "Los ESTILOS DE VIDEO guardados del cliente: las REGLAS de un video que salió bien (texto principal, fondos, transiciones, cierre, grano, ritmo, subtítulos, efectos) —no su letra ni sus imágenes—, cada uno con su ID, para qué videos es (con canción, voz en off o todos) y su resumen. Úsalo antes de crear un video del cliente: si tiene uno que encaje, ofrécelo y pásalo (estilo_id) en video_con_cancion o crear_video. No gasta nada.",
+    input_schema: { type: "object", properties: { ...clienteParam }, required: [] },
+  },
+  {
+    name: "guardar_estilo_video",
+    description: "«Guardar como estilo»: las reglas del guion GUARDADO de un video del cliente (cómo se ve y se mueve; no su letra, sus textos ni sus imágenes) pasan a ser un estilo del cliente, para que el siguiente salga igual (estilo_id en video_con_cancion o crear_video). Hasta 8 por cliente; se quitan en Marca → Kit y voz. Hazlo cuando la persona diga que un video quedó como lo quiere y pida repetirlo. No gasta nada.",
+    input_schema: {
+      type: "object",
+      properties: {
+        ...clienteParam, ...videoParam,
+        nombre: { type: "string", description: "Cómo se llama el estilo (≤ 60), p. ej. «Lyric bíblico en blanco y negro»." },
+        nota: { type: "string", description: "Opcional: lo que el código no puede sacar del guion y conviene recordar (≤ 600), p. ej. «líneas doradas que tachan lo del mundo; citas bíblicas pequeñas con su referencia»." },
+        para: { type: "string", enum: Object.keys(USOS_ESTILO_VIDEO), description: "Para qué videos: cancion, voz o todos (si se omite, el del video: con canción o con voz en off)." },
+      },
+      required: ["video_id", "nombre"],
+    },
+  },
+  {
+    name: "aplicar_estilo_video",
+    description: "Impone un ESTILO DE VIDEO guardado (estilos_video) al guion de un video que ya existe: el código cambia la FORMA —el aspecto del texto principal, los fondos, las transiciones, el cierre, el grano, el ritmo y los subtítulos— sin tocar lo que se dice ni lo que se lee. Se guarda como una versión nueva y vuelve a borrador. No gasta nada.",
+    input_schema: {
+      type: "object",
+      properties: { ...clienteParam, ...videoParam, ...versionParam, estilo_id: { type: "string", description: "El ID del estilo (de estilos_video)." } },
+      required: ["video_id", "estilo_id", "version"],
     },
   },
   {
@@ -306,7 +341,7 @@ export const DEFINICIONES_VIDEO = Object.freeze([
 ]);
 
 /** Las que escriben (en el MCP van como escritura; las demás, de sólo lectura). */
-export const ESCRIBEN_VIDEO = Object.freeze(["fondos_video", "video_con_cancion", "publicar_con_musica", "crear_video", "guardar_video", "editar_escena", "aprobar_video", "renderizar_video", "ligar_video", "sonido_video", "volver_a_version", "personaje_video"]);
+export const ESCRIBEN_VIDEO = Object.freeze(["guardar_estilo_video", "aplicar_estilo_video", "fondos_video", "video_con_cancion", "publicar_con_musica", "crear_video", "guardar_video", "editar_escena", "aprobar_video", "renderizar_video", "ligar_video", "sonido_video", "volver_a_version", "personaje_video"]);
 
 /** Lo que falta para el siguiente paso, en una frase para el modelo. Pura. */
 /** ¿La locución es de la versión aprobada? (un video «aprobado» con voz de esa versión ya no la necesita otra vez). */
@@ -403,7 +438,7 @@ export function crearHerramientasVideo({ env, acceso, resolverCliente, usuario, 
   };
 
   return {
-    async video_con_cancion({ cliente, musica_id: musicaId = "", letra = "", formato = "9:16", publicacion_id: postId = "", titulo = "", disenar = false, indicacion = "", desplazamiento = 0, con_fondos: conFondos = false, confirmado }) {
+    async video_con_cancion({ cliente, musica_id: musicaId = "", letra = "", formato = "9:16", publicacion_id: postId = "", titulo = "", disenar = false, indicacion = "", desplazamiento = 0, con_fondos: conFondos = false, estilo_id: estiloId = "", confirmado }) {
       const c = await resolverCliente(cliente);
       // En el momento: cancion.js lee guionAnimado.js → mercado.js, que estático cerraría el ciclo con herramientas.js.
       const { sincronizarCancion, crearVideoConCancion, resumenDeSincronia, ErrorCancion } = await import("./cancion.js");
@@ -412,7 +447,7 @@ export function crearHerramientasVideo({ env, acceso, resolverCliente, usuario, 
           const s = await sincronizarCancion(env, acceso, c, { musicaId: String(musicaId), letra: String(letra), confirmado: confirmado === true, usuario });
           const r = await crearVideoConCancion(env, acceso, c, {
             huella: s.huella, modo: disenar === true ? "ia" : "karaoke", formato, titulo: String(titulo ?? ""), postId: String(postId ?? ""),
-            desplazamiento, indicacion: String(indicacion ?? ""), conFondos: disenar === true && conFondos === true, usuario,
+            desplazamiento, indicacion: String(indicacion ?? ""), conFondos: disenar === true && conFondos === true, estiloId: String(estiloId ?? ""), usuario,
           });
           avisar(c.id, r.video.id);
           const res = resumenDeSincronia(s, { desplazamiento });
@@ -424,6 +459,7 @@ export function crearHerramientasVideo({ env, acceso, resolverCliente, usuario, 
             ...(res.avisos ?? []),
             r.aviso ? r.aviso : "",
             disenar === true ? `Escenas diseñadas por la IA sobre la letra${r.corregido ? " (corrigió su primer intento)" : ""}.` : "Es la PRUEBA DE SINCRONÍA (karaoke, gratis): una escena por línea con la letra de titular. Para un diseño con más fuerza: disenar=true.",
+            r.estilo ? `Con el estilo guardado «${r.estilo.nombre}»: su forma ya está impuesta.` : "",
             r.fondos > 0 ? `Lleva ${r.fondos} imagen(es) de fondo POR CREAR (mientras tanto se ve el fondo de la escena): fondos_video las crea con el director (dice el costo antes).` : "",
             `Líneas (con su segundo): ${res.lineas.slice(0, 14).map((l) => `[${l.desde.toFixed(1)}] ${l.texto}`).join(" · ")}${res.lineas.length > 14 ? " · …" : ""}`,
             "Siguiente: ver_video o ver_escenas para revisarlo; aprobar_video SÓLO con el sí de la persona (la canción ya es su locución) y renderizar_video.",
@@ -436,6 +472,51 @@ export function crearHerramientasVideo({ env, acceso, resolverCliente, usuario, 
             return `NO SE CREÓ NADA. ${e.message.replace(/ Confírmalo para hacerlo\.$/, "")} Díselo al usuario con esa cifra y pregúntale si lo hago. Sólo si responde que sí, vuelve a llamar con los MISMOS datos y confirmado=true.`;
           }
           throw new Fallo(e.message);
+        }
+      });
+    },
+
+    async estilos_video({ cliente } = {}) {
+      const c = await resolverCliente(cliente);
+      const lista = estilosDelCliente(c);
+      if (!lista.length) return `${c.name} no tiene estilos de video guardados. Cuando un video quede como la persona lo quiere, guárdalo con guardar_estilo_video y el siguiente saldrá igual.`;
+      return [
+        `Estilos de video de ${c.name} (pásalo con estilo_id en video_con_cancion o crear_video):`,
+        ...lista.map((e) => [`· ${e.nombre} — ID ${e.id} · para ${USOS_ESTILO_VIDEO[e.para].toLowerCase()}${e.de?.titulo ? ` · sale de «${e.de.titulo}»` : ""}`, ...e.resumen.map((x) => `    ${x}`)].join("\n")),
+        "",
+        "Si escribes TÚ el guion (crear_video), síguelo así:",
+        lineaDeEstilo(lista[0]),
+      ].join("\n");
+    },
+
+    async guardar_estilo_video({ cliente, video_id: videoId, nombre = "", nota = "", para = "" }) {
+      const c = await resolverCliente(cliente);
+      return conErrores(async () => {
+        const fila = await proyectoDe(acceso, c.id, videoId);
+        try {
+          const r = await guardarEstilo(env, acceso, c, fila, { nombre, nota, para }, usuario);
+          difundir(env, acceso.ownerId, { tipo: "estudio", clientId: c.id, por });
+          return [`Guardado el estilo «${r.estilo.nombre}» (ID ${r.estilo.id}) en ${c.name}, de «${fila.titulo}»:`, ...r.estilo.resumen.map((x) => `· ${x}`),
+            "El próximo video: estilo_id en video_con_cancion o crear_video."].join("\n");
+        } catch (e) {
+          if (e instanceof ErrorEstilo) throw new Fallo(e.message);
+          throw e;
+        }
+      });
+    },
+
+    async aplicar_estilo_video({ cliente, video_id: videoId, estilo_id: estiloId, version }) {
+      const c = await resolverCliente(cliente);
+      return conErrores(async () => {
+        const fila = await proyectoDe(acceso, c.id, videoId);
+        try {
+          const r = await aplicarEstiloAVideo(acceso, c, fila, { estiloId: String(estiloId ?? ""), version, por: por?.nombre ?? null });
+          if (!r.cambios) return "El video ya tenía la forma de ese estilo: no había nada que cambiar.";
+          avisar(c.id, r.video.id);
+          return [`Estilo aplicado: ${r.cambios} cambio(s) de forma. Ahora es la versión ${r.video.version} (${NOMBRE_ESTADO_VIDEO[r.video.estado]}).`, textoDelVideo(r.video, { conGuion: false })].join("\n");
+        } catch (e) {
+          if (e instanceof ErrorEstilo) throw new Fallo(e.message);
+          throw e;
         }
       });
     },
@@ -504,8 +585,14 @@ export function crearHerramientasVideo({ env, acceso, resolverCliente, usuario, 
       });
     },
 
-    async crear_video({ cliente, guion, titulo, publicacion_id: postId, estructura_id: estructuraPedida = "" }) {
+    async crear_video({ cliente, guion, titulo, publicacion_id: postId, estructura_id: estructuraPedida = "", estilo_id: estiloId = "" }) {
       const c = await resolverCliente(cliente);
+      // Un estilo guardado: su forma se impone al guion antes de crearlo (lo que se dice y se lee no cambia).
+      let estilo = null;
+      if (estiloId) {
+        try { estilo = estiloDelCliente(c, estiloId); } catch (e) { if (e instanceof ErrorEstilo) throw new Fallo(`${e.message} (los IDs salen de estilos_video).`); throw e; }
+        if (guion && typeof guion === "object" && Array.isArray(guion.escenas)) guion = aplicarEstilo(guion, estilo, { conFondos: conFondosPorCrear(guion) }).guion;
+      }
       return conErrores(async () => {
         let liga = null;
         if (postId) {
@@ -514,10 +601,14 @@ export function crearHerramientasVideo({ env, acceso, resolverCliente, usuario, 
         }
         const estructuraId = estructuraPedida ? await estructuraExistente(acceso, estructuraPedida) : "";
         if (estructuraPedida && !estructuraId) throw new ErrorVideo(`No encontré la estructura de guion «${estructuraPedida}» (los IDs salen de ver_estructuras).`, 404);
-        const r = await crearProyecto(acceso, c, { guion, titulo, calendarId: liga?.calendarId, postId: liga?.postId, usuario, estructuraId });
+        const r = await crearProyecto(acceso, c, {
+          guion, titulo, calendarId: liga?.calendarId, postId: liga?.postId, usuario, estructuraId,
+          ...(estilo ? { origen: { tipo: "", estiloId: estilo.id }, ...(estilo.efectos === false ? { sonido: { efectos: false } } : {}) } : {}),
+        });
         avisar(c.id, r.video.id);
         return [
           `Creado el video «${r.video.titulo}» (ID ${r.video.id}), versión 1, en borrador. Se ve en el Estudio de ${c.name} → Video → Animado con código.`,
+          estilo ? `Con el estilo guardado «${estilo.nombre}»: su forma ya está impuesta.` : "",
           r.avisos.length ? `Avisos: ${r.avisos.map((a) => `${a.donde}: ${a.mensaje}`).join("; ")}` : "",
           textoDelVideo(r.video, { conGuion: false }),
         ].filter(Boolean).join("\n");

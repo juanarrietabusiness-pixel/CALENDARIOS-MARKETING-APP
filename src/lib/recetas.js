@@ -262,6 +262,22 @@ export const RECETAS_CASA = Object.freeze([
     ].join("\n"),
   },
   {
+    id: "video-con-cancion",
+    titulo: "Video con canción (lyric video)",
+    descripcion: "La canción ya grabada del cliente con su letra sincronizada palabra por palabra, en su estilo de video guardado, a mp4.",
+    salida: "animado",
+    tipos: ["humano", "educativo", "diferenciador"],
+    preguntas: ["¿Qué canción de la biblioteca de sonido (el fragmento del reel) y cuál es su letra EXACTA?", "¿Con su estilo de video guardado o uno nuevo?"],
+    controles: ["La letra sincronizada (coincidencia alta)", "La letra en pantalla tal cual se canta", "Los fondos y la sincronía, sólo con el «sí» al costo"],
+    instrucciones: [
+      "1. musicas (la canción, del cliente o de la agencia) y estilos_video: si tiene un estilo para canciones, ofrécelo.",
+      "2. video_con_cancion con la letra EXACTA y su estilo_id (disenar=true): la primera llamada dice el costo de sincronizar; sólo con el «sí», confirmado=true. Ligado a su publicación si la hay.",
+      "3. Si el guion pide imágenes de fondo, fondos_video (dice el costo; sólo con el «sí»).",
+      "4. ver_escenas y revisar_video: corrige con editar_escena lo que salga sin tocar el «habla» (es la letra).",
+      "5. Enséñaselo a la persona: aprobar_video sólo con su «sí» (la canción ya es su locución) y renderizar_video. Si quedó como la quiere y aún no tiene estilo, ofrece guardar_estilo_video.",
+    ].join("\n"),
+  },
+  {
     id: "montaje-ugc",
     titulo: "Montar el video que grabó el cliente",
     descripcion: "El UGC o los clips que grabó el cliente, cortados y con gancho escrito, textos, logo y música: a mp4, sin pagar voz.",
