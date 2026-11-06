@@ -271,8 +271,9 @@ describe("generar la música de un video sin estilo dicho", () => {
     expect(sin).toMatch(/El director musical escuchó el video y pide: «warm acoustic folk/);
     expect(sin).toMatch(/Por qué: Cálida y cercana/);
     const si = await h.generar_musica({ video_id: v.id, confirmado: true });
-    expect(si).toMatch(/^Pedido creado: /);
-    expect(si).toMatch(/Por qué: Cálida y cercana/);
+    // Con la toma pedida, la herramienta devuelve el texto y la vista del chat (MCP Apps).
+    expect(si.texto).toMatch(/^Pedido creado: /);
+    expect(si.texto).toMatch(/Por qué: Cálida y cercana/);
     expect(anthropic).toHaveLength(1);
   });
 });
