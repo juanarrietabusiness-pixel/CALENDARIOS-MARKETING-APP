@@ -14,8 +14,9 @@ import "./VisorGrupo.css";
  *   yaTiene     cuántas tiene ya la publicación (entonces se pregunta añadir o reemplazar)
  *   onElegir    (archivos, { reemplazar }) => void
  *   destino     «la publicación» o «el chat»: lo que dice el botón (el asistente también escoge de aquí)
+ *   una         modo de UNA imagen (la portada de un reel): sólo imágenes, sueltas, y tocar otra cambia la escogida
  */
-export default function GaleriaSelector({ clienteId, maximo = 10, yaTiene = 0, onElegir, onCerrar, destino = "la publicación" }) {
+export default function GaleriaSelector({ clienteId, maximo = 10, yaTiene = 0, onElegir, onCerrar, destino = "la publicación", una = false }) {
   const ids = useId();
   const ref = useDialogA11y(onCerrar);
   const [datos, setDatos] = useState(null);
@@ -30,10 +31,11 @@ export default function GaleriaSelector({ clienteId, maximo = 10, yaTiene = 0, o
   }, [clienteId]);
 
   const archivos = useMemo(() => (datos?.archivos ?? []).filter((a) => !a.borradoAt), [datos]);
-  const vista = useMemo(() => agruparGaleria(archivos, datos?.carpetas ?? [], archivos), [archivos, datos]);
-  const caben = reemplazar || !yaTiene ? maximo : Math.max(0, maximo - yaTiene);
+  // Con `una`, sólo las imágenes y cada una suelta (también las láminas de un carrusel: cualquiera puede ser la portada).
+  const vista = useMemo(() => (una ? archivos.filter((a) => a.tipo === "imagen") : agruparGaleria(archivos, datos?.carpetas ?? [], archivos)), [archivos, datos, una]);
+  const caben = una ? 1 : reemplazar || !yaTiene ? maximo : Math.max(0, maximo - yaTiene);
   const marcada = (a) => elegidas.some((x) => x.id === a.id);
-  const alternar = (a) => setElegidas((l) => (l.some((x) => x.id === a.id) ? l.filter((x) => x.id !== a.id) : [...l, a]));
+  const alternar = (a) => setElegidas((l) => (l.some((x) => x.id === a.id) ? l.filter((x) => x.id !== a.id) : una ? [a] : [...l, a]));
   const alternarGrupo = (piezas) => setElegidas((l) => (piezas.every((p) => l.some((x) => x.id === p.id))
     ? l.filter((x) => !piezas.some((p) => p.id === x.id))
     : [...l, ...piezas.filter((p) => !l.some((x) => x.id === p.id))]));
@@ -44,14 +46,16 @@ export default function GaleriaSelector({ clienteId, maximo = 10, yaTiene = 0, o
       <div ref={ref} className="dialog visor-grupo" role="dialog" aria-modal="true" aria-labelledby={`${ids}-t`}>
         <div className="visor-grupo-cabecera">
           <div>
-            <h3 id={`${ids}-t`}>Escoger de la galería</h3>
-            <p className="hint" style={{ margin: 0 }}>Toca un carrusel para ponerlo entero y en orden, o las imágenes una a una.</p>
+            <h3 id={`${ids}-t`}>{una ? "Escoger la portada de la galería" : "Escoger de la galería"}</h3>
+            <p className="hint" style={{ margin: 0 }}>
+              {una ? "Toca la imagen que va de portada del video. La vertical (9:16) es la que mejor queda." : "Toca un carrusel para ponerlo entero y en orden, o las imágenes una a una."}
+            </p>
           </div>
           <button type="button" className="btn-icon" aria-label="Cerrar" onClick={onCerrar}><Icon name="close" size={18} /></button>
         </div>
         {error && <p role="alert" className="cerebro-error">{error}</p>}
         {!datos && !error && <p role="status" className="hint">Abriendo la galería…</p>}
-        {datos && !vista.length && <p className="hint">La galería de este cliente está vacía. Crea algo en el Estudio o con «Crear con IA».</p>}
+        {datos && !vista.length && <p className="hint">{una ? "La galería de este cliente no tiene imágenes todavía. Crea la portada en el Estudio o con «Portada que da clic»." : "La galería de este cliente está vacía. Crea algo en el Estudio o con «Crear con IA»."}</p>}
         {vista.length > 0 && (
           <ul className="visor-grupo-piezas galeria-selector">
             {vista.map((x) => {
@@ -74,7 +78,7 @@ export default function GaleriaSelector({ clienteId, maximo = 10, yaTiene = 0, o
                 <li key={x.id}>
                   <button type="button" className="visor-grupo-pieza" aria-pressed={i >= 0} aria-label={`${i >= 0 ? "Quitar" : "Escoger"}: ${x.prompt || "pieza"}`} onClick={() => alternar(x)}>
                     <Pieza archivo={x} />
-                    {i >= 0 && <span className="visor-grupo-num">{i + 1}</span>}
+                    {i >= 0 && <span className="visor-grupo-num">{una ? <Icon name="check" size={12} /> : i + 1}</span>}
                     {estaUsado(x) && <span className="visor-grupo-usada">Usada</span>}
                   </button>
                 </li>
@@ -83,7 +87,7 @@ export default function GaleriaSelector({ clienteId, maximo = 10, yaTiene = 0, o
           </ul>
         )}
         <div className="visor-grupo-pie">
-          {yaTiene > 0 && (
+          {yaTiene > 0 && !una && (
             <label className="galeria-selector-reemplazar">
               <input type="checkbox" checked={reemplazar} onChange={(e) => setReemplazar(e.target.checked)} /> Reemplazar lo que ya tiene ({yaTiene})
             </label>
@@ -91,7 +95,7 @@ export default function GaleriaSelector({ clienteId, maximo = 10, yaTiene = 0, o
           {sobran && <p role="alert" className="hint" style={{ margin: 0 }}>Caben {caben}{destino === "la publicación" ? `: Instagram admite ${maximo} por publicación` : ` en ${destino}`}.</p>}
           <button type="button" className="btn btn-ghost" onClick={onCerrar}>Cancelar</button>
           <button type="button" className="btn btn-primary" disabled={!elegidas.length || sobran} onClick={() => onElegir(elegidas, { reemplazar })}>
-            <Icon name="check" size={18} /> {elegidas.length ? `Poner ${elegidas.length} en ${destino}` : "Escoge algo"}
+            <Icon name="check" size={18} /> {una ? (elegidas.length ? "Usar como portada" : "Escoge una imagen") : elegidas.length ? `Poner ${elegidas.length} en ${destino}` : "Escoge algo"}
           </button>
         </div>
       </div>

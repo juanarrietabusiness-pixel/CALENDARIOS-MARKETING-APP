@@ -35,7 +35,7 @@ import { etiquetaIA, NIVELES_IA } from "../lib/configIA";
 const NIVEL_DE_ESFUERZO = { low: "bajo", medium: "medio", high: "alto", max: "maximo" };
 import { tareaDesdeIA, fechaEnZona, PROPIEDADES_FECHA_TAREA } from "../lib/agenda";
 import { ponerEnDia } from "../lib/subir";
-import { conMedios, mediosDe } from "../lib/publicacion";
+import { conMedios, mediosDe, esReelConVideo, conPortada } from "../lib/publicacion";
 import { conPromptListo } from "../lib/promptImagen";
 import { enlaceLimpio, nuevaIdea } from "../lib/bancoIdeas";
 import { anadirAlBanco } from "../lib/bancoIdeasApi";
@@ -689,8 +689,15 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
           puesto = true;
           return conMedios(p, mediosDe(p).map((m) => (m.src === antes ? { ...m, ...medio, nombre: m.nombre || medio.nombre } : m)));
         }
+        // La portada corregida (corregir_pieza) ocupa el sitio de la portada.
+        if (antes && p.portada === antes) {
+          puesto = true;
+          return { ...p, portada: medio.src };
+        }
         if (postId && p.id === postId) {
           puesto = true;
+          // Un reel con su video no lleva imágenes: la pieza es su PORTADA (la regla de galeriaPura.js).
+          if (esReelConVideo(p)) return conPortada(p, medio.src);
           const con = conMedios(p, [...mediosDe(p), medio]);
           return ficha ? conPromptListo(con, ficha) : con;
         }
@@ -708,12 +715,24 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
    * Pone piezas de la galería en la publicación `postId`, esté en el mes abierto o en otro (`onCambiarPublicacion`), y
    * apunta su uso (la papelera no se las lleva). → { puestas, antes } | { error }.
    */
-  const ponerPiezasEnPost = useCallback(async (mod, clienteId, postId, piezas, modo) => {
+  const ponerPiezasEnPost = useCallback(async (mod, clienteId, postId, piezas, modo, como = "") => {
     let antes = null;
-    const cambiar = (p) => { const r = mod.postConPiezas(p, piezas, modo); antes = r.antes; return r.post; };
+    let rechazo = "";
+    let portada = false;
+    // La regla de la portada de un reel (galeriaPura.js): si no se puede poner, la publicación no cambia.
+    const cambiar = (p) => {
+      const r = mod.postConPiezas(p, piezas, modo, { como });
+      if (r.error) { rechazo = r.error; return p; }
+      antes = r.antes;
+      portada = Boolean(r.portada);
+      return r.post;
+    };
     let calendarId = null;
     const cal = calRef.current;
-    if (cal && calId && onUpdateCal && cal.days.some((d) => (d.posts || []).some((p) => p.id === postId))) {
+    const aqui = cal && calId && onUpdateCal ? cal.days.flatMap((d) => d.posts || []).find((p) => p.id === postId) : null;
+    if (aqui) {
+      const prueba = mod.postConPiezas(aqui, piezas, modo, { como });
+      if (prueba.error) return { error: prueba.error };
       const updated = { ...cal, days: cal.days.map((d) => ({ ...d, posts: (d.posts || []).map((p) => (p.id === postId ? cambiar(p) : p)) })) };
       calRef.current = updated;
       onUpdateCal(calId, updated);
@@ -721,9 +740,10 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
     } else if (onCambiarPublicacion) {
       calendarId = onCambiarPublicacion(postId, cambiar);
     }
+    if (rechazo) return { error: rechazo };
     if (!calendarId) return { error: `No encontré la publicación ${postId} en los calendarios de este cliente.` };
     for (const a of piezas) void mod.apuntarUso?.(clienteId, a.id, { calendarId, postId }).catch(() => null);
-    return { puestas: piezas.length, antes: antes ?? [] };
+    return { puestas: piezas.length, antes: antes ?? [], portada };
   }, [calId, onUpdateCal, onCambiarPublicacion]);
 
   /** poner_en_publicacion: lo que YA está en la galería, a un post (sin crear ni cobrar nada). */
@@ -736,8 +756,12 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
     const { piezas, error } = mod.piezasParaPoner(ctx.g, { archivoIds: entrada.archivo_ids, carruselId: entrada.carrusel_id });
     if (error) return { ok: false, mensaje: error };
     const modo = entrada.modo === "anadir" ? "anadir" : "reemplazar";
-    const r = await ponerPiezasEnPost(mod, ctx.clienteId, postId, piezas, modo);
+    const como = ["portada", "medio"].includes(entrada.como) ? entrada.como : "";
+    const r = await ponerPiezasEnPost(mod, ctx.clienteId, postId, piezas, modo, como);
     if (r.error) return { ok: false, mensaje: r.error };
+    if (r.portada) {
+      return { ok: true, mensaje: `Puesta como PORTADA del reel ${postId} (su cover en Instagram; el video no cambia). Se ve en «Portada» del video, en su pestaña Pieza.` };
+    }
     const quitadas = modo === "reemplazar" ? r.antes.filter((m) => !piezas.some((a) => a.src === m.src)).length : 0;
     return {
       ok: true,

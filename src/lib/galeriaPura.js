@@ -6,7 +6,7 @@
 // arrastrar el cliente HTTP. lib/estudio.js las sigue exportando: nada de la pantalla cambia de import.
 // ============================================================
 
-import { conMedios, mediosDe } from "./publicacion.js";
+import { conMedios, mediosDe, esReelConVideo, conPortada, imagenDelReelAPortada } from "./publicacion.js";
 
 /**
  * Las piezas de un carrusel o un reel, en orden. Manda el `orden` que guardó el flujo (las láminas finales, o los
@@ -59,19 +59,54 @@ export const medioDeArchivo = (a) => ({
   ...(a.ancho > 0 && a.alto > 0 ? { ancho: a.ancho, alto: a.alto } : {}),
 });
 
+/** Lo que se contesta cuando a un reel le llegan varias imágenes (o una que se pide como medio). */
+export const REEL_SIN_IMAGENES = "Un reel es UN video: no lleva imágenes. Si es su portada, manda una sola imagen (como: «portada»); si son láminas, ponlas en un post o en un carrusel.";
+
+/** ¿Lleva portada (sale como reel con su video)? Lo que pide `como: "portada"`. */
+const SIN_PORTADA = "Esa publicación no lleva portada: sólo un reel con su video la tiene (una historia no lleva portada en Instagram, y un carrusel tampoco).";
+
 /**
  * La publicación con `piezas` puestas: «reemplazar» (lo de antes se quita de ella; sigue en la galería) o «anadir» (al
- * final). Dos imágenes o más hacen carrusel un post (Instagram admite 10). → { post, antes }. Pura.
+ * final). Dos imágenes o más hacen carrusel un post (Instagram admite 10). → { post, antes, portada? } o { error }.
+ *
+ * LA PORTADA DE UN REEL (la regla es ésta y la usan todos los que ponen piezas: el chat, el MCP, «Poner en una
+ * publicación…» del Estudio y lo que el servidor pone solo al terminar):
+ *   · `como: "portada"`: UNA imagen, a la portada del video (`portada`, sin fotograma ni encuadre); el post tiene que
+ *     salir como reel con su video (`esReelConVideo`). Si no, `error`.
+ *   · Sin `como`: a un reel que YA tiene su video sólo le llegan imágenes → una es su PORTADA (en cualquier modo: un
+ *     «reemplazar» no le quita el video); varias son un `error` (un reel no lleva imágenes).
+ *   · `como: "medio"` (lo escogió una persona): entre los medios, sin regla de portada; pero un formato «reel» nunca
+ *     se queda con su video y una imagen al lado.
+ *   · Y si el resultado es un reel con su video y UNA imagen (un reel que aún no tenía video y le llegan las dos), esa
+ *     imagen va de portada; con varias, `error`.
+ * Pura.
  */
-export function postConPiezas(post, piezas, modo = "reemplazar") {
+export function postConPiezas(post, piezas, modo = "reemplazar", { como = "" } = {}) {
   const antes = mediosDe(post);
+  const llegan = piezas.map(medioDeArchivo);
+  const imagenesNuevas = llegan.filter((m) => m.tipo === "imagen");
+  const soloImagenes = llegan.length > 0 && imagenesNuevas.length === llegan.length;
+  if (como === "portada") {
+    if (llegan.length !== 1 || !imagenesNuevas.length) return { error: "Como portada va UNA imagen (no un video ni varias)." };
+    if (!esReelConVideo(post)) return { error: SIN_PORTADA };
+    return { post: conPortada(post, imagenesNuevas[0].src), antes, portada: true };
+  }
+  if (como !== "medio" && soloImagenes && esReelConVideo(post)) {
+    if (imagenesNuevas.length > 1) return { error: REEL_SIN_IMAGENES };
+    return { post: conPortada(post, imagenesNuevas[0].src), antes, portada: true };
+  }
   const vistos = new Set(modo === "anadir" ? antes.map((x) => x.src) : []);
-  const nuevos = piezas.map(medioDeArchivo).filter((m) => !vistos.has(m.src) && vistos.add(m.src));
+  const nuevos = llegan.filter((m) => !vistos.has(m.src) && vistos.add(m.src));
   const medios = (modo === "anadir" ? [...antes, ...nuevos] : nuevos).slice(0, 10);
   // `mediosCambiadosAt`: si el cliente ya la aprobó, se sabe que los archivos cambiaron después (como el panel).
   let con = { ...conMedios(post, medios), mediosCambiadosAt: new Date().toISOString() };
   const imagenes = medios.filter((m) => m.tipo === "imagen").length;
   if (imagenes >= 2 && ["post", "carrusel", "", undefined].includes(post.format)) con = { ...con, format: "carrusel" };
+  // Un formato «reel» que acabaría con su video y una imagen al lado: la imagen es su portada; con varias, no se pone.
+  if (con.format === "reel" && imagenes && medios.some((m) => m.tipo === "video")) {
+    if (imagenes > 1 || como === "medio") return { error: REEL_SIN_IMAGENES };
+    return { post: imagenDelReelAPortada(con), antes, portada: true };
+  }
   return { post: con, antes };
 }
 

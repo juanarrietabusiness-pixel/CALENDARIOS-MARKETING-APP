@@ -25,6 +25,8 @@ import { mediosDe, textoPara, contarHashtags, LIMITES } from "../../lib/publicac
 import { medirImagen, ventanaCuadricula, encuadrarParaCuadricula } from "../../lib/medios";
 
 const PortadaClic = lazy(() => import("./PortadaClic"));
+// «De la galería» de la portada: el selector del Estudio en su modo de UNA imagen (lazy, como en la pestaña Pieza).
+const GaleriaSelector = lazy(() => import("../GaleriaSelector"));
 
 const esVideoArchivo = (f) => f?.type?.startsWith("video/");
 
@@ -407,7 +409,10 @@ export function EditorMedios({ post, clientId, client = null, driveFolder, onCha
 // fotograma (`thumb_offset`). TikTok se publica por PostPeer, que no
 // recibe portada: la elige TikTok. Aquí se escoge el fotograma con una
 // barra —se guarda como imagen Y como milisegundo, para que valga en
-// Instagram y en la página del cliente— o se sube una imagen aparte.
+// Instagram y en la página del cliente—, se sube una imagen aparte o se
+// escoge una de la galería del Estudio (la pieza 9:16 hecha para eso).
+// `onPortada(cambios, { archivo })`: con `archivo`, la de la galería, para
+// apuntar su uso (la papelera del Estudio no se la lleva).
 
 /**
  * El fotograma actual del video, en JPEG de 1080 px de ancho como mucho. Con
@@ -437,6 +442,7 @@ export function PortadaVideo({ id, video, post, clientId, client = null, onPorta
   // tiene sentido en un video vertical: en uno cuadrado la ventana 3:4 no se mueve.
   const [encuadre, setEncuadre] = useState(Number.isFinite(post.portadaEncuadre) ? post.portadaEncuadre : 0);
   const [medidas, setMedidas] = useState(null);
+  const [galeria, setGaleria] = useState(false);
   const ventana = medidas ? ventanaCuadricula(medidas.ancho, medidas.alto, encuadre) : null;
   const sePuedeEncuadrar = Boolean(medidas && medidas.alto > Math.round((medidas.ancho * 4) / 3));
 
@@ -466,6 +472,14 @@ export function PortadaVideo({ id, video, post, clientId, client = null, onPorta
       onError?.(`No se pudo subir la portada: ${e.message}`);
     }
     setGuardando("");
+  };
+
+  // De la galería: la imagen tal cual (sin fotograma ni encuadre). Al programar se pasa a JPEG si va a Instagram.
+  const deLaGaleria = ([a]) => {
+    setGaleria(false);
+    if (!a?.src) return;
+    onPortada({ portada: a.src, portadaMs: null, portadaEncuadre: 0 }, { archivo: a });
+    onCerrar();
   };
 
   return (
@@ -534,6 +548,11 @@ export function PortadaVideo({ id, video, post, clientId, client = null, onPorta
           <button type="button" className="btn btn-secondary btn-sm" onClick={() => archivo.current?.click()} disabled={!!guardando}>
             <Icon name="upload" size={14} /> Subir una imagen
           </button>
+          {clientId && (
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => setGaleria(true)} disabled={!!guardando}>
+              <Icon name="image" size={14} /> De la galería
+            </button>
+          )}
           {post.portada && (
             <button type="button" className="btn btn-ghost btn-sm" onClick={() => { onPortada({ portada: null, portadaMs: null }); onCerrar(); }} disabled={!!guardando}>
               Quitar la portada
@@ -550,6 +569,11 @@ export function PortadaVideo({ id, video, post, clientId, client = null, onPorta
           <p className="hint">Instagram usa la imagen o el fotograma; en TikTok la portada la elige TikTok.</p>
         </div>
       </div>
+      {galeria && (
+        <Suspense fallback={null}>
+          <GaleriaSelector clienteId={clientId} una onElegir={deLaGaleria} onCerrar={() => setGaleria(false)} />
+        </Suspense>
+      )}
       {/* Una portada creada para dar clic (lib/portadaClic.js): concepto, titular corto y la vista a 120 px. */}
       {client && (
         <Suspense fallback={null}>

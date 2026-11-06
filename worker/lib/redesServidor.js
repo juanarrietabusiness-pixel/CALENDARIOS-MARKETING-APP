@@ -25,7 +25,7 @@ const FIRMA = { userId: "sistema", nombre: "Programar al aprobar", color: "", ta
 
 const leerJSON = (t, d) => { try { return typeof t === "string" ? JSON.parse(t) : (t ?? d); } catch { return d; } };
 /** Lo que identifica los archivos de una publicación: si cambia mientras se prepara, lo preparado ya no vale. */
-const huella = (p) => JSON.stringify([p?.medios ?? null, p?.image ?? null, p?.historias ?? null]);
+const huella = (p) => JSON.stringify([p?.medios ?? null, p?.image ?? null, p?.historias ?? null, p?.portada ?? null]);
 
 /** Una imagen de la publicación (su `src`) del cliente, pasada por el Container → { datos?, ancho, alto }. */
 async function porElContenedor(env, clienteId, src, salida) {
@@ -97,7 +97,11 @@ export async function prepararYGuardar(env, acceso, { calendarId, postId, redes,
     const diaF = Array.isArray(diasF) ? diasF.find((d) => (d?.posts ?? []).some((p) => p?.id === postId)) : null;
     const k = diaF ? diaF.posts.findIndex((p) => p?.id === postId) : -1;
     if (k < 0 || huella(diaF.posts[k]) !== huella(antes)) return { preparada: false, problema: "los archivos de la publicación cambiaron mientras se preparaban" };
-    diaF.posts[k] = { ...diaF.posts[k], medios: r.post.medios, image: r.post.image, historias: r.post.historias, adaptados: r.post.adaptados };
+    diaF.posts[k] = {
+      ...diaF.posts[k], medios: r.post.medios, image: r.post.image, historias: r.post.historias, adaptados: r.post.adaptados,
+      // La portada del reel, en JPEG (Instagram no lee otra en `cover_url`).
+      ...(r.post.portada !== antes.portada ? { portada: r.post.portada } : {}),
+    };
     const n = await acceso.actualizar("calendars", { id: calendarId, updated_at: fresco.updated_at }, { days: JSON.stringify(diasF), updated_at: ahora() });
     if (!n) continue;
     difundir(env, acceso.ownerId, { tipo: "calendario:recargar", id: calendarId, clientId: clienteId, por: FIRMA });
