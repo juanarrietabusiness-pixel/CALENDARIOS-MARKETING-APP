@@ -18,7 +18,7 @@ import { difundir } from "./vivo.js";
 import { uuid, ahora } from "./ids.js";
 import { momentoPublicacion } from "../../src/lib/publicacion.js";
 import {
-  limpiarAjustes, proximaFecha, porPreparar, elegirPiezas, horasDelDia, publicacionDeRepost, fraseDe, DIAS_ATRAS,
+  limpiarAjustes, proximaFecha, porPreparar, elegirPiezas, horasDelDia, publicacionDeRepost, DIAS_ATRAS, claveDeEstilo, estiloDeClave, ESTILOS_HISTORIA, colorDeMarca,
 } from "../../src/lib/historiasAuto.js";
 
 export class ErrorHistorias extends Error {
@@ -36,9 +36,9 @@ const leerJSON = (t, d) => { try { return JSON.parse(t); } catch { return d; } }
 /** Lo que ve la agencia de un cliente: el interruptor, la hora, las redes y qué hay listo. */
 export async function ajustesHistorias(acceso, clientId) {
   const f = await acceso.leerUno("historias_auto", { client_id: clientId });
-  const piezas = await acceso.leerColumnas("historias_auto_piezas", ["id", "titulo", "clave", "usos", "usada_at", "publicada_at", "excluida"], { client_id: clientId }, "created_at desc");
+  const piezas = await acceso.leerColumnas("historias_auto_piezas", ["id", "titulo", "clave", "clave_post", "usos", "usada_at", "publicada_at", "excluida"], { client_id: clientId }, "created_at desc");
   const ajustes = limpiarAjustes({ activa: f?.activa === 1, hora: f?.hora, redes: leerJSON(f?.redes, []), porDia: f?.por_dia });
-  const vista = (p) => ({ id: p.id, titulo: p.titulo, src: `/api/media/${p.clave}`, usos: p.usos ?? 0, usadaAt: p.usada_at ?? null });
+  const vista = (p) => ({ id: p.id, titulo: p.titulo, estilo: estiloDeClave(p.clave_post), src: `/api/media/${p.clave}`, usos: p.usos ?? 0, usadaAt: p.usada_at ?? null });
   return {
     ...ajustes,
     ultimaFecha: f?.ultima_fecha ?? null,
@@ -79,7 +79,11 @@ export async function pendientesDePreparar(acceso, clientId, momento = new Date(
   const filas = (await acceso.leer("publicaciones_programadas", { client_id: clientId, estado: "publicada", variante: "post" }, "publicada_at desc", 80))
     .filter((f) => !f.publicada_at || f.publicada_at >= desde);
   const piezas = await acceso.leerColumnas("historias_auto_piezas", ["clave_post"], { client_id: clientId });
-  return porPreparar(filas, piezas, momento).map((p, i) => ({ ...p, frase: fraseDe(piezas.length + i) }));
+  // Cada publicación da varios ESTILOS (src/lib/historiasAuto.js, `estilosDePost`): cada uno trae su frase, y todos el
+  // color de la marca (las placas y el fondo de la «frase del post»).
+  const cliente = await acceso.leerUno("clients", { id: clientId }).catch(() => null);
+  const color = colorDeMarca(leerJSON(cliente?.kit_marca, {}));
+  return porPreparar(filas, piezas, momento).map((p) => (color ? { ...p, color } : p));
 }
 
 /**
@@ -87,7 +91,7 @@ export async function pendientesDePreparar(acceso, clientId, momento = new Date(
  * tiene que ser de ESTE cliente y estar en R2, y la publicación tiene que
  * estar de verdad publicada (la clave la manda quien pide).
  */
-export async function guardarPieza(env, acceso, clientId, { filaId, src, frase = "" } = {}) {
+export async function guardarPieza(env, acceso, clientId, { filaId, src, frase = "", estilo = "encajada" } = {}) {
   const prefijo = `/api/media/clientes/${clientId}/`;
   if (typeof src !== "string" || !src.startsWith(prefijo) || src.includes("..")) throw new ErrorHistorias("La imagen no es de este cliente.");
   const clave = src.slice("/api/media/".length);
@@ -95,12 +99,13 @@ export async function guardarPieza(env, acceso, clientId, { filaId, src, frase =
   const fila = filaId ? await acceso.leerUno("publicaciones_programadas", { id: String(filaId), client_id: clientId }) : null;
   if (!fila || fila.estado !== "publicada" || !fila.calendar_id) throw new ErrorHistorias("Esa publicación no está publicada.", 404);
   const post = leerJSON(fila.carga, {}).post ?? {};
-  const clavePost = `${fila.calendar_id}|${fila.post_id}`;
+  // Un estilo que no existe es «encajada» (la de siempre): así una pantalla de antes sigue guardando lo mismo.
+  const clavePost = claveDeEstilo(`${fila.calendar_id}|${fila.post_id}`, ESTILOS_HISTORIA.includes(estilo) ? estilo : "encajada");
   const previa = await acceso.leerUno("historias_auto_piezas", { client_id: clientId, clave_post: clavePost });
   const pieza = {
     id: previa?.id ?? uuid(), client_id: clientId, clave_post: clavePost, fila_id: fila.id,
     externo_id: fila.red === "instagram" ? fila.externo_id ?? "" : previa?.externo_id ?? "",
-    clave, titulo: String(post.title || post.idea || "").slice(0, 140), frase: String(frase).slice(0, 60),
+    clave, titulo: String(post.title || post.idea || "").slice(0, 140), frase: String(frase).slice(0, 120),
     publicada_at: fila.publicada_at ?? null, usos: previa?.usos ?? 0, usada_at: previa?.usada_at ?? null,
     excluida: previa?.excluida ? 1 : 0, created_at: previa?.created_at ?? ahora(),
   };
@@ -140,7 +145,7 @@ export async function programarHistoriaDelDia(env, acceso, clientId, fecha, mome
     piezas.map((p) => p.externo_id).filter(Boolean), { client_id: clientId });
   // Las del día (hasta `porDia`), cada una con una publicación distinta y su hora (`horasDelDia`).
   const horas = horasDelDia(ajustes.hora, ajustes.porDia);
-  const elegidas = elegirPiezas(piezas, horas.length, { interacciones: new Map(medidas.map((m) => [m.externo_id, m.interacciones])), momento });
+  const elegidas = elegirPiezas(piezas, horas.length, { interacciones: new Map(medidas.map((m) => [m.externo_id, m.interacciones])), momento, todas });
   if (!elegidas.length) {
     await cerrar("Ese día no salió ninguna: todo lo preparado salió hace poco o se acaba de publicar.");
     return 0;

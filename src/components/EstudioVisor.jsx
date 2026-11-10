@@ -161,7 +161,7 @@ function AjustarTexto({ archivo: a, galeria = [], onEditar }) {
 export default function Visor({
   archivo: a, carpetas, lectura, onCerrar, onFavorito, onPapelera, onMover, onReferencia, onAnimar, onUsar, etiquetaUsar,
   costoOtra = null, onOtraIgual = null, onOtrasVersiones = null, versionando = false, onRecrear = null,
-  onEditar = null, original = null, onVerOriginal = null, anteriores = null,
+  onEditar = null, original = null, onVerOriginal = null, anteriores = null, onPrincipal = null, onQuitarOtras = null,
   esLogo = false, onLogo = null, revision = null, onRevisar = null, onCorregir = null, galeria = [],
   clienteId = null, onEstampar = null, cliente = null, onPlantilla = null, activos = null, desdePost = null,
 }) {
@@ -197,20 +197,46 @@ export default function Visor({
           </div>
           <p className="est-visor-prompt">{a.prompt}</p>
           {/* Las otras versiones de esta pieza (la galería enseña una sola tarjeta: lib/estudio.js, `apilarVersiones`). */}
-          {anteriores?.length > 0 && (
-            <div className="est-visor-versiones">
-              <p className="hint" style={{ margin: 0 }}>{anteriores.length === 1 ? "Otra versión" : `Otras ${anteriores.length} versiones`} de esta pieza (la de antes de corregirla, la cruda, la recompuesta…):</p>
-              <ul className="est-visor-versiones-lista">
-                {anteriores.map((v) => (
-                  <li key={v.id}>
-                    <button type="button" className="est-visor-version" onClick={() => onVerOriginal?.(v)} aria-label={`Ver la versión del ${new Date(v.creado).toLocaleString("es-PA")}`}>
-                      <Pieza archivo={v} />
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
+          {anteriores?.length > 0 && (() => {
+            // Todas las versiones juntas, en orden de creación, con la que se ve marcada: se pasa de una a otra sin
+            // perder las demás, se escoge cuál es la principal (la de la tarjeta) y se borran las que sobran.
+            const principalId = a.vistaId ?? a.id;
+            const todas = [a, ...anteriores].sort((x, y) => String(x.creado).localeCompare(String(y.creado)));
+            return (
+              <div className="est-visor-versiones">
+                <p className="hint" style={{ margin: 0 }}>{todas.length} versiones de esta pieza (la cruda, la corregida, la recompuesta…). Toca una para verla.</p>
+                <ul className="est-visor-versiones-lista">
+                  {todas.map((v, i) => (
+                    <li key={v.id}>
+                      <button type="button" className="est-visor-version" aria-current={v.id === a.id ? "true" : undefined}
+                        style={v.id === a.id ? { outline: "2px solid var(--accent)", outlineOffset: 2 } : undefined}
+                        onClick={() => v.id !== a.id && onVerOriginal?.(v)}
+                        aria-label={`Versión ${i + 1}${v.id === principalId ? " (la principal)" : ""}${v.usadoEn?.length ? ", en uso" : ""}: del ${new Date(v.creado).toLocaleString("es-PA")}`}>
+                        <Pieza archivo={v} />
+                      </button>
+                      <span className="hint" style={{ display: "block", textAlign: "center", margin: 0 }}>
+                        {i + 1}{v.id === principalId ? " · principal" : ""}{v.usadoEn?.length ? " · en uso" : ""}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+                {!lectura && (
+                  <div style={{ display: "flex", gap: "var(--sp-2)", flexWrap: "wrap" }}>
+                    {onPrincipal && a.id !== principalId && (
+                      <button type="button" className="btn btn-secondary btn-sm" onClick={onPrincipal} title="Es la que enseña la tarjeta de la galería">
+                        <Icon name="star" size={14} /> Hacer la principal
+                      </button>
+                    )}
+                    {onQuitarOtras && (
+                      <button type="button" className="btn btn-ghost btn-sm" onClick={onQuitarOtras}>
+                        <Icon name="trash" size={14} /> Quedarme sólo con ésta (las otras {anteriores.length}, a la papelera)
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
           {original && (
             <p className="hint est-visor-original">
               <Icon name="refresh" size={14} /> Editada a partir de{" "}

@@ -114,7 +114,7 @@ import { pedirMusica, ErrorMusica } from "../lib/estudio/musica.js";
 import { proponerMusica, musicaALaMarca, resumenDelAnalisis, ErrorDirectorMusical } from "../lib/estudio/directorMusical.js";
 import { pedidoConClips, alContenedor } from "../lib/estudio/cuadros.js";
 import { pedirRender, renderAlDia, ligarAPublicacion } from "../lib/estudio/render.js";
-import { publicarConMusica } from "../lib/estudio/conMusica.js";
+import { publicarConMusica, carruselAReel } from "../lib/estudio/conMusica.js";
 import { pedirFondos, estadoDeFondos } from "../lib/estudio/fondosVideo.js";
 import { costoDeVoz, fraseDeMuestra, modeloDeVoz, esIdDeVoz } from "../../src/lib/voces.js";
 import { sincronizarCancion, crearVideoConCancion, ajustarCancion, resincronizarVideo, resumenDeSincronia, ErrorCancion } from "../lib/estudio/cancion.js";
@@ -288,13 +288,23 @@ async function rutasDelCliente(req, env, { acceso, usuario, partes, metodo }) {
   if (id === "con-musica" && !accion) {
     if (metodo !== "POST") return error("Método no permitido.", 405);
     const b = (await cuerpo(req)) ?? {};
-    const r = await publicarConMusica(env, acceso, cliente, {
+    const opciones = {
       postId: typeof b.postId === "string" ? b.postId : "", calendarId: typeof b.calendarId === "string" ? b.calendarId : null,
       musicaId: typeof b.musicaId === "string" ? b.musicaId : "", segundos: b.segundos, movimiento: b.movimiento,
-      logo: typeof b.logo === "boolean" ? b.logo : undefined, usuario, por: firma(usuario, req),
-    });
-    avisar(env, acceso, usuario, req, clienteId, r.video.id);
-    return json(r, 202);
+      logo: typeof b.logo === "boolean" ? b.logo : undefined, confirmado: b.confirmado === true, usuario, por: firma(usuario, req),
+    };
+    try {
+      // Un CARRUSEL en reel (`reel: true`): sus láminas con transiciones, música y, si se pide, voz.
+      const r = b.reel === true
+        ? await carruselAReel(env, acceso, cliente, { ...opciones, transicion: b.transicion, voz: b.voz === true })
+        : await publicarConMusica(env, acceso, cliente, opciones);
+      avisar(env, acceso, usuario, req, clienteId, r.video.id);
+      return json(r, 202);
+    } catch (e) {
+      // La música nueva (Suno) y la voz (ElevenLabs) piden su «sí» con el costo: el 409 `confirmar` con sus datos.
+      if (e instanceof ErrorMusica || e instanceof ErrorVoz) return respuestaDeVoz(e);
+      throw e;
+    }
   }
 
   // «Me gusta esta»: una música generada pasa a referencia de la música de la marca (en el kit guardado).

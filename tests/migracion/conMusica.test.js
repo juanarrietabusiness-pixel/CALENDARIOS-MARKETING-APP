@@ -188,6 +188,62 @@ describe("de una foto, un reel con su música", () => {
   });
 });
 
+describe("lo nuevo: sin animación, música generada mirando la foto y el carrusel en reel", () => {
+  it("«Sin animación»: la foto quieta (el guion no lleva movimiento)", async () => {
+    expect((await conMusica({ movimiento: "ninguno" })).status).toBe(202);
+    const capa = JSON.parse(proyecto()[0].guion).escenas[0].capas[0];
+    expect(capa.movimiento ?? "ninguno").toBe("ninguno");
+  });
+
+  it("música GENERADA: sin el sí, 409 con el costo (el video ya está aprobado, sin música); con él, el trabajo de Suno, y al llegar la música se renderiza solo", async () => {
+    env.KIE_API_KEY = "k";
+    const r = await conMusica({ musicaId: "generar" });
+    expect(r.status).toBe(409);
+    const j = await r.json();
+    expect(j.codigo).toBe("confirmar");
+    expect(j.costo).toBeGreaterThan(0);
+    expect(encargos).toHaveLength(0);
+    const ok = await conMusica({ musicaId: "generar", confirmado: true });
+    expect(ok.status).toBe(202);
+    expect((await ok.json()).generando).toBe(true);
+    const [f] = proyecto();
+    expect(JSON.parse(f.origen)).toMatchObject({ tipo: "foto", renderSolo: true });
+    const t = db.sqlite.prepare("select * from estudio_trabajos where tipo = 'audio'").get();
+    expect(JSON.parse(t.ajustes)).toMatchObject({ para: "musica", videoId: f.id });
+    expect(encargos).toHaveLength(0);
+    // Llega la música (lo que hace terminarMusica: la pone en el sonido) → el render sale solo, una vez.
+    db.sqlite.prepare("update videos_proyectos set sonido = ? where id = ?").run(JSON.stringify({ efectos: false, musica: { archivoId: "m1", clave: "clientes/bc/estudio/tema.mp3", nombre: "Tema", volumen: 0 } }), f.id);
+    const { renderSiToca } = await import("../../worker/lib/estudio/conMusica.js");
+    expect(await renderSiToca(env, crearAcceso(db, JEFE), "bc", f.id)).toBe(true);
+    expect(encargos).toHaveLength(1);
+    expect(await renderSiToca(env, crearAcceso(db, JEFE), "bc", f.id)).toBe(false);
+  });
+
+  it("un CARRUSEL en reel: una escena por lámina con la transición, la música en su sonido; al terminar es un reel y «Volver al carrusel» lo deja como estaba", async () => {
+    env.MEDIA.objetos.set("clientes/bc/posts/b.jpg", new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 9]));
+    const r = await conMusica({ postId: "car", reel: true, transicion: "deslizar", segundos: 2 });
+    expect(r.status).toBe(202);
+    const [f] = proyecto();
+    const g = JSON.parse(f.guion);
+    expect(g.escenas).toHaveLength(2);
+    expect(g.escenas.map((e) => e.transicion.tipo)).toEqual(["corte", "deslizar"]);
+    expect(g.escenas.map((e) => e.capas[0].movimiento)).toEqual(["acercar", "alejar"]);
+    expect(JSON.parse(f.origen)).toMatchObject({ tipo: "carrusel", foto: FOTO });
+    await ejecutarRender(env, encargos.at(-1).cuerpo, container([]));
+    const p = post("car");
+    expect(p.format).toBe("reel");
+    expect(p.medios).toHaveLength(1);
+    expect(p.portada).toBe(FOTO);
+    expect(p.conMusica.medios).toHaveLength(2);
+    const vuelta = volverALaFoto(p);
+    expect(vuelta.format).toBe("carrusel");
+    expect(vuelta.medios.map((m) => m.src)).toEqual([FOTO, "/api/media/clientes/bc/posts/b.jpg"]);
+    // Pedirlo otra vez desde el reel: el MISMO video.
+    expect((await conMusica({ postId: "car", reel: true, musicaId: "ninguna" })).status).toBe(202);
+    expect(proyecto()).toHaveLength(1);
+  });
+});
+
 describe("la herramienta del asistente y de Claude", () => {
   const herramientas = () => crearHerramientasMCP({ env, acceso: crearAcceso(db, JEFE), usuario: { id: JEFE, nombre: "Juan" } });
 

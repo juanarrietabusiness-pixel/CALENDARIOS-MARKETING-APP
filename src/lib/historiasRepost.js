@@ -101,10 +101,109 @@ export function dibujarHistoria(img, frase, { color = "#ffffff" } = {}) {
   return lienzo;
 }
 
-/** La historia lista para subir: un File JPEG de 1080 × 1920. */
+/** Parte un texto en líneas que caben en `ancho` con la letra puesta en el contexto (como mucho `max` líneas). */
+function lineas(ctx, texto, ancho, max = 5) {
+  const salida = [];
+  let linea = "";
+  for (const p of String(texto).split(/\s+/).filter(Boolean)) {
+    const prueba = linea ? `${linea} ${p}` : p;
+    if (ctx.measureText(prueba).width > ancho && linea) { salida.push(linea); linea = p; } else linea = prueba;
+  }
+  if (linea) salida.push(linea);
+  if (salida.length > max) { salida.length = max; salida[max - 1] = `${salida[max - 1].replace(/[\s.,;:]+$/, "")}…`; }
+  return salida;
+}
+
+/**
+ * «Detalle»: la imagen A SANGRE, acercada un poco (otra cara de la misma publicación), con un velo abajo y el título del
+ * post en una placa dentro de la zona segura.
+ */
+export function dibujarDetalle(img, frase, { color = "#ffffff" } = {}) {
+  const lienzo = document.createElement("canvas");
+  lienzo.width = ANCHO;
+  lienzo.height = ALTO;
+  const ctx = lienzo.getContext("2d");
+  ctx.imageSmoothingQuality = "high";
+  const e = Math.max(ANCHO / img.width, ALTO / img.height) * 1.12;
+  ctx.drawImage(img, (ANCHO - img.width * e) / 2, (ALTO - img.height * e) / 2, img.width * e, img.height * e);
+  const velo = ctx.createLinearGradient(0, ALTO * 0.5, 0, ALTO);
+  velo.addColorStop(0, "rgba(0,0,0,0)");
+  velo.addColorStop(1, "rgba(0,0,0,0.55)");
+  ctx.fillStyle = velo;
+  ctx.fillRect(0, 0, ANCHO, ALTO);
+  const texto = String(frase ?? "").trim();
+  if (texto) {
+    ctx.font = "800 64px system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif";
+    const ls = lineas(ctx, texto, ANCHO * 0.74, 2);
+    const alto = ls.length * 76 + 56;
+    const w = Math.max(...ls.map((l) => ctx.measureText(l).width)) + 96;
+    const x = (ANCHO - w) / 2;
+    const y = ALTO * 0.78 - alto;
+    ctx.fillStyle = color;
+    placa(ctx, x, y, w, alto, 32);
+    ctx.fill();
+    ctx.fillStyle = textoSobre(color);
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ls.forEach((l, i) => ctx.fillText(l, ANCHO / 2, y + 28 + 38 + i * 76));
+  }
+  return lienzo;
+}
+
+/**
+ * «Frase del post»: una oración del propio caption, grande, sobre el color de la marca, con la imagen del post chica
+ * debajo (enmarcada). Es contenido NUEVO para quien ya vio el post: le dice algo que estaba escrito y nadie leyó.
+ */
+export function dibujarCita(img, frase, { color = "#1E90FF" } = {}) {
+  const lienzo = document.createElement("canvas");
+  lienzo.width = ANCHO;
+  lienzo.height = ALTO;
+  const ctx = lienzo.getContext("2d");
+  ctx.imageSmoothingQuality = "high";
+  ctx.fillStyle = /^#[0-9a-f]{6}$/i.test(color) ? color : "#1E90FF";
+  ctx.fillRect(0, 0, ANCHO, ALTO);
+  const tinta = textoSobre(ctx.fillStyle);
+  ctx.fillStyle = tinta;
+  ctx.textAlign = "left";
+  ctx.textBaseline = "alphabetic";
+  ctx.font = "800 160px Georgia, 'Times New Roman', serif";
+  ctx.globalAlpha = 0.35;
+  ctx.fillText("“", ANCHO * 0.09, ALTO * 0.26);
+  ctx.globalAlpha = 1;
+  let tam = 74;
+  let ls = [];
+  for (; tam >= 48; tam -= 6) {
+    ctx.font = `800 ${tam}px system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif`;
+    ls = lineas(ctx, frase, ANCHO * 0.8, 6);
+    if (ls.length <= 5) break;
+  }
+  const inicio = ALTO * 0.29;
+  ls.forEach((l, i) => ctx.fillText(l, ANCHO * 0.1, inicio + i * tam * 1.18));
+  // La imagen del post, chica y enmarcada, debajo.
+  const arriba = inicio + ls.length * tam * 1.18 + 40;
+  const abajo = ALTO * 0.8;
+  const e = Math.min((ANCHO * 0.6) / img.width, Math.max(120, abajo - arriba) / img.height);
+  const w = img.width * e;
+  const h = img.height * e;
+  const x = (ANCHO - w) / 2;
+  const y = arriba + Math.max(0, (abajo - arriba - h) / 2);
+  ctx.save();
+  ctx.shadowColor = "rgba(0,0,0,0.3)";
+  ctx.shadowBlur = 30;
+  ctx.shadowOffsetY = 10;
+  placa(ctx, x, y, w, h, 24);
+  ctx.clip();
+  ctx.drawImage(img, x, y, w, h);
+  ctx.restore();
+  return lienzo;
+}
+
+const DIBUJOS = { encajada: dibujarHistoria, lamina: dibujarHistoria, detalle: dibujarDetalle, cita: dibujarCita };
+
+/** La historia lista para subir: un File JPEG de 1080 × 1920. `opciones.estilo`: el diseño (src/lib/historiasAuto.js). */
 export async function historiaDeRepost(src, frase, opciones = {}) {
   const img = await bitmap(src);
-  const lienzo = dibujarHistoria(img, frase, opciones);
+  const lienzo = (DIBUJOS[opciones.estilo] ?? dibujarHistoria)(img, frase, opciones);
   img.close?.();
   const blob = await new Promise((ok) => lienzo.toBlob(ok, "image/jpeg", 0.9));
   if (!blob) throw new Error("No se pudo dibujar la historia.");

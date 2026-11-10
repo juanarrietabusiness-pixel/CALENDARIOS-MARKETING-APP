@@ -18,10 +18,13 @@ export async function musicasDelCliente(clienteId) {
  * → { video, musica, costo: 0, aviso }. Un 503 (`sin_container`) o un 409 (`sin_musica`) vuelven como error con su
  * `datos.codigo`.
  */
-export async function pedirConMusica(clienteId, { postId, calendarId, musicaId, segundos, movimiento, logo }) {
+export async function pedirConMusica(clienteId, { postId, calendarId, musicaId, segundos, movimiento, logo, confirmado = false, reel = false, transicion, voz = false }) {
   const r = await pedir(`${base(clienteId)}/con-musica`, {
     method: "POST",
-    body: JSON.stringify({ postId, calendarId, musicaId, segundos, movimiento, ...(typeof logo === "boolean" ? { logo } : {}) }),
+    body: JSON.stringify({
+      postId, calendarId, musicaId, segundos, movimiento, ...(typeof logo === "boolean" ? { logo } : {}),
+      ...(confirmado ? { confirmado: true } : {}), ...(reel ? { reel: true, transicion, voz } : {}),
+    }),
   });
   avisar(clienteId, r?.video?.id);
   return r;
@@ -40,4 +43,14 @@ export function medioDelVideo(video) {
     src: `/api/media/${r.clave}`, tipo: "video", nombre: `${String(video.titulo || "video").slice(0, 60)}.mp4`,
     ancho: r.ancho, alto: r.alto, duracion: r.duracion, videoAnimado: video.id,
   };
+}
+
+/**
+ * ¿Pide el «sí» con su costo? (la música nueva de Suno o la voz de ElevenLabs) → { texto, costo, hablas } o null. Lo que
+ * vuelve en el 409 `confirmar` del servidor.
+ */
+export function confirmacionDe(e) {
+  const d = e?.datos ?? {};
+  if (e?.estado !== 409 || d.codigo !== "confirmar") return null;
+  return { texto: e.message, costo: d.costo ?? null, hablas: Array.isArray(d.hablas) ? d.hablas : null, propuesta: d.propuesta ?? null };
 }

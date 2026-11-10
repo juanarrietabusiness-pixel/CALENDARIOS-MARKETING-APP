@@ -227,11 +227,18 @@ export async function vaciarPapelera(env, acceso, clientId, { protegidas = null 
 }
 
 /** Favorito y carpeta. Una carpeta tiene que ser de este cliente. */
-export async function cambiarArchivo(acceso, clientId, id, { favorito, carpetaId }) {
+export async function cambiarArchivo(acceso, clientId, id, { favorito, carpetaId, principal }) {
   const f = await archivoDe(acceso, clientId, id);
   if (!f) return null;
   const cambios = {};
   if (favorito !== undefined) cambios.favorito = favorito ? 1 : 0;
+  // «Hacer la principal» de entre las VERSIONES de una pieza (src/lib/estudio.js, `apilarVersiones`): la galería enseña
+  // ésa en la tarjeta. Va en `ajustes.principalAt` (la más reciente gana); false la quita.
+  if (principal !== undefined) {
+    const aj = leerJSON(f.ajustes, {});
+    if (principal) aj.principalAt = new Date().toISOString(); else delete aj.principalAt;
+    cambios.ajustes = JSON.stringify(aj);
+  }
   if (carpetaId !== undefined) {
     if (carpetaId !== null && !(await acceso.leerUno("estudio_carpetas", { id: String(carpetaId), client_id: clientId }))) {
       throw new ErrorEstudio("Esa carpeta no existe.", 404);
@@ -376,9 +383,16 @@ export async function crearCarpeta(acceso, clientId, nombre, { tipo = "" } = {})
   const mismas = existentes.filter((c) => (c.tipo ?? "") === "" ? !t : Boolean(t));
   if (!t && mismas.length >= MAX_CARPETAS) throw new ErrorEstudio(`Puedes tener hasta ${MAX_CARPETAS} carpetas.`, 409);
   if (t && mismas.length >= MAX_GRUPOS) throw new ErrorEstudio(`Hay ${MAX_GRUPOS} carruseles y reels en la galería: borra alguno viejo.`, 409);
-  if (existentes.some((c) => c.nombre.toLowerCase() === limpio.toLowerCase())) throw new ErrorEstudio("Ya hay una carpeta con ese nombre.", 409);
+  const ocupado = (n) => existentes.some((c) => c.nombre.toLowerCase() === n.toLowerCase());
+  // La de un carrusel o un reel la pone la aplicación con su título y el día: dos reels con el mismo título el mismo día
+  // compartían carpeta (la pantalla reusaba la que ya había) y sus piezas se mezclaban. Ahora la segunda lleva « (2)».
+  let final = limpio;
+  if (ocupado(final)) {
+    if (!t) throw new ErrorEstudio("Ya hay una carpeta con ese nombre.", 409);
+    for (let i = 2; i < 200 && ocupado(final); i++) final = nombreDeCarpeta(`${limpio.slice(0, 34).trim()} (${i})`);
+  }
   const ahora = new Date().toISOString();
-  return carpetaPublica(await acceso.insertar("estudio_carpetas", { id: uuid(), client_id: clientId, nombre: limpio, tipo: t, orden: "[]", created_at: ahora, updated_at: ahora }));
+  return carpetaPublica(await acceso.insertar("estudio_carpetas", { id: uuid(), client_id: clientId, nombre: final, tipo: t, orden: "[]", created_at: ahora, updated_at: ahora }));
 }
 
 /**

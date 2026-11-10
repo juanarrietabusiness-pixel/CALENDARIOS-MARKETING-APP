@@ -64,7 +64,7 @@ import { instanteLleno } from "../../../src/lib/revisionEscenas.js";
 import { pedidoConClips, alContenedor, respuestaEnBase64 } from "./cuadros.js";
 import { pedirRender, renderAlDia, ligarAPublicacion } from "./render.js";
 import { conMusicaSegun } from "./conMusica.js";
-import { DURACIONES_FOTO, MOVIMIENTOS_FOTO, textoDeCancion } from "../../../src/lib/conMusica.js";
+import { DURACIONES_FOTO, MOVIMIENTOS_FOTO, TRANSICIONES_CARRUSEL, textoDeCancion } from "../../../src/lib/conMusica.js";
 import { vistaDe, piezaDe } from "../mcpVista/modelo.js";
 import { vistaDeVideo, lineasDeMedios } from "./vistaMedios.js";
 import { leerEstructuras, estructuraExistente, guardarEstructura, quitarEstructura, ErrorEstructura } from "../estructurasGuion.js";
@@ -321,8 +321,9 @@ export const DEFINICIONES_VIDEO = Object.freeze([
   {
     name: "publicar_con_musica",
     description: `«Publicar CON MÚSICA». La API de Instagram no deja poner música de su biblioteca en fotos ni en carruseles; hay dos caminos según la publicación (ofrécelos cuando pidan un post «con música»):
-· Un POST DE UNA FOTO se convierte en un REEL corto: la foto a sangre con un movimiento suave (${MOVIMIENTOS_FOTO.map((m) => `«${m.id}»: ${m.nombre.toLowerCase()}`).join("; ")}) de ${DURACIONES_FOTO.join(", ")} s y una música de la galería del cliente (musica_id de musicas; sin él, la favorita, la de la marca o la más nueva). Crea el video, lo aprueba y lo renderiza ligado a la publicación; al terminar es un reel con el video y la foto de PORTADA (en Instagram, «audio original»). En la pestaña Pieza, «Volver a la foto» lo deshace. NO gasta IA (0 $): el video lo hace el servidor. Sin música en la galería, dilo: se sube o se genera en «Sonido» (no generes música nueva salvo que la pidan, con generar_musica y su confirmación).
-· Un CARRUSEL no se convierte: se marca para publicarlo A MANO desde el teléfono con la música de Instagram («La publico yo»): a su hora llega un aviso con la pantalla del teléfono (las imágenes en orden para compartir a Instagram, el texto para copiar y una CANCIÓN SUGERIDA de la lista que la agencia escribe por cliente en Marca → Kit y voz).`,
+· Un POST DE UNA FOTO se convierte en un REEL corto: la foto a sangre con un movimiento suave (${MOVIMIENTOS_FOTO.map((m) => `«${m.id}»: ${m.nombre.toLowerCase()}`).join("; ")}) de ${DURACIONES_FOTO.join(", ")} s y una música de la galería del cliente (musica_id de musicas; sin él, la favorita, la de la marca o la más nueva). Crea el video, lo aprueba y lo renderiza ligado a la publicación; al terminar es un reel con el video y la foto de PORTADA (en Instagram, «audio original»). En la pestaña Pieza, «Volver a la foto» lo deshace. NO gasta IA (0 $): el video lo hace el servidor. Sin música en la galería, dilo: se sube o se genera en «Sonido» (no generes música nueva salvo que la pidan).
+  Con musica_id="generar" la música la escribe el DIRECTOR MUSICAL MIRANDO la foto y la hace Suno: eso SÍ cuesta y pide confirmar (sin confirmado=true devuelve el costo y NO SE CREA NADA); al llegar la música el reel se hace solo. movimiento «ninguno» deja la foto quieta.
+· Un CARRUSEL tiene dos caminos: con reel=true se CONVIERTE en un reel con sus láminas una tras otra (transicion, segundos por lámina 2-5, movimiento «alternar» o uno fijo), la música (musica_id, «generar» o «ninguna») y, con voz=true, una VOZ: la IA escribe una frase por lámina con lo que dice la publicación y la voz de la marca la dice con subtítulos (cuesta: pide confirmar y enseña lo que dirá). Sin reel, se marca para publicarlo A MANO desde el teléfono con la música de Instagram («La publico yo»): a su hora llega un aviso con la pantalla del teléfono (las imágenes en orden, el texto para copiar y una CANCIÓN SUGERIDA de la lista de Marca → Kit y voz).`,
     input_schema: {
       type: "object",
       properties: {
@@ -332,6 +333,10 @@ export const DEFINICIONES_VIDEO = Object.freeze([
         segundos: { type: "number", enum: [...DURACIONES_FOTO], description: "Sólo para el reel: lo que dura (10 por defecto)." },
         movimiento: { type: "string", enum: MOVIMIENTOS_FOTO.map((m) => m.id), description: "Sólo para el reel: cómo se mueve la foto (acercar por defecto)." },
         logo: { type: "boolean", description: "Sólo para el reel: el logo del kit encima. Si se omite, sólo si el kit lo estampa y la foto no salió ya del Estudio con él." },
+        reel: { type: "boolean", description: "Sólo para un carrusel: true lo convierte en un reel con sus láminas (si no, a mano con la música de Instagram)." },
+        transicion: { type: "string", enum: TRANSICIONES_CARRUSEL.map((t) => t.id), description: "Carrusel en reel: la transición entre láminas (fundido por defecto)." },
+        voz: { type: "boolean", description: "Carrusel en reel: con una voz que cuenta las láminas (cuesta; pide confirmar)." },
+        confirmado: { type: "boolean", description: "true SÓLO cuando la persona ya vio el costo (música generada o voz) y dijo que sí. No lo pongas por tu cuenta." },
       },
       required: ["publicacion_id"],
     },
@@ -794,10 +799,23 @@ export function crearHerramientasVideo({ env, acceso, resolverCliente, usuario, 
       });
     },
 
-    async publicar_con_musica({ cliente, publicacion_id: postId, musica_id: musicaId = "", segundos, movimiento, logo }) {
+    async publicar_con_musica({ cliente, publicacion_id: postId, musica_id: musicaId = "", segundos, movimiento, logo, reel = false, transicion, voz = false, confirmado }) {
       const c = await resolverCliente(cliente);
       return conErrores(async () => {
-        const r = await conMusicaSegun(env, acceso, c, { postId, musicaId, segundos, movimiento, logo: typeof logo === "boolean" ? logo : undefined, usuario, por });
+        let r;
+        try {
+          r = await conMusicaSegun(env, acceso, c, {
+            postId, musicaId, segundos, movimiento, logo: typeof logo === "boolean" ? logo : undefined, reel: reel === true, transicion, voz: voz === true,
+            confirmado: confirmado === true, usuario, por,
+          });
+        } catch (e) {
+          // La música nueva o la voz piden el «sí»: NO SE CREÓ NADA todavía.
+          if (e?.codigo === "confirmar") {
+            return `NO SE CREÓ NADA TODAVÍA. ${e.message}${Array.isArray(e.hablas) && e.hablas.length ? ` Lo que dirá la voz, lámina a lámina: ${e.hablas.map((h, i) => `${i + 1}. «${h}»`).join(" ")}` : ""} Enséñaselo a la persona y, sólo con su sí, repite con confirmado=true.`;
+          }
+          if (e?.estado && !(e instanceof ErrorVideo)) throw new Fallo(e.message);
+          throw e;
+        }
         if (r.tipo === "a-mano") {
           return [
             "Marcada para publicarla A MANO con la música de Instagram (el carrusel no se convierte: la API no deja poner su música).",
@@ -810,7 +828,9 @@ export function crearHerramientasVideo({ env, acceso, resolverCliente, usuario, 
         avisar(c.id, r.video.id);
         const capa = r.video.guion?.escenas?.[0]?.capas?.[0] ?? {};
         const mov = MOVIMIENTOS_FOTO.find((m) => m.id === capa.movimiento)?.nombre.toLowerCase() ?? "con movimiento";
-        const texto = `Haciendo el reel con música de la publicación ${postId}: la foto con ${mov}, ${capa.dura ?? ""} s, con «${r.musica.nombre}». ${r.aviso} Míralo con ver_video (video_id ${r.video.id}).`;
+        const escenas = r.video.guion?.escenas?.length ?? 1;
+        const que = escenas > 1 ? `las ${escenas} láminas del carrusel` : `la foto con ${mov}, ${capa.dura ?? ""} s`;
+        const texto = `Haciendo el reel con música de la publicación ${postId}: ${que}${r.musica?.nombre ? `, con «${r.musica.nombre}»` : ""}. ${r.aviso} Míralo con ver_video (video_id ${r.video.id}).`;
         const video = { ...r.video, locucion: await locucionAlDia(acceso, r.video.locucion) };
         return { texto, imagenes: [], vista: await vistaDeVideo(env, { video, clienteId: c.id, cliente: { id: c.id, nombre: c.name } }) };
       });

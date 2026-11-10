@@ -527,6 +527,7 @@ export async function rutasEstudio(req, env, { acceso, usuario, partes, metodo }
         const f = await cambiarArchivo(acceso, cliente.id, c, {
           favorito: "favorito" in datos ? Boolean(datos.favorito) : undefined,
           carpetaId: "carpetaId" in datos ? (datos.carpetaId ? String(datos.carpetaId) : null) : undefined,
+          principal: "principal" in datos ? datos.principal === true : undefined,
         });
         if (!f) return noEncontrado("Archivo");
         avisar();

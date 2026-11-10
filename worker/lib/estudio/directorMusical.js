@@ -17,7 +17,10 @@
 //     (`biblioteca`). Si no encaja ninguna, lo de siempre.
 // ============================================================
 
-import { llamarIA } from "../cerebro/ia.js";
+import { llamarIA, ErrorIA } from "../cerebro/ia.js";
+import { RechazoAnthropic } from "../anthropic.js";
+import { miniaturaDe } from "./miniaturas.js";
+import { archivosDeImagenDelGuion } from "./carpetaVideo.js";
 import { contexto as contextoCerebro } from "../cerebro/cerebro.js";
 import { kitDe, guardarKit } from "./kit.js";
 import { validarGuion } from "../../../src/lib/videoEscenas.js";
@@ -111,13 +114,15 @@ async function pensarMusica(env, acceso, cliente, fila, { reusar = false } = {})
       contextoCerebro(env, acceso, cliente.id, CONSULTA, { para: "texto", presupuesto: 1500 }).catch(() => null),
       tipoDeLaPublicacion(acceso, fila),
     ]);
-    const prompt = pedidoDeDirectorMusical({
+    // Lo que se VE en el video (la foto, las láminas, los fondos): el director lo mira para que la música case con ello.
+    const imagenes = await imagenesDelVideo(env, acceso, cliente.id, v.guion);
+    const pedido = ({
       marca: cliente.name, analisis, tipo, voz: vozDelVideo(fila, kit),
       cliente: { rubro: cliente.industry, descripcion: cliente.descripcion, audiencia: cliente.audiencia, estiloLocucion: cliente.estilo_locucion },
       kit: { musica: kitMusica, paleta: textoPaleta(kit.paleta), estilo: kit.estilo, luz: kit.luz },
       ficha: [cerebro?.ficha, cerebro?.pasajes].filter(Boolean).join("\n\n"),
     });
-    const r = await llamarIA(env, acceso, cliente, { prompt, salida: 1500, funcion: "director musical" });
+    const r = await llamarConLasImagenes(env, acceso, cliente, imagenes, (n) => pedidoDeDirectorMusical({ ...pedido, imagenes: n }));
     modelo = r.modelo;
     aviso = r.aviso ?? null;
     propuesta = leerPropuestaMusical(r.texto, { analisis, kitMusica });
@@ -131,6 +136,34 @@ async function pensarMusica(env, acceso, cliente, fila, { reusar = false } = {})
     await env.MEDIA.put(clave, JSON.stringify({ huella, at: new Date().toISOString(), propuesta, aviso, modelo }), { httpMetadata: { contentType: "application/json" } });
   } catch { /* sin guardar, la confirmación la pensará otra vez */ }
   return { propuesta, analisis, aviso, modelo, guardada: false, huella };
+}
+
+/** Hasta 3 imágenes del video (las de sus capas de imagen, en orden) como bloques para la IA, en copias de 512 px. */
+async function imagenesDelVideo(env, acceso, clienteId, guion) {
+  const ids = [...archivosDeImagenDelGuion(guion)];
+  const elegidos = ids.length <= 3 ? ids : [ids[0], ids[Math.floor(ids.length / 2)], ids[ids.length - 1]];
+  if (!elegidos.length) return [];
+  const filas = await acceso.leerVarios("estudio_archivos", ["id", "clave", "mime"], "id", elegidos, { client_id: clienteId }).catch(() => []);
+  const salida = [];
+  for (const id of elegidos) {
+    const f = filas.find((x) => x.id === id);
+    const v = f ? await miniaturaDe(env, f.clave, { mime: f.mime, lado: 512 }).catch(() => null) : null;
+    if (v && /^image\/(jpeg|png|webp)$/.test(v.mime)) salida.push({ type: "image", source: { type: "base64", media_type: v.mime, data: v.datos } });
+  }
+  return salida;
+}
+
+/** La IA con las imágenes delante; si el modelo del hueco no las recibe, sin ellas (y sigue). */
+async function llamarConLasImagenes(env, acceso, cliente, imagenes, texto) {
+  if (imagenes.length) {
+    try {
+      return await llamarIA(env, acceso, cliente, { prompt: [...imagenes, { type: "text", text: texto(imagenes.length) }], salida: 1500, funcion: "director musical" });
+    } catch (e) {
+      const c = e instanceof ErrorIA ? e.cause : e;
+      if (!(c instanceof RechazoAnthropic && c.estado >= 400 && c.estado < 500 && ![401, 402, 403, 429].includes(c.estado))) throw e;
+    }
+  }
+  return llamarIA(env, acceso, cliente, { prompt: texto(0), salida: 1500, funcion: "director musical" });
 }
 
 /** Lo que la pantalla necesita del análisis (sin las escenas enteras). */

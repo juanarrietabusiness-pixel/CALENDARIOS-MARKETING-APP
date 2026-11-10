@@ -368,6 +368,9 @@ export async function terminarAudio(env, acceso, fila, { listo, modelo }) {
       if (alDia && puedePasar(video.estado, "con_voz")) cambios.estado = "con_voz";
       await acceso.actualizar("videos_proyectos", { id: video.id, client_id: fila.client_id }, cambios);
       difundir(env, acceso.ownerId, { tipo: "videos", clienteId: fila.client_id, id: video.id, por: { userId: "sistema", nombre: "Estudio", color: "", tab: null } });
+      // Un carrusel convertido en reel con voz se renderiza SOLO en cuanto la tiene (conMusica.js; en el momento: estático
+      // cerraría un ciclo de importaciones).
+      if (cambios.estado === "con_voz") await import("./conMusica.js").then((m) => m.renderSiToca(env, acceso, fila.client_id, video.id)).catch(() => false);
     }
   }
   const nota = [

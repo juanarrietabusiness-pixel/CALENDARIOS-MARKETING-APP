@@ -259,3 +259,32 @@ describe("las canciones de Instagram viven en el kit", () => {
     expect(limpiarKit({ musica: { estilo: "x" } }).musica.cancionesInstagram).toBeUndefined();
   });
 });
+
+describe("un CARRUSEL en reel (lo nuevo)", async () => {
+  const m = await import("./conMusica.js");
+  const { validarGuion } = await import("./videoEscenas.js");
+  const laminas = [{ archivoId: "a", ancho: 1080, alto: 1350 }, { archivoId: "b", ancho: 1080, alto: 1920 }, { archivoId: "c" }];
+  it("una escena por lámina, con la transición entre ellas y el movimiento que alterna; valida", () => {
+    const g = m.guionDeCarrusel({ laminas, segundos: 3, transicion: "zoom" });
+    expect(validarGuion(g).ok).toBe(true);
+    expect(g.escenas.map((e) => e.transicion.tipo)).toEqual(["corte", "zoom", "zoom"]);
+    expect(g.escenas.map((e) => e.capas[0].recorte)).toEqual(["contener", "cubrir", "contener"]);
+    expect(g.subtitulos.activo).toBe(false);
+  });
+  it("con voz, cada lámina dice su frase y lleva subtítulos; el logo, sólo en la última", () => {
+    const g = m.guionDeCarrusel({ laminas, hablas: ["Uno dos tres.", "Cuatro cinco.", "Escríbenos hoy."], logo: { esquina: "abajo-derecha" } });
+    expect(validarGuion(g).ok).toBe(true);
+    expect(g.escenas.map((e) => e.habla)).toEqual(["Uno dos tres.", "Cuatro cinco.", "Escríbenos hoy."]);
+    expect(g.subtitulos.activo).toBe(true);
+    expect(g.escenas.map((e) => e.capas.some((c) => c.tipo === "logo"))).toEqual([false, false, true]);
+  });
+  it("lo que se puede convertir y la voz que escribe la IA", () => {
+    const img = (n) => ({ src: `/api/media/clientes/c/${n}.jpg`, tipo: "imagen" });
+    expect(m.puedeCarruselAReel({ format: "carrusel", medios: [img(1), img(2)] }).ok).toBe(true);
+    expect(m.puedeCarruselAReel({ format: "carrusel", medios: [img(1)] }).ok).toBe(false);
+    expect(m.puedeCarruselAReel({ format: "carrusel", status: "published", medios: [img(1), img(2)] }).ok).toBe(false);
+    expect(m.leerVozCarrusel('{"lineas": ["**Hola**", "Chao"]}', 3)).toEqual(["Hola", "Chao", ""]);
+    expect(m.pedidoDeVozCarrusel({ marca: "X", n: 3, descripcion: "Caption" })).toMatch(/exactamente 3 frases/);
+    expect(m.MOVIMIENTOS_FOTO.map((x) => x.id)).toContain("ninguno");
+  });
+});

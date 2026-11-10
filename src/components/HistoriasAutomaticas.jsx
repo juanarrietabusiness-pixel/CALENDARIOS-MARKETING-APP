@@ -12,7 +12,7 @@ import { useCallback, useEffect, useId, useState } from "react";
 import Icon from "./Icon";
 import { TimePicker } from "./calendario/primitivas";
 import { leerHistorias, guardarHistorias, quitarHistoria, devolverHistoria, prepararPendientes } from "../lib/historiasAutoApi";
-import { REDES_HISTORIAS, MAX_POR_DIA } from "../lib/historiasAuto";
+import { REDES_HISTORIAS, MAX_POR_DIA, NOMBRE_ESTILO_HISTORIA } from "../lib/historiasAuto";
 import { fmtDate } from "../utils";
 
 const NOMBRE_RED = { instagram: "Instagram", facebook: "Facebook" };
@@ -146,6 +146,7 @@ export default function HistoriasAutomaticas({ clients = [], onCambio }) {
                 <span style={{ fontSize: "var(--fs-xs)", fontWeight: 600 }}>
                   {datos.piezas.length ? `${datos.piezas.length} preparadas` : "Nada preparado todavía"}
                 </span>
+                <span className="hint" style={{ margin: 0 }}>Cada publicación da varias distintas (encajada, detalle, una frase del post y, en un carrusel, otra lámina): no se repite la misma.</span>
                 <button type="button" className="btn btn-secondary btn-sm" onClick={preparar} disabled={Boolean(trabajando)}>
                   <Icon name="refresh" size={14} /> {trabajando === "preparar" ? "Preparando…" : "Preparar ahora"}
                 </button>
@@ -158,7 +159,7 @@ export default function HistoriasAutomaticas({ clients = [], onCambio }) {
                     <li key={p.id}>
                       <img src={p.src} alt={p.titulo ? `Historia de «${p.titulo}»` : "Historia preparada"} loading="lazy" />
                       <span className="historias-auto-usos">
-                        {p.usos ? `${p.usos === 1 ? "1 vez" : `${p.usos} veces`}${p.usadaAt ? ` · la última, ${diaCorto(fmtDate(new Date(p.usadaAt)))}` : ""}` : "Aún no salió"}
+                        {NOMBRE_ESTILO_HISTORIA[p.estilo] ? `${NOMBRE_ESTILO_HISTORIA[p.estilo]} · ` : ""}{p.usos ? `${p.usos === 1 ? "1 vez" : `${p.usos} veces`}${p.usadaAt ? ` · la última, ${diaCorto(fmtDate(new Date(p.usadaAt)))}` : ""}` : "Aún no salió"}
                       </span>
                       <button type="button" className="btn btn-ghost btn-sm" onClick={() => quitar(p)} disabled={trabajando === p.id}>
                         Que no salga

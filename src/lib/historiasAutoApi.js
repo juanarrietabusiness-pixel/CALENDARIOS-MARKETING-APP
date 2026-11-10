@@ -30,9 +30,10 @@ export async function prepararPendientes(clientId, { limite = PREPARAR_DE_UNA_VE
   let hechas = 0;
   for (const p of pendientes.slice(0, limite)) {
     try {
-      const archivo = await historiaDeRepost(p.src, p.frase, { color });
+      // La encajada sigue como siempre (placa blanca, la que ya gustaba); las nuevas llevan el color de la marca.
+      const archivo = await historiaDeRepost(p.src, p.frase, { color: color ?? (["detalle", "cita"].includes(p.estilo) ? p.color : undefined), estilo: p.estilo });
       const src = await subirImagenPublicacion(clientId, archivo);
-      await pedir(ruta(clientId, "/piezas"), { method: "POST", body: JSON.stringify({ filaId: p.filaId, src, frase: p.frase }) });
+      await pedir(ruta(clientId, "/piezas"), { method: "POST", body: JSON.stringify({ filaId: p.filaId, src, frase: p.frase, estilo: p.estilo ?? "encajada" }) });
       hechas++;
     } catch (e) {
       console.warn("historia automática:", p.filaId, e?.message);

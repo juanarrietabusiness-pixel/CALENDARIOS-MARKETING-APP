@@ -2,11 +2,12 @@ import { useEffect, useId, useMemo, useState } from "react";
 import Icon from "../Icon";
 import { mediosDe } from "../../lib/publicacion";
 import {
-  puedeConMusica, esCarruselParaMusica, fotoDe, postConMusica, volverALaFoto, musicaPorDefecto,
+  puedeConMusica, esCarruselParaMusica, fotoDe, postConMusica, volverALaFoto, musicaPorDefecto, puedeCarruselAReel, laminasDe,
   DURACIONES_FOTO, DURACION_FOTO, MOVIMIENTOS_FOTO, MOVIMIENTO_FOTO, FRASE_COSTO,
+  SEGUNDOS_LAMINA, SEGUNDOS_LAMINA_INICIAL, TRANSICIONES_CARRUSEL, TRANSICION_CARRUSEL, MOVIMIENTOS_CARRUSEL,
 } from "../../lib/conMusica";
 import { cancionSugerida, ultimaCancionUsada, cancionParaGuardar, textoDeCancion, limpiarCanciones } from "../../lib/cancionesInstagram";
-import { musicasDelCliente, pedirConMusica, leerVideoConMusica, medioDelVideo } from "../../lib/conMusicaApi";
+import { musicasDelCliente, pedirConMusica, leerVideoConMusica, medioDelVideo, confirmacionDe } from "../../lib/conMusicaApi";
 import { navegar } from "../../lib/rutas";
 
 // ============================================================
@@ -31,7 +32,10 @@ const leerKit = (k) => {
   try { return JSON.parse(k) ?? {}; } catch { return {}; }
 };
 const MIRAR_CADA_MS = 3000;
-const MIRAR_HASTA_MS = 5 * 60_000;
+// Con la música o la voz generándose (Suno tarda unos minutos), el video llega más tarde.
+const MIRAR_HASTA_MS = 12 * 60_000;
+/** La opción de la lista de músicas que la GENERA con IA (el director musical mira la imagen y Suno la hace). */
+const GENERAR = "generar";
 
 /** Un grupo de opciones como botones de radio (los mismos «segmented» de «¿Cuándo sale?»). */
 function Opciones({ etiqueta, opciones, valor, onCambiar, deshabilitado }) {
@@ -117,6 +121,7 @@ function ReelConMusica({ post, setForm, client, clientId, cal, onError, kit }) {
   const [movimiento, setMovimiento] = useState(MOVIMIENTO_FOTO);
   const [logo, setLogo] = useState(kit.logoModo === "estampado" && Boolean(kit.logo));
   const [pidiendo, setPidiendo] = useState(false);
+  const [confirmar, setConfirmar] = useState(null);
   const { mensaje, setMensaje } = useSeguirReel({ post, setForm, clientId });
 
   // Las músicas, al abrir las opciones (una vez).
@@ -131,21 +136,24 @@ function ReelConMusica({ post, setForm, client, clientId, cal, onError, kit }) {
     return () => { vivo = false; };
   }, [abierto, musicas, clientId, kit]);
 
-  const pedirlo = async () => {
+  const pedirlo = async (confirmado = false) => {
     if (!cal || !post.id) { onError?.("Guarda primero la publicación en su día."); return; }
     const foto = fotoDe(post)?.src ?? "";
     setPidiendo(true);
     setMensaje(null);
     try {
       const r = await pedirConMusica(clientId, {
-        postId: post.id, calendarId: cal.dbId || cal.id, musicaId, segundos, movimiento, ...(kit.logo ? { logo } : {}),
+        postId: post.id, calendarId: cal.dbId || cal.id, musicaId, segundos, movimiento, confirmado, ...(kit.logo ? { logo } : {}),
       });
       // Lo pendiente va EN la publicación: lo sigue quien tenga el panel abierto, en cualquier pestaña.
       setForm((p) => ({ ...p, conMusicaPendiente: { videoId: r.video.id, foto } }));
-      setMensaje({ ok: true, texto: `Haciendo el video con «${r.musica?.nombre ?? "la música"}»: tarda menos de un minuto. ${FRASE_COSTO} Puedes cerrar: se pone solo en la publicación.` });
+      setConfirmar(null);
+      setMensaje({ ok: true, texto: r.generando ? r.aviso : `Haciendo el video con «${r.musica?.nombre ?? "la música"}»: tarda menos de un minuto. ${FRASE_COSTO} Puedes cerrar: se pone solo en la publicación.` });
       setAbierto(false);
     } catch (e) {
-      setMensaje({ ok: false, texto: e.datos?.codigo === "sin_container" ? "Aquí no se puede hacer el video (en local no hay Container): pruébalo en el sitio publicado." : e.message });
+      const c = confirmacionDe(e);
+      if (c) setConfirmar(c);
+      else setMensaje({ ok: false, texto: e.datos?.codigo === "sin_container" ? "Aquí no se puede hacer el video (en local no hay Container): pruébalo en el sitio publicado." : e.message });
     }
     setPidiendo(false);
   };
@@ -185,20 +193,32 @@ function ReelConMusica({ post, setForm, client, clientId, cal, onError, kit }) {
           <label className="label" htmlFor={`${ids}-musica`}>Música</label>
           {musicas === null ? <p role="status" className="hint">Cargando las músicas…</p>
             : !musicas.length ? (
-              <p className="hint">
-                {client?.name ?? "Este cliente"} no tiene música en su galería: súbela (MP3 o WAV con derechos) o genérala en «Sonido»
-                de un video animado (Más formas → Video animado).
-              </p>
+              <>
+                <p className="hint" style={{ margin: 0 }}>
+                  {client?.name ?? "Este cliente"} no tiene música en su biblioteca: súbela (Marca → Música y efectos) o genera una aquí.
+                </p>
+                <label style={{ display: "flex", gap: "var(--sp-2)", alignItems: "center" }}>
+                  <input type="checkbox" checked={musicaId === GENERAR} onChange={(e) => { setMusicaId(e.target.checked ? GENERAR : ""); setConfirmar(null); }} disabled={ocupado} />
+                  <span>Generarla con IA para esta foto</span>
+                </label>
+              </>
             ) : (
               <>
-                <select id={`${ids}-musica`} className="input" value={musicaId} onChange={(e) => setMusicaId(e.target.value)} disabled={ocupado}>
+                <select id={`${ids}-musica`} className="input" value={musicaId} onChange={(e) => { setMusicaId(e.target.value); setConfirmar(null); }} disabled={ocupado}>
                   {musicas.map((m) => <option key={m.id} value={m.id}>{m.nombre}{m.favorita || m.favorito ? " (favorita)" : ""}</option>)}
+                  <option value={GENERAR}>Una nueva, generada con IA para esta foto</option>
                 </select>
                 {escogida?.src && (
                   <audio key={escogida.id} src={escogida.src} controls preload="none" style={{ width: "100%" }} aria-label={`Escuchar «${escogida.nombre}»`} />
                 )}
               </>
             )}
+          {musicaId === GENERAR && (
+            <p className="hint" style={{ margin: 0 }}>
+              El director musical MIRA la foto (su ambiente, sus colores, el producto) y escribe la música para Suno; tú
+              confirmas el costo antes. Cuando llega, el reel se hace solo.
+            </p>
+          )}
         </div>
         <Opciones etiqueta="Duración" opciones={DURACIONES_FOTO.map((x) => [x, `${x} s`])} valor={segundos} onCambiar={setSegundos} deshabilitado={ocupado} />
         <Opciones etiqueta="Movimiento de la foto" opciones={MOVIMIENTOS_FOTO.map((m) => [m.id, m.nombre])} valor={movimiento} onCambiar={setMovimiento} deshabilitado={ocupado} />
@@ -208,16 +228,156 @@ function ReelConMusica({ post, setForm, client, clientId, cal, onError, kit }) {
             <span>El logo del kit encima <span className="hint">(desmárcalo si la foto ya lo lleva)</span></span>
           </label>
         )}
-        <p className="hint" style={{ margin: 0 }}><Icon name="info" size={13} /> {FRASE_COSTO}</p>
-        <div>
-          <button type="button" className="btn btn-primary" onClick={pedirlo} disabled={ocupado || !musicaId} aria-busy={pidiendo || undefined}>
-            <Icon name="video" size={16} /> {pidiendo ? "Pidiéndolo…" : yaEs ? "Hacerlo otra vez así" : "Hacer el reel con música"}
-          </button>
-        </div>
+        <p className="hint" style={{ margin: 0 }}><Icon name="info" size={13} /> {musicaId === GENERAR ? "El video no gasta IA; la música nueva sí (te digo cuánto antes)." : FRASE_COSTO}</p>
+        <Confirmacion confirmar={confirmar} ocupado={ocupado} onSi={() => pedirlo(true)} onNo={() => setConfirmar(null)} />
+        {!confirmar && (
+          <div>
+            <button type="button" className="btn btn-primary" onClick={() => pedirlo(false)} disabled={ocupado || !musicaId} aria-busy={pidiendo || undefined}>
+              <Icon name="video" size={16} /> {pidiendo ? "Pidiéndolo…" : yaEs ? "Hacerlo otra vez así" : "Hacer el reel con música"}
+            </button>
+          </div>
+        )}
       </div>
 
       <div role="status" aria-live="polite">
         {haciendo && <p className="hint" style={{ margin: 0 }}><Icon name="clock" size={13} /> Haciendo el video en el servidor…</p>}
+        {mensaje && <p className={mensaje.ok ? "hint" : "notice notice-error"} style={{ margin: 0 }}>{mensaje.texto}</p>}
+      </div>
+    </section>
+  );
+}
+
+/** El «sí» al costo (la música nueva de Suno o la voz): lo que dice el servidor, y con la voz, lo que va a decir. */
+function Confirmacion({ confirmar, ocupado, onSi, onNo }) {
+  if (!confirmar) return null;
+  return (
+    <div className="notice" role="group" aria-label="Confirmar el costo" style={{ display: "grid", gap: "var(--sp-2)" }}>
+      <p style={{ margin: 0 }}>{confirmar.texto}</p>
+      {confirmar.propuesta?.porque && <p className="hint" style={{ margin: 0 }}>La música: {confirmar.propuesta.genero ? `${confirmar.propuesta.genero}. ` : ""}{confirmar.propuesta.porque}</p>}
+      {confirmar.hablas?.length > 0 && (
+        <ol className="hint" style={{ margin: 0, paddingLeft: "var(--sp-4)" }} aria-label="Lo que dice la voz en cada lámina">
+          {confirmar.hablas.map((h, i) => <li key={i}>{h || <em>(sin voz)</em>}</li>)}
+        </ol>
+      )}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--sp-2)" }}>
+        <button type="button" className="btn btn-primary btn-sm" onClick={onSi} disabled={ocupado}><Icon name="check" size={14} /> Sí, hacerlo{confirmar.costo != null ? ` (≈ ${Number(confirmar.costo).toFixed(2)} $)` : ""}</button>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={onNo} disabled={ocupado}>Ahora no</button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Un CARRUSEL en REEL: sus láminas una tras otra con la transición escogida, la música (de la biblioteca, generada con IA
+ * mirando las láminas, o ninguna) y, si se quiere, VOZ: la IA escribe una frase por lámina y la voz de la marca la dice
+ * (con su costo antes). El servidor lo hace solo cuando tiene lo que falta; «Volver al carrusel» lo deja como estaba.
+ */
+function CarruselEnReel({ post, setForm, clientId, cal, onError, kit }) {
+  const ids = useId();
+  const yaEs = Array.isArray(post.conMusica?.medios) && post.conMusica.medios.length > 1;
+  const haciendo = Boolean(post.conMusicaPendiente?.videoId);
+  const [abierto, setAbierto] = useState(false);
+  const [musicas, setMusicas] = useState(null);
+  const [musicaId, setMusicaId] = useState("");
+  const [segundos, setSegundos] = useState(SEGUNDOS_LAMINA_INICIAL);
+  const [transicion, setTransicion] = useState(TRANSICION_CARRUSEL);
+  const [movimiento, setMovimiento] = useState("alternar");
+  const [voz, setVoz] = useState(false);
+  const [logo, setLogo] = useState(kit.logoModo === "estampado" && Boolean(kit.logo));
+  const [pidiendo, setPidiendo] = useState(false);
+  const [confirmar, setConfirmar] = useState(null);
+  const { mensaje, setMensaje } = useSeguirReel({ post, setForm, clientId });
+  const n = laminasDe(post).length;
+
+  useEffect(() => {
+    if (!abierto || musicas || !clientId) return undefined;
+    let vivo = true;
+    musicasDelCliente(clientId).then((lista) => {
+      if (!vivo) return;
+      setMusicas(lista);
+      setMusicaId((actual) => actual || musicaPorDefecto(lista, kit)?.id || GENERAR);
+    }).catch(() => vivo && setMusicas([]));
+    return () => { vivo = false; };
+  }, [abierto, musicas, clientId, kit]);
+
+  const pedirlo = async (confirmado = false) => {
+    if (!cal || !post.id) { onError?.("Guarda primero la publicación en su día."); return; }
+    const foto = laminasDe(post)[0]?.src ?? "";
+    setPidiendo(true);
+    setMensaje(null);
+    try {
+      const r = await pedirConMusica(clientId, {
+        postId: post.id, calendarId: cal.dbId || cal.id, musicaId, segundos, movimiento, confirmado, reel: true, transicion, voz, ...(kit.logo ? { logo } : {}),
+      });
+      setForm((p) => ({ ...p, conMusicaPendiente: { videoId: r.video.id, foto } }));
+      setConfirmar(null);
+      setMensaje({ ok: true, texto: r.aviso || "Haciendo el reel en el servidor: se pone solo en la publicación." });
+      setAbierto(false);
+    } catch (e) {
+      const c = confirmacionDe(e);
+      if (c) setConfirmar(c);
+      else setMensaje({ ok: false, texto: e.datos?.codigo === "sin_container" ? "Aquí no se puede hacer el video (en local no hay Container): pruébalo en el sitio publicado." : e.message });
+    }
+    setPidiendo(false);
+  };
+
+  const video = yaEs ? mediosDe(post).find((m) => m.tipo === "video") : null;
+  const ocupado = pidiendo || haciendo;
+  const escogida = musicas?.find((m) => m.id === musicaId) ?? null;
+  return (
+    <section className="card con-musica" aria-labelledby={`${ids}-titulo`} style={{ display: "grid", gap: "var(--sp-2)", padding: "var(--sp-3)" }}>
+      <h3 id={`${ids}-titulo`} className="label" style={{ margin: 0, display: "flex", alignItems: "center", gap: "var(--sp-1)" }}>
+        <Icon name="video" size={18} /> {yaEs ? "Es un reel hecho con el carrusel" : "Convertir en reel con música"}
+      </h3>
+      {!yaEs && <p className="hint" style={{ margin: 0 }}>Las {n} láminas una tras otra, con transiciones, música y, si quieres, una voz que las cuenta. Sale como reel (la API sí deja publicarlo solo).</p>}
+      {yaEs && video && <video src={video.src} controls playsInline preload="metadata" style={{ width: "100%", maxWidth: 260, borderRadius: "var(--radius-sm)" }} aria-label="El reel del carrusel" />}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--sp-2)" }}>
+        <button type="button" className={yaEs ? "btn btn-secondary btn-sm" : "btn btn-primary btn-sm"} aria-expanded={abierto} aria-controls={`${ids}-opciones`} onClick={() => setAbierto((v) => !v)} disabled={ocupado}>
+          <Icon name="music" size={16} /> {abierto ? "Cerrar las opciones" : yaEs ? "Cambiarlo" : "Escoger cómo…"}
+        </button>
+        {yaEs && (
+          <button type="button" className="btn btn-ghost btn-sm" disabled={ocupado}
+            onClick={() => { setForm((p) => volverALaFoto(p, new Date().toISOString())); setMensaje({ ok: true, texto: "Vuelve a ser el carrusel. El video sigue en la galería." }); }}>
+            <Icon name="undo" size={16} /> Volver al carrusel
+          </button>
+        )}
+      </div>
+      <div id={`${ids}-opciones`} hidden={!abierto} style={{ display: abierto ? "grid" : undefined, gap: "var(--sp-2)" }}>
+        <div className="field">
+          <label className="label" htmlFor={`${ids}-musica`}>Música</label>
+          {musicas === null ? <p role="status" className="hint">Cargando las músicas…</p> : (
+            <select id={`${ids}-musica`} className="input" value={musicaId} onChange={(e) => { setMusicaId(e.target.value); setConfirmar(null); }} disabled={ocupado}>
+              {musicas.map((m) => <option key={m.id} value={m.id}>{m.nombre}{m.favorita || m.favorito ? " (favorita)" : ""}</option>)}
+              {!voz && <option value={GENERAR}>Una nueva, generada con IA mirando las láminas</option>}
+              <option value="ninguna">Sin música</option>
+            </select>
+          )}
+          {escogida?.src && <audio key={escogida.id} src={escogida.src} controls preload="none" style={{ width: "100%" }} aria-label={`Escuchar «${escogida.nombre}»`} />}
+        </div>
+        <Opciones etiqueta="Cada lámina (sin voz)" opciones={SEGUNDOS_LAMINA.map((x) => [x, `${x} s`])} valor={segundos} onCambiar={setSegundos} deshabilitado={ocupado} />
+        <Opciones etiqueta="Transición entre láminas" opciones={TRANSICIONES_CARRUSEL.map((t) => [t.id, t.nombre])} valor={transicion} onCambiar={setTransicion} deshabilitado={ocupado} />
+        <Opciones etiqueta="Movimiento" opciones={MOVIMIENTOS_CARRUSEL.map((m) => [m.id, m.nombre])} valor={movimiento} onCambiar={setMovimiento} deshabilitado={ocupado} />
+        <label style={{ display: "flex", gap: "var(--sp-2)", alignItems: "center" }}>
+          <input type="checkbox" checked={voz} onChange={(e) => { setVoz(e.target.checked); setConfirmar(null); if (e.target.checked && musicaId === GENERAR) setMusicaId(musicas?.[0]?.id ?? "ninguna"); }} disabled={ocupado} />
+          <span>Con voz <span className="hint">(la IA escribe una frase por lámina y la dice la voz de la marca, con subtítulos; te digo lo que cuesta antes)</span></span>
+        </label>
+        {kit.logo && (
+          <label style={{ display: "flex", gap: "var(--sp-2)", alignItems: "center" }}>
+            <input type="checkbox" checked={logo} onChange={(e) => setLogo(e.target.checked)} disabled={ocupado} />
+            <span>El logo del kit al final <span className="hint">(desmárcalo si las láminas ya lo llevan)</span></span>
+          </label>
+        )}
+        <Confirmacion confirmar={confirmar} ocupado={ocupado} onSi={() => pedirlo(true)} onNo={() => setConfirmar(null)} />
+        {!confirmar && (
+          <div>
+            <button type="button" className="btn btn-primary" onClick={() => pedirlo(false)} disabled={ocupado || !musicaId} aria-busy={pidiendo || undefined}>
+              <Icon name="video" size={16} /> {pidiendo ? (voz ? "Escribiendo la voz…" : "Pidiéndolo…") : yaEs ? "Hacerlo otra vez así" : "Hacer el reel"}
+            </button>
+          </div>
+        )}
+      </div>
+      <div role="status" aria-live="polite">
+        {haciendo && <p className="hint" style={{ margin: 0 }}><Icon name="clock" size={13} /> Haciendo el reel en el servidor…</p>}
         {mensaje && <p className={mensaje.ok ? "hint" : "notice notice-error"} style={{ margin: 0 }}>{mensaje.texto}</p>}
       </div>
     </section>
@@ -330,8 +490,16 @@ export default function ConMusica({ post, setForm, client, clientId, cal = null,
   const kit = useMemo(() => leerKit(client?.kitMarca), [client?.kitMarca]);
   if (!clientId || !post) return null;
   if (compacto) return post.conMusicaPendiente?.videoId ? <ReelPendiente post={post} setForm={setForm} clientId={clientId} /> : null;
+  // Un carrusel: en reel con sus láminas (y voz si se quiere), o a mano con la música de Instagram.
+  const reel = puedeCarruselAReel(post);
+  if (reel.yaEs) return <CarruselEnReel post={post} setForm={setForm} clientId={clientId} cal={cal} onError={onError} kit={kit} />;
   if (esCarruselParaMusica(post)) {
-    return <CarruselConMusica post={post} setForm={setForm} client={client} kit={kit} enlaceAMano={enlaceAMano} onIrA={onIrA} filas={filas} onCancelar={onCancelar} />;
+    return (
+      <>
+        {reel.ok && !post.asistida && <CarruselEnReel post={post} setForm={setForm} clientId={clientId} cal={cal} onError={onError} kit={kit} />}
+        <CarruselConMusica post={post} setForm={setForm} client={client} kit={kit} enlaceAMano={enlaceAMano} onIrA={onIrA} filas={filas} onCancelar={onCancelar} />
+      </>
+    );
   }
   if (!puedeConMusica(post).ok) return null;
   return <ReelConMusica post={post} setForm={setForm} client={client} clientId={clientId} cal={cal} onError={onError} kit={kit} />;

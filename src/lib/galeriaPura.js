@@ -19,10 +19,12 @@ export function piezasDeGrupo(carpeta, archivos = []) {
   const porId = new Map(dentro.map((a) => [a.id, a]));
   const ordenadas = (carpeta?.orden ?? []).map((id) => porId.get(id)).filter(Boolean);
   if (ordenadas.length) return ordenadas;
-  const viejas = [...dentro].sort((a, b) => String(a.creado).localeCompare(String(b.creado)));
+  // Lo que ya tiene una versión más nueva DENTRO de la carpeta (la cruda con su texto encima, la corregida, la recompuesta,
+  // el render anterior del mismo video) no se enseña: sin esto, un reel o un carrusel salía con cada pieza dos o tres veces.
+  const reemplazadas = new Set(dentro.flatMap((a) => [a.ajustes?.plantilla?.origenId, a.ajustes?.deArchivo]).filter(Boolean));
+  const viejas = [...dentro].sort((a, b) => String(a.creado).localeCompare(String(b.creado))).filter((a) => !reemplazadas.has(a.id));
   if (carpeta?.tipo === "reel") return [...viejas.filter((a) => a.tipo === "video").reverse(), ...viejas.filter((a) => a.tipo !== "video")];
-  const conTexto = new Set(dentro.map((a) => a.ajustes?.plantilla?.origenId).filter(Boolean));
-  return viejas.filter((a) => !conTexto.has(a.id));
+  return viejas;
 }
 
 /** «Titular\nApoyo\n$45» → «"Titular" / "Apoyo" / "$45"»: las líneas del texto de la pieza, entre comillas. Pura. */
