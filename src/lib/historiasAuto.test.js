@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
-  limpiarAjustes, proximaFecha, porPreparar, elegirPieza, publicacionDeRepost, imagenParaHistoria, fraseDe, FRASES_HISTORIA,
+  limpiarAjustes, proximaFecha, porPreparar, elegirPieza, elegirPiezas, publicacionDeRepost, imagenParaHistoria, fraseDe, FRASES_HISTORIA,
+  estilosDePost, fraseDelPost, claveDeEstilo, baseDeClave, colorDeMarca,
 } from "./historiasAuto";
 import { conHistoria, mediosParaRed, publicacionDeVariante } from "./publicacion";
 
@@ -40,8 +41,10 @@ describe("el día de la próxima", () => {
 describe("qué se prepara", () => {
   it("lo publicado en el feed con imagen, una vez aunque saliera en dos redes", () => {
     const lista = porPreparar([fila({ id: "fb", red: "facebook", externo_id: "x" }), fila()], [], new Date("2026-10-05T00:00:00Z"));
-    expect(lista).toHaveLength(1);
+    // Una publicación (aunque saliera en dos redes), con sus estilos: la de siempre primero y el detalle con su título.
+    expect(lista.map((x) => x.estilo)).toEqual(["encajada", "detalle"]);
     expect(lista[0]).toMatchObject({ filaId: "f1", clavePost: "cal1|p1", src: IMG, externoId: "m1", titulo: "Lanzamiento" });
+    expect(lista[1]).toMatchObject({ clavePost: "cal1|p1#detalle", frase: "Lanzamiento" });
   });
   it("ni lo ya preparado, ni historias, ni lo que no salió, ni lo de hace más de 90 días", () => {
     const filas = [
@@ -51,11 +54,43 @@ describe("qué se prepara", () => {
       fila({ id: "f4", post_id: "p4", publicada_at: "2026-05-01T00:00:00.000Z" }),
       fila({ id: "f5", post_id: "p5", carga: JSON.stringify({ post: { format: "post", medios: [{ src: "data:image/png;base64,xx" }] } }) }),
     ];
-    expect(porPreparar(filas, [{ clave_post: "cal1|p1" }], new Date("2026-10-05T00:00:00Z"))).toEqual([]);
+    expect(porPreparar(filas, [{ clave_post: "cal1|p1" }, { clave_post: "cal1|p1#detalle" }], new Date("2026-10-05T00:00:00Z"))).toEqual([]);
   });
   it("de un video, su portada", () => {
     expect(imagenParaHistoria({ medios: [{ src: "/api/media/clientes/c1/posts/v.mp4", tipo: "video" }], portada: IMG })).toBe(IMG);
     expect(imagenParaHistoria({ medios: [{ src: "/api/media/clientes/c1/posts/v.mp4", tipo: "video" }] })).toBeNull();
+  });
+});
+
+describe("historias NUEVAS de lo publicado (no la misma cada vez)", () => {
+  const post = {
+    format: "carrusel", title: "Tres errores al lavar el sofá",
+    descripcion: "¿Lo lavas con agua caliente? 🔥 El agua caliente fija las manchas de grasa para siempre. #limpieza @marca",
+    medios: [{ src: IMG, tipo: "imagen" }, { src: "/api/media/clientes/c1/posts/b.jpg", tipo: "imagen" }],
+  };
+  it("cada publicación da varios diseños: la de siempre, el detalle, una frase del post y otra lámina", () => {
+    const e = estilosDePost(post);
+    expect(e.map((x) => x.estilo)).toEqual(["encajada", "detalle", "cita", "lamina"]);
+    expect(e.find((x) => x.estilo === "cita").texto).toBe("¿Lo lavas con agua caliente?");
+    expect(e.find((x) => x.estilo === "lamina").src).toBe("/api/media/clientes/c1/posts/b.jpg");
+    const lista = porPreparar([fila({ carga: JSON.stringify({ post }) })], [], new Date("2026-10-05T00:00:00Z"));
+    expect(lista.map((x) => [x.clavePost, x.frase])).toEqual([
+      ["cal1|p1", expect.any(String)], ["cal1|p1#detalle", "Tres errores al lavar el sofá"],
+      ["cal1|p1#cita", "¿Lo lavas con agua caliente?"], ["cal1|p1#lamina", "Desliza en el post →"],
+    ]);
+  });
+  it("sin hashtags, menciones, enlaces ni emojis; una sola imagen no da «otra lámina»", () => {
+    expect(fraseDelPost({ descripcion: "Hola 👋 #x" })).toBe("");
+    expect(estilosDePost({ medios: [{ src: IMG, tipo: "imagen" }] }).map((x) => x.estilo)).toEqual(["encajada", "detalle"]);
+    expect([claveDeEstilo("a|b", "encajada"), claveDeEstilo("a|b", "cita"), baseDeClave("a|b#cita")]).toEqual(["a|b", "a|b#cita", "a|b"]);
+  });
+  it("los estilos de UN post no salen el mismo día ni seguidos: cuenta la publicación, no la pieza", () => {
+    const ahora = new Date("2026-10-10T12:00:00Z");
+    const p = (id, clave, extra = {}) => ({ id, clave_post: clave, usos: 0, publicada_at: "2026-09-01T00:00:00Z", ...extra });
+    const piezas = [p("a1", "c|a", { usos: 1, usada_at: "2026-10-09T00:00:00Z" }), p("a2", "c|a#detalle"), p("b1", "c|b"), p("b2", "c|b#cita")];
+    const hoy = elegirPiezas(piezas, 3, { momento: ahora });
+    expect(hoy.map((x) => x.id)).toEqual(["b1"]);
+    expect(colorDeMarca({ paleta: [{ hex: "#FFFFFF", rol: "fondo" }, { hex: "#0a5", rol: "x" }, { hex: "#123456", rol: "Color principal" }] })).toBe("#123456");
   });
 });
 

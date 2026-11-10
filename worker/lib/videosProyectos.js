@@ -127,7 +127,12 @@ function origenLimpio(origen, estructuraId) {
   const o = origen && typeof origen === "object" && !Array.isArray(origen) ? { tipo: String(origen.tipo ?? "").slice(0, 20), encargoId: String(origen.encargoId ?? "").slice(0, 80) } : {};
   // El de una foto con música (lib/conMusica.js) recuerda la foto con que se hizo: si la publicación ya no la lleva al
   // terminar el render, el video no la toca.
-  if (o.tipo === "foto" && /^\/api\/media\/clientes\/[^\s]{1,300}$/.test(String(origen.foto ?? "")) && !String(origen.foto).includes("..")) o.foto = String(origen.foto);
+  // (Un carrusel convertido en reel, lo mismo con su primera lámina.)
+  if ((o.tipo === "foto" || o.tipo === "carrusel") && /^\/api\/media\/clientes\/[^\s]{1,300}$/.test(String(origen.foto ?? "")) && !String(origen.foto).includes("..")) o.foto = String(origen.foto);
+  // Se renderiza SOLO en cuanto tenga lo que le falta (la música que se está generando, la voz que se está haciendo):
+  // la foto o el carrusel con música (worker/lib/estudio/conMusica.js, `renderSiToca`). `porId`: a quién avisa.
+  if (origen?.renderSolo === true) o.renderSolo = true;
+  if (/^[\w-]{1,80}$/.test(String(origen?.porId ?? ""))) o.porId = String(origen.porId);
   // El ESTILO GUARDADO con que se hizo (src/lib/estilosVideo.js), si se hizo con uno.
   if (origen && /^ev-[a-z0-9]{4,24}$/.test(String(origen.estiloId ?? ""))) o.estiloId = String(origen.estiloId);
   return /^[\w-]{1,80}$/.test(String(estructuraId ?? "")) ? { ...o, estructuraId: String(estructuraId) } : o;

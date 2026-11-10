@@ -658,6 +658,15 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
     }
   };
 
+  /** «Subir a la galería»: sueltas, sin tocar el pedido; a la carpeta que se mira. */
+  const subirRef = useRef(null);
+  const subirSueltas = async (fs) => {
+    if (!fs.length) return;
+    setSubiendo(true);
+    try { avisar(true, await api.subirALaGaleria(client.id, fs, { carpetaId: carpetaActiva?.id ?? null })); await cargar(); }
+    catch (e) { avisar(false, e.message); } finally { setSubiendo(false); }
+  };
+
   /** «Desde Drive»: el archivo se baja de la carpeta del cliente y se sube a la galería como cualquier otro. */
   const traerDeDrive = async (elegidos) => {
     const rol = driveRol;
@@ -700,13 +709,14 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
   };
   const alternarFavorito = (a) => accion(async () => {
     const { archivo } = await api.cambiarArchivo(client.id, a.id, { favorito: !a.favorito });
-    setVisor((v) => (v?.id === a.id ? archivo : v));
+    setVisor((v) => api.conVersiones(v, archivo));
   });
   /** «Estampar el logo»: el original del kit encima, en su esquina; sale una pieza nueva y ésta se queda. */
   const estampar = (a) => accion(async () => {
     setVisor(await estamparEnGaleria({ clienteId: client.id, archivo: a, kit }));
   }, "Listo: sale como una pieza nueva con el logo encima; la original se queda.");
-  const aPapelera = (a) => accion(async () => { await api.mandarAPapelera(client.id, a.id); setVisor(null); }, "Movida a la papelera. Puedes recuperarla 30 días.");
+  // Una versión de una pieza: el visor sigue con las que quedan (la principal, si no era ésa).
+  const aPapelera = (a) => accion(async () => { await api.mandarAPapelera(client.id, a.id); setVisor((v) => (v?.id === a.id ? api.trasQuitarVersion(v) : v)); }, "Movida a la papelera. Puedes recuperarla 30 días.");
   /** Varias de una vez: una por una (cada una es su fila), y se relee la galería una sola vez al terminar. */
   // Varias de una vez (lo de la marca se salta y se dice: lib/estudio.js); se relee la galería una sola vez al terminar.
   const variasAPapelera = async (todas) => {
@@ -737,7 +747,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
   const recuperar = (a) => accion(() => api.recuperarArchivo(client.id, a.id), "Recuperada.");
   const moverA = (a, carpetaId) => accion(async () => {
     const { archivo } = await api.cambiarArchivo(client.id, a.id, { carpetaId: carpetaId || null });
-    setVisor((v) => (v?.id === a.id ? archivo : v));
+    setVisor((v) => api.conVersiones(v, archivo));
   });
   const borrarDeVerdad = async (a, forzar = false) => {
     try {
@@ -1082,6 +1092,14 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
             </div>
           )
         )}
+        {!enPapelera && !enDrive && !lectura && (
+          <div className="est-seleccion">
+            <input ref={subirRef} type="file" accept="image/*,video/*" multiple hidden onChange={(e) => { const fs = [...e.target.files]; e.target.value = ""; subirSueltas(fs); }} />
+            <button type="button" className="btn btn-secondary btn-sm" disabled={subiendo} onClick={() => subirRef.current?.click()}>
+              <Icon name="upload" size={14} /> {subiendo ? "Subiendo…" : carpetaActiva ? `Subir a «${carpetaActiva.nombre}»` : "Subir a la galería"}
+            </button>
+          </div>
+        )}
         {!enPapelera && !enDrive && !lectura && visibles.length > 0 && (
           <div className="est-seleccion" role="group" aria-label="Seleccionar varias">
             {seleccion ? (
@@ -1298,7 +1316,9 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
           clienteId={client.id}
           onEstampar={limpiarKit(kit).logo && visor.tipo !== "video" ? () => estampar(visor) : null}
           original={originalDe(visor, datos?.trabajos ?? [], datos?.archivos ?? [])} anteriores={visor.anteriores}
-          onVerOriginal={(o) => setVisor(o)}
+          onVerOriginal={(o) => setVisor((v) => api.verVersion(v, o))}
+          onPrincipal={lectura ? null : () => accion(async () => { await api.cambiarArchivo(client.id, visor.id, { principal: true }); setVisor((v) => ({ ...v, vistaId: v.id })); }, "Hecha la principal: es la que se ve en la galería.")}
+          onQuitarOtras={lectura ? null : async () => { const ids = visor.anteriores.map((x) => x.id); setVisor((v) => ({ ...v, anteriores: undefined, vistaId: undefined })); await variasAPapelera(ids); }}
           onPlantilla={(r) => setDatos((d) => (d ? { ...d, kit: r.kit } : d))}
           onUsar={onUsar ? () => usarEnLaPublicacion(visor) : null} etiquetaUsar={inicial?.etiquetaUsar}
           esLogo={Boolean(kit?.logo) && kit.logo === visor.clave}

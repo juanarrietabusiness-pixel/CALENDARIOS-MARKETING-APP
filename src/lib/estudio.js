@@ -273,6 +273,24 @@ export function fraseDeSubida(n, repetidas = 0, video = false) {
   return repetidas ? `${subida} ${repetidas} ya estaba${repetidas === 1 ? "" : "n"} en la galería (no se guardó otra copia).` : subida;
 }
 
+/**
+ * «Subir a la galería» (cabecera de la galería): imágenes o videos sueltos, sin pasar por el pedido, a la carpeta que se
+ * está mirando (si es una carpeta). Uno a uno; lo repetido no se guarda dos veces. → la frase para la pantalla.
+ */
+export async function subirALaGaleria(clienteId, archivos = [], { carpetaId = null } = {}) {
+  const lista = [...archivos].filter((f) => /^(image|video)\//.test(f.type || "")).slice(0, 20);
+  if (!lista.length) throw new Error("Escoge imágenes o videos (JPG, PNG, WEBP, MP4, MOV…).");
+  let repetidas = 0;
+  let hechas = 0;
+  try {
+    for (const f of lista) { const r = await subirImagen(clienteId, f, { carpetaId }); hechas += 1; if (r.repetido) repetidas += 1; }
+  } catch (e) {
+    throw new Error(hechas ? `Se subieron ${hechas} de ${lista.length}: ${e.message}` : e.message);
+  }
+  const fuera = archivos.length - lista.length;
+  return fraseDeSubida(lista.length, repetidas, lista.every((f) => f.type.startsWith("video/"))) + (fuera > 0 ? ` ${fuera} no se subieron (sólo imágenes y videos, hasta 20).` : "");
+}
+
 /** Los filtros que no son una carpeta. */
 export const FILTROS_GALERIA = ["todas", "favoritas", "subidas", "usadas", "sin-usar", "sin-carpeta"];
 /** ¿Lo usa alguna publicación? */
@@ -378,7 +396,9 @@ export function apilarVersiones(archivos = [], carpetas = [], trabajos = []) {
     const r = raiz(a);
     pilas.set(r, [...(pilas.get(r) ?? []), a]);
   }
-  const puntos = (a) => (estaUsado(a) ? 8 : 0) + (a.favorito ? 4 : 0) + (a.ajustes?.control?.estado === "ok" ? 2 : 0);
+  // La que alguien escogió con «Hacer la principal» manda (la más reciente); si no, la que usa una publicación, la que gusta…
+  const puntos = (a) => (a.ajustes?.principalAt ? 16 : 0) + (estaUsado(a) ? 8 : 0) + (a.favorito ? 4 : 0) + (a.ajustes?.control?.estado === "ok" ? 2 : 0);
+  const mejor = (x, m) => puntos(x) > puntos(m) || (puntos(x) === puntos(m) && x.ajustes?.principalAt && String(x.ajustes.principalAt) > String(m.ajustes?.principalAt ?? ""));
   const salida = [];
   const puestas = new Set();
   for (const a of archivos) {
@@ -386,12 +406,38 @@ export function apilarVersiones(archivos = [], carpetas = [], trabajos = []) {
     if (puestas.has(pila)) continue;
     puestas.add(pila);
     // La primera de las que más puntúan: a igualdad, la más nueva (vienen de la más nueva a la más vieja).
-    const vista = pila.reduce((m, x) => (puntos(x) > puntos(m) ? x : m), pila[0]);
+    const vista = pila.reduce((m, x) => (mejor(x, m) ? x : m), pila[0]);
     const anteriores = pila.filter((x) => x !== vista);
     salida.push(anteriores.length ? { ...vista, anteriores } : vista);
   }
   return salida;
 }
+
+/**
+ * El visor pasa a OTRA versión de la misma pieza sin perder las demás ni cuál es la principal (la que enseña la tarjeta:
+ * `vistaId`). Antes, tocar una versión la abría sola y ya no se podía volver a las otras, ni borrarlas, ni escoger cuál
+ * se queda. Pura.
+ */
+export function verVersion(actual, v) {
+  const limpia = ({ anteriores: _a, vistaId: _v, ...x }) => x;
+  const pila = actual?.anteriores?.length ? [actual, ...actual.anteriores] : [];
+  if (!v || !pila.some((x) => x.id === v.id)) return v;
+  return { ...limpia(v), anteriores: pila.filter((x) => x.id !== v.id).map(limpia), vistaId: actual.vistaId ?? actual.id };
+}
+
+/** Tras mandar a la papelera la versión que se veía: la principal (si no era ésa) o la siguiente; null si no quedan. Pura. */
+export function trasQuitarVersion(actual) {
+  const resto = actual?.anteriores ?? [];
+  if (!resto.length) return null;
+  const sigue = resto.find((x) => x.id === actual.vistaId) ?? resto[0];
+  const v = verVersion(actual, sigue);
+  const anteriores = v.anteriores.filter((x) => x.id !== actual.id);
+  const vistaId = actual.vistaId && actual.vistaId !== actual.id ? actual.vistaId : sigue.id;
+  return anteriores.length ? { ...v, anteriores, vistaId } : { ...v, anteriores: undefined, vistaId: undefined };
+}
+
+/** El archivo que vuelve del servidor (tras «Me gusta», mover…) puesto en el visor sin perder sus versiones. Pura. */
+export const conVersiones = (v, archivo) => (v?.id === archivo?.id ? { ...archivo, ...(v.anteriores ? { anteriores: v.anteriores } : {}), ...(v.vistaId ? { vistaId: v.vistaId } : {}) } : v);
 
 /** «Carrusel · 6 láminas» · «Reel · 1 video y 5 fotogramas». */
 export function textoDeGrupo(carpeta, piezas = []) {

@@ -77,21 +77,27 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+/** Prepara TODAS las historias que da la publicación (cada estilo: la encajada de siempre y las nuevas). → cuántas. */
 async function preparar() {
   const { pendientes } = await (await pedir("/historias-auto/c1/pendientes")).json();
-  expect(pendientes).toHaveLength(1);
-  expect(pendientes[0]).toMatchObject({ filaId: "f1", src: IMAGEN });
-  expect(pendientes[0].frase).toBeTruthy();
-  const r = await pedir("/historias-auto/c1/piezas", { method: "POST", body: JSON.stringify({ filaId: "f1", src: HISTORIA, frase: pendientes[0].frase }) });
-  expect(r.status).toBe(201);
+  // La de siempre primero; la publicación da además el «detalle» (y la «frase del post» si su caption tiene una).
+  expect(pendientes[0]).toMatchObject({ filaId: "f1", src: IMAGEN, estilo: "encajada" });
+  expect(pendientes.map((p) => p.estilo)).toContain("detalle");
+  for (const p of pendientes) {
+    expect(p.frase).toBeTruthy();
+    const r = await pedir("/historias-auto/c1/piezas", { method: "POST", body: JSON.stringify({ filaId: "f1", src: HISTORIA, frase: p.frase, estilo: p.estilo }) });
+    expect(r.status).toBe(201);
+  }
+  return pendientes.length;
 }
 
 describe("preparar", () => {
   it("lo publicado sale en pendientes hasta que tiene su historia", async () => {
-    await preparar();
+    const n = await preparar();
     expect((await (await pedir("/historias-auto/c1/pendientes")).json()).pendientes).toEqual([]);
     const datos = await (await pedir("/historias-auto/c1")).json();
-    expect(datos.piezas).toHaveLength(1);
+    expect(datos.piezas).toHaveLength(n);
+    expect(datos.piezas.map((p) => p.estilo).sort()).toEqual(expect.arrayContaining(["detalle", "encajada"]));
     expect(datos.piezas[0].src).toBe(HISTORIA);
   });
 
@@ -122,7 +128,8 @@ describe("el cron", () => {
     expect(await historiasAutomaticasPendiente(env, new Date())).toBe(0);
     expect(cola()).toHaveLength(1);
     const datos = await (await pedir("/historias-auto/c1")).json();
-    expect(datos.piezas[0].usos).toBe(1);
+    // UNA de las de esa publicación (no las dos: los estilos de un mismo post no salen el mismo día).
+    expect(datos.piezas.reduce((t, p) => t + p.usos, 0)).toBe(1);
     expect(datos.nota).toMatch(/Lanzamiento/);
 
     // Programación la enseña (sin «Abrir»: no tiene calendario) y se puede quitar.
@@ -166,15 +173,16 @@ describe("el cron", () => {
   it("«Que no salga» es para siempre: no se vuelve a preparar ni sale, y «Que vuelva a salir» la devuelve", async () => {
     await preparar();
     const { piezas } = await (await pedir("/historias-auto/c1")).json();
+    for (const p of piezas.slice(1)) await pedir(`/historias-auto/c1/piezas/${p.id}`, { method: "DELETE" });
     const r = await pedir(`/historias-auto/c1/piezas/${piezas[0].id}`, { method: "DELETE" });
     const quitada = await r.json();
     expect(quitada.piezas).toEqual([]);
-    expect(quitada.quitadas).toHaveLength(1);
+    expect(quitada.quitadas).toHaveLength(piezas.length);
     // Antes se borraba la fila y, al abrir la aplicación, la publicación volvía a «sin historia» y se preparaba otra vez.
     expect((await (await pedir("/historias-auto/c1/pendientes")).json()).pendientes).toEqual([]);
     // Volver a subirla (otra pestaña que la preparaba a la vez) no la devuelve a la rotación.
     await pedir("/historias-auto/c1/piezas", { method: "POST", body: JSON.stringify({ filaId: "f1", src: HISTORIA }) });
-    expect((await (await pedir("/historias-auto/c1")).json()).quitadas).toHaveLength(1);
+    expect((await (await pedir("/historias-auto/c1")).json()).quitadas).toHaveLength(piezas.length);
     // Encendidas, el cron no la pone: no hay ninguna que pueda salir.
     await pedir("/historias-auto/c1", { method: "PUT", body: JSON.stringify({ activa: true }) });
     expect(await historiasAutomaticasPendiente(env, new Date())).toBe(1);
@@ -183,7 +191,7 @@ describe("el cron", () => {
     // «Que vuelva a salir».
     const v = await (await pedir(`/historias-auto/c1/piezas/${piezas[0].id}/volver`, { method: "POST" })).json();
     expect(v.piezas).toHaveLength(1);
-    expect(v.quitadas).toEqual([]);
+    expect(v.quitadas).toHaveLength(piezas.length - 1);
     // Una de otro cliente no se toca desde este.
     expect((await pedir(`/historias-auto/c2/piezas/${piezas[0].id}`, { method: "DELETE" })).status).toBe(404);
   });

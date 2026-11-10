@@ -5875,6 +5875,56 @@ son del servidor.
   (sólo se escribe si lo hay: una de antes no cambia), con su casilla en el editor de Ajustes y su línea para la IA.
   `ver_estructuras` da el ID de cada una («(ID …)») para corregirla o pasarla como `estructura_id`. `eliminar_estructura`
   es destructiva y su descripción dice que sólo si la persona lo pidió.
+- **La galería, ordenada: subir, cada video en su carpeta y las versiones que se escogen** (decisión de la agencia: «se ve muy
+  desordenada cuando hago un reel»). Lo que no se ve en la pantalla:
+  · **«Subir a la galería»** (cabecera de la galería, `subirALaGaleria` en lib/estudio.js): imágenes o videos sueltos, sin
+  pasar por el pedido, a la carpeta que se mira. Antes sólo se subía DENTRO del compositor (y quedaba puesto en el pedido).
+  · **Un video animado tiene su CARPETA de tipo «reel»** (worker/lib/estudio/carpetaVideo.js, `carpetaDelVideo`): al pedir
+  sus fondos se crea («Video: <título>») y se apunta en `origen.carpetaId` (sin subir la versión), y lo que ya tenía suelto
+  —sus renders (`ajustes.videoId`) y los fondos que su guion usa, sólo los que creó el Estudio— entra en ella. El video del
+  MONTAJE de un reel usa la carpeta de su encargo. El render va a esa carpeta (delante en su orden, `alFrenteDelOrden`); sin
+  carpeta, el mp4 nuevo es una VERSIÓN del anterior de ese video (`deArchivo`) y la galería los apila. Antes, fondos y mp4
+  salían sueltos (30 renders sin carpeta en producción el 10-11-2026). Lo de antes se ordena solo la próxima vez que ese
+  video pide fondos.
+  · **Dos reels con el mismo título el mismo día compartían carpeta** (`carpetaDeGrupo` en la pantalla reusaba la que ya
+  había, y sus piezas se mezclaban): ahora `crearCarpeta` le pone « (2)» a una de carrusel o de reel; una carpeta normal
+  repetida sigue siendo 409.
+  · **Dentro de un carrusel o un reel sin orden**, lo que ya tiene una versión más nueva en la carpeta (por `deArchivo` o
+  la cruda de la plantilla) no se enseña (`piezasDeGrupo`).
+  · **Las versiones en el visor**: la tira enseña TODAS (la que se ve marcada, «principal», «en uso»); tocar una ya no la
+  abría sola perdiendo las demás (`verVersion`), «Me gusta» tampoco las pierde (`conVersiones`), mandar a la papelera la que
+  se ve abre la siguiente (`trasQuitarVersion`), «Hacer la principal» (`principal` en POST …/archivos/<id>/cambiar →
+  `ajustes.principalAt`, que `apilarVersiones` pone por delante de todo) y «Quedarme sólo con ésta» (las otras a la
+  papelera; lo que usa una publicación sigue viéndose ahí y la papelera no lo purga).
+- **Historias automáticas NUEVAS de lo publicado, no la misma cada vez** (decisión de la agencia: «me gustan, pero son muy
+  repetitivas»; src/lib/historiasAuto.js, src/lib/historiasRepost.js, sin migración). Cada publicación da varios DISEÑOS
+  (`estilosDePost`), todos gratis y dibujados en el navegador: «encajada» (la de siempre, con su placa blanca), «detalle»
+  (la imagen a sangre acercada con el título), «cita» (una frase DEL CAPTION, `fraseDelPost`, sin hashtags ni emojis, en el
+  color de la marca —`colorDeMarca` del kit, lo manda el servidor con los pendientes— con la imagen chica) y, en un carrusel,
+  «lamina» (otra lámina encajada). La primera conserva su `clave_post` de antes («calendario|post»); las demás llevan
+  «#estilo» detrás (`claveDeEstilo`): el `unique (client_id, clave_post)` sigue valiendo. Al escoger, cuenta la PUBLICACIÓN
+  (`postDe`): si un estilo de un post salió hace poco ningún otro sale, un día nunca saca dos del mismo post y, de un post,
+  sale el estilo menos usado. Las frases de la lista son 14 y se escogen por un número estable de la clave.
+- **«Publicar con música»: sin animación, música generada MIRANDO la imagen y el carrusel en reel** (decisión de la
+  agencia; src/lib/conMusica.js, worker/lib/estudio/conMusica.js, calendario/ConMusica.jsx). Lo que no se ve:
+  · **«Sin animación»** es el movimiento «ninguno» (la foto quieta con la música).
+  · **«Una nueva, generada con IA»** (`musicaId: "generar"`): el proyecto se crea y se aprueba SIN música y se pide a Suno
+  por `pedirMusica` con el video: el DIRECTOR MUSICAL ahora MIRA las imágenes del video (`imagenesDelVideo`, hasta 3 copias
+  de 512 px de sus capas de imagen; si el modelo no las recibe, sin ellas) y, si el video no tiene voz, sabe que la música
+  es lo único que suena. Sin `confirmado`, el 409 `confirmar` con el costo y su propuesta (la pantalla lo enseña y pide el
+  sí). Con el sí, `origen.renderSolo`: cuando la música llega a su sonido (`terminarMusica`) o la voz está lista
+  (`terminarAudio`), `renderSiToca` encarga el render SOLO (una vez: luego apaga la marca). Ambos lo importan en el momento
+  (estático cerraría un ciclo).
+  · **Un CARRUSEL en reel** (`carruselAReel`, `reel: true` en POST /api/videos/<c>/con-musica; `guionDeCarrusel`): una
+  escena por lámina a sangre (entera si no es vertical), la transición escogida (la primera entra con corte), el movimiento
+  que alterna o uno fijo, de 2 a 5 s por lámina (y al menos 5 s en total), el logo en la última y la música de la biblioteca,
+  generada o ninguna. Con `voz`, la IA escribe UNA frase por lámina con lo que dice la publicación (`pedidoDeVozCarrusel`,
+  texto) y la voz de la marca la dice con subtítulos (`pedirLocucion`: SIEMPRE con su confirmación; el 409 trae `hablas`
+  para leerlas antes de pagar, y el «sí» REUSA las mismas frases); cada lámina se ve al menos sus segundos (lo que falta a
+  su frase va de `pausa`). Voz y música generada no van juntas (dos confirmaciones). Al terminar, el render lo pone como reel
+  con la primera lámina de portada y `post.conMusica.medios` guarda las láminas: «Volver al carrusel» (`volverALaFoto`) las
+  devuelve. `origen.tipo` «carrusel» es otro `esVideoDeFoto`. Lo mismo para Claude: `publicar_con_musica` con `reel`,
+  `transicion`, `voz` y `confirmado`. **Nada de esto se ha probado contra Suno, ElevenLabs ni el Container reales.**
 - **`wrangler d1 migrations apply` pinta la tabla ENTERA de migraciones tras cada una**: su salida crece con el cuadrado de
   cuántas hay, y con la 0076 (72 migraciones) pasó del 1 MB que `execFile` admite por defecto. `npm run test:vivo` moría con
   «stdout maxBuffer length exceeded» antes de arrancar el Worker, con el SQL perfecto. `tests/vivo/espacio.js` le da 64 MB.

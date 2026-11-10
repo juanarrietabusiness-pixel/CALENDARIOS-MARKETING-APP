@@ -15,6 +15,7 @@
 // ============================================================
 
 import { crearEncargo, encargoPublico } from "./encargos.js";
+import { carpetaDelVideo } from "./carpetaVideo.js";
 import { estadoMotores } from "./motores.js";
 import { kitDe } from "./kit.js";
 import { difundir } from "../vivo.js";
@@ -99,8 +100,11 @@ export async function pedirFondos(env, acceso, cliente, fila, { confirmado = fal
       409, { codigo: "confirmar", ...base, ...(total > plan.pasos.length ? { aviso: `Pide ${total} fondos distintos: sólo se crean los ${plan.pasos.length} primeros.` } : {}) },
     );
   }
+  // Los fondos van a la carpeta del video (una tarjeta «Reel» con sus renders), no sueltos por la galería.
+  const carpetaId = await carpetaDelVideo(acceso, cliente.id, fila, { crear: true }).catch((e) => { console.error("fondos: carpeta", e?.message ?? e); return null; });
   const encargo = await crearEncargo(env, acceso, cliente, {
     tipo: "lote", titulo: `Fondos · ${String(fila.titulo ?? "video").slice(0, 100)}`, pasos: plan.pasos, mejorar: true, paralelo: 2,
+    ...(carpetaId ? { carpetaId } : {}),
     fondosVideo: { videoId: fila.id, pides: Object.fromEntries(plan.pasos.map((p, i) => [p.id, plan.pendientes[i].pide])) },
   }, { usuario });
   return { encargo: encargoPublico(encargo), ...base, sinPreguntar: decision.sinPreguntar ? textoSinPreguntar(tope) : null };

@@ -15,6 +15,7 @@
 //     salió, lo pone en ella YA (sin volver a renderizar). Desligar no quita el mp4 del post de antes: eso se hace en él.
 // ============================================================
 
+import { carpetaDelVideo, alFrenteDelOrden } from "./carpetaVideo.js";
 import { uuid, ahora } from "../ids.js";
 import { crearAcceso } from "../acceso.js";
 import { difundir } from "../vivo.js";
@@ -288,11 +289,16 @@ export async function ejecutarRender(env, { ownerId, clienteId, videoId, intento
         efectosPropios: Object.fromEntries(SITIOS_EFECTO.filter((x) => efectosPropios[SINTETIZADO[x]]).map((x) => [x, sonido.efectosPropios[x].nombre || "Efecto"])),
       } : {}),
     };
+    // En la galería, junto a lo suyo: en la carpeta del video (o de su reel) si la tiene; si no, como VERSIÓN del render
+    // anterior de este video (worker/lib/estudio/carpetaVideo.js). Antes cada render quedaba suelto.
+    const carpetaId = await carpetaDelVideo(acceso, clienteId, fila).catch(() => null);
+    const deAntes = !carpetaId && render.anterior?.archivoId ? String(render.anterior.archivoId) : null;
     await acceso.insertar("estudio_archivos", {
       id: archivoId, client_id: clienteId, clave, tipo: "video", mime: "video/mp4", ancho, alto, bytes: bytes.byteLength,
-      prompt: `Video animado: ${fila.titulo}`, modelo: "video-animado", ajustes: JSON.stringify(datos), trabajo_id: null, carpeta_id: null,
+      prompt: `Video animado: ${fila.titulo}`, modelo: "video-animado", ajustes: JSON.stringify({ ...datos, ...(deAntes ? { deArchivo: deAntes } : {}) }), trabajo_id: null, carpeta_id: carpetaId,
       origen: "estudio", costo: 0, favorito: 0, subido: 0, usado_en: JSON.stringify(usos), borrado_at: null, created_at: momento, updated_at: momento,
     });
+    if (carpetaId) await alFrenteDelOrden(acceso, clienteId, carpetaId, archivoId).catch(() => null);
     const listo = {
       ...render, estado: "listo", clave, archivoId, bytes: bytes.byteLength, ancho, alto, ...datos, terminadoAt: momento,
       adjunto: puesto?.postId ? { calendarId: puesto.calendarId, postId: puesto.postId } : null,

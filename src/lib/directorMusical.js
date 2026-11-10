@@ -162,7 +162,9 @@ export function lineaDeMusicaDeMarca(m) {
  * (texto), estilo, luz }; `voz`: «Matilda (cálida, cercana)»; `tipo`: el tipo de contenido de su publicación;
  * `ficha`: lo que dice el cerebro (sin lo interno). Pura.
  */
-export function pedidoDeDirectorMusical({ marca = "la marca", analisis, cliente = {}, kit = {}, voz = "", tipo = "", ficha = "" }) {
+export function pedidoDeDirectorMusical({ marca = "la marca", analisis, cliente = {}, kit = {}, voz = "", tipo = "", ficha = "", imagenes = 0 }) {
+  // Un video SIN voz (una foto o un carrusel con música): la música es lo único que suena y manda.
+  const sinVoz = !(analisis?.escenas ?? []).some((e) => e.habla);
   const marcaMusica = lineaDeMusicaDeMarca(kit.musica);
   const delCliente = [
     cliente.rubro ? `- Rubro: ${limpio(cliente.rubro, 120)}` : "",
@@ -175,7 +177,12 @@ export function pedidoDeDirectorMusical({ marca = "la marca", analisis, cliente 
     kit.paleta ? `- Su paleta: ${limpio(kit.paleta, 400)}` : "",
   ].filter(Boolean).join("\n");
   return [
-    `Eres el DIRECTOR MUSICAL de la agencia Juancito Ads. Escribes el pedido para Suno (V6, modo personalizado) de la música de fondo de UN video animado YA HECHO de «${marca}». La música va DEBAJO de una locución en español y baja sola mientras se habla: acompaña, no compite.`,
+    sinVoz
+      ? `Eres el DIRECTOR MUSICAL de la agencia Juancito Ads. Escribes el pedido para Suno (V6, modo personalizado) de la música de UN video YA HECHO de «${marca}» SIN voz: la música es lo único que suena, así que lleva la emoción entera (puede tener una melodía protagonista).`
+      : `Eres el DIRECTOR MUSICAL de la agencia Juancito Ads. Escribes el pedido para Suno (V6, modo personalizado) de la música de fondo de UN video animado YA HECHO de «${marca}». La música va DEBAJO de una locución en español y baja sola mientras se habla: acompaña, no compite.`,
+    imagenes
+      ? `MIRA ${imagenes === 1 ? "la imagen de arriba: es lo que se ve en el video" : `las ${imagenes} imágenes de arriba: son lo que se ve en el video, en orden`}. La música tiene que CASAR con lo que se ve: su ambiente, sus colores, el producto, la emoción y el público que sugiere (no es lo mismo una cuna de bebé que unas zapatillas de correr). Dilo en «porque».`
+      : "",
     marcaMusica,
     delCliente ? `EL CLIENTE:\n${delCliente}` : "",
     ficha ? `LO QUE DICE SU CEREBRO (la ficha de la marca):\n${limpio(ficha, 3000)}` : "",

@@ -170,7 +170,13 @@ export async function terminarMusica(env, acceso, fila, { listo, modelo }) {
   await registrarConsumoFijo(acceso, { proveedor: "kie", funcion: "estudio-musica", modelo: modelo.id, costo, clienteId: fila.client_id });
 
   let enVideo = "";
-  if (ajustes.videoId) enVideo = await ponerEnVideo(env, acceso, fila, ajustes.videoId, guardadas[0]);
+  if (ajustes.videoId) {
+    enVideo = await ponerEnVideo(env, acceso, fila, ajustes.videoId, guardadas[0]);
+    // La foto o el carrusel con música que la esperaba se renderiza SOLO (conMusica.js, en el momento: ciclo de imports).
+    if (/^puesta/.test(enVideo) && await import("./conMusica.js").then((m) => m.renderSiToca(env, acceso, fila.client_id, ajustes.videoId)).catch(() => false)) {
+      enVideo = "puesta en el video, que ya se está haciendo";
+    }
+  }
   const nota = `${guardadas.length === 1 ? "Una música" : `${guardadas.length} versiones de la música`} en la galería${enVideo ? ` · ${enVideo}` : ""}.`;
   return {
     estado: "hecho", intentos: 0, error: "", costo, terminado_at: ahora,
