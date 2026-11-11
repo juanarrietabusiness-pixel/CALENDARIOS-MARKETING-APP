@@ -33,6 +33,7 @@ import { ESCRIBEN_VIDEO } from "./estudio/herramientasVideo.js";
 import { DEFINICIONES_VISTA, crearHerramientasVista, ErrorVista } from "./estudio/vistaEstudio.js";
 import { DEFINICIONES_LO_MEJOR, crearHerramientasLoMejor, ErrorHerramientaLoMejor } from "./herramientasLoMejor.js";
 import { DEFINICIONES_REEL_MCP, crearHerramientasReel } from "./estudio/herramientasReel.js";
+import { DEFINICION_EXPORTAR, crearHerramientaExportar, ErrorExportar } from "./exportarPiezas.js";
 
 const FORMATOS = ["post", "reel", "carrusel", "historia", "live"];
 const REDES = ["instagram", "facebook", "tiktok", "youtube"];
@@ -125,6 +126,8 @@ export const HERRAMIENTAS_MCP = Object.freeze([
   ...DEFINICIONES_RECETAS,
   // «Lo mejor del momento» (worker/lib/herramientasLoMejor.js): ver lo que mejor funciona y recrearlo para un cliente.
   ...DEFINICIONES_LO_MEJOR,
+  // Descargar piezas de la galería en un ZIP (worker/lib/exportarPiezas.js): un enlace sin sesión de 15 minutos.
+  DEFINICION_EXPORTAR,
   // Las que sólo llama la VISTA PREVIA del chat (MCP Apps: `visibility: ["app"]`, ver rutas/mcp.js).
   ...DEFINICIONES_VISTA,
 ]);
@@ -418,7 +421,7 @@ export function crearHerramientasMCP({ env, acceso, usuario }) {
       }
       return { content: [{ type: "text", text: `Herramienta desconocida: ${nombre}` }], isError: true };
     } catch (e) {
-      const delPedido = e instanceof ErrorHerramienta || e instanceof ErrorHerramientaEstudio || e instanceof ErrorDiseno || e instanceof ErrorReceta || e instanceof ErrorVista || e instanceof ErrorHerramientaLoMejor;
+      const delPedido = e instanceof ErrorHerramienta || e instanceof ErrorHerramientaEstudio || e instanceof ErrorDiseno || e instanceof ErrorReceta || e instanceof ErrorVista || e instanceof ErrorHerramientaLoMejor || e instanceof ErrorExportar;
       if (!delPedido) console.error("mcp:", nombre, e);
       return { content: [{ type: "text", text: delPedido ? e.message : `No se pudo: ${e?.message ?? e}` }], isError: true };
     }
@@ -431,6 +434,7 @@ export function crearHerramientasMCP({ env, acceso, usuario }) {
   Object.assign(acciones, crearHerramientasReel({ env, acceso, resolverCliente, usuario, buscarPublicacion: buscar }));
   Object.assign(acciones, crearHerramientasVista({ env, acceso, por }));
   Object.assign(acciones, crearHerramientasLoMejor({ env, acceso, resolverCliente, usuario }));
+  Object.assign(acciones, crearHerramientaExportar({ env, acceso, resolverCliente, usuario }));
 
   return { llamar };
 }

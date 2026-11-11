@@ -52,6 +52,7 @@ import { rutaAnalizarVideo } from "./rutas/video.js";
 import { rutasDrive, rutaDriveCallback } from "./rutas/drive.js";
 import { rutasRedes, rutasPublicar, rutaMetaCallback, rutaMedioPublico, rutaWebhookPostPeer } from "./rutas/redes.js";
 import { rutaVistaMedio } from "./rutas/vistaMedio.js";
+import { rutaExportar } from "./lib/exportarPiezas.js";
 import { rutasYouTube, rutaYouTubePublica } from "./rutas/youtube.js";
 import { procesarCola, programarAlAprobar, cancelarPendientes } from "./lib/publicador.js";
 import { rutasMetricas } from "./rutas/metricas.js";
@@ -314,6 +315,11 @@ export default {
       // por trozos, sólo el que dice su testigo firmado y sólo unas horas. Ver worker/rutas/vistaMedio.js.
       if (partes[0] === "vista-medio" && (metodo === "GET" || metodo === "HEAD")) {
         return await rutaVistaMedio(req, env, partes);
+      }
+      // El ZIP de exportar_piezas (Claude por MCP): sin sesión, sólo lo que dice su testigo firmado y sólo 15 minutos.
+      // Se arma por flujo desde R2. Ver worker/lib/exportarPiezas.js.
+      if (partes[0] === "exportar" && metodo === "GET") {
+        return await rutaExportar(req, env, partes);
       }
       // Los comentarios y mensajes que manda Meta: sin sesión, firmados con
       // META_APP_SECRET. Ver worker/rutas/bandeja.js.
