@@ -817,6 +817,8 @@ worker/
     mcpVista/             La VISTA PREVIA en el chat de Claude (MCP Apps): modelo.js (qué herramientas la llevan, el
                           `structuredContent`, cómo la página lee un resultado; puro), navegador.js (la página del iframe),
                           estilos.css y pagina.generada.js (GENERADA: `node scripts/mcp/generar-vista.mjs`)
+    exportarPiezas.js     `exportar_piezas` (MCP): piezas de la galería en un ZIP por un enlace sin sesión de 15 minutos
+                          (/api/exportar/<testigo>/<nombre>.zip), armado POR FLUJO desde R2; nada se guarda
     medioVista.js         La dirección FIRMADA y de corta vida (12 h) de un audio o video de R2 para esa vista, con el secreto
                           que se crea solo en R2 (`firmas/vista-medios.key`); qué claves se pueden servir
     competencia.js        `business_discovery` de un competidor (sus últimas publicaciones) y «traer» su archivo del CDN de Meta
@@ -5925,6 +5927,16 @@ son del servidor.
   con la primera lámina de portada y `post.conMusica.medios` guarda las láminas: «Volver al carrusel» (`volverALaFoto`) las
   devuelve. `origen.tipo` «carrusel» es otro `esVideoDeFoto`. Lo mismo para Claude: `publicar_con_musica` con `reel`,
   `transicion`, `voz` y `confirmado`. **Nada de esto se ha probado contra Suno, ElevenLabs ni el Container reales.**
+- **`exportar_piezas`: el ZIP se ARMA AL DESCARGARLO, por flujo, y no se guarda** (worker/lib/exportarPiezas.js). La
+  herramienta comprueba (cada ID de la galería de ESE cliente, sin papelera; hasta 60 archivos y 150 MB por la columna
+  `bytes`) y devuelve `/api/exportar/<testigo>/<nombre>.zip`, firmado con el secreto de la vista (`secretoDeVista`, uso
+  propio) y válido 15 minutos, sin sesión y sin límite de usos (el iPhone pide dos veces). El testigo lleva el espacio,
+  el cliente y los IDs por carpeta; al abrirlo se releen las fichas por la capa de acceso y lo borrado entretanto no
+  sale. Por flujo porque el Worker tiene 128 MB: un ZIP de 150 MB en memoria no cabe. Sin comprimir, con descriptor de
+  datos (bit 3) y el CRC por trozos (`crc32Seguir` en src/lib/zip.js). Sin `exports/` en R2 ni regla de ciclo de vida,
+  a propósito: no hay nada que limpiar. `conEnlace` le pone el origen al enlace en el texto. Nombres «01-titulo.ext»:
+  el título de `ajustes`, la línea «Pieza:» de la ficha o las primeras palabras del pedido. Un paso del flujo que no
+  pone nada en él no se vuelve a pedir: por eso un archivo que falta en R2 se salta dentro del mismo `pull`.
 - **`wrangler d1 migrations apply` pinta la tabla ENTERA de migraciones tras cada una**: su salida crece con el cuadrado de
   cuántas hay, y con la 0076 (72 migraciones) pasó del 1 MB que `execFile` admite por defecto. `npm run test:vivo` moría con
   «stdout maxBuffer length exceeded» antes de arrancar el Worker, con el SQL perfecto. `tests/vivo/espacio.js` le da 64 MB.

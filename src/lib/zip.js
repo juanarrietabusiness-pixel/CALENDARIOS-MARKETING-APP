@@ -25,14 +25,22 @@ const tablaCrc = () => {
 
 /** El CRC-32 de unos bytes (el de ZIP y PNG). */
 export function crc32(bytes) {
+  return crc32Seguir(0, bytes);
+}
+
+/**
+ * El CRC-32 por TROZOS: `crc32Seguir(crc32Seguir(0, a), b)` = `crc32(a + b)`. Para el ZIP que se arma por flujo en el
+ * Worker (worker/lib/exportarPiezas.js), donde un archivo nunca está entero en memoria.
+ */
+export function crc32Seguir(anterior, bytes) {
   const t = tablaCrc();
-  let c = 0xffffffff;
+  let c = (anterior ^ 0xffffffff) >>> 0;
   for (let i = 0; i < bytes.length; i++) c = t[(c ^ bytes[i]) & 0xff] ^ (c >>> 8);
   return (c ^ 0xffffffff) >>> 0;
 }
 
 /** Fecha y hora en el formato de MS-DOS que usa ZIP. */
-function fechaDos(d = new Date()) {
+export function fechaDos(d = new Date()) {
   const hora = (d.getHours() << 11) | (d.getMinutes() << 5) | Math.floor(d.getSeconds() / 2);
   const dia = ((Math.max(1980, d.getFullYear()) - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate();
   return { hora, dia };
