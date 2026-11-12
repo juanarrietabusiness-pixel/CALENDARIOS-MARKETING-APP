@@ -48,6 +48,8 @@ import {
   tituloYouTube, descripcionYouTube, etiquetasYouTube, esShortYouTube, fotosTikTok, tituloTikTok,
 } from "../../src/lib/publicacion.js";
 import { tipoAprobacion } from "../../src/lib/aprobacion.js";
+import { estaVigente } from "../../src/lib/vigenciaHistorias.js";
+import { fechaEnZona } from "../../src/lib/agenda.js";
 import { avisarFallo, avisar, miembrosDe, enlacePublicacion } from "./equipo.js";
 import { prepararYGuardar } from "./redesServidor.js";
 
@@ -467,6 +469,23 @@ export async function procesarPublicacion(env, { id, owner_id: ownerId }) {
       }
       const { errores } = revisarPublicacion(publicacionDeVariante(carga.post, fila.variante), [fila.red]);
       if (errores.length) throw new ErrorPublicar(errores.join(" "));
+    }
+
+    // La ÚLTIMA barrera de las historias automáticas: lo que sale es lo que SIGUE VIGENTE hoy. Una pieza vencida (la
+    // promoción del mes pasado, una felicitación), apartada o aún sin revisar no se publica, por nada del mundo.
+    const repost = carga.post?.repost;
+    if (repost?.piezaId && !fila.calendar_id && !fila.contenedor_id && !fila.externo_id && !carga.hijos) {
+      const pieza = await acceso.leerUno("historias_auto_piezas", { id: String(repost.piezaId) });
+      const hoy = fechaEnZona();
+      if (!estaVigente(pieza, hoy)) {
+        const motivo = !pieza ? "La historia ya no existe." : pieza.excluida ? "Se apartó con «Que no salga»."
+          : pieza.vigencia === "sin_revisar" ? "No sale: aún no se revisó si sigue vigente."
+            : pieza.vigencia === "nunca" ? `No se reutiliza: ${pieza.vigencia_motivo || "es de un día concreto"}`
+              : `Ya no está vigente (servía hasta el ${pieza.vigente_hasta}).`;
+        await guardar({ estado: "cancelada", error: motivo, siguiente_intento: null });
+        avisar();
+        return fila;
+      }
     }
 
     const cuenta = fila.cuenta_id ? await acceso.leerUno("cuentas_sociales", { id: fila.cuenta_id }) : null;

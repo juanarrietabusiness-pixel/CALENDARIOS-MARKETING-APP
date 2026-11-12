@@ -20,6 +20,12 @@ export const quitarHistoria = (clientId, id) => pedir(ruta(clientId, `/piezas/${
 /** «Que vuelva a salir»: la que se apartó con «Que no salga». */
 export const devolverHistoria = (clientId, id) => pedir(ruta(clientId, `/piezas/${encodeURIComponent(id)}/volver`), { method: "POST" });
 
+/** «Sí puede salir» (`siempre`), «No se reutiliza» (`nunca`) o «hasta» un día: lo decide una persona. */
+export const fijarVigenciaHistoria = (clientId, id, vigencia, hasta) =>
+  pedir(ruta(clientId, `/piezas/${encodeURIComponent(id)}/vigencia`), { method: "PUT", body: JSON.stringify({ vigencia, ...(hasta ? { hasta } : {}) }) });
+/** Revisar ya la vigencia de lo «sin revisar» (la IA mira cada historia). */
+export const revisarVigenciaHistorias = (clientId) => pedir(ruta(clientId, "/revisar"), { method: "POST" });
+
 /**
  * Dibuja y sube las historias que le falten a un cliente (como mucho
  * `limite`). Una que falla (imagen borrada, sin red) se salta: las demás

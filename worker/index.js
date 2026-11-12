@@ -480,7 +480,7 @@ export default {
       // Meta Ads: cuentas publicitarias, campañas y estadísticas. Activar es de admin y con confirmación.
       if (partes[0] === "anuncios") return await rutasAnuncios(req, env, { acceso, usuario, partes, metodo });
       // Las historias automáticas: lo ya publicado vuelve como historia, una al día.
-      if (partes[0] === "historias-auto") return await rutasHistoriasAuto(req, env, { acceso, partes, metodo });
+      if (partes[0] === "historias-auto") return await rutasHistoriasAuto(req, env, { acceso, partes, metodo, usuario });
       // Las ventas de cada semana que apunta el cliente (o la agencia), con la tasa de cierre medida y el ROAS real.
       if (partes[0] === "ventas") return await rutasVentas(req, env, { acceso, usuario, partes, metodo });
       // El kit de WhatsApp Business de cada cliente y la voz de sus clientes (curso de campañas, entrega 8).

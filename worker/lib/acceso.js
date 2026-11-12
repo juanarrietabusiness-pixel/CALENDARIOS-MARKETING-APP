@@ -642,6 +642,26 @@ export async function clientesConHistoriasPendientes(db, hasta, limite = 50) {
 }
 
 /**
+ * Las historias automáticas por REVISAR (worker/lib/historiasAuto.js, `revisarVigencias`), de TODOS los espacios: un
+ * cliente con las historias encendidas y alguna pieza «sin revisar» que la IA no intentó en las últimas horas
+ * (`antes`). Dueño y cliente; lo demás se lee con la capa de ese espacio. UNA consulta.
+ */
+export async function historiasPorRevisar(db, antes, limite = 1) {
+  const { results } = await db
+    .prepare(
+      `select p.client_id, p.owner_id from historias_auto_piezas p
+         join historias_auto h on h.client_id = p.client_id and h.owner_id = p.owner_id
+        where h.activa = 1 and p.vigencia = 'sin_revisar' and p.excluida = 0
+          and (p.revision_intento_at is null or p.revision_intento_at < ?)
+        group by p.client_id, p.owner_id
+        limit ?`,
+    )
+    .bind(antes, limite)
+    .all();
+  return results ?? [];
+}
+
+/**
  * Los avisos «a mano» que tocan (worker/lib/avisosAMano.js), de TODOS los espacios: los que aún no avisaron de la hora y
  * cuyo momento llega antes de `hasta` (ahora + 10 min). Ids, dueño y momentos, como `colaPendiente`: lo demás (la
  * publicación, el cliente) se lee después con la capa de ese espacio, y sólo si de verdad hay que avisar. Es UNA consulta

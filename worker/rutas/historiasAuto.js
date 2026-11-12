@@ -8,6 +8,8 @@
 //   POST   /api/historias-auto/<c>/piezas          { filaId, src, frase }: la historia que hizo el navegador
 //   DELETE /api/historias-auto/<c>/piezas/<id>     «Que no salga»: se queda apartada (no se vuelve a preparar)
 //   POST   /api/historias-auto/<c>/piezas/<id>/volver  «Que vuelva a salir»
+//   PUT    /api/historias-auto/<c>/piezas/<id>/vigencia  { vigencia: siempre|hasta|nunca, hasta? }: lo decide una persona
+//   POST   /api/historias-auto/<c>/revisar         Revisar ya la vigencia de lo «sin revisar» (la IA mira cada historia)
 //
 // Lo que hace cada día el cron, en worker/lib/historiasAuto.js.
 // ============================================================
@@ -15,11 +17,12 @@
 import { json, error, cuerpo, noEncontrado } from "../lib/respuesta.js";
 import {
   ajustesHistorias, guardarAjustesHistorias, pendientesDePreparar, guardarPieza, excluirPieza, ErrorHistorias,
+  revisarVigencias, fijarVigencia, cancelarVencidas,
 } from "../lib/historiasAuto.js";
 
 const ID = /^[\w-]{1,80}$/;
 
-export async function rutasHistoriasAuto(req, env, { acceso, partes, metodo }) {
+export async function rutasHistoriasAuto(req, env, { acceso, partes, metodo, usuario }) {
   const [, clientId, que, id, accion] = partes;
   if (!clientId && metodo === "GET") {
     const filas = await acceso.leerColumnas("historias_auto", ["client_id"], { activa: 1 });
@@ -38,6 +41,22 @@ export async function rutasHistoriasAuto(req, env, { acceso, partes, metodo }) {
     }
     if (que === "piezas" && ID.test(String(id ?? "")) && !accion && metodo === "DELETE") {
       if (!(await excluirPieza(acceso, clientId, id, true))) return noEncontrado("Historia");
+      return json(await ajustesHistorias(acceso, clientId));
+    }
+    if (que === "revisar" && !id && metodo === "POST") {
+      // A pedido: también lo que falló hace poco; hasta tres llamadas (12 publicaciones).
+      let total = { revisadas: 0, pendientes: 0, fallo: "" };
+      for (let i = 0; i < 3; i++) {
+        const r = await revisarVigencias(env, acceso, clientId, { forzar: i === 0 });
+        total = { revisadas: total.revisadas + r.revisadas, pendientes: r.pendientes, fallo: r.fallo || total.fallo };
+        if (!r.pendientes || r.fallo || !r.revisadas) break;
+      }
+      const quitadas = await cancelarVencidas(env, acceso, clientId);
+      return json({ ...total, quitadasDeLaCola: quitadas, ...(await ajustesHistorias(acceso, clientId)) });
+    }
+    if (que === "piezas" && ID.test(String(id ?? "")) && accion === "vigencia" && metodo === "PUT") {
+      const hecho = await fijarVigencia(env, acceso, clientId, id, (await cuerpo(req)) ?? {}, usuario?.nombre ?? "");
+      if (!hecho) return noEncontrado("Historia");
       return json(await ajustesHistorias(acceso, clientId));
     }
     if (que === "piezas" && ID.test(String(id ?? "")) && accion === "volver" && metodo === "POST") {

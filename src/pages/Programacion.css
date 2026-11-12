@@ -78,11 +78,15 @@
 .historias-auto-fila > .input { flex: 1 1 200px; max-width: 320px; }
 .historias-auto-piezas {
   list-style: none; display: grid; gap: var(--sp-2);
-  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(128px, 1fr));
 }
 .historias-auto-piezas li { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .historias-auto-piezas img { width: 100%; aspect-ratio: 9 / 16; object-fit: cover; border-radius: var(--radius-sm); background: var(--surface-3); }
 .historias-auto-usos { font-size: var(--fs-3xs); color: var(--text-dim); }
+/* La vigencia: verde si siempre puede salir, apagada si vence o no se ha revisado, roja si ya no sirve. */
+.historias-auto-vigencia { font-size: var(--fs-3xs); font-weight: 600; line-height: 1.3; color: var(--text-dim); overflow-wrap: anywhere; }
+.historias-auto-vigencia.es-ok { color: var(--success); }
+.historias-auto-vigencia.es-no { color: var(--danger); }
 .historias-auto-quitadas > summary { cursor: pointer; font-size: var(--fs-xs); font-weight: 600; color: var(--text-dim); min-height: var(--tap-sm); display: flex; align-items: center; }
 .historias-auto-quitadas[open] > summary { margin-bottom: var(--sp-2); }
 .historias-auto-quitadas img { opacity: 0.6; }
