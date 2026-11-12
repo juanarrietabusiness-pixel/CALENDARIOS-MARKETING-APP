@@ -11,7 +11,8 @@
 import { useCallback, useEffect, useId, useState } from "react";
 import Icon from "./Icon";
 import { TimePicker } from "./calendario/primitivas";
-import { leerHistorias, guardarHistorias, quitarHistoria, devolverHistoria, prepararPendientes } from "../lib/historiasAutoApi";
+import { leerHistorias, guardarHistorias, quitarHistoria, devolverHistoria, prepararPendientes, fijarVigenciaHistoria, revisarVigenciaHistorias } from "../lib/historiasAutoApi";
+import { etiquetaVigencia, estaVigente } from "../lib/vigenciaHistorias";
 import { REDES_HISTORIAS, MAX_POR_DIA, NOMBRE_ESTILO_HISTORIA } from "../lib/historiasAuto";
 import { fmtDate } from "../utils";
 
@@ -72,6 +73,30 @@ export default function HistoriasAutomaticas({ clients = [], onCambio }) {
   };
   const quitadas = datos?.quitadas ?? [];
 
+  const fijar = async (pieza, vigencia) => {
+    setTrabajando(pieza.id);
+    setMensaje(null);
+    try { setDatos(await fijarVigenciaHistoria(clienteId, pieza.id, vigencia)); } catch (e) { setMensaje({ tipo: "error", texto: e.message }); }
+    setTrabajando("");
+  };
+  const revisar = async () => {
+    setTrabajando("revisar");
+    setMensaje(null);
+    try {
+      const r = await revisarVigenciaHistorias(clienteId);
+      setDatos(r);
+      const partes = [r.revisadas ? `Revisadas ${r.revisadas === 1 ? "1 publicación" : `${r.revisadas} publicaciones`}` : "No había nada nuevo por revisar"];
+      if (r.pendientes) partes.push(`faltan ${r.pendientes} (vuelve a pulsar)`);
+      if (r.quitadasDeLaCola) partes.push(`${r.quitadasDeLaCola === 1 ? "se quitó 1 historia" : `se quitaron ${r.quitadasDeLaCola} historias`} de la cola por vencidas`);
+      setMensaje({ tipo: r.fallo ? "error" : "ok", texto: `${partes.join("; ")}.${r.fallo ? ` ${r.fallo}` : ""}` });
+    } catch (e) { setMensaje({ tipo: "error", texto: e.message }); }
+    setTrabajando("");
+  };
+  const hoy = datos?.hoy ?? "";
+  const piezas = datos?.piezas ?? [];
+  const vigentes = piezas.filter((p) => estaVigente(p, hoy));
+  const sinRevisar = piezas.filter((p) => p.vigencia === "sin_revisar").length;
+
   const redes = datos?.redes ?? ["instagram"];
   const alternarRed = (r) => {
     const nuevas = redes.includes(r) ? redes.filter((x) => x !== r) : [...redes, r];
@@ -91,6 +116,8 @@ export default function HistoriasAutomaticas({ clients = [], onCambio }) {
             Para que la cuenta no se quede callada: cada día (de 1 a 5 veces; la primera a la hora escogida y las demás cada 2 horas), vuelve a salir como historia algo que
             ya se publicó (la imagen del post encajada en 9:16 con una frase corta). Primero lo que menos salió y, entre
             eso, lo que mejor funcionó. Sale sola. «Que no salga» la aparta para siempre (se puede devolver abajo); la de un día concreto se quita en la lista de la cola.
+            Sólo sale lo que SIGUE VIGENTE: una felicitación o un día especial no vuelve nunca, una promoción o algo que nombra un mes o una fecha sólo
+            hasta ese día, y lo que aún no se revisó tampoco sale. La IA mira cada historia una vez; si se equivoca, corrígelo en su tarjeta.
           </p>
           <div className="historias-auto-fila">
             <label className="sr-only" htmlFor={`${ids}-cl`}>Cliente</label>
@@ -144,23 +171,39 @@ export default function HistoriasAutomaticas({ clients = [], onCambio }) {
 
               <div className="historias-auto-fila">
                 <span style={{ fontSize: "var(--fs-xs)", fontWeight: 600 }}>
-                  {datos.piezas.length ? `${datos.piezas.length} preparadas` : "Nada preparado todavía"}
+                  {piezas.length ? `${piezas.length} preparadas · ${vigentes.length} pueden salir hoy${sinRevisar ? ` · ${sinRevisar} sin revisar` : ""}` : "Nada preparado todavía"}
                 </span>
                 <span className="hint" style={{ margin: 0 }}>Cada publicación da varias distintas (encajada, detalle, una frase del post y, en un carrusel, otra lámina): no se repite la misma.</span>
                 <button type="button" className="btn btn-secondary btn-sm" onClick={preparar} disabled={Boolean(trabajando)}>
                   <Icon name="refresh" size={14} /> {trabajando === "preparar" ? "Preparando…" : "Preparar ahora"}
                 </button>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={revisar} disabled={Boolean(trabajando) || !piezas.length}>
+                  <Icon name="check" size={14} /> {trabajando === "revisar" ? "Revisando…" : "Revisar vigencia"}
+                </button>
               </div>
               {mensaje && <p className={mensaje.tipo === "error" ? "form-error" : "hint"} role={mensaje.tipo === "error" ? "alert" : "status"} style={{ margin: 0 }}>{mensaje.texto}</p>}
 
-              {datos.piezas.length > 0 && (
+              {piezas.length > 0 && (
                 <ul className="historias-auto-piezas">
-                  {datos.piezas.map((p) => (
+                  {piezas.map((p) => (
                     <li key={p.id}>
                       <img src={p.src} alt={p.titulo ? `Historia de «${p.titulo}»` : "Historia preparada"} loading="lazy" />
                       <span className="historias-auto-usos">
                         {NOMBRE_ESTILO_HISTORIA[p.estilo] ? `${NOMBRE_ESTILO_HISTORIA[p.estilo]} · ` : ""}{p.usos ? `${p.usos === 1 ? "1 vez" : `${p.usos} veces`}${p.usadaAt ? ` · la última, ${diaCorto(fmtDate(new Date(p.usadaAt)))}` : ""}` : "Aún no salió"}
                       </span>
+                      <span className={`historias-auto-vigencia es-${etiquetaVigencia(p, hoy).tono}`} title={p.motivo || p.error || undefined}>
+                        {etiquetaVigencia(p, hoy).texto}{p.motivo ? ` · ${p.motivo}` : p.error ? ` · ${p.error}` : ""}
+                      </span>
+                      {!estaVigente(p, hoy) && (
+                        <button type="button" className="btn btn-ghost btn-sm" onClick={() => fijar(p, "siempre")} disabled={trabajando === p.id}>
+                          Sí puede salir
+                        </button>
+                      )}
+                      {p.vigencia !== "nunca" && (
+                        <button type="button" className="btn btn-ghost btn-sm" onClick={() => fijar(p, "nunca")} disabled={trabajando === p.id}>
+                          Ya no sirve
+                        </button>
+                      )}
                       <button type="button" className="btn btn-ghost btn-sm" onClick={() => quitar(p)} disabled={trabajando === p.id}>
                         Que no salga
                       </button>
