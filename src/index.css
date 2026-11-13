@@ -417,27 +417,16 @@ input[type="radio"] {
 }
 .btn-remove:hover { background: rgba(239,83,80,.15); }
 
-/* Toggle switch */
-.toggle {
-  position: relative;
-  width: 44px; height: 24px;
-  border-radius: 12px;
-  border: none;
-  background: var(--border);
-  cursor: pointer;
-  padding: 2px;
-  flex-shrink: 0;
-  transition: background .2s;
-}
-.toggle.is-on { background: var(--accent); }
-.toggle-thumb {
-  display: block;
-  width: 20px; height: 20px;
-  border-radius: 50%;
-  background: #fff;
-  transition: transform .2s;
-}
-.toggle.is-on .toggle-thumb { transform: translateX(20px); }
+/* El interruptor (components/Interruptor.jsx): apagado, riel con borde y bolita del color del texto secundario
+   (3:1 o más); encendido, lleno de acento. Dice «Sí»/«No». La zona que se toca mide --tap de alto. */
+.interruptor { display: inline-flex; align-items: center; gap: var(--sp-2); min-height: var(--tap); padding: 0 var(--sp-1); background: none; border: 0; color: var(--text-dim); font-size: var(--fs-2xs); font-weight: 600; cursor: pointer; flex-shrink: 0; }
+.interruptor-riel { position: relative; width: 40px; height: 24px; border-radius: var(--radius-pill); border: 2px solid var(--text-dim); transition: background .2s, border-color .2s; }
+.interruptor-bolita { position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; border-radius: 50%; background: var(--text-dim); transition: transform .2s; }
+.interruptor[aria-checked="true"] { color: var(--text); }
+.interruptor[aria-checked="true"] .interruptor-riel { background: var(--accent); border-color: var(--accent); }
+.interruptor[aria-checked="true"] .interruptor-bolita { transform: translateX(16px); background: #fff; }
+.interruptor-estado { min-width: 2ch; text-align: left; }
+.interruptor:disabled { cursor: not-allowed; opacity: .45; }
 
 /* Botón "añadir" con borde discontinuo */
 .btn-dashed {
@@ -2605,6 +2594,9 @@ a.btn, a.btn-icon { text-decoration: none; }
   padding: var(--sp-3); background: var(--surface); border-radius: var(--radius-sm);
   border: 1px solid var(--border); margin-bottom: var(--sp-3);
 }
+.interruptor-texto { flex: 1 1 220px; min-width: 0; }
+.interruptor-etiqueta { font-size: var(--fs-xs); font-weight: 600; cursor: pointer; }
+.interruptor-etiqueta[data-desactivado] { cursor: default; }
 
 /* La barra de publicar del calendario: lo aprobado y «programar al aprobar» */
 .barra-publicar {

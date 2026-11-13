@@ -15,6 +15,7 @@ import { rangoSemana } from "../../lib/semanas";
 import { useDialogA11y } from "../../hooks/useDialogA11y";
 import Icon from "../Icon";
 import SelectorFecha from "../SelectorFecha";
+import FilaInterruptor from "../Interruptor";
 
 // La estrategia del mes se edita con el componente de «Planificar mes», en su chunk (no va en la carga inicial).
 const EditorEstrategia = lazy(() => import("../EstrategiaMes").then((m) => ({ default: m.EditorEstrategia })));
@@ -482,21 +483,12 @@ export function ApprovalDialog({
               </div>
             )}
 
-            <div className="interruptor-fila">
-              <div>
-                <span style={{ fontSize: "var(--fs-xs)", fontWeight: 600 }}>Permitir edición</span>
-                <p className="hint" style={{ margin: 0 }}>El cliente puede sugerir cambios a la descripción y guion.</p>
-              </div>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={allowEditing}
-                className={`toggle${allowEditing ? " is-on" : ""}`}
-                onClick={onToggleEditing}
-              >
-                <span className="toggle-thumb" />
-              </button>
-            </div>
+            <FilaInterruptor
+              etiqueta="Permitir edición"
+              descripcion="El cliente puede sugerir cambios a la descripción y guion."
+              encendido={allowEditing}
+              onCambiar={() => onToggleEditing()}
+            />
 
             {/* Lo que ve el cliente en la portada de su página: la fecha
                 para revisar y un mensaje de la agencia. */}
@@ -525,25 +517,15 @@ export function ApprovalDialog({
               <p className="hint">Sale en la portada de su página.</p>
             </div>
 
-            <div className="interruptor-fila">
-              <div>
-                <span id={`${ids}-auto`} style={{ fontSize: "var(--fs-xs)", fontWeight: 600 }}>Programar al aprobar</span>
-                <p className="hint" style={{ margin: 0 }}>
-                  Vale para este cliente, en todos sus meses. Apagado: lo aprobado espera en Producción → «Por producir» a que alguien dé el paso final. Encendido: la PIEZA FINAL aprobada se programa sola; una idea
-                  aprobada, nunca. Si algo lo impide, te llega a la campana con el motivo.
-                </p>
-              </div>
-              <button
-                type="button"
-                role="switch"
-                aria-labelledby={`${ids}-auto`}
-                aria-checked={!!opciones.programarAlAprobar}
-                className={`toggle${opciones.programarAlAprobar ? " is-on" : ""}`}
-                onClick={() => onCambiarOpciones?.({ programarAlAprobar: !opciones.programarAlAprobar })}
-              >
-                <span className="toggle-thumb" />
-              </button>
-            </div>
+            <FilaInterruptor
+              etiqueta="Programar al aprobar"
+              descripcion={<>
+                Vale para este cliente, en todos sus meses. Apagado: lo aprobado espera en Producción → «Por producir» a que alguien dé el paso final. Encendido: la PIEZA FINAL aprobada se programa sola; una idea
+                aprobada, nunca. Si algo lo impide, te llega a la campana con el motivo.
+              </>}
+              encendido={!!opciones.programarAlAprobar}
+              onCambiar={(si) => onCambiarOpciones?.({ programarAlAprobar: si })}
+            />
 
             {revisionEnviada && (
               <p className="notice notice-ok" style={{ display: "block" }}>

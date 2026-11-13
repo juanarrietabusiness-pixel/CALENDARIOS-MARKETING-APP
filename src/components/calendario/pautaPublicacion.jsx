@@ -6,6 +6,7 @@ import { fieldHeaderStyle } from "./formato";
 import { leerNegocio } from "../../lib/negocioApi";
 import { ETAPAS_CICLO, etapaCiclo } from "../../lib/cicloVentas";
 import { NIVELES_CONSCIENCIA, nombreDeNivel } from "../../lib/consciencia";
+import FilaInterruptor from "../Interruptor";
 import {
   limpiarPauta, vaAPauta, nivelDePauta, etapaSugerida, describirPauta, anuncioATexto, botonPorDefecto, COMO_PAUTA, BOTONES_PAUTA,
   MIN_TEXTOS, MAX_TEXTOS, MAX_TITULOS, MAX_TEXTO_ANUNCIO, MAX_TITULO_ANUNCIO, MAX_DESCRIPCION_ANUNCIO, PRIMERA_LINEA,
@@ -66,14 +67,15 @@ export function PautaPublicacion({ form, sf, clienteId, onEscribir, escribiendo 
   return (
     <Plegable titulo="Se va a pautar" icono="megaphone" resumen={va ? describirPauta(form.pauta) : "No"} abierta={va}>
       <div className="tipo-contenido">
-        <label htmlFor={`${ids}-va`} style={{ display: "flex", alignItems: "center", gap: "var(--sp-2)", minHeight: "var(--tap-sm)", fontSize: "var(--fs-xs)", fontWeight: 600 }}>
-          <input id={`${ids}-va`} type="checkbox" checked={va} onChange={(e) => alternar(e.target.checked)} aria-describedby={`${ids}-va-ayuda`} />
-          Se va a pautar en Meta
-        </label>
-        <p id={`${ids}-va-ayuda`} className="hint" style={{ margin: 0 }}>
-          En el Ads Manager el texto de una publicación ya hecha no se cambia: si va a pauta, la IA escribe su caption como anuncio
-          (sin nada que caduque, con el llamado a {destino === "web" ? "la web" : "WhatsApp"}) y, aparte, los textos para montarlo subiendo la pieza.
-        </p>
+        <FilaInterruptor
+          etiqueta="Se va a pautar en Meta"
+          descripcion={<>
+            En el Ads Manager el texto de una publicación ya hecha no se cambia: si va a pauta, la IA escribe su caption como anuncio
+            (sin nada que caduque, con el llamado a {destino === "web" ? "la web" : "WhatsApp"}) y, aparte, los textos para montarlo subiendo la pieza.
+          </>}
+          encendido={va}
+          onCambiar={(si) => alternar(si)}
+        />
         {va && pauta?.auto && (
           <p className="hint" style={{ margin: 0 }}><Icon name="sparkles" size={13} /> La marcó el asistente del mes{pauta.motivo ? ` (${pauta.motivo.toLowerCase()})` : ""}. Si no va, quítala arriba.</p>
         )}

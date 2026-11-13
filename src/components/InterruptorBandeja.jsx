@@ -1,5 +1,6 @@
-import { useEffect, useId, useState } from "react";
+import { useEffect, useState } from "react";
 import { estadoBandeja, cambiarBandeja } from "../lib/bandeja";
+import FilaInterruptor from "./Interruptor";
 
 // ============================================================
 // El interruptor de la bandeja de un cliente
@@ -19,7 +20,6 @@ import { estadoBandeja, cambiarBandeja } from "../lib/bandeja";
 const nombresCuentas = (cuentas = []) => cuentas.map((c) => c.nombre).filter(Boolean).join(" y ");
 
 export default function InterruptorBandeja({ clientId, estado, nombreCliente = "", onCambio }) {
-  const ids = useId();
   const [propio, setPropio] = useState(null);
   const [ocupado, setOcupado] = useState(false);
   const [fallo, setFallo] = useState("");
@@ -53,39 +53,26 @@ export default function InterruptorBandeja({ clientId, estado, nombreCliente = "
   };
 
   return (
-    <div className="interruptor-fila" style={{ flexWrap: "wrap" }}>
-      <div style={{ flex: "1 1 220px", minWidth: 0 }}>
-        <span id={`${ids}-t`} style={{ fontSize: "var(--fs-xs)", fontWeight: 600 }}>
-          Bandeja de comentarios y mensajes{nombreCliente ? ` · ${nombreCliente}` : ""}
-        </span>
-        <p id={`${ids}-d`} className="hint" style={{ margin: 0 }}>
-          {!info
-            ? "Comprobando…"
-            : !cuentas.length
-              ? "Asigna su página de Facebook o su Instagram en Ajustes → Integraciones para poder encenderla."
-              : activa
-                ? `Llegan a la Bandeja los comentarios y mensajes de ${nombresCuentas(cuentas)}. Apagada, no se lee ni se guarda nada de este cliente.`
-                : `Apagada: no se lee ni se guarda nada de ${nombresCuentas(cuentas)}.`}
+    <FilaInterruptor
+      etiqueta={`Bandeja de comentarios y mensajes${nombreCliente ? ` · ${nombreCliente}` : ""}`}
+      descripcion={!info
+        ? "Comprobando…"
+        : !cuentas.length
+          ? "Asigna su página de Facebook o su Instagram en Ajustes → Integraciones para poder encenderla."
+          : activa
+            ? `Llegan a la Bandeja los comentarios y mensajes de ${nombresCuentas(cuentas)}. Apagada, no se lee ni se guarda nada de este cliente.`
+            : `Apagada: no se lee ni se guarda nada de ${nombresCuentas(cuentas)}.`}
+      encendido={activa}
+      disabled={!info || ocupado || (!cuentas.length && !activa)}
+      motivo={ocupado ? "Guardando…" : ""}
+      onCambiar={() => void cambiar()}
+    >
+      {activa && errores.length > 0 && (
+        <p className="hint" style={{ margin: "var(--sp-1) 0 0", color: "var(--accent-alt)" }}>
+          Meta no aceptó los avisos al momento ({errores.join(" · ")}). Mientras tanto, usa «Actualizar» en la Bandeja.
         </p>
-        {activa && errores.length > 0 && (
-          <p className="hint" style={{ margin: "var(--sp-1) 0 0", color: "var(--accent-alt)" }}>
-            Meta no aceptó los avisos al momento ({errores.join(" · ")}). Mientras tanto, usa «Actualizar» en la Bandeja.
-          </p>
-        )}
-        {fallo && <p role="alert" className="notice notice-error" style={{ margin: "var(--sp-2) 0 0" }}>{fallo}</p>}
-      </div>
-      <button
-        type="button"
-        role="switch"
-        aria-labelledby={`${ids}-t`}
-        aria-describedby={`${ids}-d`}
-        aria-checked={activa}
-        disabled={!info || ocupado || (!cuentas.length && !activa)}
-        className={`toggle${activa ? " is-on" : ""}`}
-        onClick={cambiar}
-      >
-        <span className="toggle-thumb" />
-      </button>
-    </div>
+      )}
+      {fallo && <p role="alert" className="notice notice-error" style={{ margin: "var(--sp-2) 0 0" }}>{fallo}</p>}
+    </FilaInterruptor>
   );
 }

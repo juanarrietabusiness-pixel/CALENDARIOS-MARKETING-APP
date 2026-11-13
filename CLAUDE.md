@@ -529,6 +529,8 @@ src/
                           la agencia, plantillas de plan y manuales
     Drive.css / FichaCliente.css / PestanaContenido.css  Estilos que salieron de index.css (el CSS inicial estaba en su tope)
     Presencia.jsx         Avatares, estado de la conexión, «X está editando»
+    Interruptor.jsx       EL interruptor (role="switch") y su fila con etiqueta, descripción y motivo: para los ajustes que se
+                          quedan y surten efecto al momento
     SelectorFecha.jsx     Calendario del mes para escoger una fecha (portal)
     SeccionIA.jsx         Ajustes → IA: modelo, nivel al escribir, nivel del asistente
     SinPreguntarAjuste.jsx  Ajustes → IA → «Crear imágenes sin preguntar»: la casilla y el tope por pedido (sólo el administrador)
@@ -1528,6 +1530,14 @@ son del servidor.
   abrir la pantalla**. El panel de edición no se abre desde la lista
   —hay que desplegar el día y pulsar «Editar publicación»—, así que un
   barrido que sólo pulsa lo que se ve a primera vista lo da por bueno.
+- **Interruptor o casilla: una regla, un componente** (`components/Interruptor.jsx`). Interruptor para lo que se enciende,
+  se QUEDA y surte efecto al momento (la bandeja, las historias automáticas, «Programar al aprobar», crear sin preguntar,
+  las tendencias, el informe automático, «Se va a pautar»…); casilla para escoger de una lista o una opción de un
+  formulario que se confirma con un botón (por eso los efectos de «Sonido» siguen en casilla). El `.toggle` de antes
+  estaba copiado en siete sitios y apagado era `--border` (~1,3 : 1 contra el fondo: sólo se veía una bolita). Ahora el
+  riel apagado lleva borde del color del texto secundario, dice «Sí» / «No» al lado, desactivado se ve desactivado y
+  puede decir por qué (`motivo`), y el botón mide `--tap` de alto aunque el riel mida 24 px. No vuelvas a escribir uno a
+  mano: `FilaInterruptor` (con su `<label>` del botón) o `Interruptor` con `etiquetadoPor`.
 - **Un desplegable anclado a un botón NO es `role="dialog"`.** Ese rol
   le promete a un lector de pantalla foco atrapado y fondo inerte. El
   selector de hora se cierra con Escape y con un clic fuera, y el fondo

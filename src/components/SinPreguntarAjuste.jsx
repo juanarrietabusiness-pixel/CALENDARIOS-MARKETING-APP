@@ -2,6 +2,7 @@ import { useState, useEffect, useId } from "react";
 import Icon from "./Icon";
 import { limpiarSinPreguntar, TOPE_SIN_PREGUNTAR, TOPE_MAXIMO_SIN_PREGUNTAR, textoTope } from "../lib/sinPreguntar";
 import { olvidarTope } from "../lib/sinPreguntarApi";
+import FilaInterruptor from "./Interruptor";
 
 // ============================================================
 // Ajustes → IA → «Crear imágenes sin preguntar»
@@ -41,15 +42,13 @@ export default function SinPreguntarAjuste({ valor, esAdmin, guardando, onGuarda
         carrusel, las historias, otra versión, corregir, recrear y el lote. Pregunta igual si pasa del tope o si el
         asistente sugiere otro motor. Video, voz y música preguntan siempre, y el presupuesto del mes sigue mandando.
       </p>
-      <label className="casilla">
-        <input
-          type="checkbox"
-          checked={tope > 0}
-          disabled={!esAdmin || guardando}
-          onChange={(e) => void guardar(e.target.checked)}
-        />
-        {tope > 0 ? `Encendido: sin preguntar hasta ${textoTope(tope)} por pedido` : "Apagado: se pregunta desde 0,50 $"}
-      </label>
+      <FilaInterruptor
+        etiqueta={tope > 0 ? `Sin preguntar hasta ${textoTope(tope)} por pedido` : "Se pregunta desde 0,50 $"}
+        encendido={tope > 0}
+        disabled={!esAdmin || guardando}
+        motivo={!esAdmin ? "Lo cambia quien administra el espacio." : "Guardando…"}
+        onCambiar={(si) => void guardar(si)}
+      />
       <form
         onSubmit={(e) => { e.preventDefault(); void guardar(true); }}
         style={{ display: "flex", gap: "var(--sp-3)", alignItems: "flex-end", flexWrap: "wrap" }}

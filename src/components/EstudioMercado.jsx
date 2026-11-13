@@ -1,5 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import Icon from "./Icon";
+import FilaInterruptor from "./Interruptor";
 import SelectorFecha from "./SelectorFecha";
 import { useDialogA11y } from "../hooks/useDialogA11y";
 import { soloLectura } from "../lib/sesionActual";
@@ -350,20 +351,15 @@ function PanelCatalogo({ client, catalogo, inventario: inventarioGuardado, estud
       {pedir !== null && <PedirDatos id={`${ids}-pedir`} texto={pedir} onTexto={setPedir} onCerrar={() => setPedir(null)} />}
 
       {!lectura && (
-        <div className="interruptor-fila mercado-inventario">
-          <div>
-            <span id={`${ids}-inv`} style={{ fontSize: "var(--fs-xs)", fontWeight: 600 }}>Inventario y detalles</span>
-            <p className="hint" style={{ margin: 0 }}>
-              Para los clientes que lo necesitan: cuánto hay de cada producto, hasta cuándo vale la oferta y qué lo hace
-              distinto. Lo agotado no sale en el plan del mes, lo que tiene poco va al principio y lo que tiene mucho, más veces.
-            </p>
-          </div>
-          <button type="button" role="switch" aria-labelledby={`${ids}-inv`} aria-checked={inventario}
-            className={`toggle${inventario ? " is-on" : ""}`} disabled={Boolean(trabajando)}
-            onClick={() => { setInventario((x) => !x); setCambiado(true); }}>
-            <span className="toggle-thumb" />
-          </button>
-        </div>
+        <FilaInterruptor
+          className="mercado-inventario"
+          etiqueta="Inventario y detalles"
+          descripcion="Para los clientes que lo necesitan: cuánto hay de cada producto, hasta cuándo vale la oferta y qué lo hace distinto. Lo agotado no sale en el plan del mes, lo que tiene poco va al principio y lo que tiene mucho, más veces."
+          encendido={inventario}
+          disabled={Boolean(trabajando)}
+          motivo="Espera a que termine lo que se está haciendo."
+          onCambiar={(si) => { setInventario(si); setCambiado(true); }}
+        />
       )}
       <div aria-live="polite"><Mensaje aviso={aviso} /></div>
 
