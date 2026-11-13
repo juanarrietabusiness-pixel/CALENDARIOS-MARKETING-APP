@@ -15,6 +15,7 @@ import { leerHistorias, guardarHistorias, quitarHistoria, devolverHistoria, prep
 import { etiquetaVigencia, estaVigente } from "../lib/vigenciaHistorias";
 import { REDES_HISTORIAS, MAX_POR_DIA, NOMBRE_ESTILO_HISTORIA } from "../lib/historiasAuto";
 import { fmtDate } from "../utils";
+import FilaInterruptor from "./Interruptor";
 
 const NOMBRE_RED = { instagram: "Instagram", facebook: "Facebook" };
 const idDe = (c) => c?.dbId || c?.id;
@@ -124,16 +125,13 @@ export default function HistoriasAutomaticas({ clients = [], onCambio }) {
             <select id={`${ids}-cl`} className="input" value={clienteId} onChange={(e) => { setDatos(null); setMensaje(null); setClienteId(e.target.value); }}>
               {clients.map((c) => <option key={idDe(c)} value={idDe(c)}>{c.name}</option>)}
             </select>
-            <div className="interruptor-fila">
-              <span style={{ fontSize: "var(--fs-xs)", fontWeight: 600 }}>Historias automáticas</span>
-              <button
-                type="button" role="switch" aria-checked={Boolean(datos?.activa)} aria-label="Historias automáticas de este cliente"
-                className={`toggle${datos?.activa ? " is-on" : ""}`} disabled={!datos || trabajando === "ajustes"}
-                onClick={() => cambiar({ activa: !datos?.activa })}
-              >
-                <span className="toggle-thumb" />
-              </button>
-            </div>
+            <FilaInterruptor
+              etiqueta="Historias automáticas de este cliente"
+              encendido={Boolean(datos?.activa)}
+              disabled={!datos || trabajando === "ajustes"}
+              motivo={!datos ? "Cargando lo de este cliente…" : "Guardando…"}
+              onCambiar={(si) => cambiar({ activa: si })}
+            />
           </div>
 
           {datos && (

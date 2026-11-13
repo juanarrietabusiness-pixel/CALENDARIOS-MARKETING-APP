@@ -6,6 +6,7 @@ import * as api from "../../lib/anunciosApi";
 import { sinCosto, nombreDelMes } from "../../lib/informeAnuncios";
 import { fechaEnZona, sumarDias } from "../../lib/agenda";
 import { formatoMoneda } from "../../lib/anuncios";
+import FilaInterruptor from "../Interruptor";
 
 // ============================================================
 // Anuncios → Informes: el informe de publicidad de un cliente
@@ -179,14 +180,20 @@ export default function InformesAnuncios({ clientId, cliente, soloLectura = fals
           {datos && (
             <fieldset className="anu-inf-ajustes no-imprimir" disabled={soloLectura || Boolean(trabajando)}>
               <legend className="label">Para este cliente</legend>
-              <label className="anu-check">
-                <input type="checkbox" checked={datos.ajustes.automatico} onChange={(e) => ajustar({ automatico: e.target.checked })} />
-                <span>Prepararlo solo el día 1 (el del mes anterior, como borrador: tú decides cuándo compartirlo)</span>
-              </label>
-              <label className="anu-check">
-                <input type="checkbox" checked={datos.ajustes.mostrarCosto} onChange={(e) => ajustar({ mostrarCosto: e.target.checked })} />
-                <span>Enseñarle el costo por resultado (lo de partida de cada informe nuevo)</span>
-              </label>
+              <FilaInterruptor
+                etiqueta="Prepararlo solo el día 1"
+                descripcion="El del mes anterior, como borrador: tú decides cuándo compartirlo."
+                encendido={datos.ajustes.automatico}
+                disabled={soloLectura || Boolean(trabajando)}
+                onCambiar={(si) => ajustar({ automatico: si })}
+              />
+              <FilaInterruptor
+                etiqueta="Enseñarle el costo por resultado"
+                descripcion="Lo de partida de cada informe nuevo."
+                encendido={datos.ajustes.mostrarCosto}
+                disabled={soloLectura || Boolean(trabajando)}
+                onCambiar={(si) => ajustar({ mostrarCosto: si })}
+              />
             </fieldset>
           )}
 

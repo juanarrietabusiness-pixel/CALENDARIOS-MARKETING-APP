@@ -28,6 +28,7 @@ import { semanaDelMes } from "../lib/semanas";
 import { limpiarEstrategia } from "../lib/embudo";
 import { esVirtual } from "../lib/meses";
 import Icon from "./Icon";
+import { Interruptor } from "./Interruptor";
 import { useConfigIA } from "../hooks/useConfigIA";
 import { etiquetaIA } from "../lib/configIA";
 import { ContentDisplay, OverflowMenu } from "./calendario/primitivas";
@@ -1121,18 +1122,13 @@ export default function CalendarView({
           )}
           <span className="interruptor-corto">
             <span id={`auto-${calId}`}>Programar al aprobar</span>
-            <button
-              type="button"
-              role="switch"
-              aria-labelledby={`auto-${calId}`}
-              aria-checked={alAprobar}
-              className={`toggle${alAprobar ? " is-on" : ""}`}
+            <Interruptor
+              etiquetadoPor={`auto-${calId}`}
+              encendido={alAprobar}
               disabled={!onPersistClient}
-              onClick={() => cambiarAlAprobar(!alAprobar)}
-              title="Para todos los meses de este cliente: la pieza final aprobada entra sola en la cola (una idea, nunca)"
-            >
-              <span className="toggle-thumb" />
-            </button>
+              onCambiar={(si) => cambiarAlAprobar(si)}
+              titulo="Para todos los meses de este cliente: la pieza final aprobada entra sola en la cola (una idea, nunca)"
+            />
           </span>
           <a className="barra-publicar-enlace" href="/produccion" onClick={(e) => { e.preventDefault(); navegar("/produccion"); }}>
             Ver la cola

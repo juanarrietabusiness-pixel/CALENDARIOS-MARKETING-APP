@@ -31,6 +31,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import Icon from "../Icon";
 import { subirImagenPublicacion } from "../../lib/db";
 import { historiaDesdeImagen } from "../../lib/medios";
+import FilaInterruptor from "../Interruptor";
 import { mediosDe, historiasDe, queHacerConLaEncajada, RETRASO_HISTORIA_MIN, LIMITES } from "../../lib/publicacion";
 
 const RETRASOS = [0, 5, 15, 30, 60, 120];
@@ -231,10 +232,12 @@ export default function HistoriasDelPost({ post, sf, clientId, cliente = null, c
           <button type="button" className="btn btn-ghost btn-sm" onClick={() => setConfirmando(false)}>Cancelar</button>
         </div>
       )}
-      <label className="casilla">
-        <input type="checkbox" checked={solas} onChange={(e) => setSolas(e.target.checked)} />
-        Al poner la imagen del post, preparar sola su historia (la misma imagen en vertical, sin costo)
-      </label>
+      <FilaInterruptor
+        etiqueta="Preparar sola su historia"
+        descripcion="Al poner la imagen del post, la misma imagen en vertical, sin costo."
+        encendido={solas}
+        onCambiar={(si) => setSolas(si)}
+      />
       {cliente && base && modelos?.opciones?.length > 0 && (
         <div className="field" style={{ margin: 0 }}>
           <label className="label" htmlFor={`${ids}-m`}>Modelo de las 3 con IA</label>

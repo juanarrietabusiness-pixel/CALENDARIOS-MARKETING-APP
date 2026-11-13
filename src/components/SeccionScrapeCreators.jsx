@@ -2,6 +2,7 @@ import { useCallback, useEffect, useId, useState } from "react";
 import Icon from "./Icon";
 import { leerCreditosSC, guardarTopeSC, guardarTendenciasSC, releerAnunciosSC } from "../lib/loMejorApi";
 import "./LoMejor.css";
+import FilaInterruptor from "./Interruptor";
 
 // ============================================================
 // Ajustes → Integraciones: Scrape Creators (anuncios y TikTok)
@@ -120,14 +121,13 @@ export default function SeccionScrapeCreators({ esAdmin = false, pulso = 0 }) {
               </button>
             )}
           </form>
-          <label className="casilla" htmlFor={`${ids}-tendencias`}>
-            <input id={`${ids}-tendencias`} type="checkbox" checked={estado.tendencias !== false} onChange={cambiarTendencias}
-              disabled={!esAdmin || Boolean(trabajando)} aria-describedby={`${ids}-tendencias-nota`} />
-            <span>Tendencias de TikTok</span>
-          </label>
-          <p id={`${ids}-tendencias-nota`} className="hint" style={{ margin: 0 }}>
-            Las palabras o #hashtags que cada cliente tiene en Inspiración → Cuentas: los videos con más vistas de la semana, un crédito por palabra.
-          </p>
+          <FilaInterruptor
+            etiqueta="Tendencias de TikTok"
+            descripcion="Las palabras o #hashtags que cada cliente tiene en Inspiración → Cuentas: los videos con más vistas de la semana, un crédito por palabra."
+            encendido={estado.tendencias !== false}
+            disabled={!esAdmin || Boolean(trabajando)}
+            onCambiar={(si) => cambiarTendencias({ target: { checked: si } })}
+          />
           {!esAdmin && <p className="hint" style={{ margin: 0 }}>El tope y las tendencias los cambia quien administra el espacio.</p>}
         </>
       )}

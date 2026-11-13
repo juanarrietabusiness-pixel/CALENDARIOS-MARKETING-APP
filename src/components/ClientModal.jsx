@@ -5,6 +5,7 @@ import { elegirLogo, tresColores } from "../lib/colores";
 import { loadImageTemplates, saveImageTemplate, deleteImageTemplate, loadImageReferences, uploadImageReference, deleteImageReference } from "../lib/db";
 import { useDialogA11y } from "../hooks/useDialogA11y";
 import Icon from "./Icon";
+import FilaInterruptor from "./Interruptor";
 import InterruptorBandeja from "./InterruptorBandeja";
 import { idDeCarpeta } from "../lib/drive";
 
@@ -373,25 +374,12 @@ export default function ClientModal({ initial, onSave, onDelete, onClose, onGuar
 
             {/* Revisión interna: lo que el equipo produce lo revisa otra
                 persona antes de que lo vea el cliente. */}
-            <div className="interruptor-fila">
-              <div>
-                <span id={`${ids}-revision`} style={{ fontSize: "var(--fs-xs)", fontWeight: 600 }}>Revisión interna antes del cliente</span>
-                <p className="hint" style={{ margin: 0 }}>
-                  El enlace de aprobación sólo enseña lo que pasó a «Con el cliente»: lo que está en idea, producción o
-                  revisión se queda dentro del equipo.
-                </p>
-              </div>
-              <button
-                type="button"
-                role="switch"
-                aria-labelledby={`${ids}-revision`}
-                aria-checked={Boolean(form.revisionInterna)}
-                className={`toggle${form.revisionInterna ? " is-on" : ""}`}
-                onClick={() => sf("revisionInterna", !form.revisionInterna)}
-              >
-                <span className="toggle-thumb" />
-              </button>
-            </div>
+            <FilaInterruptor
+              etiqueta="Revisión interna antes del cliente"
+              descripcion="El enlace de aprobación sólo enseña lo que pasó a «Con el cliente»: lo que está en idea, producción o revisión se queda dentro del equipo."
+              encendido={Boolean(form.revisionInterna)}
+              onCambiar={(si) => sf("revisionInterna", si)}
+            />
 
             {/* La bandeja de comentarios y mensajes de sus redes. Guarda al
                 pulsarlo: encenderla suscribe su página en Meta. */}
