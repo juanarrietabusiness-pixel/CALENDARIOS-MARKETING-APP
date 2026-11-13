@@ -435,6 +435,47 @@ describe("el asistente y Claude (MCP)", () => {
     expect(trabajos()[0]).toMatchObject({ tipo: "audio", origen: "asistente" });
   });
 
+  it("una locución SUELTA (sin video): se confirma, queda en la galería con el tiempo de cada palabra y tiempos_locucion los da", async () => {
+    kie();
+    kitConVoz({ voz: "hpp4J3VqNfWAUOO0d1Us", modelo: "v3" });
+    const h = herramientas();
+    await expect(h.generar_locucion({})).rejects.toThrow(/video_id .* «texto»/);
+    const sin = await h.generar_locucion({ texto: "Hola mamá, las toallitas Dany Baby cuidan su piel.", titulo: "Voz wipes" });
+    expect(sin).toMatch(/^NO SE CREÓ NADA\./);
+    expect(trabajos()).toHaveLength(0);
+    const con = await h.generar_locucion({ texto: "Hola mamá, las toallitas Dany Baby cuidan su piel.", titulo: "Voz wipes", confirmado: true });
+    expect(con.texto).toMatch(/locución suelta «Voz wipes»/);
+    const t = trabajos()[0];
+    expect(JSON.parse(t.ajustes).para).toBe("suelta");
+    const fin = await hastaElFinal(t.id);
+    expect(fin.estado).toBe("hecho");
+    const archivo = db.sqlite.prepare("select * from estudio_archivos where trabajo_id = ?").get(t.id);
+    expect(archivo).toMatchObject({ tipo: "audio", prompt: "Voz wipes" });
+    const aj = JSON.parse(archivo.ajustes);
+    expect(aj.palabras.map((p) => p.texto)).toEqual(palabrasDe("Hola mamá, las toallitas Dany Baby cuidan su piel."));
+    expect(aj.palabras.every((p) => p.hasta >= p.desde)).toBe(true);
+    const tiempos = await h.tiempos_locucion({ archivo_id: archivo.id });
+    expect(tiempos).toMatch(/Tiempos de la locución «Voz wipes»/);
+    expect(tiempos).toMatch(/1\. Hola \d+\.\d\d–\d+\.\d\d/);
+    expect(tiempos.split("\n")).toHaveLength(1 + 9);
+  });
+
+  it("tiempos_locucion de un video: por escena, en segundos del VIDEO; sin voz lista, lo dice", async () => {
+    kie();
+    kitConVoz({ voz: "hpp4J3VqNfWAUOO0d1Us", modelo: "v3" });
+    const v = await videoAprobado();
+    const h = herramientas();
+    expect(await h.tiempos_locucion({ video_id: v.id })).toMatch(/todavía no tiene su locución lista/);
+    const { trabajoId } = await (await pedir(`/videos/bc/${v.id}/locucion`, { method: "POST", body: { version: v.version, confirmado: true } })).json();
+    await hastaElFinal(trabajoId);
+    const t = await h.tiempos_locucion({ video_id: v.id });
+    expect(t).toMatch(/en segundos DEL VIDEO/);
+    expect(t).toMatch(/^Escena 1 \(/m);
+    const loc = JSON.parse(video(v.id).locucion);
+    const linea = lineaDeTiempo(ejemplo(), loc.palabras);
+    expect(t).toContain(`${linea.escenas[0].palabras[0].texto} ${linea.escenas[0].palabras[0].desde.toFixed(2)}`);
+  });
+
   it("listar_voces no gasta; previsualizar_voz se confirma y, hecha, da dónde oírla", async () => {
     const { llamadas } = kie();
     const h = herramientas();

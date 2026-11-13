@@ -53,6 +53,8 @@ import { rutasDrive, rutaDriveCallback } from "./rutas/drive.js";
 import { rutasRedes, rutasPublicar, rutaMetaCallback, rutaMedioPublico, rutaWebhookPostPeer } from "./rutas/redes.js";
 import { rutaVistaMedio } from "./rutas/vistaMedio.js";
 import { rutaExportar } from "./lib/exportarPiezas.js";
+import { rutaKit } from "./lib/kitDescargable.js";
+import { rutaSubir } from "./lib/estudio/subidaClaude.js";
 import { rutasYouTube, rutaYouTubePublica } from "./rutas/youtube.js";
 import { procesarCola, programarAlAprobar, cancelarPendientes } from "./lib/publicador.js";
 import { rutasMetricas } from "./rutas/metricas.js";
@@ -319,7 +321,14 @@ export default {
       // El ZIP de exportar_piezas (Claude por MCP): sin sesión, sólo lo que dice su testigo firmado y sólo 15 minutos.
       // Se arma por flujo desde R2. Ver worker/lib/exportarPiezas.js.
       if (partes[0] === "exportar" && metodo === "GET") {
+        // El kit de marca entero (kit_descargable): el mismo enlace firmado, otro uso. Ver worker/lib/kitDescargable.js.
+        if (partes[1] === "kit") return await rutaKit(req, env, partes);
         return await rutaExportar(req, env, partes);
+      }
+      // Lo que Claude sube a la galería con el enlace de subir_a_galeria: sin sesión, sólo lo que dice su testigo firmado,
+      // 15 minutos y una vez. Ver worker/lib/estudio/subidaClaude.js.
+      if (partes[0] === "subir" && partes.length === 2 && (metodo === "PUT" || metodo === "POST")) {
+        return await rutaSubir(req, env, partes);
       }
       // Los comentarios y mensajes que manda Meta: sin sesión, firmados con
       // META_APP_SECRET. Ver worker/rutas/bandeja.js.

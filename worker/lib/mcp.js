@@ -34,6 +34,8 @@ import { DEFINICIONES_VISTA, crearHerramientasVista, ErrorVista } from "./estudi
 import { DEFINICIONES_LO_MEJOR, crearHerramientasLoMejor, ErrorHerramientaLoMejor } from "./herramientasLoMejor.js";
 import { DEFINICIONES_REEL_MCP, crearHerramientasReel } from "./estudio/herramientasReel.js";
 import { DEFINICION_EXPORTAR, crearHerramientaExportar, ErrorExportar } from "./exportarPiezas.js";
+import { DEFINICIONES_SUBIDA, crearHerramientasSubida, ErrorSubida } from "./estudio/subidaClaude.js";
+import { DEFINICION_KIT, crearHerramientaKit } from "./kitDescargable.js";
 
 const FORMATOS = ["post", "reel", "carrusel", "historia", "live"];
 const REDES = ["instagram", "facebook", "tiktok", "youtube"];
@@ -128,6 +130,10 @@ export const HERRAMIENTAS_MCP = Object.freeze([
   ...DEFINICIONES_LO_MEJOR,
   // Descargar piezas de la galería en un ZIP (worker/lib/exportarPiezas.js): un enlace sin sesión de 15 minutos.
   DEFINICION_EXPORTAR,
+  // Subir a la galería lo que Claude hizo FUERA del calendario (worker/lib/estudio/subidaClaude.js): por url o por un enlace PUT firmado.
+  ...DEFINICIONES_SUBIDA,
+  // Todo lo de la marca en un ZIP (worker/lib/kitDescargable.js), con el mismo enlace de 15 minutos que exportar_piezas.
+  DEFINICION_KIT,
   // Las que sólo llama la VISTA PREVIA del chat (MCP Apps: `visibility: ["app"]`, ver rutas/mcp.js).
   ...DEFINICIONES_VISTA,
 ]);
@@ -421,7 +427,7 @@ export function crearHerramientasMCP({ env, acceso, usuario }) {
       }
       return { content: [{ type: "text", text: `Herramienta desconocida: ${nombre}` }], isError: true };
     } catch (e) {
-      const delPedido = e instanceof ErrorHerramienta || e instanceof ErrorHerramientaEstudio || e instanceof ErrorDiseno || e instanceof ErrorReceta || e instanceof ErrorVista || e instanceof ErrorHerramientaLoMejor || e instanceof ErrorExportar;
+      const delPedido = e instanceof ErrorHerramienta || e instanceof ErrorHerramientaEstudio || e instanceof ErrorDiseno || e instanceof ErrorReceta || e instanceof ErrorVista || e instanceof ErrorHerramientaLoMejor || e instanceof ErrorExportar || e instanceof ErrorSubida;
       if (!delPedido) console.error("mcp:", nombre, e);
       return { content: [{ type: "text", text: delPedido ? e.message : `No se pudo: ${e?.message ?? e}` }], isError: true };
     }
@@ -435,6 +441,8 @@ export function crearHerramientasMCP({ env, acceso, usuario }) {
   Object.assign(acciones, crearHerramientasVista({ env, acceso, por }));
   Object.assign(acciones, crearHerramientasLoMejor({ env, acceso, resolverCliente, usuario }));
   Object.assign(acciones, crearHerramientaExportar({ env, acceso, resolverCliente, usuario }));
+  Object.assign(acciones, crearHerramientasSubida({ env, acceso, resolverCliente, usuario, por }));
+  Object.assign(acciones, crearHerramientaKit({ env, acceso, resolverCliente, usuario }));
 
   return { llamar };
 }

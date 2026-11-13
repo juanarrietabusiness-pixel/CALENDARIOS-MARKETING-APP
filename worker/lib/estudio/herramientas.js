@@ -56,7 +56,7 @@ import { pedidoConMarca, ponerLogo, kitVacio, IDS_PRESET, TIPOS_PRESET } from ".
 import { productosActivos } from "../../../src/lib/estudioMercado.js";
 import { lineasDeReferencias } from "../../../src/lib/referencias.js";
 import { ajustarFicha, esFicha, textoDeLaFicha } from "../../../src/lib/director.js";
-import { listarVoces, pedirMuestra, pedirLocucion, ErrorVoz } from "./locucion.js";
+import { listarVoces, pedirMuestra, pedirLocucion, pedirLocucionSuelta, MAX_TEXTO_SUELTA, ErrorVoz } from "./locucion.js";
 import { pedirMusica, ErrorMusica } from "./musica.js";
 import { textoDeLasQueEncajan } from "../../../src/lib/bibliotecaSonido.js";
 import { DURACION_MUSICA } from "../../../src/lib/musica.js";
@@ -196,17 +196,21 @@ export const DEFINICIONES_ESTUDIO = Object.freeze([
       "Genera la LOCUCIÓN de un video animado: una sola toma con todo lo que dicen sus escenas, del guion APROBADO (si no está aprobado, no se " +
       "puede). Usa la voz de la marca si no se dice otra. SIEMPRE cuesta y SIEMPRE se confirma: la primera llamada devuelve la cifra y NO crea " +
       "nada; díselo al usuario y sólo si dice que sí vuelve a llamarla con los MISMOS datos y confirmado=true. Nunca pongas confirmado=true por " +
-      "tu cuenta. No espera: queda en cola y el video pasa a «Con voz» cuando termina (estado_trabajo con el ID para saber cómo va).",
+      "tu cuenta. No espera: queda en cola y el video pasa a «Con voz» cuando termina (estado_trabajo con el ID para saber cómo va). " +
+      "SIN VIDEO (una locución SUELTA, para armar el video fuera del calendario): en vez de video_id, «texto» (hasta 5.000 caracteres) y opcional " +
+      "«titulo»: el audio queda en la galería del cliente con el tiempo de cada palabra; al terminar, estado_trabajo da su ID de la galería y " +
+      "tiempos_locucion con ese archivo_id da los tiempos. Se confirma igual que la del video.",
     input_schema: {
       type: "object",
       properties: {
         ...clienteParam,
-        video_id: { type: "string", description: "ID del proyecto de video animado." },
+        video_id: { type: "string", description: "ID del proyecto de video animado. Sin él, «texto»." },
+        texto: { type: "string", description: "Sólo SIN video_id: lo que dice la locución suelta (con [emociones] en v4 y v3)." },
+        titulo: { type: "string", description: "Sólo con «texto»: cómo se llama el audio en la galería." },
         voz: { type: "string", description: "ID de una voz de listar_voces. Si se omite, la de la marca." },
         modelo: { type: "string", enum: ["v4", "v3", "v2"], description: "Si se omite, el del kit (v4 por defecto)." },
         confirmado: { type: "boolean", description: "Sólo tras oír «sí» del usuario a la cifra exacta que le dijiste." },
       },
-      required: ["video_id"],
     },
   },
   {
@@ -662,7 +666,7 @@ export function crearHerramientasEstudio({ env, acceso, resolverCliente, usuario
         ? (await Promise.all(t.archivos.map((a) => acceso.leerUno("estudio_archivos", { id: String(a), client_id: fila.client_id })))).filter(Boolean)
         : [];
       const texto = [
-        `Pedido ${t.id}: ${NOMBRE_ESTADO[t.estado] ?? t.estado} — ${nombreDelModelo(t.modelo)}, ${t.n} ${t.tipo === "video" ? "video" : "imagen"}${t.n > 1 ? "s" : ""}.`,
+        `Pedido ${t.id}: ${NOMBRE_ESTADO[t.estado] ?? t.estado} — ${nombreDelModelo(t.modelo)}, ${t.n} ${t.tipo === "video" ? "video" : t.tipo === "audio" ? "audio" : "imagen"}${t.n > 1 ? "s" : ""}.`,
         t.error ? `Motivo: ${t.error}` : "",
         t.nota ? `Nota: ${t.nota}` : "",
         `Llevan ${t.archivos.length} de ${t.n}.`,
@@ -752,8 +756,22 @@ export function crearHerramientasEstudio({ env, acceso, resolverCliente, usuario
       }
     },
 
-    async generar_locucion({ cliente, video_id: id, voz, modelo, confirmado }) {
+    async generar_locucion({ cliente, video_id: id, texto: textoSuelto, titulo, voz, modelo, confirmado }) {
       const c = await resolverCliente(cliente);
+      if (!id) {
+        if (!String(textoSuelto ?? "").trim()) throw new ErrorHerramientaEstudio(`Dime de qué: video_id (la locución de un video animado) o «texto» (una locución suelta, hasta ${MAX_TEXTO_SUELTA} caracteres).`);
+        try {
+          const r = await pedirLocucionSuelta(env, acceso, c, { texto: textoSuelto, titulo, modelo, vozId: voz, confirmado: confirmado === true, usuario, origen });
+          const texto = [
+            `Pedido creado: ${r.trabajoId} (locución suelta${titulo ? ` «${titulo}»` : ""}, voz ${r.voz.nombre}, ${r.modelo}, ${r.caracteres} caracteres, ${textoCosto(r.costo)}).`,
+            "Tarda uno o dos minutos y sigue solo. Al terminar queda en la galería del cliente con el tiempo de cada palabra.",
+            `Para saber cómo va y su ID de la galería: estado_trabajo con el ID ${r.trabajoId}; luego tiempos_locucion con ese archivo_id.`,
+          ].join("\n");
+          return { texto, imagenes: [], vista: await vistaDelPedido(r.trabajoId, "Locución suelta") };
+        } catch (e) {
+          return confirmacionDeVoz(e);
+        }
+      }
       const video = await acceso.leerUno("videos_proyectos", { id: String(id ?? ""), client_id: c.id });
       if (!video) throw new ErrorHerramientaEstudio(`No encontré el video «${id}» de ${c.name}.`);
       try {

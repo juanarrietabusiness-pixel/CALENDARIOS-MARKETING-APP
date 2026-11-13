@@ -195,3 +195,67 @@ describe("las piezas sueltas", () => {
     expect(nombres).toEqual(["a/01-uno.txt"]);
   });
 });
+
+describe("kit_descargable", () => {
+  it("está en el MCP y sólo lee", () => {
+    expect(HERRAMIENTAS_MCP.find((x) => x.name === "kit_descargable")?.annotations.readOnlyHint).toBe(true);
+  });
+
+  it("el logo, la letra, las fotos de cada producto activo, la música favorita, paleta.json y kit.json; nada de otro cliente", async () => {
+    const s = db.sqlite;
+    const poner = (clave, txt) => env.MEDIA.objetos.set(clave, { bytes: bytesDe(txt) });
+    poner("clientes/c1/estudio/logo.png", "LOGO");
+    poner("clientes/c1/fuentes/letra.ttf", "TTF");
+    poner("clientes/c1/estudio/muestra.png", "MUESTRA");
+    poner("clientes/c1/estudio/lente-1.jpg", "F1");
+    poner("clientes/c1/estudio/lente-2.jpg", "F2");
+    poner("clientes/c1/estudio/musica.mp3", "MP3");
+    poner("clientes/c9/estudio/ajena.jpg", "AJENA");
+    s.prepare("update clients set kit_marca = ? where id = 'c1'").run(JSON.stringify({
+      logo: "clientes/c1/estudio/logo.png",
+      fuente: { clave: "clientes/c1/fuentes/letra.ttf", muestra: "clientes/c1/estudio/muestra.png", nombre: "Montserrat" },
+      paleta: [{ hex: "#1E3A8A", nombre: "Azul", rol: "Fondo principal" }, { hex: "#FFFFFF", nombre: "Blanco", rol: "Texto" }, { hex: "#F59E0B", nombre: "Ámbar", rol: "Acento: botones y CTA" }],
+      estilo: "Limpio y luminoso",
+    }));
+    s.prepare("insert into mercado_clientes (id, owner_id, client_id, catalogo, referencias) values (?,?,?,?,?)").run("m1", ANA, "c1", JSON.stringify([
+      { id: "p1", nombre: "Lentes Ray", precio: "$45", fotos: ["clientes/c1/estudio/lente-1.jpg", "clientes/c1/estudio/lente-2.jpg", "clientes/c9/estudio/ajena.jpg"] },
+      { id: "p2", nombre: "Retirado", activo: false, fotos: ["clientes/c1/estudio/lente-1.jpg"] },
+    ]), "[]");
+    s.prepare("insert into estudio_archivos (id, owner_id, client_id, clave, tipo, mime, modelo, prompt, favorito) values (?,?,?,?,?,?,?,?,?)")
+      .run("m-1", ANA, "c1", "clientes/c1/estudio/musica.mp3", "audio", "audio/mpeg", "musica-suno", "Jingle de la marca", 1);
+
+    const r = conEnlace(await mcp().llamar("kit_descargable", { cliente: "feria" }), ORIGEN);
+    expect(r.isError).toBeUndefined();
+    const texto = textoDe(r);
+    expect(texto).toMatch(/Logo: sí · Letra: sí · Música: la de la marca · Productos: 1 \(2 fotos\)/);
+    const url = /(\/api\/exportar\/kit\/\S+)/.exec(texto)?.[1];
+    expect(url).toMatch(/kit-feria-del-lente\.zip$/);
+    const res = await worker.fetch(new Request(`${ORIGEN}${url}`), env, {});
+    expect(res.status).toBe(200);
+    const { nombres, leer } = listarConUnzip(new Uint8Array(await res.arrayBuffer()));
+    expect(nombres).toEqual(expect.arrayContaining([
+      "paleta.json", "kit.json", "LEEME.txt", "logo/logo.png", "letras/montserrat.ttf",
+      "musica/jingle-de-la-marca.mp3", "productos/lentes-ray/01.jpg", "productos/lentes-ray/02.jpg",
+    ]));
+    expect(nombres.some((n) => n.includes("ajena") || n.includes("retirado"))).toBe(false);
+    expect(leer("logo/logo.png")).toBe("LOGO");
+    const paleta = JSON.parse(leer("paleta.json"));
+    expect(paleta.tokens.acento).toBe("#F59E0B");
+    expect(paleta.colores).toHaveLength(3);
+    const kit = JSON.parse(leer("kit.json"));
+    expect(kit.productos).toEqual([expect.objectContaining({ nombre: "Lentes Ray", precio: "$45", fotos: ["productos/lentes-ray/01.jpg", "productos/lentes-ray/02.jpg"] })]);
+    expect(kit.letra).toEqual({ archivo: "letras/montserrat.ttf", nombre: "Montserrat" });
+  });
+
+  it("un testigo de exportar_piezas no abre un kit, ni al revés; sin kit ni catálogo, sale igual", async () => {
+    const r = await mcp().llamar("kit_descargable", { cliente: "baby" });
+    expect(textoDe(r)).toMatch(/Logo: NO/);
+    const url = /(\/api\/exportar\/kit\/\S+)/.exec(textoDe(r))[1];
+    const cruzado = url.replace("/api/exportar/kit/", "/api/exportar/");
+    expect((await worker.fetch(new Request(`${ORIGEN}${cruzado}`), env, {})).status).toBe(404);
+    const res = await worker.fetch(new Request(`${ORIGEN}${url}`), env, {});
+    expect(res.status).toBe(200);
+    const { nombres } = listarConUnzip(new Uint8Array(await res.arrayBuffer()));
+    expect(nombres.sort()).toEqual(["LEEME.txt", "kit.json", "paleta.json"]);
+  });
+});

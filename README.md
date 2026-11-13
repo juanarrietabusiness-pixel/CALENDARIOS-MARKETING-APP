@@ -20,6 +20,14 @@ redes sociales para clientes de una agencia.
   aparecen en el panel **en vivo**, sin recargar ni sincronizar nada. El
   enlace se puede revocar y reactivar cuando quieras.
 - **Exportación** a HTML autónomo, PDF (impresión) y copia de seguridad JSON.
+- **Claude por MCP, también fuera del calendario**: con `kit_descargable` baja todo lo
+  de la marca de un cliente (logo, letra, fotos de cada producto, música, paleta y
+  precios) en un ZIP; arma el video o la imagen con código en su máquina; pide la
+  voz con `generar_locucion` (con `texto`, sin video) y sus tiempos palabra por
+  palabra con `tiempos_locucion`; y deja el resultado en la galería —y en su
+  publicación— con `subir_a_galeria` + `confirmar_subida`. Dentro del calendario,
+  el video animado admite `"maquetacion": "exacta"` para poner cada capa justo
+  donde y del tamaño que se diga.
 
 ## Puesta en marcha
 

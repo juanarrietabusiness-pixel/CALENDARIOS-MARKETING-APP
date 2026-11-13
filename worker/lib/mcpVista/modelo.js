@@ -176,7 +176,7 @@ export function metaDeVista(origen) {
 
 const absoluta = (u, origen) => (typeof u === "string" && RELATIVA.test(u) ? `${origen}${u}` : u);
 /** Las direcciones firmadas dentro de un texto (también el ZIP de exportar_piezas) (detrás de un espacio, un paréntesis o unas comillas). */
-const EN_TEXTO = /(^|[\s(«"'<[])(\/api\/(?:vista-medio|exportar)\/)/g;
+const EN_TEXTO = /(^|[\s(«"'<[])(\/api\/(?:vista-medio|exportar|subir)\/)/g;
 const textoAbsoluto = (t, origen) => (typeof t === "string" ? t.replace(EN_TEXTO, `$1${origen}$2`) : t);
 
 /**

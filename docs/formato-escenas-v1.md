@@ -201,6 +201,22 @@ les pone su `archivo`. Con `tratamiento: "byn"` se ven en blanco y negro con má
   "tratamiento": "byn", "pide": "Grabado antiguo en blanco y negro de unas manos abiertas hacia la luz, con mucho aire arriba" }
 ```
 
+### La maquetación exacta
+
+Por defecto el motor reparte las capas por ZONAS y, si una escena trae coordenadas en dos capas o más, las pasa a la
+zona más cercana (con aviso). Para diseñar cuadro a cuadro, `"maquetacion": "exacta"` en la raíz (todo el guion) o en
+una escena: cada capa con `{ "x", "y" }` (el centro de la capa, de 0 a 1 sobre el cuadro entero) va justo ahí y mide su
+`tam` tal cual (en fracción del lado corto): no se mueve, no se encoge ni se agranda, y no se le reserva sitio a nada.
+Las capas con zonas de esa escena se siguen repartiendo. Los subtítulos conservan su franja; la revisión avisa de lo que
+choca con ella, pero no lo mueve. Sin el campo, todo es como siempre (y el campo no se escribe). Una escena así (el
+ejemplo de `formato_video`, `EJEMPLO_EXACTA`, es el que un test valida; el bloque principal de este documento es el de
+más abajo, y las pruebas lo leen por ser el PRIMER bloque `json`):
+
+```
+{ "id": "exacta", "tipo": "producto", "maquetacion": "exacta", "habla": "Tres tamaños para cada momento del día.",
+  "capas": [{ "tipo": "texto", "id": "t", "texto": "Tres *tamaños*", "rol": "titular", "pos": { "x": 0.5, "y": 0.18 }, "tam": 0.8 }] }
+```
+
 ### El dibujo
 
 Para dibujar un objeto propio del video (una taza, una casa, un gráfico) sin una

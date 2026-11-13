@@ -33,7 +33,7 @@ import { MOTORES } from "./motores.js";
 import { abrirDescarga, guardarDescarga } from "./descarga.js";
 import { claveDeArchivo } from "./archivos.js";
 import { kitDe, guardarKit } from "./kit.js";
-import { validarGuion, puedeGenerarVoz, puedePasar, NOMBRE_ESTADO_VIDEO } from "../../../src/lib/videoEscenas.js";
+import { validarGuion, puedeGenerarVoz, puedePasar, NOMBRE_ESTADO_VIDEO, palabrasDe } from "../../../src/lib/videoEscenas.js";
 import {
   MODELOS_VOZ, modeloDeVoz, limpiarLocucion, vocesDisponibles, vozPorId, VOCES_KIE, VOCES_ELEVENLABS, VIAS_VOZ, idDeModeloVoz,
   textoParaVoz, costoDeVoz,
@@ -268,6 +268,45 @@ export async function pedirLocucion(env, acceso, cliente, video, { modelo, vozId
   return { trabajoId: fila.id, costo: costo.usd, creditos: costo.creditos, unidad: costo.unidad, caracteres: texto.length, voz, modelo: m.clave, via };
 }
 
+/** Los tiempos de cada palabra con la palabra al lado (`tiemposDeLocucion` da sólo desde y hasta, en su orden). Pura. */
+const conTexto = (texto, tiempos) => {
+  const dichas = palabrasDe(texto);
+  return (tiempos ?? []).map((p, i) => ({ texto: dichas[i] ?? "", desde: p.desde, hasta: p.hasta }));
+};
+
+/** Lo más que dice una locución SUELTA (sin video): el tope del modelo manda si es menor. */
+export const MAX_TEXTO_SUELTA = 5000;
+
+/**
+ * Una LOCUCIÓN SUELTA, sin video: un texto + la voz → un audio en la galería del cliente CON el tiempo de cada palabra
+ * (`ajustes.palabras`). Para que Claude arme el video fuera del calendario y lo suba (subir_a_galeria). Se confirma
+ * SIEMPRE, como toda voz: sin `confirmado: true`, 409 con el costo exacto.
+ */
+export async function pedirLocucionSuelta(env, acceso, cliente, { texto, titulo = "", modelo, vozId, confirmado = false, usuario = null, origen = "persona" } = {}) {
+  const limpio = String(texto ?? "").replace(/\r/g, "").trim();
+  if (!limpio) throw new ErrorVoz("Falta el texto de la locución.");
+  if (limpio.length > MAX_TEXTO_SUELTA) throw new ErrorVoz(`El texto tiene ${limpio.length} caracteres y una locución suelta admite ${MAX_TEXTO_SUELTA}: pártelo.`);
+  const loc = locucionDe(cliente);
+  if (!modeloDeVoz(modelo ?? loc.modelo)) throw new ErrorVoz("Ese modelo de voz no existe: v4, v3 o v2.");
+  const via = viaDeVoz(env);
+  if (!via) throw sinLlaveDeVoz();
+  const { m, factor } = await modeloYFactor(env, via, modelo ?? loc.modelo);
+  const voz = vozPorId(loc, String(vozId ?? loc.voz ?? ""), await vocesDeLaVia(env, via));
+  if (!voz) {
+    throw new ErrorVoz(loc.voz ? "Esa voz no está entre las del cliente: escoge otra de listar_voces." : "Escoge la voz (de listar_voces) o fija la de la marca con voz_de_marca.", 400, { codigo: "sin_voz" });
+  }
+  const problema = problemaDelTexto(limpio, m.clave);
+  if (problema) throw new ErrorVoz(problema, 400);
+  const costo = costoDeVoz(m.clave, limpio.length, via, factor);
+  if (confirmado !== true) {
+    throw pedirConfirmacion(`La locución suelta (${limpio.length} caracteres, voz ${voz.nombre}, ${m.nombre})`, costo, { voz: voz.nombre, modelo: m.clave, caracteres: limpio.length });
+  }
+  const fila = await crearToma(env, acceso, cliente, {
+    modelo: m.clave, via, texto: limpio, voz, costo: costo.usd, ajustes: { para: "suelta", titulo: String(titulo ?? "").trim().slice(0, 120) }, usuario, origen,
+  });
+  return { trabajoId: fila.id, costo: costo.usd, creditos: costo.creditos, unidad: costo.unidad, caracteres: limpio.length, voz, modelo: m.clave, via };
+}
+
 /**
  * Cómo va la voz de un proyecto: si se estaba generando y el trabajo acabó mal (fallido o cancelado), lo dice con su
  * motivo. Sólo lee (la pantalla lo pregunta al abrir el proyecto).
@@ -351,6 +390,13 @@ export async function terminarAudio(env, acceso, fila, { listo, modelo }) {
   const oidas = palabrasDelResultado(resultado) ? null : await oirConTiempos(env, acceso, { bytes, mime: descarga.mime, clienteId: fila.client_id });
   const t = tiemposDeLocucion(fila.prompt, { resultado, oidas, duracion });
   const revisar = t.coincidencia !== null && t.coincidencia < COINCIDENCIA_MINIMA;
+  // Una locución SUELTA guarda sus tiempos en su ficha: es lo que lee tiempos_locucion (no hay video que los tenga).
+  if (ajustes.para === "suelta") {
+    await acceso.actualizar("estudio_archivos", { id: archivoId, client_id: fila.client_id }, {
+      prompt: String(ajustes.titulo || fila.prompt).slice(0, 2000),
+      ajustes: JSON.stringify({ ...ajustes, duracion, palabras: conTexto(fila.prompt, t.palabras), fuente: t.fuente, coincidencia: t.coincidencia, revisar }),
+    });
+  }
 
   const video = ajustes.videoId ? await acceso.leerUno("videos_proyectos", { id: ajustes.videoId, client_id: fila.client_id }).catch(() => null) : null;
   if (video) {
