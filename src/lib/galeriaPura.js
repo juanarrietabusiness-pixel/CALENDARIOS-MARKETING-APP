@@ -59,6 +59,9 @@ export const esVideoReal = (archivo) => String(archivo?.mime ?? "").startsWith("
 export const medioDeArchivo = (a) => ({
   src: a.src, tipo: esVideoReal(a) ? "video" : "imagen", nombre: String(a.prompt ?? "").slice(0, 60),
   ...(a.ancho > 0 && a.alto > 0 ? { ancho: a.ancho, alto: a.alto } : {}),
+  // La duración que se midió al guardarlo (lo subido por Claude): Shorts y TikTok la necesitan, y sin ella la pantalla
+  // tendría que volver a medirla.
+  ...(esVideoReal(a) && Number(a.ajustes?.duracion) > 0 ? { duracion: Number(a.ajustes.duracion) } : {}),
 });
 
 /** Lo que se contesta cuando a un reel le llegan varias imágenes (o una que se pide como medio). */

@@ -295,6 +295,8 @@ export const ANCHO_TEXTO = Object.freeze({ texto: 0.94, cifra: 0.94, llamado: 0.
  * posición fija: `fija`); el texto, al menos lo que le toca de su columna (`ANCHO_TEXTO`, si se sabe `anchoMax`).
  */
 function anchoPedido(capa, c, anchoMax = 0, { fija = false } = {}) {
+  // MAQUETACIÓN EXACTA: una capa con { x, y } mide su `tam` y nada más (ni el mínimo del texto ni el del logo del cierre).
+  if (fija && c.exacta) return capa.tam * c.lado;
   const tam = capa.tipo === "logo" && c.tipoEscena === "cierre" && !fija ? Math.max(capa.tam, MIN_LOGO_CIERRE) : capa.tam;
   const minimo = capa.tipo === "texto" && capa.rol === "etiqueta" ? 0 : (ANCHO_TEXTO[capa.tipo] ?? 0) * anchoMax;
   return Math.max(tam * c.lado, minimo);
@@ -1376,7 +1378,7 @@ function estadoACompleta(capa, cuando, momento, t, c) {
 }
 
 function dibujarEscena(ctx, escena, momento, t, cGuion, primera = false) {
-  const c = { ...cGuion, tipoEscena: escena.tipo, luzFondo: luzDelFondo(escena, cGuion.paleta), escenaId: escena.id };
+  const c = { ...cGuion, tipoEscena: escena.tipo, luzFondo: luzDelFondo(escena, cGuion.paleta), escenaId: escena.id, exacta: Boolean(cGuion.exacta || escena.maquetacion === "exacta") };
   dibujarFondo(ctx, escena.fondo, c.ancho, c.alto, c.paleta, escena.id, t);
   const todas = capasDe(escena);
   const tiempos = tiemposDeEscena(todas, momento, primera);
@@ -1589,6 +1591,8 @@ function contextoDe({ guion, linea = null, formato, paleta, recursos = {}, fuent
     ancho, alto, lado: Math.min(ancho, alto), formato: f, paleta: paleta ?? paletaDelGuion(guion),
     ritmo: guion?.estilo?.ritmo ?? "medio", recursos, fuentes, subtitulos: guion?.subtitulos, personaje: guion?.estilo?.personaje ?? null,
     golpes: linea?.golpes ?? null,
+    // MAQUETACIÓN EXACTA en todo el guion: cada capa con { x, y } va de su `tam` (ver anchoPedido).
+    exacta: guion?.maquetacion === "exacta",
     // Lo más alto que puede ser una imagen: el 62 % del área segura; en 16:9 lo visual tiene su columna y llega al 82 %.
     altoUtil: areaSegura(f, ancho, alto).h * (ancho > alto * 1.2 ? 0.82 : 0.62),
   };
@@ -1604,7 +1608,7 @@ export function cajasDeEscena(ctx, { guion, linea, indice = 0, formato, recursos
   const escena = guion?.escenas?.[indice];
   if (!escena) return [];
   const base = contextoDe({ guion, formato, recursos, fuentes });
-  const c = { ...base, tipoEscena: escena.tipo, luzFondo: luzDelFondo(escena, base.paleta), escenaId: escena.id };
+  const c = { ...base, tipoEscena: escena.tipo, luzFondo: luzDelFondo(escena, base.paleta), escenaId: escena.id, exacta: Boolean(base.exacta || escena.maquetacion === "exacta") };
   const todas = capasDe(escena);
   const tiempos = tiemposDeEscena(todas, linea.escenas[indice], indice === 0);
   // Un video (o una imagen) a sangre no tiene caja: es el fondo.

@@ -453,9 +453,10 @@ function validarCapa(capa, donde, nPalabras, errores, avisos, ids) {
   };
 }
 
-function validarEscena(e, i, errores, avisos, idsEscenas, { cancion = false } = {}) {
+function validarEscena(e, i, errores, avisos, idsEscenas, { cancion = false, exacta = false } = {}) {
   const donde = `escenas[${i}]`;
   if (!esObjeto(e)) { errores.push({ donde, mensaje: "Una escena es un objeto." }); return null; }
+  const exactaEscena = validarMaquetacion(e.maquetacion, `${donde}.maquetacion`, errores);
   const id = recorta(e.id) || `e${i + 1}`;
   if (idsEscenas.has(id)) errores.push({ donde: `${donde}.id`, mensaje: `El id «${id}» se repite.` });
   idsEscenas.add(id);
@@ -496,8 +497,9 @@ function validarEscena(e, i, errores, avisos, idsEscenas, { cancion = false } = 
   // COORDENADAS donde el motor tiene que repartir: con dos capas o más que se reparten, una en { x, y } no se aparta de
   // las demás y salían encimadas, fuera de cuadro o bajo los subtítulos. Se pasan a la zona más cercana (y se dice). Lo
   // que va en su sitio a propósito (el logo, un sello, un dibujo, una forma) y lo que va a sangre conserva su posición.
+  // Con MAQUETACIÓN EXACTA (en la escena o en todo el guion) no: quien escribió el guion puso cada x, y y tam a propósito.
   const repartibles = capas.filter((c) => !CON_SITIO_PROPIO.has(c.tipo) && c.encuadre !== "completo");
-  if (repartibles.length >= 2) {
+  if (repartibles.length >= 2 && !exacta && !exactaEscena) {
     for (const c of repartibles) {
       if (!esObjeto(c.pos)) continue;
       const zona = zonaMasCercana(c.pos);
@@ -509,7 +511,24 @@ function validarEscena(e, i, errores, avisos, idsEscenas, { cancion = false } = 
   for (const et of etiquetasDe(habla)) {
     if (et.split(/\s+/).length > 4) avisos.push({ donde: `${donde}.habla`, mensaje: `La indicación «[${et}]» es larga: v3 sigue mejor una o dos palabras.` });
   }
-  return { id, tipo: TIPOS_ESCENA[e.tipo] ? e.tipo : "explicacion", habla, pantalla, pausa: pausa >= 0 && pausa <= MAX_PAUSA ? pausa : 0, fondo, transicion, capas };
+  return {
+    id, tipo: TIPOS_ESCENA[e.tipo] ? e.tipo : "explicacion", habla, pantalla, pausa: pausa >= 0 && pausa <= MAX_PAUSA ? pausa : 0, fondo, transicion, capas,
+    // Sólo si la trae: un guion de antes valida igual.
+    ...(exactaEscena ? { maquetacion: "exacta" } : {}),
+  };
+}
+
+/**
+ * La MAQUETACIÓN de un guion o de una escena: «zonas» (por defecto: el motor reparte y pasa a zonas las coordenadas de
+ * varias capas) o «exacta» (cada capa con { x, y } y su `tam` va justo ahí y de ese tamaño: el motor no la mueve, no la
+ * encoge ni le hace sitio; los subtítulos conservan su franja y la revisión avisa si algo choca con ella). → true si es
+ * exacta. Pura.
+ */
+function validarMaquetacion(valor, donde, errores) {
+  if (valor === undefined || valor === null || valor === "zonas") return false;
+  if (valor === "exacta") return true;
+  errores.push({ donde, mensaje: "«maquetacion» es «exacta» (cada capa en su x, y y tam tal cual) o «zonas» (por defecto)." });
+  return false;
 }
 
 function validarEstilo(s = {}, errores) {
@@ -590,7 +609,9 @@ export function validarGuion(entrada) {
   if (!Array.isArray(escIn) || !escIn.length) errores.push({ donde: "escenas", mensaje: "Hace falta al menos una escena." });
   else if (escIn.length > maxEscenas) errores.push({ donde: "escenas", mensaje: `Como mucho ${maxEscenas} escenas.` });
   const idsEscenas = new Set();
-  const escenas = (Array.isArray(escIn) ? escIn.slice(0, maxEscenas) : []).map((e, i) => validarEscena(e, i, errores, avisos, idsEscenas, { cancion: Boolean(cancion) })).filter(Boolean);
+  // MAQUETACIÓN EXACTA en todo el guion (opcional; sin ella, el reparto por zonas de siempre).
+  const exacta = validarMaquetacion(g.maquetacion, "maquetacion", errores);
+  const escenas = (Array.isArray(escIn) ? escIn.slice(0, maxEscenas) : []).map((e, i) => validarEscena(e, i, errores, avisos, idsEscenas, { cancion: Boolean(cancion), exacta })).filter(Boolean);
 
   const sub = esObjeto(g.subtitulos) ? g.subtitulos : {};
   const subtitulos = {
@@ -613,13 +634,14 @@ export function validarGuion(entrada) {
   if (musica?.clave && (!/^clientes\/[^/]+\//.test(musica.clave) || musica.clave.includes(".."))) errores.push({ donde: "musica.clave", mensaje: "La música es un archivo del cliente (clientes/<cliente>/…)." });
 
   for (const k of Object.keys(g)) {
-    if (!["version", "titulo", "formatos", "estilo", "escenas", "subtitulos", "musica", "cancion"].includes(k)) avisos.push({ donde: k, mensaje: `«${k}» no es del formato: se quitó.` });
+    if (!["version", "titulo", "formatos", "estilo", "escenas", "subtitulos", "musica", "cancion", "maquetacion"].includes(k)) avisos.push({ donde: k, mensaje: `«${k}» no es del formato: se quitó.` });
   }
   const guion = {
     version: VERSION_GUION, titulo: recorta(g.titulo).slice(0, 120), formatos,
     estilo: validarEstilo(g.estilo, errores), escenas, subtitulos, musica,
     // Sólo si la trae: así un guion de antes valida igual y volver a guardarlo no le sube la versión.
     ...(cancion ? { cancion } : {}),
+    ...(exacta ? { maquetacion: "exacta" } : {}),
   };
   const segundos = escenas.length ? lineaDeTiempo(guion).total : 0;
   if (cancion) {

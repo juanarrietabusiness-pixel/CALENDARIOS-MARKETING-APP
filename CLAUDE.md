@@ -821,6 +821,9 @@ worker/
                           estilos.css y pagina.generada.js (GENERADA: `node scripts/mcp/generar-vista.mjs`)
     exportarPiezas.js     `exportar_piezas` (MCP): piezas de la galería en un ZIP por un enlace sin sesión de 15 minutos
                           (/api/exportar/<testigo>/<nombre>.zip), armado POR FLUJO desde R2; nada se guarda
+    kitDescargable.js     `kit_descargable` (MCP): todo lo de la marca de un cliente en un ZIP (logo, letra, fotos de cada producto,
+                          personajes, música, paleta.json con los tokens del motor, kit.json con los precios) por el mismo enlace
+                          de 15 minutos que exportar_piezas (/api/exportar/kit/<testigo>/<nombre>.zip)
     medioVista.js         La dirección FIRMADA y de corta vida (12 h) de un audio o video de R2 para esa vista, con el secreto
                           que se crea solo en R2 (`firmas/vista-medios.key`); qué claves se pueden servir
     competencia.js        `business_discovery` de un competidor (sus últimas publicaciones) y «traer» su archivo del CDN de Meta
@@ -5961,6 +5964,38 @@ son del servidor.
   a propósito: no hay nada que limpiar. `conEnlace` le pone el origen al enlace en el texto. Nombres «01-titulo.ext»:
   el título de `ajustes`, la línea «Pieza:» de la ficha o las primeras palabras del pedido. Un paso del flujo que no
   pone nada en él no se vuelve a pedir: por eso un archivo que falta en R2 se salta dentro del mismo `pull`.
+- **Claude hace videos FUERA del calendario y los deja aquí: subir, la voz suelta, sus tiempos y el kit en un ZIP**
+  (decisión de la agencia, tras un reel de Baby Caleb armado por Claude con Python, PIL y ffmpeg que quedó mejor y gratis;
+  `worker/lib/estudio/subidaClaude.js`, `sonda.js`, `worker/lib/kitDescargable.js`). Lo que no se ve:
+  · **`subir_a_galeria`**: con `url` el servidor la baja con `abrirDescarga` (https, `Content-Length` obligatorio, el tipo
+  por los bytes). Sin `url`, un enlace `PUT /api/subir/<testigo>` (antes de la sesión en worker/index.js) firmado con el
+  secreto de la vista (uso «subir-galeria»), 15 minutos y UN uso: el id de la ficha ES el del enlace, así que si ya existe
+  contesta 409. El testigo lleva el espacio, el cliente, la persona y sus `clientes` (un colaborador sube sólo a los suyos).
+  Se guarda en R2 POR FLUJO (`guardarDescarga`, `FixedLengthStream`): un mp4 de 90 MB no cabe en la memoria del Worker.
+  Topes: video 95 MB (el cuerpo de una petición a Cloudflare no pasa de 100), imagen 15, audio 20. Sólo MP4/MOV, PNG, JPEG,
+  WebP, MP3, WAV y M4A (`tipoPorBytes`): nunca SVG ni HTML, que se ejecutarían en este origen. Un formulario (multipart) se
+  rechaza: el archivo va tal cual (`curl -T`). La ficha: `origen: "subida-claude"`, `subido: 1` (la papelera puede borrar
+  su objeto) y, un audio, en la biblioteca de sonido por su `uso` (musica-subida, efecto-subido o `voz-subida`, que no es de
+  la biblioteca). La ficha se crea con la SUBIDA: `confirmar_subida` sólo comprueba y, con `publicacion_id`, la pone por
+  `ponerPiezasEnPost` (la regla de la portada de un reel incluida).
+  · **Medidas y duración sin ffprobe** (`sondearEnR2`): de R2 por RANGOS. Un MP4 puede llevar su `moov` al FINAL (sin
+  faststart): se recorren las cajas de primer nivel leyendo 16 bytes de cada una y se lee `moov` entera (≤ 8 MB); `mvhd`
+  da la duración y el `tkhd` de la pista «vide» las medidas, cruzadas si la matriz gira 90°. La duración va en
+  `ajustes.duracion` y `medioDeArchivo` (galeriaPura.js) la pone en el medio del post (`duracion`): Shorts y TikTok la leen.
+  · **La locución SUELTA** (`generar_locucion` con `texto` y sin `video_id`; `pedirLocucionSuelta`, ajustes `para:
+  "suelta"`): la toma de siempre, confirmada siempre, hasta 5.000 caracteres; `terminarAudio` guarda en su ficha
+  `ajustes.palabras` con la palabra AL LADO (`tiemposDeLocucion` da sólo desde y hasta). **`tiempos_locucion`** los da: de
+  una suelta, en segundos del audio; de un video, por escena y en segundos DEL VIDEO (con los silencios insertados) desde
+  `lineaDeTiempo`, que es lo mismo con que el motor ancla `{ palabra: n }`.
+  · **`kit_descargable`**: el ZIP se arma al abrir el enlace (como exportar_piezas: `zipPorFlujo`), releyendo kit y catálogo
+  por la capa de acceso; sólo claves de ESE cliente y la música de la agencia de ESTE espacio. Uso del testigo «kit-zip»:
+  uno de exportar_piezas no abre un kit ni al revés. `paleta.json` lleva los tokens de `paletaDelKit` (los del motor).
+  · **`"maquetacion": "exacta"`** (raíz del guion o escena; opcional y sin escribirse si no va): las coordenadas de varias
+  capas ya no se pasan a zonas (`validarEscena`) y una capa con `{ x, y }` mide su `tam` exacto (`anchoPedido` con
+  `c.exacta`: sin el mínimo de columna del texto ni el del logo del cierre). Los subtítulos conservan su franja.
+  · **Lo que se dejó fuera, a propósito**: la capa `html`/JS (Chromium en el Container, aislar código de la IA en el
+  servidor y en la vista previa con la CSP de hoy) y las plantillas con variables y los videos en lote. Con lo de arriba,
+  Claude ya hace eso en su máquina.
 - **`wrangler d1 migrations apply` pinta la tabla ENTERA de migraciones tras cada una**: su salida crece con el cuadrado de
   cuántas hay, y con la 0076 (72 migraciones) pasó del 1 MB que `execFile` admite por defecto. `npm run test:vivo` moría con
   «stdout maxBuffer length exceeded» antes de arrancar el Worker, con el SQL perfecto. `tests/vivo/espacio.js` le da 64 MB.

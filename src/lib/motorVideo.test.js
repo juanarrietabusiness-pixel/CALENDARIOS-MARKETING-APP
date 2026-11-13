@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { validarGuion, lineaDeTiempo, zonaMasCercana, archivosDelGuion } from "./videoEscenas.js";
+import { EJEMPLO_EXACTA, formatoParaLaIA } from "./videoFormatoIA.js";
 import { imagenDePose } from "./personajeVideo.js";
 import {
   dibujarFrame, paletaDelKit, paletaDelGuion, colorDe, contraste, centroDe, estadoDeCapa, encajarTexto, escenaEn,
@@ -641,6 +642,37 @@ describe("las reglas del método de agencia en el video animado", () => {
     const sola = validarGuion({ escenas: [{ tipo: "producto", habla: QUINCE, capas: [{ tipo: "texto", id: "t", texto: "Uno", pos: { x: 0.5, y: 0.1 } }, { tipo: "sello", id: "s", texto: "Ya", pos: { x: 0.2, y: 0.8 } }] }] });
     expect(sola.guion.escenas[0].capas.map((x) => x.pos)).toEqual([{ x: 0.5, y: 0.1 }, { x: 0.2, y: 0.8 }]);
     expect(zonaMasCercana({ x: 0.5, y: 0.5 })).toBe("centro");
+  });
+
+  it("MAQUETACIÓN EXACTA (guion o escena): las coordenadas se respetan, sin pasar a zonas; un guion sin ella sale igual", () => {
+    const capas = [
+      { tipo: "texto", id: "t", texto: "Un titular", pos: { x: 0.5, y: 0.1 }, tam: 0.4 },
+      { tipo: "icono", id: "i", nombre: "check", pos: { x: 0.8, y: 0.9 } },
+    ];
+    const enGuion = validarGuion({ maquetacion: "exacta", escenas: [{ tipo: "producto", habla: QUINCE, capas }] });
+    expect(enGuion.ok).toBe(true);
+    expect(enGuion.guion.maquetacion).toBe("exacta");
+    expect(enGuion.guion.escenas[0].capas.map((x) => x.pos)).toEqual([{ x: 0.5, y: 0.1 }, { x: 0.8, y: 0.9 }]);
+    expect(enGuion.avisos.filter((a) => /se pasaron a/.test(a.mensaje))).toHaveLength(0);
+    const enEscena = validarGuion({ escenas: [{ tipo: "producto", habla: QUINCE, maquetacion: "exacta", capas }] });
+    expect(enEscena.guion.escenas[0]).toMatchObject({ maquetacion: "exacta" });
+    expect(enEscena.guion.escenas[0].capas[0].pos).toEqual({ x: 0.5, y: 0.1 });
+    // Sin el campo: ni la clave aparece (volver a guardar un guion de antes no le cambia nada).
+    const antes = validarGuion({ escenas: [{ tipo: "producto", habla: QUINCE, capas }] });
+    expect("maquetacion" in antes.guion).toBe(false);
+    expect("maquetacion" in antes.guion.escenas[0]).toBe(false);
+    expect(validarGuion({ maquetacion: "libre", escenas: [{ tipo: "producto", habla: QUINCE }] }).errores.map((e) => e.donde)).toContain("maquetacion");
+    // El ancho es el `tam` exacto (sin el mínimo de columna del texto), en su sitio.
+    const cajas = (guion) => { const { ctx } = lienzo(); return cajasDeEscena(ctx, { guion, linea: lineaDeTiempo(guion), indice: 0, formato: "9:16" }); };
+    const caja = cajas(enGuion.guion).find((x) => x.id === "t");
+    expect(caja.ancho).toBeCloseTo(0.4 * 1080, 0);
+    const deZonas = cajas(validarGuion({ escenas: [{ tipo: "producto", habla: QUINCE, capas: [capas[0]] }] }).guion).find((x) => x.id === "t");
+    expect(deZonas.ancho).toBeGreaterThan(0.4 * 1080);
+    // El ejemplo que lee la IA en formato_video valida y conserva sus coordenadas.
+    const ej = validarGuion({ escenas: [EJEMPLO_EXACTA] });
+    expect(ej.ok).toBe(true);
+    expect(ej.guion.escenas[0].capas.map((x) => x.pos)).toEqual(EJEMPLO_EXACTA.capas.map((x) => x.pos));
+    expect(formatoParaLaIA()).toContain("MAQUETACIÓN EXACTA");
   });
 
   it("D18 · con la mascota de la marca en el kit (una imagen por pose), la pieza «personaje» la dibuja en vez de la figura", () => {

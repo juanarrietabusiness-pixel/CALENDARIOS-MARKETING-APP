@@ -82,6 +82,20 @@ export const EJEMPLO_DIBUJO = Object.freeze({
 });
 
 /** El formato entero en texto para una IA: las reglas, el vocabulario, los componentes y un ejemplo. Pura. */
+/**
+ * Una ESCENA con MAQUETACIÓN EXACTA (neutra): cada capa con sus coordenadas y su `tam` tal cual. Un test exige que
+ * valide y que las coordenadas no se pasen a zonas.
+ */
+export const EJEMPLO_EXACTA = Object.freeze({
+  id: "exacta", tipo: "producto", maquetacion: "exacta", habla: "Tres tamaños para cada momento del día, y todos llegan a tu casa con envío gratis.",
+  fondo: { tipo: "plano", color: "fondo" },
+  capas: [
+    { tipo: "texto", id: "t", texto: "Tres *tamaños*", rol: "titular", pos: { x: 0.5, y: 0.18 }, tam: 0.8, entra: { palabra: 0 }, animacion: { entrada: "sube" } },
+    { tipo: "icono", id: "i", nombre: "bolsa", fondo: "superficie", pos: { x: 0.3, y: 0.48 }, tam: 0.28, entra: { palabra: 1 }, animacion: { entrada: "escala" } },
+    { tipo: "sello", id: "s", texto: "Envío gratis", pos: { x: 0.7, y: 0.52 }, tam: 0.3, entra: { palabra: 14 }, animacion: { entrada: "rebote" } },
+  ],
+});
+
 export function formatoParaLaIA() {
   const componentes = Object.entries(COMPONENTES).map(([tipo, c]) => {
     const props = Object.entries(c.props).map(([k, d]) => propiedad(k, d)).join("; ");
@@ -93,7 +107,7 @@ export function formatoParaLaIA() {
     "",
     "LAS TRES REGLAS",
     "1. Las escenas se anclan a PALABRAS, no a segundos: el «habla» de todas las escenas, en orden, ES la locución (una sola toma). Una capa entra con {\"palabra\": n} (la n-ésima palabra que se dice EN SU escena, desde 0) o {\"s\": segundos} desde que empieza la escena. Las [emociones] entre corchetes no cuentan como palabras.",
-    "2. Las posiciones son ZONAS («arriba», «centro», «abajo»; con -izq/-der para ir lado a lado): dicen el ORDEN de arriba abajo y el motor reparte el área segura sin encimar nada. No pongas coordenadas salvo que haga falta ({\"x\":0.5,\"y\":0.3}, de 0 a 1): con ellas la capa va ahí y con su «tam» tal cual (el logo del cierre repartido por zonas mide al menos la mitad del ancho; con coordenadas, lo que diga «tam»: un sello pequeño). «tam» es el ancho en fracción del lado corto.",
+    "2. Las posiciones son ZONAS («arriba», «centro», «abajo»; con -izq/-der para ir lado a lado): dicen el ORDEN de arriba abajo y el motor reparte el área segura sin encimar nada. No pongas coordenadas salvo que haga falta ({\"x\":0.5,\"y\":0.3}, de 0 a 1; o con MAQUETACIÓN EXACTA, más abajo): con ellas la capa va ahí y con su «tam» tal cual (el logo del cierre repartido por zonas mide al menos la mitad del ancho; con coordenadas, lo que diga «tam»: un sello pequeño). «tam» es el ancho en fracción del lado corto.",
     `3. Los colores son tokens del estilo (${TOKENS_COLOR.join(", ")}) o #RRGGBB. Sin paleta propia salen del kit de marca del cliente: no inventes colores de marca.`,
     "",
     "RAÍZ: version (1), titulo (≤ 120), formatos (el primero es el principal: " + Object.keys(FORMATOS_VIDEO).join(", ") + "), estilo, escenas, subtitulos, musica ({\"estilo\": \"la música con género Y subgénero concretos, 3–4 instrumentos, BPM y atmósfera (p. ej. «indie folk acústico, ukelele, palmas y contrabajo, 100 BPM, cálido y luminoso»; nada de «corporativa alegre», nunca artistas ni canciones)\", \"instrumental\": true} o null: es la PISTA del director musical, que escucha el video ya hecho y la música de la marca antes de pedirla a Suno; la mezcla va debajo de la voz).",
@@ -120,6 +134,7 @@ export function formatoParaLaIA() {
     `CANCIÓN (MODO CANCIÓN: un video sobre una canción YA GRABADA, voz e instrumental mezclados; «cancion» {archivo, duracion} en la raíz la pone la aplicación con video_con_cancion, no la escribas): el «habla» de las escenas es la LETRA TAL CUAL y en orden; NO se genera voz ni se inserta nada en el audio (sin «pausa»: se ignora); el video dura lo que la canción (hasta ${MAX_SEGUNDOS_CANCION} s y ${MAX_ESCENAS_CANCION} escenas); una escena con «habla» vacío ocupa un hueco instrumental (intro, puente, final) y una escena demasiado corta se AVISA, no se estira. El coro, con más fuerza visual; el texto en pantalla, las palabras clave de la línea.`,
     "TEXTO CON CARÁCTER (el cartel tipográfico): en un «texto», lo que va entre *asteriscos* lleva ÉNFASIS (más grande, más grueso y en el color de acento): «LAS MANOS *MÁS BELLAS* DE LA HISTORIA» —una o dos palabras clave, nunca la frase entera—. rol «gigante»: una o dos palabras por línea, en MAYÚSCULAS, cada línea a todo el ancho y apiladas: para lo que tiene que golpear (el gancho, el coro), de 2 a 7 palabras. «mayusculas»: true lo pone todo en mayúsculas. «porPalabra»: true hace que cada palabra aparezca cuando se DICE (o se canta): escríbelo con las MISMAS palabras del habla de su escena; con la entrada «golpe» (seca, sin rebote) es la letra cinética (con ella en pantalla, apaga los subtítulos —subtitulos.activo: false— o dirían lo mismo dos veces). La letra del gigante y del énfasis es la del kit o, si no tiene, una sans muy gruesa de la casa. El texto va arriba o abajo de lo que importa del fondo, nunca encima de una cara.",
     "FONDO POR CREAR: una «imagen» a sangre (encuadre «completo») con «pide» (≤ 400: lo que muestra, en el estilo del kit; sin texto ni logo) y SIN «archivo» es una imagen de fondo que el director crea después; mientras no existe, se ve el fondo de la escena. Las escenas de una misma sección (verso, coro, puente) llevan el MISMO «pide»: es UNA imagen para todas. «tratamiento»: «byn» la pone en blanco y negro con más contraste; «movimiento» y «oscurecer» (0,35–0,55) como cualquier imagen a sangre.",
+    "MAQUETACIÓN EXACTA (para quien diseña cuadro a cuadro): \"maquetacion\": \"exacta\" en la raíz (todo el guion) o en una escena. Entonces cada capa con {\"x\",\"y\"} (el CENTRO de la capa, de 0 a 1 sobre el cuadro entero) va justo ahí y mide su «tam» (el ancho en fracción del lado corto) tal cual: el motor no la mueve, no la encoge, no la agranda ni le hace sitio a otras (las capas con zonas en esa escena se siguen repartiendo). Los subtítulos conservan su franja (abajo, del 70 al 80 % del alto en 9:16): no pongas nada ahí o apágalos; revisar_video avisa de lo que se encima o se sale, pero no lo mueve. Sin «maquetacion», las coordenadas de varias capas se pasan a zonas como siempre. Ejemplo de escena: " + JSON.stringify(EJEMPLO_EXACTA),
     "IMAGEN A SANGRE: una «imagen» con encuadre «completo» va detrás de todo, como un video (recorte «cubrir» llena el cuadro; «contener» la enseña entera sobre ella misma ampliada y difuminada). «movimiento» la mueve despacio mientras se ve (acercar, alejar o paneo), «dura» hace que una escena SIN habla dure esos segundos (una FOTO CON MÚSICA no necesita locución; con habla, manda la voz) y «oscurecer» pone un velo para leer el texto encima.",
     "",
     "EJEMPLO (neutro, valida):",

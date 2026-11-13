@@ -95,6 +95,18 @@ export const DEFINICIONES_VIDEO = Object.freeze([
     input_schema: { type: "object", properties: { ...clienteParam, ...videoParam }, required: ["video_id"] },
   },
   {
+    name: "tiempos_locucion",
+    description: "Los TIEMPOS DE CADA PALABRA de una locución (los reales de ElevenLabs, o verificados o estimados: lo dice): de un video animado (video_id: por escena, en segundos DEL VIDEO, con los silencios que se insertan ya contados) o de una locución suelta de la galería (archivo_id, de generar_locucion con «texto»: en segundos del audio). Sirve para sincronizar con lo que se dice un video que armas fuera del calendario. No gasta nada.",
+    input_schema: {
+      type: "object",
+      properties: {
+        ...clienteParam,
+        video_id: { type: "string", description: "ID del video animado (con su locución lista)." },
+        archivo_id: { type: "string", description: "ID de la galería de una locución suelta (la da estado_trabajo al terminar generar_locucion con «texto»)." },
+      },
+    },
+  },
+  {
     name: "crear_video",
     description: "Crea un video animado (borrador) para un cliente con su guion en el formato de escenas v1 (lee formato_video antes). Opcional: publicacion_id para ligarlo a su post del calendario; estructura_id, la estructura de guion de la agencia que sigue su voz en off (de ver_estructuras: queda apuntada en el video). Si el guion tiene errores no se crea y la respuesta dice cada uno con su sitio. No gasta nada. CON IMÁGENES DE FONDO (si la persona lo pide): pon de fondo de cada sección una «imagen» a sangre con «pide» y SIN archivo (formato_video lo explica); después fondos_video las crea con el director, con su costo. Lee antes el kit de la marca (ver_estudio): su paleta, su letra y el estilo de sus videos mandan.",
     input_schema: {
@@ -683,6 +695,38 @@ export function crearHerramientasVideo({ env, acceso, resolverCliente, usuario, 
         // hacen); el texto lleva sus direcciones firmadas. El asistente de la aplicación sólo recibe el texto.
         const vista = await vistaDeVideo(env, { video, clienteId: c.id, cliente: { id: c.id, nombre: c.name } });
         return { texto: [textoDelVideo(video), lineasDeMedios(vista)].filter(Boolean).join("\n"), imagenes: [], vista };
+      });
+    },
+
+    async tiempos_locucion({ cliente, video_id: id, archivo_id: archivoId }) {
+      const c = await resolverCliente(cliente);
+      const s2 = (x) => Number(x).toFixed(2);
+      const fuenteDe = (f) => ({ motor: "los del motor (ElevenLabs)", verificado: "verificados al oírla", estimado: "ESTIMADOS (el motor no los dio)" }[f] ?? "sin saber de dónde");
+      if (archivoId) {
+        const f = await acceso.leerUno("estudio_archivos", { id: String(archivoId), client_id: c.id });
+        if (!f || f.tipo !== "audio") throw new Fallo(`No encontré la locución «${archivoId}» en la galería de ${c.name}.`);
+        const aj = (() => { try { return JSON.parse(f.ajustes ?? "{}") ?? {}; } catch { return {}; } })();
+        const palabras = Array.isArray(aj.palabras) ? aj.palabras : [];
+        if (!palabras.length) return `La locución «${archivoId}» no tiene los tiempos de sus palabras (es de antes, o no es una locución suelta).`;
+        return [
+          `Tiempos de la locución «${f.prompt || archivoId}» (${aj.duracion ? `${s2(aj.duracion)} s, ` : ""}${palabras.length} palabras; ${fuenteDe(aj.fuente)}), en segundos del audio: palabra inicio–fin.`,
+          palabras.map((p, i) => `${i + 1}. ${p.texto} ${s2(p.desde)}–${s2(p.hasta)}`).join("\n"),
+        ].join("\n");
+      }
+      if (!id) throw new Fallo("Dime de qué: video_id (un video animado) o archivo_id (una locución suelta).");
+      return conErrores(async () => {
+        const v = deFila(await proyectoDe(acceso, c.id, id));
+        const palabras = v.locucion?.palabras;
+        if (v.locucion?.estado !== "lista" || !Array.isArray(palabras) || !palabras.length) {
+          return `El video «${v.titulo || id}» todavía no tiene su locución lista: los tiempos salen de ella (generar_locucion).`;
+        }
+        const linea = lineaDeTiempo(v.guion, palabras);
+        const silencios = (linea.silencios ?? []).filter((x) => x.dur > 0);
+        return [
+          `Tiempos de «${v.titulo || id}» (${fuenteDe(v.locucion.fuente)}; el video dura ${s2(linea.total)} s), en segundos DEL VIDEO: palabra inicio–fin.`,
+          silencios.length ? `Silencios insertados en el audio: ${silencios.map((x) => `${s2(x.dur)} s tras el ${s2(x.en)} del audio`).join(" · ")}.` : "Sin silencios insertados: el tiempo del video es el del audio.",
+          ...linea.escenas.map((e, k) => `Escena ${k + 1} (${e.id}, ${s2(e.desde)}–${s2(e.hasta)} s): ${e.palabras.length ? e.palabras.map((p) => `${p.texto} ${s2(p.desde)}–${s2(p.hasta)}`).join(" · ") : "sin habla"}`),
+        ].join("\n");
       });
     },
 
