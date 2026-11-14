@@ -36,6 +36,7 @@ import { DEFINICIONES_REEL_MCP, crearHerramientasReel } from "./estudio/herramie
 import { DEFINICION_EXPORTAR, crearHerramientaExportar, ErrorExportar } from "./exportarPiezas.js";
 import { DEFINICIONES_SUBIDA, crearHerramientasSubida, ErrorSubida } from "./estudio/subidaClaude.js";
 import { DEFINICION_KIT, crearHerramientaKit } from "./kitDescargable.js";
+import { DEFINICIONES_CAMPANAS, crearHerramientasCampanas, ErrorCampanas } from "./herramientasCampanas.js";
 
 const FORMATOS = ["post", "reel", "carrusel", "historia", "live"];
 const REDES = ["instagram", "facebook", "tiktok", "youtube"];
@@ -63,7 +64,7 @@ export const HERRAMIENTAS_MCP = Object.freeze([
   { name: "buscar_cerebro", description: "Busca en el cerebro de un cliente —su ficha técnica, marca, precios, personas, límites y los documentos que se le subieron— y devuelve los pasajes que responden. Úsala antes de escribir para un cliente o de decir que no sabes algo de él. Incluye notas internas: es para el equipo, no las uses en textos que se publican.", inputSchema: { type: "object", properties: { ...clienteParam, consulta: { type: "string", description: "Qué buscar, en palabras del tema." } }, required: ["cliente", "consulta"] }, annotations: soloLectura },
   { name: "leer_nota_cerebro", description: "Lee ENTERA una nota del cerebro de un cliente, por su ruta (la que da buscar_cerebro entre corchetes) o por su título. Para cuando buscar_cerebro dio sólo pasajes de una nota larga.", inputSchema: { type: "object", properties: { ...clienteParam, nota: { type: "string", description: "La ruta de la nota o su título." } }, required: ["cliente", "nota"] }, annotations: soloLectura },
   { name: "ver_resultados", description: "Cómo le va en redes a un cliente: seguidores, alcance, interacción, mejores publicaciones, formatos, horarios y competencia.", inputSchema: { type: "object", properties: { ...clienteParam, dias: { type: "integer", description: "7 a 90. Por defecto 30." } }, required: ["cliente"] }, annotations: soloLectura },
-  { name: "plan_de_campanas", description: "El plan de campañas de un cliente para un mes, para montarlo en el Ads Manager: las campañas del ciclo de ventas (y la de temporada si el mes trae oferta o fecha comercial), su presupuesto, los conjuntos con públicos y exclusiones, qué pieza va en cada anuncio y los avisos. Sólo lectura: la aplicación no crea campañas.", inputSchema: { type: "object", properties: { ...clienteParam, mes: { type: "string", description: "AAAA-MM. Si se omite, el de este mes." } }, required: ["cliente"] }, annotations: soloLectura },
+  { name: "plan_de_campanas", description: "El plan de campañas de un cliente para un mes, para montarlo en el Ads Manager: las campañas del ciclo de ventas (y la de temporada si el mes trae oferta o fecha comercial), su presupuesto, los conjuntos con públicos y exclusiones, qué pieza va en cada anuncio (con su HUECO, «[hueco presentacion:a2]», y el ID de su publicación: así se nombran en ajustar_plan_campanas y escribir_textos_anuncios) y los avisos. Sólo lectura: la aplicación no crea campañas.", inputSchema: { type: "object", properties: { ...clienteParam, mes: { type: "string", description: "AAAA-MM. Si se omite, el de este mes." } }, required: ["cliente"] }, annotations: soloLectura },
   { name: "kit_whatsapp", description: "El kit de WhatsApp Business de un cliente tal como lo guardó la agencia: bienvenida, ausencia, respuestas rápidas con su atajo (con las objeciones del estudio de mercado), etiquetas por etapa del ciclo de ventas y un guion de ventas por producto. Úsala antes de escribir mensajes de WhatsApp para un cliente.", inputSchema: { type: "object", properties: { ...clienteParam }, required: ["cliente"] }, annotations: soloLectura },
   { name: "revisar_campanas", description: "La revisión 3Q de los anuncios que corren en el Ads Manager de un cliente: su número mágico, lo real en 30, 14 y 7 días y cada campaña activa con su etapa, qué hacer con cada conjunto y anuncio (qué pasó, por qué, qué cambiar) y qué publicación del calendario es cada anuncio (o si es un anuncio nuevo). Sólo lee de Meta: no cambia nada ni gasta.", inputSchema: { type: "object", properties: { ...clienteParam }, required: ["cliente"] }, annotations: { readOnlyHint: true, openWorldHint: true } },
   {
@@ -134,6 +135,8 @@ export const HERRAMIENTAS_MCP = Object.freeze([
   ...DEFINICIONES_SUBIDA,
   // Todo lo de la marca en un ZIP (worker/lib/kitDescargable.js), con el mismo enlace de 15 minutos que exportar_piezas.
   DEFINICION_KIT,
+  // Campañas y números (worker/lib/herramientasCampanas.js): los números del negocio, el plan de campañas y sus textos.
+  ...DEFINICIONES_CAMPANAS,
   // Las que sólo llama la VISTA PREVIA del chat (MCP Apps: `visibility: ["app"]`, ver rutas/mcp.js).
   ...DEFINICIONES_VISTA,
 ]);
@@ -427,7 +430,7 @@ export function crearHerramientasMCP({ env, acceso, usuario }) {
       }
       return { content: [{ type: "text", text: `Herramienta desconocida: ${nombre}` }], isError: true };
     } catch (e) {
-      const delPedido = e instanceof ErrorHerramienta || e instanceof ErrorHerramientaEstudio || e instanceof ErrorDiseno || e instanceof ErrorReceta || e instanceof ErrorVista || e instanceof ErrorHerramientaLoMejor || e instanceof ErrorExportar || e instanceof ErrorSubida;
+      const delPedido = e instanceof ErrorHerramienta || e instanceof ErrorHerramientaEstudio || e instanceof ErrorDiseno || e instanceof ErrorReceta || e instanceof ErrorVista || e instanceof ErrorHerramientaLoMejor || e instanceof ErrorExportar || e instanceof ErrorSubida || e instanceof ErrorCampanas;
       if (!delPedido) console.error("mcp:", nombre, e);
       return { content: [{ type: "text", text: delPedido ? e.message : `No se pudo: ${e?.message ?? e}` }], isError: true };
     }
@@ -443,6 +446,7 @@ export function crearHerramientasMCP({ env, acceso, usuario }) {
   Object.assign(acciones, crearHerramientaExportar({ env, acceso, resolverCliente, usuario }));
   Object.assign(acciones, crearHerramientasSubida({ env, acceso, resolverCliente, usuario, por }));
   Object.assign(acciones, crearHerramientaKit({ env, acceso, resolverCliente, usuario }));
+  Object.assign(acciones, crearHerramientasCampanas({ env, acceso, resolverCliente, usuario, por, buscarPublicacion: buscar }));
 
   return { llamar };
 }
