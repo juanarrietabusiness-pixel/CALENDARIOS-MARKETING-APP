@@ -47,3 +47,51 @@ export async function cambiarPublicacion(env, acceso, { clienteId, calendarId = 
   }
   return { aviso: "El calendario se estaba guardando a la vez: quedó en la galería; ponlo desde ahí." };
 }
+
+/** Las columnas del mes que se pueden cambiar de una vez, con su nombre en la aplicación (`rowToCalendar`). */
+const COLUMNAS_MES = Object.freeze([
+  ["days", "days", true], ["week_concepts", "weekConcepts", true], ["opciones", "opciones", true],
+  ["campaign", "campaign", false], ["offers", "offers", false], ["promo_code", "promoCode", false],
+]);
+
+/** Un mes de D1 con la forma de la aplicación (lo que reciben las funciones puras: days, weekConcepts, opciones…). */
+export function mesDeFila(fila) {
+  if (!fila) return null;
+  return {
+    id: fila.id, dbId: fila.id, client_id: fila.client_id, year: fila.year, month: fila.month, name: fila.name ?? "",
+    days: leerJSON(fila.days, []) ?? [], weekConcepts: leerJSON(fila.week_concepts, []) ?? [], opciones: leerJSON(fila.opciones, {}) ?? {},
+    campaign: fila.campaign ?? "", offers: fila.offers ?? "", promoCode: fila.promo_code ?? "", updated_at: fila.updated_at,
+  };
+}
+
+/**
+ * Cambia VARIAS publicaciones (o lo del mes: la campaña, las ofertas, los conceptos, `opciones`) de un mes en UNA
+ * escritura, sin pisar a nadie: `cambiar(mes) → mes nuevo | null` (o su promesa; null: nada que cambiar) recibe el mes
+ * con la forma de la aplicación (`mesDeFila`) y se aplica otra vez sobre lo de la otra persona si guardó entremedias (dos
+ * vueltas). Sólo se escriben las columnas que cambiaron. Después, lo de siempre que hace el PUT: mover la cola
+ * (`resincronizarCalendario`) y avisar al espacio (`calendario:recargar`). Lo de cada publicación (no tocar lo publicado)
+ * lo decide `cambiar`. → { calendarId, mes } si quedó escrito (o `sinCambios`), o { aviso } si no se pudo.
+ */
+export async function cambiarCalendario(env, acceso, { clienteId, calendarId, cambiar, por = SISTEMA_POST }) {
+  for (let vuelta = 0; vuelta < 2; vuelta++) {
+    const fila = await acceso.leerUno("calendars", { id: calendarId, client_id: clienteId });
+    if (!fila) return { aviso: "Ese mes ya no está en el calendario del cliente." };
+    const antes = mesDeFila(fila);
+    const nuevo = await cambiar(structuredClone(antes));
+    if (!nuevo) return { calendarId: fila.id, mes: antes, sinCambios: true };
+    const cambios = {};
+    for (const [columna, campo, json] of COLUMNAS_MES) {
+      if (nuevo[campo] === undefined) continue;
+      const valor = json ? JSON.stringify(nuevo[campo] ?? null) : String(nuevo[campo] ?? "");
+      if (valor !== (json ? JSON.stringify(antes[campo] ?? null) : String(antes[campo] ?? ""))) cambios[columna] = valor;
+    }
+    if (!Object.keys(cambios).length) return { calendarId: fila.id, mes: antes, sinCambios: true };
+    const n = await acceso.actualizar("calendars", { id: fila.id, client_id: clienteId, updated_at: fila.updated_at }, { ...cambios, updated_at: ahora() });
+    if (!n) continue;
+    const crudo = await acceso.leerUno("calendars", { id: fila.id });
+    try { await resincronizarCalendario(env, acceso, crudo, por); } catch (e) { console.error("cambiar el calendario: resincronizar", e); }
+    difundir(env, acceso.ownerId, { tipo: "calendario:recargar", id: fila.id, clientId: clienteId, por });
+    return { calendarId: fila.id, mes: mesDeFila(crudo) };
+  }
+  return { aviso: "El calendario se estaba guardando a la vez y no se pudo escribir: vuelve a intentarlo en un momento." };
+}
