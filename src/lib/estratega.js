@@ -127,13 +127,26 @@ export function nombreConPlantilla(plantilla, datos = {}) {
  * `tasaCierre`, de cada 100 resultados (conversaciones, clientes potenciales) cuántos compran. Pura.
  * → { precio, ganancia, tasaCierre, costoMaxVenta, costoMaxResultado, costoObjetivo } o null si falta el precio o el margen.
  */
-export function economia({ precio, margen, margenTipo = "%", tasaCierre = TASA_CIERRE_POR_DEFECTO } = {}) {
+export function economia({ precio, margen, margenTipo = "%", tasaCierre = TASA_CIERRE_POR_DEFECTO, magico = null } = {}) {
   const p = num(precio);
   const m = num(margen);
   const tasa = Math.min(100, Math.max(0.1, num(tasaCierre) || TASA_CIERRE_POR_DEFECTO));
   if (!(p > 0) || !(m > 0)) return null;
   const ganancia = margenTipo === "%" ? p * Math.min(m, 100) / 100 : Math.min(m, p);
   const costoMaxResultado = ganancia * tasa / 100;
+  // Con los números del negocio del cliente, EL número mágico (`numeroMagicoDelCliente` de lib/numerosNegocio.js, la
+  // misma cifra de la ficha, la revisión y el plan): el límite es su equilibrio (con los fijos y el % a invertir) y el
+  // objetivo, su número mágico. Decisión del 14-nov: una sola cuenta en todas las pantallas.
+  if (magico && Number(magico.valor) > 0) {
+    const eq = Number(magico.equilibrio) > 0 ? Number(magico.equilibrio) : Number(magico.valor);
+    return {
+      precio: redondeo(p), ganancia: redondeo(ganancia), tasaCierre: tasa,
+      costoMaxVenta: redondeo(ganancia),
+      costoMaxResultado: redondeo(eq),
+      costoObjetivo: redondeo(Number(magico.valor)),
+      de: magico.de || "con los números del negocio",
+    };
+  }
   return {
     precio: redondeo(p), ganancia: redondeo(ganancia), tasaCierre: tasa,
     // Lo máximo que se puede pagar por una venta sin perder: la ganancia entera.

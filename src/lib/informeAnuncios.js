@@ -50,7 +50,7 @@ function etiquetaResultados(objetivo, total) {
 }
 
 /** El día a día, con 0 en los días sin gasto (Meta no devuelve fila): una gráfica con huecos engaña. */
-function serieDelMes(dias = [], objetivo, desde, hasta) {
+function serieDelMes(dias = [], objetivo, desde, hasta, destino = "") {
   const porDia = new Map((dias ?? []).map((d) => [d.date_start, d]));
   const fechas = [...porDia.keys()].sort();
   const inicio = desde || fechas[0];
@@ -58,13 +58,13 @@ function serieDelMes(dias = [], objetivo, desde, hasta) {
   const salida = [];
   for (let fecha = inicio; fecha && fin && fecha <= fin && salida.length < 31; fecha = sumarDias(fecha, 1)) {
     const d = porDia.get(fecha);
-    salida.push({ fecha, gasto: redondeo(Number(d?.spend) || 0), resultados: d && objetivo ? resultadosDe(d, objetivo) ?? 0 : 0 });
+    salida.push({ fecha, gasto: redondeo(Number(d?.spend) || 0), resultados: d && objetivo ? resultadosDe(d, objetivo, { destino }) ?? 0 : 0 });
   }
   return salida;
 }
 
 /** Los resultados de un conjunto de campañas: cada una con lo que mide su objetivo. */
-const sumaResultados = (campanas = []) => campanas.reduce((n, c) => n + (resultadosDe(c.insights, c.objective) ?? 0), 0);
+const sumaResultados = (campanas = [], destino = "") => campanas.reduce((n, c) => n + (resultadosDe(c.insights, c.objective, { destino }) ?? 0), 0);
 const sumaGasto = (campanas = []) => campanas.reduce((n, c) => n + (Number(c.insights?.spend) || 0), 0);
 
 /**
@@ -74,9 +74,10 @@ const sumaGasto = (campanas = []) => campanas.reduce((n, c) => n + (Number(c.ins
  *   dias: /insights con time_increment=1
  *   anuncios: /ads con campaign{objective}, creative{…} e insights, más `miniatura` (data URI) en los que la tengan
  *   desdeApp: ids de las campañas creadas en la aplicación
+ *   destino: el del cliente (números del negocio): con WhatsApp, Interacción y Ventas cuentan sólo conversaciones
  * Pura.
  */
-export function cifrasInformeAnuncios({ mes, desde = "", hasta = "", cuenta, total, anterior, campanas = [], campanasAnterior = [], dias = [], anuncios = [], desdeApp = [] }) {
+export function cifrasInformeAnuncios({ mes, desde = "", hasta = "", cuenta, total, anterior, campanas = [], campanasAnterior = [], dias = [], anuncios = [], desdeApp = [], destino = "" }) {
   const t = resumenInsights(total);
   const a = resumenInsights(anterior);
   // Los resultados grandes son los del objetivo que más invirtió: sumar conversaciones con clics bajo una sola
@@ -85,8 +86,8 @@ export function cifrasInformeAnuncios({ mes, desde = "", hasta = "", cuenta, tot
   const delObjetivo = (lista) => lista.filter((c) => objetivoODAX(c.objective) === objetivo);
   const principales = delObjetivo(campanas);
   const principalesAntes = delObjetivo(campanasAnterior);
-  const resultados = sumaResultados(principales);
-  const resultadosAntes = sumaResultados(principalesAntes);
+  const resultados = sumaResultados(principales, destino);
+  const resultadosAntes = sumaResultados(principalesAntes, destino);
   const gastoPrincipal = sumaGasto(principales);
   const gastoAntes = sumaGasto(principalesAntes);
   const cpr = resultados ? redondeo(gastoPrincipal / resultados) : null;
@@ -94,7 +95,7 @@ export function cifrasInformeAnuncios({ mes, desde = "", hasta = "", cuenta, tot
   const deAqui = new Set(desdeApp.map(String));
   const lista = campanas
     .map((c) => {
-      const r = resumenInsights(c.insights, c.objective);
+      const r = resumenInsights(c.insights, c.objective, { destino });
       return {
         id: String(c.id), nombre: c.name ?? "", objetivo: OBJETIVOS[objetivoODAX(c.objective)]?.nombre ?? "",
         estado: estadoAnuncio(c.effective_status ?? c.status).texto, desdeApp: deAqui.has(String(c.id)),
@@ -106,7 +107,7 @@ export function cifrasInformeAnuncios({ mes, desde = "", hasta = "", cuenta, tot
     .sort((x, y) => y.gasto - x.gasto);
   const mejores = anuncios
     .map((x) => {
-      const r = resumenInsights(x.insights, x.campaign?.objective);
+      const r = resumenInsights(x.insights, x.campaign?.objective, { destino });
       return {
         id: String(x.id), nombre: x.name ?? "", campana: x.campaign?.name ?? "", miniatura: x.miniatura ?? null,
         titulo: x.creative?.title ?? "", texto: String(x.creative?.body ?? "").slice(0, 280),
@@ -129,7 +130,7 @@ export function cifrasInformeAnuncios({ mes, desde = "", hasta = "", cuenta, tot
       clics: { valor: t.clics, cambio: cambioPct(t.clics, a.clics) },
       ctr: { valor: t.ctr, cambio: null },
     },
-    serie: serieDelMes(dias, objetivo, desde, hasta),
+    serie: serieDelMes(dias, objetivo, desde, hasta, destino),
     campanas: lista.slice(0, MAX_CAMPANAS),
     otras: Math.max(0, lista.length - MAX_CAMPANAS),
     mejores,

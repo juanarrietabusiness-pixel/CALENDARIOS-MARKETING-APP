@@ -634,12 +634,22 @@ export const CAMPOS_INSIGHTS = "spend,impressions,reach,cpm,cpc,ctr,clicks,actio
 
 const num = (v) => (v == null || v === "" ? 0 : Number(v) || 0);
 
-/** Los resultados de una fila de /insights según el objetivo. */
-export function resultadosDe(fila, objetivo) {
-  const obj = OBJETIVOS[objetivoODAX(objetivo)];
+/** Los objetivos cuyo resultado, con destino WhatsApp, es la conversación empezada (y sólo eso). */
+const OBJETIVOS_DE_MENSAJES = new Set(["OUTCOME_ENGAGEMENT", "OUTCOME_SALES"]);
+
+/**
+ * Los resultados de una fila de /insights según el objetivo. Con `destino: "whatsapp"`, una campaña de Interacción o
+ * de Ventas cuenta SÓLO conversaciones (0 si no hay): Meta omite las acciones en cero, y sin mensajes la primera que
+ * aparecía era `post_engagement` —una campaña de WhatsApp sin una conversación salía con cientos de «resultados»
+ * (hallazgo 1 del 14-nov)—. Sin destino, lo de siempre (la primera acción que aparezca). Pura.
+ */
+export function resultadosDe(fila, objetivo, { destino = "" } = {}) {
+  const odax = objetivoODAX(objetivo);
+  const obj = OBJETIVOS[odax];
   if (!fila || !obj) return null;
   if (obj.alcance) return num(fila.reach);
   const acciones = Array.isArray(fila.actions) ? fila.actions : [];
+  if (destino === "whatsapp" && OBJETIVOS_DE_MENSAJES.has(odax)) return num(acciones.find((x) => x.action_type === ACCION_MENSAJE)?.value);
   for (const tipo of obj.acciones) {
     const a = acciones.find((x) => x.action_type === tipo);
     if (a) return num(a.value);
@@ -647,10 +657,13 @@ export function resultadosDe(fila, objetivo) {
   return 0;
 }
 
-/** Una fila de /insights como la pinta la pantalla. `objetivo` null = la cuenta entera (sin resultados). */
-export function resumenInsights(fila, objetivo = null) {
+/**
+ * Una fila de /insights como la pinta la pantalla. `objetivo` null = la cuenta entera (sin resultados). `destino`
+ * (opcional) va a `resultadosDe`: con WhatsApp, sólo conversaciones.
+ */
+export function resumenInsights(fila, objetivo = null, { destino = "" } = {}) {
   const f = fila ?? {};
-  const resultados = objetivo ? resultadosDe(f, objetivo) : null;
+  const resultados = objetivo ? resultadosDe(f, objetivo, { destino }) : null;
   const gasto = num(f.spend);
   return {
     gasto,

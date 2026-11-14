@@ -2,7 +2,7 @@
 // El diagnóstico de las campañas activas (puro)
 //
 // Lo que la agencia miraba a ojo en el Administrador cada pocos días. Desde la entrega 5 del curso son la BASE de la
-// revisión 3Q (src/lib/tresQ.js), que las llama con lo que aguanta cada etapa y le suma el método (el efecto desglose,
+// revisión 3Q (src/lib/tresQ.js), que las llama con el número mágico del cliente (el mismo en todas las etapas) y le suma el método (el efecto desglose,
 // la fase de aprendizaje, las métricas secundarias y qué hacer con cada una). Lo de aquí sigue igual:
 // qué apagar, qué escalar y qué anuncio está cansado. Son REGLAS sobre las
 // cifras de los últimos 7 días comparadas con las de 30 y con el costo
@@ -48,10 +48,13 @@ export const ACCIONES_DIAGNOSTICO = Object.freeze({
 
 const redondeo = (n) => Math.round(n * 100) / 100;
 
-/** Las cifras de una fila de /insights, con la frecuencia (la de Meta o impresiones ÷ alcance). */
-export function cifrasDe(fila, objetivo) {
+/**
+ * Las cifras de una fila de /insights, con la frecuencia (la de Meta o impresiones ÷ alcance). `tipo` (el de la
+ * revisión 3Q): con «conversacion», los resultados son SÓLO las conversaciones (0 si no hay ninguna).
+ */
+export function cifrasDe(fila, objetivo, tipo = "") {
   if (!fila) return null;
-  const r = resumenInsights(fila, objetivo);
+  const r = resumenInsights(fila, objetivo, { destino: tipo === "conversacion" ? "whatsapp" : "" });
   const frecuencia = Number(fila.frequency) || (r.alcance ? r.impresiones / r.alcance : 0);
   return { ...r, frecuencia: Math.round(frecuencia * 10) / 10 };
 }
@@ -61,11 +64,11 @@ export function cifrasDe(fila, objetivo) {
  * «conjunto» o «anuncio». `umbrales` cambia los de arriba (la revisión 3Q pasa los del Manual: la frecuencia de su
  * etapa, cuándo se pausa). → { accion, motivo, sugerencia? } o null si está bien. Pura.
  */
-export function evaluar({ nivel, estado, presupuestoDiario = null, i7, i30, objetivo }, { ref = 0, moneda = "USD", umbrales = null } = {}) {
+export function evaluar({ nivel, estado, presupuestoDiario = null, i7, i30, objetivo, tipo = "" }, { ref = 0, moneda = "USD", umbrales = null } = {}) {
   const u = umbrales ? { ...UMBRALES, ...umbrales } : UMBRALES;
   const d = (n) => formatoMoneda(n, moneda);
-  const r7 = cifrasDe(i7, objetivo);
-  const r30 = cifrasDe(i30, objetivo);
+  const r7 = cifrasDe(i7, objetivo, tipo);
+  const r30 = cifrasDe(i30, objetivo, tipo);
   const activo = String(estado ?? "").toUpperCase() === "ACTIVE";
   if (activo && (!r7 || r7.gasto === 0)) {
     return { accion: "revisar", motivo: "Está activo y no gastó nada en 7 días: puede estar en revisión, sin método de pago o con un público demasiado chico." };

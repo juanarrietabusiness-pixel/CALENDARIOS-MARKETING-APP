@@ -19,15 +19,26 @@
 //      anuncios NO se tocan aunque uno se vea peor: cambiar uno altera el conjunto entero.
 //   2. LA FASE DE APRENDIZAJE: lo que está aprendiendo, o se creó o cambió hace menos de `diasCambio` días (también si
 //      se le sumó un anuncio), ESPERA. Juzgarlo antes reinicia el aprendizaje.
-//   3. CUÁNDO SE PAUSA (decisión 7): fuera del número mágico (más de `apagar` veces lo que aguanta su etapa, o por
-//      encima del equilibrio) con `gastoParaApagar` veces el número mágico gastado, y nunca si su conjunto va bien.
+//   3. CUÁNDO SE PAUSA (decisión 7), lo PRIMERO que se mira tras lo que no entrega y lo que aprende: en los 30 días,
+//      fuera del número mágico (más de `apagar` veces) o por encima del equilibrio, con `gastoParaApagar` veces el
+//      número mágico gastado, Y la última semana también mal (una mala semana dentro de un buen mes no se pausa: se
+//      vigila). Nunca si su conjunto va bien. Sin número mágico NO se pausa por costo (no hay con qué decir que es
+//      caro); sí por un % de mensajes muy bajo (`pctMensajesPausar`), que no depende de los números del negocio.
 //
-// La ETAPA de cada campaña (presentación, evaluación, conversión, ascensión o temporada) cambia lo que se le exige:
-// `EXIGENCIA_ETAPA`. Sale del nombre de la campaña o, si no se reconoce, de lo que se escogió una vez a mano.
+// UN SOLO NÚMERO MÁGICO para todas las etapas (decisión de la agencia, 14-nov: el curso da un número por TIPO de
+// campaña —mensajes, tráfico, clientes potenciales, ventas— y nunca por etapa). Sale de `numeroMagicoDelCliente`
+// (lib/numerosNegocio.js), el mismo de la ficha, el plan, el aviso diario y el estratega. La etapa (del nombre de la
+// campaña o escogida a mano) sólo cambia el umbral de FRECUENCIA: los públicos que ya conocen la marca son chicos.
+//
+// En la web, con valor de compra, la Q1 va por ROAS frente al ROAS de equilibrio (una venta más grande que el ticket
+// no hace perder dinero aunque el costo por compra suba).
+//
+// Cada elemento sale además con su SEMÁFORO para quien no sabe del curso (`semaforoDe`): sana, a vigilar, mala o
+// esperando, por qué en una frase, qué hacer en pasos y dónde en el Ads Manager; y la revisión, con un resumen arriba.
 //
 // Envuelve las reglas de antes (src/lib/diagnostico.js: apagar, revisar, renovar, vigilar, escalar, duplicar), que
-// siguen siendo la base: `evaluar()` se llama con lo que aguanta la etapa y los umbrales del Manual. Lo que se ve de
-// antes en la pantalla (`hallazgos`) sale de aquí con `comoDiagnostico`.
+// siguen siendo la base de lo que no es pausar. Lo que se ve de antes en la pantalla (`hallazgos`) sale de aquí con
+// `comoDiagnostico`.
 // ============================================================
 
 import { resumenInsights, ACCION_MENSAJE, OBJETIVOS, objetivoODAX, formatoMoneda, nombreObjetivo, estadoAnuncio } from "./anuncios.js";
@@ -61,34 +72,46 @@ const NOMBRE_ETAPA = Object.fromEntries(ETAPAS_REVISION.map((e) => [e.id, e.nomb
 export const nombreEtapaRevision = (id) => NOMBRE_ETAPA[id] ?? "";
 
 /**
- * Cuánto aguanta un resultado en cada etapa (veces el número mágico, nunca por encima del equilibrio) y qué umbral de
- * frecuencia toca. Decisión propia, porque el curso no da números por etapa: lo frío cuesta más y siembra los públicos
- * de las demás; lo caliente (quien ya escribió, ya compró) tiene que salir más barato.
+ * Qué umbral de FRECUENCIA toca a cada etapa: los públicos que ya conocen la marca son chicos y repiten más. Es lo
+ * ÚNICO que cambia por etapa: el número mágico es el mismo en todas (decisión del 14-nov; antes había un
+ * `EXIGENCIA_ETAPA` que pedía ×1,3 en presentación y ×0,8 en conversión y ascensión, y el curso no lo dice).
  */
-export const EXIGENCIA_ETAPA = Object.freeze({
-  presentacion: { costo: 1.3, frecuencia: "frecuencia", texto: "Gente que no conoce la marca: un resultado puede costar hasta un 30 % más que el número mágico (esta etapa llena los públicos de las demás), nunca más que el equilibrio." },
-  evaluacion: { costo: 1, frecuencia: "frecuenciaCalida", texto: "Quien ya vio la marca y compara: el número mágico tal cual." },
-  conversion: { costo: 0.8, frecuencia: "frecuenciaCalida", texto: "Quien ya escribió o interactuó: tiene que salir un 20 % por debajo del número mágico." },
-  ascension: { costo: 0.8, frecuencia: "frecuenciaCalida", texto: "Quien ya compró: un 20 % por debajo del número mágico." },
-  temporada: { costo: 1, frecuencia: "frecuencia", texto: "Una fecha o una oferta: el número mágico tal cual mientras dure." },
-  "": { costo: 1, frecuencia: "frecuencia", texto: "Sin etapa: el número mágico tal cual." },
+export const FRECUENCIA_ETAPA = Object.freeze({
+  presentacion: "frecuencia", evaluacion: "frecuenciaCalida", conversion: "frecuenciaCalida", ascension: "frecuenciaCalida", temporada: "frecuencia", "": "frecuencia",
 });
+const umbralFrecuencia = (u, etapa) => u[FRECUENCIA_ETAPA[etapa] ?? "frecuencia"];
+
+/** Lo que se le exige a una campaña, en una frase: lo mismo en todas las etapas. */
+export const TEXTO_EXIGENCIA = "El mismo número mágico para todas las etapas: lo que cambia por etapa es cuánto puede repetirse el anuncio (la frecuencia).";
 
 const sinTildes = (t) => String(t ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+/** Los alias que son también palabras corrientes («aire frío», «café caliente»): sólo cuentan como un trozo propio. */
+const ALIAS_TEMPERATURA = new Set(["frio", "fria", "tibio", "tibia", "caliente"]);
+const ANTES_DE_TEMPERATURA = new Set(["publico", "publicos", "audiencia", "trafico", "aud"]);
 
 /**
  * La etapa que dice el NOMBRE de una campaña (la nomenclatura del Manual lleva `{etapa}`), o "". Los cuatro nombres
- * del curso y «temporada» van primero; los alias (atraer, frío, caliente…) después: en «Aire frío · Conversión» manda
- * Conversión. Palabras enteras: «Conversiones» (el objetivo viejo de Meta) no es la etapa. Pura.
+ * del curso y «temporada» van primero; los alias después. Palabras enteras: «Conversiones» (el objetivo viejo de Meta)
+ * no es la etapa. Sin falsos positivos: un alias de temperatura («frío», «caliente») sólo cuenta si es un trozo entero
+ * del nombre («Dcasa · Frío · Sofá») o va tras «público»/«audiencia» —«Aire frío · Ventas» es un producto, no una
+ * etapa—; un verbo («atraer», «convertir») sólo al principio de un trozo; «especial» sólo como «campaña especial». Pura.
  */
 export function etapaDeNombre(nombre) {
-  const palabras = sinTildes(nombre).split(/[^a-z0-9]+/).filter(Boolean);
+  const limpio = sinTildes(nombre);
+  const palabras = limpio.split(/[^a-z0-9]+/).filter(Boolean);
   if (!palabras.length) return "";
   for (const e of ETAPAS_CICLO) if (palabras.includes(e.id)) return e.id;
-  if (palabras.includes("temporada") || palabras.includes("especial")) return "temporada";
-  for (const p of palabras) {
-    const id = idEtapaCiclo(p);
-    if (id) return id;
+  if (palabras.includes("temporada")) return "temporada";
+  for (let i = 0; i < palabras.length; i++) if (palabras[i] === "especial" && (palabras[i - 1] === "campana" || i === 0)) return "temporada";
+  // Los trozos del nombre: lo que separan «·», «|», «/», «-», «_» o «:».
+  const trozos = limpio.split(/\s*[·|/_:–—-]+\s*/).map((t) => t.split(/[^a-z0-9]+/).filter(Boolean)).filter((t) => t.length);
+  for (const t of trozos) {
+    if (t.length === 1 && idEtapaCiclo(t[0])) return idEtapaCiclo(t[0]);
+    const primera = t[0];
+    if (!ALIAS_TEMPERATURA.has(primera) && idEtapaCiclo(primera)) return idEtapaCiclo(primera);
+    for (let i = 1; i < t.length; i++) {
+      if (ALIAS_TEMPERATURA.has(t[i]) && ANTES_DE_TEMPERATURA.has(t[i - 1])) return idEtapaCiclo(t[i] === "fria" ? "frio" : t[i] === "tibia" ? "tibio" : t[i]);
+    }
   }
   return "";
 }
@@ -146,15 +169,23 @@ const primeraDe = (lista, tipos) => {
 const suma = (lista) => (Array.isArray(lista) ? lista.reduce((s, a) => s + num(a?.value), 0) : num(lista));
 const TIPOS_COMPRA = ["omni_purchase", "purchase", "offsite_conversion.fb_pixel_purchase"];
 
+const TIPOS_CLIENTE = ["lead", "onsite_conversion.lead_grouped", "offsite_conversion.fb_pixel_lead"];
+
 /**
  * Una fila de /insights con todo lo que mira la revisión. `null` donde el campo no llegó (Meta rechazó los nuevos y se
- * leyó con los de siempre), para no confundir «no se sabe» con 0. Los % van de 0 a 100. Pura.
+ * leyó con los de siempre), para no confundir «no se sabe» con 0. Los % van de 0 a 100. `tipo` (el de
+ * `tipoDeResultado`) fija qué es un resultado: con «conversacion», SÓLO las conversaciones (Meta omite las acciones en
+ * cero y, sin mensajes, se contaban las interacciones: hallazgo 1 del 14-nov). Pura.
  */
-export function cifras3q(fila, objetivo = null) {
+export function cifras3q(fila, objetivo = null, { tipo = "" } = {}) {
   if (!fila || typeof fila !== "object") return null;
   const r = resumenInsights(fila, objetivo);
   const conversaciones = accion(fila.actions, ACCION_MENSAJE);
   const compras = primeraDe(fila.actions, TIPOS_COMPRA);
+  if (objetivo && tipo === "conversacion") r.resultados = conversaciones;
+  else if (objetivo && tipo === "compra") r.resultados = compras;
+  else if (objetivo && tipo === "cliente") r.resultados = primeraDe(fila.actions, TIPOS_CLIENTE);
+  if (objetivo && ["conversacion", "compra", "cliente"].includes(tipo)) r.costoPorResultado = r.resultados ? r.gasto / r.resultados : null;
   const valor = primeraDe(fila.action_values, TIPOS_COMPRA);
   const clicsUnicos = fila.unique_inline_link_clicks != null ? num(fila.unique_inline_link_clicks) : null;
   const ctrUnico = fila.unique_inline_link_click_ctr != null
@@ -214,12 +245,28 @@ export function sumarFilas(filas = []) {
   return { ...total, spend: String(total.spend), impressions: String(total.impressions), clicks: String(total.clicks) };
 }
 
-/** Qué cuenta como resultado de una campaña, según su objetivo y lo que de verdad llegó. Pura. */
-export function tipoDeResultado(fila, objetivo, destino = "") {
+/** Para qué optimiza un conjunto (`optimization_goal`): conversaciones de mensajes o interacciones con la publicación. */
+const OPTIMIZA_MENSAJES = /CONVERSATIONS|MESSAGING/;
+const OPTIMIZA_INTERACCION = /POST_ENGAGEMENT|THRUPLAY|VIDEO_VIEWS|PAGE_LIKES|ENGAGED_USERS|TWO_SECOND/;
+
+/**
+ * Qué cuenta como resultado de una campaña, según su objetivo y lo que de verdad llegó. `optimizaciones`: las de sus
+ * conjuntos (`optimization_goal`), lo que más dice. Una de Interacción con destino WhatsApp (o que optimiza
+ * conversaciones) mide CONVERSACIONES aunque no haya ninguna; sólo la que optimiza interacciones (la evaluación de un
+ * cliente con web, un video) mide interacciones. Pura.
+ */
+export function tipoDeResultado(fila, objetivo, destino = "", optimizaciones = []) {
   const odax = objetivoODAX(objetivo);
   const obj = OBJETIVOS[odax];
   if (!obj) return "";
   if (obj.alcance) return "alcance";
+  const opt = (Array.isArray(optimizaciones) ? optimizaciones : []).map((o) => String(o ?? "").toUpperCase()).filter(Boolean);
+  if (opt.some((o) => OPTIMIZA_MENSAJES.test(o)) && ["OUTCOME_ENGAGEMENT", "OUTCOME_SALES", "OUTCOME_LEADS"].includes(odax)) return "conversacion";
+  if (odax === "OUTCOME_ENGAGEMENT") {
+    if (opt.length && opt.every((o) => OPTIMIZA_INTERACCION.test(o))) return "interaccion";
+    if (destino !== "web") return "conversacion";
+  }
+  if (odax === "OUTCOME_SALES" && destino === "whatsapp" && !opt.some((o) => /PURCHASE|VALUE|OFFSITE/.test(o))) return "conversacion";
   const acciones = Array.isArray(fila?.actions) ? fila.actions : [];
   for (const tipo of obj.acciones) {
     if (!acciones.some((a) => a?.action_type === tipo)) continue;
@@ -246,6 +293,7 @@ export const NOMBRE_RESULTADO = Object.freeze({
 /** Cómo está una campaña, un conjunto o un anuncio frente a lo que aguanta su etapa. */
 export const ESTADOS_Q1 = Object.freeze({
   sano: { nombre: "Dentro del número mágico", corto: "Dentro", tono: "ok" },
+  "sin-numero": { nombre: "Sin número mágico: no se sabe si es caro", corto: "Sin número mágico", tono: "pausa" },
   caro: { nombre: "Por encima del número mágico", corto: "Por encima", tono: "espera" },
   fuera: { nombre: "Fuera del número mágico", corto: "Fuera", tono: "mal" },
   pierde: { nombre: "Pierde dinero: pasa del equilibrio", corto: "Pierde dinero", tono: "mal" },
@@ -255,36 +303,76 @@ export const ESTADOS_Q1 = Object.freeze({
 });
 
 /**
- * Lo que aguanta un resultado en esta campaña: el número mágico (el objetivo) por la exigencia de su etapa, nunca
- * por encima del equilibrio. Sin número mágico, el equilibrio; sin ninguno, el promedio de sus 30 días (lo de antes).
- * `costoMax` (tecleado) manda sobre todo. → { ref, objetivo, equilibrio, de }. Pura.
+ * El número mágico de esta campaña: el del cliente para su TIPO de resultado (conversación, cliente potencial,
+ * compra, clic), el mismo en todas las etapas. `numeros`: { conversacion, cliente, compra, clic }, cada uno de
+ * `numeroMagicoDelCliente` ({ valor, objetivo, equilibrio, roasEquilibrio, roasObjetivo }; lo de antes, sólo con
+ * objetivo y equilibrio, también vale). Sin número mágico `ref` es 0: NO se compara con el promedio del mes (una
+ * campaña cara todo el mes parecería «normal»); el promedio va aparte, de referencia. `costoMax` (tecleado) manda.
+ * → { ref, objetivo, equilibrio, roasEquilibrio, roasObjetivo, porRoas, promedio, de }. Pura.
  */
-export function referencia({ tipo = "", etapa = "", numeros = null, costoMax = 0, c30 = null } = {}) {
-  const ex = EXIGENCIA_ETAPA[etapa] ?? EXIGENCIA_ETAPA[""];
-  if (Number(costoMax) > 0) return { ref: r2(Number(costoMax) * ex.costo), objetivo: Number(costoMax), equilibrio: null, de: "escrito" };
-  const n = tipo === "conversacion" || tipo === "cliente" ? numeros?.conversacion : tipo === "compra" ? numeros?.compra : null;
+export function referencia({ tipo = "", numeros = null, costoMax = 0, c30 = null } = {}) {
+  const prom = Number(c30?.costoPorResultado) > 0 ? r2(Number(c30.costoPorResultado)) : null;
+  if (Number(costoMax) > 0) return { ref: r2(Number(costoMax)), objetivo: Number(costoMax), equilibrio: null, roasEquilibrio: null, roasObjetivo: null, porRoas: false, promedio: prom, de: "escrito" };
+  const n = tipo === "conversacion" ? numeros?.conversacion
+    : tipo === "cliente" ? numeros?.cliente ?? numeros?.conversacion
+      : tipo === "compra" ? numeros?.compra
+        : tipo === "clic" ? numeros?.clic : null;
   const obj = Number(n?.objetivo) > 0 ? Number(n.objetivo) : null;
   const eq = Number(n?.equilibrio) > 0 ? Number(n.equilibrio) : null;
-  if (obj || eq) {
-    const ref = obj ? Math.min(obj * ex.costo, eq ?? Infinity) : eq;
-    return { ref: r2(ref), objetivo: obj === null ? null : r2(obj), equilibrio: eq === null ? null : r2(eq), de: obj ? "numero-magico" : "equilibrio" };
+  const valor = Number(n?.valor) > 0 ? Number(n.valor) : obj && eq ? Math.min(obj, eq) : obj ?? eq;
+  const roasEquilibrio = Number(n?.roasEquilibrio) > 0 ? r2(Number(n.roasEquilibrio)) : null;
+  const roasObjetivo = Number(n?.roasObjetivo) > 0 ? r2(Number(n.roasObjetivo)) : null;
+  if (valor > 0) {
+    return {
+      ref: r2(valor), objetivo: obj === null ? null : r2(obj), equilibrio: eq === null ? null : r2(eq), roasEquilibrio, roasObjetivo,
+      porRoas: tipo === "compra" && roasEquilibrio > 0, promedio: prom, de: obj && (!eq || obj <= eq) ? "numero-magico" : "equilibrio",
+    };
   }
-  const prom = Number(c30?.costoPorResultado);
-  return { ref: prom > 0 ? r2(prom) : 0, objetivo: null, equilibrio: null, de: prom > 0 ? "promedio" : "" };
+  return { ref: 0, objetivo: null, equilibrio: null, roasEquilibrio: null, roasObjetivo: null, porRoas: false, promedio: prom, de: prom ? "promedio" : "" };
 }
 
-/** El estado Q1 de unas cifras (las de 7 días) frente a lo que aguanta. Pura. */
-export function estadoQ1(c, { ref = 0, equilibrio = null } = {}, umbrales = UMBRALES_3Q) {
+/**
+ * El estado Q1 de unas cifras frente al número mágico. Sin número mágico, «sin-numero»: no se sabe si es caro. En la
+ * web, con valor de compra y ROAS de equilibrio (`porRoas`), por ROAS: vender menos veces lo invertido que el
+ * equilibrio es perder dinero (una venta más grande que el ticket no hace perder aunque la compra «cueste más»). Pura.
+ */
+export function estadoQ1(c, { ref = 0, equilibrio = null, porRoas = false, roasEquilibrio = null, roasObjetivo = null } = {}, umbrales = UMBRALES_3Q) {
   const u = { ...UMBRALES_3Q, ...umbrales };
   if (!c || !(c.gasto > 0)) return "sin-gasto";
-  // Sin número mágico ni un mes con resultados, no hay con qué comparar.
-  if (!(ref > 0)) return c.resultados ? "pronto" : "sin-resultados";
+  if (!(ref > 0)) return "sin-numero";
+  if (porRoas && roasEquilibrio > 0 && c.roas > 0) {
+    if (c.roas < roasEquilibrio) return c.gasto >= ref ? "pierde" : "pronto";
+    if (roasObjetivo > 0 && c.roas < roasObjetivo) return "caro";
+    return "sano";
+  }
   if (!c.resultados) return c.gasto >= ref ? "sin-resultados" : "pronto";
   const cpr = c.costoPorResultado;
   if (equilibrio > 0 && cpr > equilibrio) return "pierde";
   if (cpr > u.apagar * ref) return "fuera";
   if (cpr > ref) return "caro";
   return "sano";
+}
+
+/**
+ * La ventana con que se juzga el MES (la Q1 del curso mira 30 días; 14 y 7 dan la tendencia): 30 días si gastó en
+ * ellos; si no, 14 o 7 (lo recién creado). Pura.
+ */
+export const ventanaDelMes = (c) => [30, 14, 7].map((w) => c?.[w]).find((x) => x?.gasto > 0) ?? c?.[7] ?? null;
+
+/**
+ * La tendencia: la última semana frente al mes (el costo por resultado o, en la web por ROAS, el ROAS). «empeora» si
+ * cuesta un 30 % más (o el ROAS cae un 30 %), «mejora» al revés; "" si no hay con qué comparar. Pura.
+ */
+export function tendenciaDe(c, { porRoas = false } = {}) {
+  const m = ventanaDelMes(c);
+  const s = c?.[7];
+  if (!m || !s || !(s.gasto > 0)) return "";
+  if (porRoas) {
+    if (!(m.roas > 0) || !(s.roas > 0)) return "";
+    return s.roas < m.roas * 0.7 ? "empeora" : s.roas > m.roas * 1.3 ? "mejora" : "";
+  }
+  if (!(m.costoPorResultado > 0) || !(s.costoPorResultado > 0)) return !s.resultados && m.resultados ? "empeora" : "";
+  return s.costoPorResultado > m.costoPorResultado * 1.3 ? "empeora" : s.costoPorResultado < m.costoPorResultado * 0.77 ? "mejora" : "";
 }
 
 // ------------------------------------------------------------
@@ -392,7 +480,7 @@ export function q2De({ c, tipo = "", etapa = "", rankings = [], aprendizaje = ""
   }
   const c7 = c?.[7];
   if (c7?.frecuencia > 0) {
-    const tope = u[(EXIGENCIA_ETAPA[etapa] ?? EXIGENCIA_ETAPA[""]).frecuencia];
+    const tope = umbralFrecuencia(u, etapa);
     lista.push(metrica("frecuencia", c7.frecuencia, tope, c7.frecuencia > tope, { texto: `Cada persona lo vio ${coma(c7.frecuencia)} veces en 7 días.` }));
   }
   const c30 = c?.[30];
@@ -436,7 +524,8 @@ export const VEREDICTOS = Object.freeze({
   escalar: { nombre: "Escalar", tono: "ok", orden: 6 },
   duplicar: { nombre: "Escalar con otro público", tono: "ok", orden: 7 },
   sano: { nombre: "Sano: no se toca", tono: "ok", orden: 8 },
-  pronto: { nombre: "Todavía es pronto", tono: "pausa", orden: 9 },
+  completar: { nombre: "Completa los números del negocio", tono: "pausa", orden: 9 },
+  pronto: { nombre: "Todavía es pronto", tono: "pausa", orden: 10 },
 });
 
 const veredicto = (id, motivo, extra = {}) => ({ id, nombre: VEREDICTOS[id].nombre, tono: VEREDICTOS[id].tono, motivo, acciones: [], ...extra });
@@ -456,10 +545,18 @@ function ultimoCambio(x, cambios = {}) {
     .at(-1) ?? "";
 }
 
-/** Si tiene que esperar (aprendiendo, recién creado o cambiado, o con un anuncio recién sumado): el porqué, o "". */
-function esperaDe(x, { hoy, cambios, u, hijos = [] }) {
+/**
+ * Si tiene que esperar (aprendiendo, recién creado o cambiado, o con un anuncio recién sumado): el porqué, o "".
+ * `subconjuntos`: con presupuesto de CAMPAÑA, la campaña es la unidad y espera a que sus conjuntos salgan del
+ * aprendizaje (antes se juzgaba aunque Meta siguiera probando con ellos).
+ */
+function esperaDe(x, { hoy, cambios, u, hijos = [], subconjuntos = [] }) {
   if (String(x?.aprendizaje ?? "").toUpperCase() === "LEARNING") {
     return "Está en la fase de aprendizaje: Meta todavía prueba a quién mostrárselo. No lo toques hasta que salga.";
+  }
+  const aprendiendo = subconjuntos.filter((s) => String(s?.aprendizaje ?? "").toUpperCase() === "LEARNING");
+  if (aprendiendo.length) {
+    return `${aprendiendo.length === 1 ? `Su conjunto «${aprendiendo[0].nombre}» está` : `${aprendiendo.length} de sus conjuntos están`} en la fase de aprendizaje: Meta todavía prueba a quién mostrárselo. No toques la campaña hasta que salga${aprendiendo.length === 1 ? "" : "n"}.`;
   }
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(hoy ?? ""))) return "";
   const hasta = (f) => `espera hasta el ${fechaCorta(sumarDias(f, u.diasCambio))} para juzgarlo: cambiarlo antes reinicia el aprendizaje.`;
@@ -468,104 +565,168 @@ function esperaDe(x, { hoy, cambios, u, hijos = [] }) {
     const nuevo = String(x.creada ?? "").slice(0, 10) === ultima;
     return `${nuevo ? "Es nuevo: se creó" : "Se cambió"} ${hace(diasEntre(ultima, hoy))}; ${hasta(ultima)}`;
   }
+  const sub = subconjuntos.map((s) => ({ s, f: ultimoCambio(s, cambios) })).filter(({ f }) => f && diasEntre(f, hoy) < u.diasCambio).sort((a, b) => (a.f < b.f ? 1 : -1))[0];
+  if (sub) return `Su conjunto «${sub.s.nombre}» se creó o cambió ${hace(diasEntre(sub.f, hoy))}; ${hasta(sub.f)}`;
   const hijo = hijos.map((h) => ({ h, f: String(h.creada ?? "").slice(0, 10) })).filter(({ f }) => /^\d{4}-\d{2}-\d{2}$/.test(f) && diasEntre(f, hoy) < u.diasCambio).sort((a, b) => (a.f < b.f ? 1 : -1))[0];
   if (hijo) return `Se le sumó el anuncio «${hijo.h.nombre}» ${hace(diasEntre(hijo.f, hoy))}; ${hasta(hijo.f)}`;
   return "";
 }
 
-/** Las reglas de antes (lib/diagnostico.js), con lo que aguanta la etapa y los umbrales del Manual. */
-function base(x, nivel, { objetivo, R, moneda, u, etapa }) {
+/** Las reglas de antes (lib/diagnostico.js), con el número mágico, la frecuencia de su etapa y los umbrales del Manual. */
+function base(x, nivel, { objetivo, R, moneda, u, etapa, tipo }) {
   return evaluar(
-    { nivel, estado: x.estado, presupuestoDiario: x.presupuestoDiario ?? null, i7: x.i?.[7] ?? null, i30: x.i?.[30] ?? null, objetivo },
-    { ref: R.ref, moneda, umbrales: { frecuenciaFatiga: u[(EXIGENCIA_ETAPA[etapa] ?? EXIGENCIA_ETAPA[""]).frecuencia], apagar: u.apagar, gastoSinResultado: u.gastoParaApagar } },
+    { nivel, estado: x.estado, presupuestoDiario: x.presupuestoDiario ?? null, i7: x.i?.[7] ?? null, i30: x.i?.[30] ?? null, objetivo, tipo },
+    { ref: R.ref, moneda, umbrales: { frecuenciaFatiga: umbralFrecuencia(u, etapa), apagar: u.apagar, gastoSinResultado: u.gastoParaApagar } },
   );
 }
 
-/** El motivo Q1 en una frase. */
-function motivoQ1(q1, c7, R, tipo, moneda) {
+const DIAS_DE = (c, m) => (m === c?.[30] ? 30 : m === c?.[14] ? 14 : 7);
+
+/** El motivo Q1 en una frase, con las cifras de la ventana `c` (`dias` días) y el número mágico. */
+function motivoQ1(q1, c, R, tipo, moneda, dias = 7) {
   const d = (n) => formatoMoneda(n, moneda);
   const que = NOMBRE_RESULTADO[tipo] ?? "resultados";
-  const aguanta = R.ref > 0 ? `aguanta ${d(R.ref)}` : "sin número mágico";
-  if (q1 === "sin-resultados") return `Gastó ${d(c7.gasto)} en 7 días sin ${que} (${aguanta} por cada una).`;
-  if (q1 === "pierde") return `Cada una de sus ${que} cuesta ${d(c7.costoPorResultado)}, más que el equilibrio (${d(R.equilibrio)}): así pierde dinero.`;
-  if (q1 === "fuera" || q1 === "caro") return `Cada una de sus ${que} cuesta ${d(c7.costoPorResultado)} y su etapa ${aguanta}.`;
-  if (q1 === "sano") return R.ref > 0 ? `Dentro del número mágico: ${d(c7.costoPorResultado)} por cada una de sus ${que} (${aguanta}).` : `${d(c7.costoPorResultado)} por cada una de sus ${que}.`;
-  if (q1 === "pronto") {
-    return R.ref > 0
-      ? `Lleva ${d(c7.gasto)} en 7 días: todavía no hay con qué juzgarlo (se juzga desde ${d(R.ref)} gastados).`
-      : "Sin número mágico ni un mes con resultados con qué compararlo: ponle los números del negocio.";
+  const en = `en ${dias} días`;
+  if (!c) return `No gastó nada ${en}.`;
+  if (q1 === "sin-numero") {
+    const prom = c.costoPorResultado ? `${d(c.costoPorResultado)} por cada una de sus ${que} ${en}` : `${d(c.gasto)} gastados ${en}${c.resultados ? "" : ` sin ${que}`}`;
+    return `${prom}. Sin número mágico no se pausa nada por costo: completa los números del negocio para saber si esto es caro.`;
   }
-  return "No gastó nada en 7 días.";
+  if (R.porRoas && c.roas > 0 && ["pierde", "caro", "sano"].includes(q1)) {
+    const roas = `vendió ${coma(c.roas)} veces lo invertido ${en}`;
+    if (q1 === "pierde") return `${roas[0].toUpperCase()}${roas.slice(1)}: menos que el ROAS de equilibrio (${coma(R.roasEquilibrio)}), así pierde dinero.`;
+    if (q1 === "caro") return `${roas[0].toUpperCase()}${roas.slice(1)}: no pierde (el equilibrio es ${coma(R.roasEquilibrio)}) pero queda por debajo del objetivo (${coma(R.roasObjetivo)}).`;
+    return `${roas[0].toUpperCase()}${roas.slice(1)}: por encima del equilibrio (${coma(R.roasEquilibrio)}).`;
+  }
+  const magico = `el número mágico es ${d(R.ref)}`;
+  if (q1 === "sin-resultados") return `Gastó ${d(c.gasto)} ${en} sin ${que} (${magico} por cada una).`;
+  if (q1 === "pierde") return `Cada una de sus ${que} cuesta ${d(c.costoPorResultado)} ${en}, más que el equilibrio (${d(R.equilibrio)}): así pierde dinero.`;
+  if (q1 === "fuera") return `Cada una de sus ${que} cuesta ${d(c.costoPorResultado)} ${en}: muy por encima del número mágico (${d(R.ref)}).`;
+  if (q1 === "caro") return `Cada una de sus ${que} cuesta ${d(c.costoPorResultado)} ${en} y ${magico}.`;
+  if (q1 === "sano") return R.ref > 0 ? `Dentro del número mágico: ${d(c.costoPorResultado)} por cada una de sus ${que} ${en} (${magico}).` : `${d(c.costoPorResultado)} por cada una de sus ${que} ${en}.`;
+  if (q1 === "pronto") return `Lleva ${d(c.gasto)} ${en}: todavía no hay con qué juzgarlo (se juzga desde ${d(R.ref)} gastados).`;
+  return `No gastó nada ${en}.`;
+}
+
+const MALO = new Set(["pierde", "fuera", "sin-resultados"]);
+
+/**
+ * DECISIÓN 7, lo primero que se mira (hallazgo 2 del 14-nov: antes las reglas de antes iban delante y un conjunto que
+ * perdía dinero y además había empeorado salía «Vigilar»). → el motivo para pausarlo, o "".
+ *   · Por costo: en los 30 días (`mes`) fuera del número mágico o por encima del equilibrio, con `gastoParaApagar`
+ *     veces el número mágico gastado, y la última semana también mal. Sin número mágico, nunca por costo.
+ *   · Por el % de mensajes: de cada 100 que dan clic escriben menos de `pctMensajesPausar` (con 40 clics únicos o
+ *     más). Es lo que se mira SIN número mágico (no depende de los números del negocio); con él manda el costo y el
+ *     % de mensajes queda como lo que hay que mejorar (Q2).
+ */
+function motivoDePausa({ mes, q1, q7, R, tipo, u, moneda, dias }) {
+  if (R.ref > 0 && MALO.has(q1) && mes?.gasto >= u.gastoParaApagar * R.ref && (MALO.has(q7) || q7 === "caro")) {
+    return motivoQ1(q1, mes, R, tipo, moneda, dias) + (dias > 7 ? " La última semana también fue mal." : "");
+  }
+  if (tipo === "conversacion" && mes?.clicsUnicos >= 40 && mes.pctMensajes != null && mes.pctMensajes < u.pctMensajesPausar && !(R.ref > 0)) {
+    return `De cada 100 personas que dan clic sólo escriben ${coma(Math.round(mes.pctMensajes))} (${mes.clicsUnicos} clics y ${mes.conversaciones} conversaciones ${dias === 7 ? "en 7 días" : `en ${dias} días`}): el anuncio no lleva a la conversación.`;
+  }
+  return "";
 }
 
 /**
  * Juzga una UNIDAD: un conjunto (o la campaña entera si el presupuesto es de campaña). Es lo que se mira por el
- * efecto desglose. → { q1, q2, veredicto }.
+ * efecto desglose. La Q1 es la del MES (30 días; 14 o 7 si es más nuevo) y la última semana da la tendencia: una mala
+ * semana dentro de un buen mes se vigila, no se pausa. → { q1, q7, tendencia, q2, veredicto }.
  */
-function juzgar(x, nivel, ctx, { hijos = [], conBoton = true } = {}) {
-  const { u, moneda } = ctx;
+function juzgar(x, nivel, ctx, { hijos = [], subconjuntos = [], conBoton = true } = {}) {
+  const { u, moneda, R, tipo } = ctx;
   const c = x.ventanas;
-  const q1 = estadoQ1(c[7], ctx.R, u);
-  const q2 = q2De({ c, tipo: ctx.tipo, etapa: ctx.etapa, rankings: x.rankings ?? [], aprendizaje: x.aprendizaje }, u, moneda);
+  const mes = ventanaDelMes(c);
+  const dias = DIAS_DE(c, mes);
+  const q1 = estadoQ1(mes, R, u);
+  const q7 = estadoQ1(c[7], R, u);
+  const tendencia = tendenciaDe(c, R);
+  const q2 = q2De({ c, tipo, etapa: ctx.etapa, rankings: x.rankings ?? [], aprendizaje: x.aprendizaje }, u, moneda);
   const acciones = accionesQ3(q2);
+  const con = (veredictoFinal) => ({ q1, q7, tendencia, q2, veredicto: veredictoFinal });
   if (rechazado(x.estado)) {
-    return { q1, q2, veredicto: veredicto("revisar", `Meta lo marca como ${estadoAnuncio(x.estado).texto.toLowerCase()}: revísalo en el Ads Manager (el motivo está ahí).`, { acciones: [{ id: "adsmanager", que: "entrega", titulo: "Abrir en el Ads Manager", texto: "", ir: "adsmanager" }] }) };
+    return con(veredicto("revisar", `Meta lo marca como ${estadoAnuncio(x.estado).texto.toLowerCase()}: revísalo en el Ads Manager (el motivo está ahí).`, { acciones: [{ id: "adsmanager", que: "entrega", titulo: "Abrir en el Ads Manager", texto: "", ir: "adsmanager" }] }));
   }
   const b = base({ ...x, presupuestoDiario: conBoton ? x.presupuestoDiario : null }, nivel, ctx);
-  if (b?.accion === "revisar") return { q1, q2, veredicto: veredicto("revisar", b.motivo) };
-  const espera = esperaDe(x, { ...ctx, hijos });
+  if (b?.accion === "revisar") return con(veredicto("revisar", b.motivo));
+  const espera = esperaDe(x, { ...ctx, hijos, subconjuntos });
   if (espera) {
-    const luego = b?.accion === "apagar" || ["fuera", "pierde", "sin-resultados"].includes(q1) ? " Si al terminar sigue igual, entonces se cambia." : "";
-    return { q1, q2, veredicto: veredicto("espera", `${espera}${luego}`, { espera: true }) };
+    const luego = b?.accion === "apagar" || MALO.has(q1) ? " Si al terminar sigue igual, entonces se cambia." : "";
+    return con(veredicto("espera", `${espera}${luego}`, { espera: true }));
   }
+  // Pausar va PRIMERO (decisión 7).
+  const pausa = motivoDePausa({ mes, q1, q7, R, tipo, u, moneda, dias });
+  if (pausa) return con(veredicto("apagar", pausa));
   if (b) {
+    // Las reglas de antes miran la semana. Si piden apagar pero el MES no está para pausar, se vigila.
+    if (b.accion === "apagar") {
+      return con(veredicto("vigilar", `${b.motivo} El mes va mejor${mes?.costoPorResultado ? ` (${formatoMoneda(mes.costoPorResultado, moneda)} por resultado en ${dias} días)` : ""}: vigílalo; si la próxima semana sigue así, se pausa.`, { acciones }));
+    }
     // Lo que funciona (escalar, duplicar) no se toca por dentro: sus avisos de la Q2 quedan «para cuando toque cambiar».
     const funciona = VEREDICTOS[b.accion].tono === "ok";
-    return {
-      q1, q2,
-      veredicto: veredicto(b.accion, b.motivo, {
-        ...(b.sugerencia ? { sugerencia: b.sugerencia } : {}), acciones: b.accion === "apagar" || funciona ? [] : acciones, ...(funciona ? { luego: acciones } : {}),
-      }),
-    };
+    // Escalar o duplicar sólo con el mes dentro del número mágico: una buena semana no basta.
+    if (funciona && q1 !== "sano") return con(veredicto("vigilar", `${b.motivo.split(":")[0]} esta semana, pero el mes no: ${motivoQ1(q1, mes, R, tipo, moneda, dias)}`, { acciones }));
+    return con(veredicto(b.accion, b.motivo, {
+      ...(b.sugerencia ? { sugerencia: b.sugerencia } : {}), acciones: funciona ? [] : acciones, ...(funciona ? { luego: acciones } : {}),
+    }));
   }
-  if (q1 === "pierde" && c[7]?.gasto >= u.gastoParaApagar * ctx.R.ref) {
-    return { q1, q2, veredicto: veredicto("apagar", motivoQ1(q1, c[7], ctx.R, ctx.tipo, moneda)) };
-  }
-  if (["caro", "fuera", "pierde", "sin-resultados"].includes(q1)) {
+  if (MALO.has(q1) || q1 === "caro") {
     const principal = acciones[0] ?? ACCION_OFERTA;
-    return {
-      q1, q2,
-      veredicto: veredicto("mejorar", `${motivoQ1(q1, c[7], ctx.R, ctx.tipo, moneda)} Lo que más pesa: ${principal.titulo.toLowerCase()}.`, {
-        nombre: principal.titulo, acciones: acciones.length ? acciones : [ACCION_OFERTA],
-      }),
-    };
+    const mejora = tendencia === "mejora" ? " La última semana va mejor." : "";
+    return con(veredicto("mejorar", `${motivoQ1(q1, mes, R, tipo, moneda, dias)}${mejora} Lo que más pesa: ${principal.titulo.toLowerCase()}.`, {
+      nombre: principal.titulo, acciones: acciones.length ? acciones : [ACCION_OFERTA],
+    }));
   }
-  if (q1 === "sano") return { q1, q2, veredicto: veredicto("sano", motivoQ1(q1, c[7], ctx.R, ctx.tipo, moneda), { luego: acciones }) };
-  return { q1, q2, veredicto: veredicto("pronto", motivoQ1(q1, c[7], ctx.R, ctx.tipo, moneda)) };
+  if (q1 === "sano") {
+    if (tendencia === "empeora" && (MALO.has(q7) || q7 === "caro")) {
+      return con(veredicto("vigilar", `El mes va bien, pero la última semana empeoró: ${motivoQ1(q7, c[7], R, tipo, moneda, 7)} Vigílalo; si sigue así la próxima, se cambia.`, { acciones }));
+    }
+    return con(veredicto("sano", motivoQ1(q1, mes, R, tipo, moneda, dias), { luego: acciones }));
+  }
+  if (q1 === "sin-numero") return con(veredicto("completar", motivoQ1(q1, mes, R, tipo, moneda, dias), { luego: acciones }));
+  return con(veredicto("pronto", motivoQ1(q1, mes, R, tipo, moneda, dias)));
 }
 
-/** Las ventanas de un elemento, como cifras. */
-const ventanasDe = (x, objetivo) => Object.fromEntries(VENTANAS.map((w) => [w, cifras3q(x?.i?.[w] ?? null, objetivo)]));
+/** Las ventanas de un elemento, como cifras (con lo que cuenta como resultado de su campaña). */
+const ventanasDe = (x, objetivo, tipo = "") => Object.fromEntries(VENTANAS.map((w) => [w, cifras3q(x?.i?.[w] ?? null, objetivo, { tipo })]));
 const activo = (x) => String(x?.status ?? x?.estado ?? "").toUpperCase() === "ACTIVE";
 /** Presupuesto de campaña (Advantage): la campaña lo lleva y sus conjuntos no tienen el suyo. */
 const cboDe = (c) => (Number(c?.presupuestoDiario) > 0 || Number(c?.presupuestoTotal) > 0) && !(c?.conjuntos ?? []).some((s) => Number(s.presupuestoDiario) > 0);
+
+/**
+ * La tasa de 3 s de una unidad (conjunto o campaña), contada SÓLO sobre las impresiones de sus anuncios de VIDEO (los
+ * que tienen reproducciones): un conjunto que mezcla video e imagen la diluía con las impresiones de las imágenes.
+ * Sin anuncios de video, null (no se juzga). Muta las ventanas que recibe.
+ */
+function tasa3sDeVideos(ventanas, anuncios) {
+  if (!anuncios.length) return;
+  for (const w of VENTANAS) {
+    if (!ventanas[w]) continue;
+    const videos = anuncios.map((a) => a.ventanas?.[w]).filter((v) => v?.reproducciones3s > 0);
+    const imp = videos.reduce((n, v) => n + v.impresiones, 0);
+    const rep = videos.reduce((n, v) => n + v.reproducciones3s, 0);
+    ventanas[w] = { ...ventanas[w], tasa3s: imp > 0 ? r1((rep / imp) * 100) : null };
+  }
+}
 
 /** Un hijo (un anuncio, o un conjunto de una campaña con presupuesto de campaña) por debajo de su unidad. */
 function juzgarHijo(x, nivel, padre, ctx) {
   const c = x.ventanas;
   if (rechazado(x.estado)) return juzgar(x, nivel, ctx);
   const q2 = q2De({ c, tipo: ctx.tipo, etapa: ctx.etapa, rankings: x.rankings ?? [], aprendizaje: x.aprendizaje }, ctx.u, ctx.moneda);
-  const q1 = estadoQ1(c[7], ctx.R, ctx.u);
+  const q1 = estadoQ1(ventanaDelMes(c), ctx.R, ctx.u);
+  const q7 = estadoQ1(c[7], ctx.R, ctx.u);
   // EL EFECTO DESGLOSE: con la unidad dentro del número mágico, sus hijos no se tocan.
-  if (padre.q1 === "sano") {
+  if (padre.q1 === "sano" && VEREDICTOS[padre.veredicto.id]?.tono === "ok") {
     return {
-      q1, q2,
+      q1, q7, q2,
       veredicto: veredicto("sano", `Su ${padre.nivel === "campana" ? "campaña" : "conjunto"} va bien: no se toca, aunque se vea peor que otro. Meta reparte el presupuesto entre ${nivel === "anuncio" ? "los anuncios" : "los conjuntos"} y se juzga el total.`, { luego: accionesQ3(q2), desglose: true }),
     };
   }
-  if (padre.veredicto.id === "revisar") return { q1, q2, veredicto: veredicto("revisar", "Su conjunto no está entregando.", { heredado: true }) };
+  if (padre.veredicto.id === "revisar") return { q1, q7, q2, veredicto: veredicto("revisar", "Su conjunto no está entregando.", { heredado: true }) };
   if (padre.veredicto.id === "espera") {
-    return { q1, q2, veredicto: veredicto("espera", `Su ${padre.nivel === "campana" ? "campaña" : "conjunto"} está esperando: se juzga cuando termine.`, { espera: true }) };
+    return { q1, q7, q2, veredicto: veredicto("espera", `Su ${padre.nivel === "campana" ? "campaña" : "conjunto"} está esperando: se juzga cuando termine.`, { espera: true }) };
   }
   return juzgar(x, nivel, ctx, { conBoton: false });
 }
@@ -577,20 +738,25 @@ function juzgarHijo(x, nivel, padre, ctx) {
 function revisarCampana(x, opciones) {
   const { u, numeros, moneda, costoMax, cuenta, destino } = opciones;
   const i30 = x.i?.[30] ?? x.i?.[14] ?? x.i?.[7] ?? null;
-  const tipo = tipoDeResultado(i30, x.objetivo, destino);
+  const tipo = tipoDeResultado(i30, x.objetivo, destino, (x.conjuntos ?? []).map((s) => s.optimizacion));
   // La etapa: la que traiga (ya resuelta) o la del nombre y, si no, la escogida a mano.
   const de = x.etapa !== undefined ? { id: x.etapa ?? "", de: x.etapaDe ?? "" } : etapaDeCampana(x, opciones.etapas);
   const etapa = NOMBRE_ETAPA[de.id] ? de.id : "";
-  const ventanas = ventanasDe(x, x.objetivo);
-  const R = referencia({ tipo, etapa, numeros, costoMax, c30: ventanas[30] });
+  const ventanas = ventanasDe(x, x.objetivo, tipo);
+  const R = referencia({ tipo, numeros, costoMax, c30: ventanas[30] });
   const ctx = { ...opciones, u, tipo, etapa, R, objetivo: x.objetivo, moneda };
   const cbo = cboDe(x);
-  const conjuntos = (x.conjuntos ?? []).filter(activo).map((s) => ({ ...s, ventanas: ventanasDe(s, x.objetivo), enlace: enlaceAdsManager(cuenta, "conjunto", s.id) }));
-  const anuncios = (x.anuncios ?? []).filter(activo).map((a) => ({ ...a, ventanas: ventanasDe(a, x.objetivo), enlace: enlaceAdsManager(cuenta, "anuncio", a.id) }));
+  const anuncios = (x.anuncios ?? []).filter(activo).map((a) => ({ ...a, ventanas: ventanasDe(a, x.objetivo, tipo), enlace: enlaceAdsManager(cuenta, "anuncio", a.id) }));
+  const conjuntos = (x.conjuntos ?? []).filter(activo).map((s) => {
+    const v = ventanasDe(s, x.objetivo, tipo);
+    tasa3sDeVideos(v, anuncios.filter((a) => String(a.conjuntoId) === String(s.id)));
+    return { ...s, ventanas: v, enlace: enlaceAdsManager(cuenta, "conjunto", s.id) };
+  });
+  tasa3sDeVideos(ventanas, anuncios);
   const salida = {
     id: x.id, nombre: x.nombre, objetivo: x.objetivo, nombreObjetivo: nombreObjetivo(x.objetivo), estado: x.estado, cbo,
     presupuestoDiario: x.presupuestoDiario ?? null, etapa, etapaDe: etapa ? de.de : "", nombreEtapa: nombreEtapaRevision(etapa),
-    exigencia: (EXIGENCIA_ETAPA[etapa] ?? EXIGENCIA_ETAPA[""]).texto,
+    exigencia: TEXTO_EXIGENCIA,
     tipoResultado: tipo, nombreResultado: NOMBRE_RESULTADO[tipo] ?? "resultados", referencia: R,
     ventanas, enlace: enlaceAdsManager(cuenta, "campana", x.id),
   };
@@ -600,18 +766,21 @@ function revisarCampana(x, opciones) {
     const motivo = rechazado(x.estado) ? `Meta la marca como ${estadoAnuncio(x.estado).texto.toLowerCase()}: revísala en el Ads Manager.` : "La campaña está activa y no gastó nada en 7 días: puede estar en revisión, sin método de pago o con un público demasiado chico.";
     const heredado = veredicto("revisar", "Su campaña no está entregando.", { heredado: true });
     return {
-      ...salida, q1: estadoQ1(c7, R, u), q2: { ventana: 7, metricas: [] }, veredicto: veredicto("revisar", motivo),
+      ...salida, q1: estadoQ1(ventanaDelMes(ventanas), R, u), q2: { ventana: 7, metricas: [] }, veredicto: veredicto("revisar", motivo),
       conjuntos: conjuntos.map((s) => ({ ...s, veredicto: heredado })), anuncios: anuncios.map((a) => ({ ...a, veredicto: heredado })),
     };
   }
   if (cbo) {
-    // El presupuesto es de la campaña: ella es la unidad, y sus conjuntos y anuncios, lo que se reparte.
-    const unidad = { ...juzgar({ ...x, ventanas }, "campana", ctx, { hijos: anuncios, conBoton: false }), nivel: "campana" };
+    // El presupuesto es de la campaña: ella es la unidad, y sus conjuntos y anuncios, lo que se reparte. Espera a que sus
+    // conjuntos salgan del aprendizaje.
+    const unidad = { ...juzgar({ ...x, ventanas }, "campana", ctx, { hijos: anuncios, subconjuntos: conjuntos, conBoton: false }), nivel: "campana" };
     // Funciona de sobra (la regla de «escalar» de antes): el presupuesto es de la campaña, así que se sube en el Ads Manager.
     const ud = UMBRALES_DIAGNOSTICO;
-    if (unidad.veredicto.id === "sano" && R.ref > 0 && c7?.resultados >= ud.minGanador && c7.costoPorResultado <= ud.escalar * R.ref) {
-      unidad.veredicto = veredicto("escalar", `Funciona: ${formatoMoneda(c7.costoPorResultado, moneda)} por resultado, por debajo de lo que aguanta (${formatoMoneda(R.ref, moneda)}). El presupuesto es de la campaña: súbelo un 20 % en el Ads Manager; más de golpe reinicia el aprendizaje.`, {
+    const mes = ventanaDelMes(ventanas);
+    if (unidad.veredicto.id === "sano" && R.ref > 0 && !R.porRoas && mes?.resultados >= ud.minGanador && mes.costoPorResultado <= ud.escalar * R.ref) {
+      unidad.veredicto = veredicto("escalar", `Funciona: ${formatoMoneda(mes.costoPorResultado, moneda)} por resultado, por debajo del número mágico (${formatoMoneda(R.ref, moneda)}). El presupuesto es de la campaña: súbelo un 20 % en el Ads Manager; más de golpe reinicia el aprendizaje.`, {
         acciones: [{ id: "adsmanager", que: "presupuesto", titulo: "Subirlo en el Ads Manager", texto: "", ir: "adsmanager" }],
+        ...(Number(x.presupuestoDiario) > 0 ? { sugerencia: { diarioActual: x.presupuestoDiario, diarioNuevo: r2(x.presupuestoDiario * 1.2) } } : {}),
       });
     }
     const porConjunto = new Map();
@@ -624,7 +793,7 @@ function revisarCampana(x, opciones) {
       const padre = unidad.q1 === "sano" || unidad.veredicto.id === "espera" ? unidad : porConjunto.get(String(a.conjuntoId)) ?? unidad;
       return { ...a, ...juzgarHijo(a, "anuncio", padre, ctx) };
     });
-    return { ...salida, q1: unidad.q1, q2: unidad.q2, veredicto: unidad.veredicto, conjuntos: js, anuncios: as };
+    return { ...salida, q1: unidad.q1, q7: unidad.q7, tendencia: unidad.tendencia, q2: unidad.q2, veredicto: unidad.veredicto, conjuntos: js, anuncios: as };
   }
   // Presupuesto en cada conjunto: el conjunto es la unidad.
   const porConjunto = new Map();
@@ -639,29 +808,163 @@ function revisarCampana(x, opciones) {
     // Sin su conjunto en la lista (pausado, o no llegó): se juzga solo, como antes.
     return { ...a, ...(padre ? juzgarHijo(a, "anuncio", padre, ctx) : juzgar(a, "anuncio", ctx)) };
   });
-  const q1 = estadoQ1(c7, R, u);
+  const mes = ventanaDelMes(ventanas);
+  const dias = DIAS_DE(ventanas, mes);
+  const q1 = estadoQ1(mes, R, u);
+  const q7 = estadoQ1(c7, R, u);
+  const tendencia = tendenciaDe(ventanas, R);
   const q2 = q2De({ c: ventanas, tipo, etapa }, u, moneda);
   const todosEsperan = js.length > 0 && js.every((s) => s.veredicto.id === "espera");
   const pendientes = [...js, ...as].filter((y) => ["apagar", "mejorar", "renovar", "revisar"].includes(y.veredicto.id)).length;
   let v;
   if (todosEsperan) v = veredicto("espera", "Sus conjuntos están aprendiendo o se cambiaron hace poco: se juzga cuando terminen.", { espera: true });
-  else if (q1 === "sano") v = veredicto("sano", motivoQ1(q1, c7, R, tipo, moneda));
-  else if (q1 === "pronto" || q1 === "sin-gasto") v = veredicto("pronto", motivoQ1(q1, c7, R, tipo, moneda));
+  else if (q1 === "sano") v = veredicto("sano", motivoQ1(q1, mes, R, tipo, moneda, dias));
+  else if (q1 === "sin-numero") v = veredicto("completar", motivoQ1(q1, mes, R, tipo, moneda, dias));
+  else if (q1 === "pronto" || q1 === "sin-gasto") v = veredicto("pronto", motivoQ1(q1, mes, R, tipo, moneda, dias));
   else {
-    v = veredicto("mejorar", `${motivoQ1(q1, c7, R, tipo, moneda)}${pendientes ? ` ${pendientes === 1 ? "Un conjunto o anuncio pide" : `${pendientes} conjuntos y anuncios piden`} cambios: míralos abajo.` : ""}`, {
+    v = veredicto("mejorar", `${motivoQ1(q1, mes, R, tipo, moneda, dias)}${pendientes ? ` ${pendientes === 1 ? "Un conjunto o anuncio pide" : `${pendientes} conjuntos y anuncios piden`} cambios: míralos abajo.` : ""}`, {
       nombre: ESTADOS_Q1[q1]?.nombre ?? "Mejorar", acciones: accionesQ3(q2),
     });
   }
-  return { ...salida, q1, q2, veredicto: v, conjuntos: js, anuncios: as };
+  return { ...salida, q1, q7, tendencia, q2, veredicto: v, conjuntos: js, anuncios: as };
+}
+
+// ------------------------------------------------------------
+// El SEMÁFORO: lo que entiende alguien que no hizo el curso
+// ------------------------------------------------------------
+
+/** Los cuatro colores (más «sin datos»), con su texto: nunca sólo el color. */
+export const SEMAFOROS = Object.freeze({
+  mala: { texto: "Mala", tono: "mal", orden: 0 },
+  vigilar: { texto: "A vigilar", tono: "espera", orden: 1 },
+  esperando: { texto: "Esperando: aprendiendo", tono: "pausa", orden: 2 },
+  "sin-datos": { texto: "Sin datos para juzgar", tono: "pausa", orden: 3 },
+  sana: { texto: "Sana", tono: "ok", orden: 4 },
+});
+
+/** Cómo se llama cada nivel en el Ads Manager (la pestaña donde se busca). */
+export const PESTANA_ADS_MANAGER = Object.freeze({ campana: "Campañas", conjunto: "Conjuntos de anuncios", anuncio: "Anuncios" });
+
+/** El color de un veredicto. Pura. */
+export function idSemaforo(v, q1 = "") {
+  switch (v?.id) {
+    case "sano": case "escalar": case "duplicar": return "sana";
+    case "apagar": case "revisar": return "mala";
+    case "mejorar": return MALO.has(q1) ? "mala" : "vigilar";
+    case "renovar": case "vigilar": return "vigilar";
+    case "espera": return "esperando";
+    default: return "sin-datos";
+  }
+}
+
+/**
+ * El SEMÁFORO de una campaña, un conjunto o un anuncio ya juzgado, para quien no sabe del curso: { id, texto, tono,
+ * porque (una frase con sus números), pasos (qué hacer, en orden), donde («En el Ads Manager: …») }. `nivel`:
+ * «campana», «conjunto» o «anuncio»; `conjunto`: el nombre de su conjunto (para un anuncio). Pura.
+ */
+export function semaforoDe(x, nivel, { moneda = "USD", conjunto = "" } = {}) {
+  const v = x?.veredicto ?? {};
+  const id = idSemaforo(v, x?.q1);
+  const s = SEMAFOROS[id];
+  const pestana = PESTANA_ADS_MANAGER[nivel] ?? "Campañas";
+  const nombre = x?.nombre ? `«${x.nombre}»` : "el elemento";
+  const aqui = `En el Ads Manager: ${pestana} → ${nombre}`;
+  const busca = `Abre el Ads Manager («Abrir en el Ads Manager») y ve a la pestaña «${pestana}»: busca ${nombre}.`;
+  const d = (n) => formatoMoneda(n, moneda);
+  let pasos = [];
+  let donde = "";
+  switch (v.id) {
+    case "apagar":
+      pasos = [busca, "Apaga su interruptor (la primera columna de la fila). No lo borres: lo que se aprendió de él sirve para los siguientes."];
+      donde = `${aqui} → apagar el interruptor`;
+      break;
+    case "revisar":
+      pasos = [busca, "Mira la columna «Entrega»: dice si está en revisión, rechazado, sin método de pago o con un público muy chico.", "Si Meta lo rechazó, abre el anuncio y lee el motivo; corrige la pieza o el texto y vuelve a enviarlo."];
+      donde = `${aqui} → columna «Entrega»`;
+      break;
+    case "escalar":
+      pasos = [busca, v.sugerencia ? `Pulsa «Editar» y, en «Presupuesto», súbelo de ${d(v.sugerencia.diarioActual)} a ${d(v.sugerencia.diarioNuevo)} al día.` : "Pulsa «Editar» y sube el presupuesto un 20 %.", "No lo subas más de un 20 % de una vez: más de golpe reinicia el aprendizaje."];
+      donde = `${aqui} → Editar → Presupuesto`;
+      break;
+    case "duplicar":
+      pasos = [busca, "Pulsa «Duplicar» y, en el nuevo, cambia el público (otros intereses o públicos similares).", "Deja el original como está: funciona."];
+      donde = `${aqui} → Duplicar`;
+      break;
+    case "mejorar":
+    case "renovar": {
+      const lista = (v.acciones ?? []).filter((a) => a.texto);
+      pasos = lista.length ? lista.map((a) => `${a.titulo}: ${a.texto}`) : [v.motivo];
+      const publico = lista.some((a) => a.que === "publico");
+      const dentro = nivel === "anuncio" ? (conjunto ? `«${conjunto}»` : "su conjunto") : nombre;
+      pasos.push(publico ? "Cambia el público en el conjunto (Editar → Público)." : `Haz los anuncios nuevos en la aplicación y súbelos DENTRO de ${dentro}; no edites los que ya corren (reinicia el aprendizaje).`);
+      donde = publico ? `En el Ads Manager: Conjuntos de anuncios → ${nivel === "anuncio" && conjunto ? `«${conjunto}»` : nombre} → Editar → Público` : `En el Ads Manager: Conjuntos de anuncios → ${nivel === "anuncio" && conjunto ? `«${conjunto}»` : nombre} → crear un anuncio nuevo`;
+      break;
+    }
+    case "vigilar":
+      pasos = ["No cambies nada todavía.", "Vuelve a mirarlo en 3 o 4 días: si sigue igual, se cambia."];
+      break;
+    case "espera":
+      pasos = ["No toques nada: cualquier cambio reinicia el aprendizaje y Meta empieza de cero."];
+      break;
+    case "sano":
+      pasos = [v.desglose ? "No toques este: su conjunto va bien y Meta reparte el dinero entre todos." : "No toques nada: funciona."];
+      break;
+    case "completar":
+      pasos = ["Completa los números del negocio del cliente: el costo del producto, el ticket y el % de cada venta que se invierte (Marca → Números del negocio).", "Vuelve a abrir la revisión: con el número mágico se sabe si esto es caro."];
+      donde = "En la aplicación: Marca → Números del negocio";
+      break;
+    default:
+      pasos = ["Espera a que gaste un poco más para juzgarlo."];
+  }
+  return { id, texto: s.texto, tono: s.tono, porque: v.motivo ?? "", pasos, donde };
+}
+
+const PEOR_SEMAFORO = (a, b) => (SEMAFOROS[a].orden <= SEMAFOROS[b].orden ? a : b);
+
+/** Los semáforos de una campaña ya revisada: el suyo y el de cada conjunto y anuncio; el de la campaña, el peor de todos. */
+function conSemaforos(c, moneda) {
+  const nombreConjunto = new Map((c.conjuntos ?? []).map((s) => [String(s.id), s.nombre]));
+  const conjuntos = (c.conjuntos ?? []).map((s) => ({ ...s, semaforo: semaforoDe(s, "conjunto", { moneda }) }));
+  const anuncios = (c.anuncios ?? []).map((a) => ({ ...a, semaforo: semaforoDe(a, "anuncio", { moneda, conjunto: nombreConjunto.get(String(a.conjuntoId)) ?? "" }) }));
+  const propio = semaforoDe(c, "campana", { moneda });
+  let peor = propio.id;
+  for (const x of [...conjuntos, ...anuncios]) if (!x.veredicto?.heredado) peor = PEOR_SEMAFORO(peor, x.semaforo.id);
+  return { ...c, semaforo: propio, semaforoTotal: peor, conjuntos, anuncios };
+}
+
+const plural = (n, uno, varios) => `${n} ${n === 1 ? uno : varios}`;
+
+/**
+ * El resumen de arriba: «De 5 campañas, 3 están sanas, 1 hay que vigilarla y 1 va mal: empieza por «X».». Cuenta cada
+ * campaña por su peor semáforo (el suyo o el de algo de dentro). Pura.
+ */
+export function fraseDelResumen(campanas = []) {
+  if (!campanas.length) return "No tiene campañas activas.";
+  const cuenta = { mala: [], vigilar: [], esperando: [], "sin-datos": [], sana: [] };
+  for (const c of campanas) cuenta[c.semaforoTotal ?? c.semaforo?.id ?? "sin-datos"]?.push(c);
+  const partes = [
+    cuenta.sana.length && plural(cuenta.sana.length, "está sana", "están sanas"),
+    cuenta.vigilar.length && (cuenta.vigilar.length === 1 ? "1 hay que vigilarla" : `${cuenta.vigilar.length} hay que vigilarlas`),
+    cuenta.mala.length && plural(cuenta.mala.length, "va mal", "van mal"),
+    cuenta.esperando.length && plural(cuenta.esperando.length, "está aprendiendo", "están aprendiendo"),
+    cuenta["sin-datos"].length && plural(cuenta["sin-datos"].length, "aún no se puede juzgar", "aún no se pueden juzgar"),
+  ].filter(Boolean);
+  const lista = partes.length > 1 ? `${partes.slice(0, -1).join(", ")} y ${partes.at(-1)}` : partes[0];
+  const total = campanas.length === 1 ? "De 1 campaña" : `De ${campanas.length} campañas`;
+  const primera = cuenta.mala[0] ?? cuenta.vigilar[0];
+  const cierre = cuenta.mala.length
+    ? `: empieza por «${primera.nombre}».`
+    : cuenta.vigilar.length ? `: mira primero «${primera.nombre}».` : ": no hay nada urgente.";
+  return `${total}, ${lista}${cierre}`;
 }
 
 /**
  * La revisión de una cuenta. `campanas`: las ACTIVAS del Ads Manager con sus conjuntos y anuncios, cada uno con sus
- * filas de /insights por ventana (`i: { 30, 14, 7 }`). Opciones: `numeros` ({ conversacion, compra }: objetivo y
- * equilibrio de cada uno), `umbrales` (los del Manual), `moneda`, `hoy` (Panamá), `cambios` (id → fecha del último
- * cambio hecho desde la aplicación), `cuenta` (act_…), `destino`, `etapas` (las escogidas a mano: id → etapa; la del
- * nombre manda) y `costoMax` (lo tecleado, si alguien lo prueba). Pura.
- * → { umbrales, campanas: [...], resumen: { campanas, porVeredicto, pendientes } }
+ * filas de /insights por ventana (`i: { 30, 14, 7 }`). Opciones: `numeros` ({ conversacion, cliente, compra, clic }:
+ * el número mágico de cada tipo, de `numeroMagicoDelCliente`), `umbrales` (los del Manual), `moneda`, `hoy` (Panamá),
+ * `cambios` (id → fecha del último cambio hecho desde la aplicación), `cuenta` (act_…), `destino`, `etapas` (las
+ * escogidas a mano: id → etapa; la del nombre manda) y `costoMax` (lo tecleado, si alguien lo prueba). Pura.
+ * → { umbrales, campanas: [... con su semáforo], resumen: { campanas, porVeredicto, pendientes, porSemaforo, frase } }
  */
 export function revisar(campanas = [], opciones = {}) {
   const u = limpiarUmbrales3q(opciones.umbrales);
@@ -670,68 +973,97 @@ export function revisar(campanas = [], opciones = {}) {
     cuenta: opciones.cuenta ?? "", destino: opciones.destino ?? "", costoMax: Number(opciones.costoMax) > 0 ? Number(opciones.costoMax) : 0,
     etapas: opciones.etapas ?? {},
   };
-  const lista = campanas.map((c) => revisarCampana(c, o))
-    .sort((a, b) => VEREDICTOS[a.veredicto.id].orden - VEREDICTOS[b.veredicto.id].orden || (b.ventanas[7]?.gasto ?? 0) - (a.ventanas[7]?.gasto ?? 0));
+  const lista = campanas.map((c) => conSemaforos(revisarCampana(c, o), o.moneda))
+    .sort((a, b) => SEMAFOROS[a.semaforoTotal].orden - SEMAFOROS[b.semaforoTotal].orden
+      || VEREDICTOS[a.veredicto.id].orden - VEREDICTOS[b.veredicto.id].orden || (b.ventanas[7]?.gasto ?? 0) - (a.ventanas[7]?.gasto ?? 0));
   const porVeredicto = {};
+  const porSemaforo = {};
   let pendientes = 0;
   for (const c of lista) {
+    porSemaforo[c.semaforoTotal] = (porSemaforo[c.semaforoTotal] ?? 0) + 1;
     for (const x of [c, ...c.conjuntos, ...c.anuncios]) {
       if (x.veredicto.heredado) continue;
       porVeredicto[x.veredicto.id] = (porVeredicto[x.veredicto.id] ?? 0) + 1;
       if (VEREDICTOS[x.veredicto.id].tono === "mal") pendientes++;
     }
   }
-  return { umbrales: u, campanas: lista, resumen: { campanas: lista.length, porVeredicto, pendientes } };
+  return { umbrales: u, campanas: lista, resumen: { campanas: lista.length, porVeredicto, pendientes, porSemaforo, frase: fraseDelResumen(lista) } };
 }
 
 // ------------------------------------------------------------
 // La cuenta entera frente al número mágico (30, 14 y 7 días)
 // ------------------------------------------------------------
 
+/** Los objetivos que buscan la conversación por WhatsApp (o la compra, en la web): el costo «real» sólo sale de éstos. */
+const OBJETIVOS_DE_CONVERSACION = new Set(["OUTCOME_ENGAGEMENT", "OUTCOME_SALES"]);
+
 /**
- * La Q1 del cliente: lo real de toda la cuenta (todas las campañas que gastaron, también las pausadas) en cada
- * ventana frente al número mágico. WhatsApp → costo por conversación; web → costo por compra y ROAS. Pura.
+ * La Q1 del cliente: lo real de la cuenta en cada ventana frente al número mágico. WhatsApp → costo por conversación;
+ * web → costo por compra y, con valor de compra, el ROAS frente al de equilibrio. El costo «real» sale SÓLO de las
+ * campañas que buscan ese resultado (Interacción o Ventas; en la web, Ventas): una de tráfico o de alcance no busca
+ * conversaciones y su gasto las encarecía de mentira. Las filas sin `objective` (lecturas de antes) cuentan todas.
+ * `estado` es el del MES (30 días); `tendencia`, la última semana frente al mes. Pura.
  */
 export function q1DeCuenta(filasPorVentana = {}, { destino = "", numeros = null } = {}) {
   const web = destino === "web";
   const n = web ? numeros?.compra : numeros?.conversacion;
-  const ref = { objetivo: Number(n?.objetivo) > 0 ? r2(n.objetivo) : null, equilibrio: Number(n?.equilibrio) > 0 ? r2(n.equilibrio) : null };
+  const obj = Number(n?.objetivo) > 0 ? r2(n.objetivo) : null;
+  const eq = Number(n?.equilibrio) > 0 ? r2(n.equilibrio) : null;
+  const valor = Number(n?.valor) > 0 ? r2(n.valor) : obj && eq ? Math.min(obj, eq) : obj ?? eq;
+  const roasEquilibrio = Number(n?.roasEquilibrio) > 0 ? r2(n.roasEquilibrio) : null;
+  const roasObjetivo = Number(n?.roasObjetivo) > 0 ? r2(n.roasObjetivo) : null;
+  const busca = (f) => !f?.objective || (web ? objetivoODAX(f.objective) === "OUTCOME_SALES" : OBJETIVOS_DE_CONVERSACION.has(objetivoODAX(f.objective)));
   const ventanas = {};
   for (const w of VENTANAS) {
-    const c = cifras3q(sumarFilas(filasPorVentana[w] ?? []));
+    const todas = filasPorVentana[w] ?? [];
+    const c = cifras3q(sumarFilas(todas.filter(busca)));
+    const total = cifras3q(sumarFilas(todas));
     const real = web ? c.costoCompra : c.costoConversacion;
     let estado = "sin-gasto";
     if (c.gasto > 0) {
-      if (!(web ? c.compras : c.conversaciones)) estado = "sin-resultados";
-      else if (ref.equilibrio && real > ref.equilibrio) estado = "pierde";
-      else if (ref.objetivo && real > ref.objetivo) estado = "caro";
-      else if (ref.objetivo || ref.equilibrio) estado = "sano";
-      else estado = "pronto";
+      if (!valor) estado = "sin-numero";
+      else if (web && roasEquilibrio && c.roas > 0) estado = c.roas < roasEquilibrio ? "pierde" : roasObjetivo && c.roas < roasObjetivo ? "caro" : "sano";
+      else if (!(web ? c.compras : c.conversaciones)) estado = "sin-resultados";
+      else if (eq && real > eq) estado = "pierde";
+      else if (real > valor) estado = "caro";
+      else estado = "sano";
     }
-    ventanas[w] = { gasto: c.gasto, conversaciones: c.conversaciones, compras: c.compras, valorCompras: c.valorCompras, real, roas: c.roas, estado };
+    ventanas[w] = { gasto: c.gasto, gastoTotal: total.gasto, conversaciones: c.conversaciones, compras: c.compras, valorCompras: c.valorCompras, real, roas: c.roas, estado };
+  }
+  const mes = [30, 14, 7].find((w) => ventanas[w].gasto > 0) ?? 7;
+  const m = ventanas[mes];
+  const s = ventanas[7];
+  let tendencia = "";
+  if (mes !== 7 && s.gasto > 0) {
+    if (web && m.roas > 0 && s.roas > 0) tendencia = s.roas < m.roas * 0.7 ? "empeora" : s.roas > m.roas * 1.3 ? "mejora" : "";
+    else if (m.real > 0 && s.real > 0) tendencia = s.real > m.real * 1.3 ? "empeora" : s.real < m.real * 0.77 ? "mejora" : "";
   }
   return {
     metrica: web ? "Costo por compra" : "Costo por conversación",
     resultado: web ? "compras" : "conversaciones",
-    ...ref,
+    objetivo: obj, equilibrio: eq, valor, roasEquilibrio, roasObjetivo,
     ventanas,
-    estado: ventanas[7].estado,
+    estado: m.estado,
+    dias: mes,
+    tendencia,
   };
 }
 
 // ------------------------------------------------------------
-// Lo grave de cada día (el cron): no gasta, rechazado, el doble sin una conversación
+// Lo grave de cada día (el cron): no gasta, rechazado, el doble sin un resultado
 // ------------------------------------------------------------
-
-const OBJETIVOS_CON_CONVERSACION = new Set(["OUTCOME_ENGAGEMENT", "OUTCOME_SALES", "OUTCOME_LEADS"]);
 
 /**
  * Lo GRAVE de una cuenta, para la campana: una campaña activa que no gastó ayer (creada antes de ayer), un anuncio
  * rechazado o con problemas de una campaña encendida, y una campaña que gastó en 7 días el doble del número mágico sin
- * una conversación (o sin una compra, en la web). Cada aviso con su `clave` para no repetirlo. Pura.
+ * un resultado DE SU OBJETIVO: una conversación (Interacción o Ventas con WhatsApp), una compra (Ventas en la web) o un
+ * cliente potencial (Clientes potenciales: antes se avisaba «sin una conversación» de una campaña de formularios). Una
+ * de Interacción de un cliente con web, de Tráfico o de Alcance no se avisa: no busca nada de eso. `numero`: el número
+ * mágico del cliente (el MISMO de la revisión, sin ajuste por etapa); `numeros` ({ conversacion, cliente, compra } de
+ * `numeroMagicoDelCliente`), si llega, manda por tipo. Cada aviso con su `clave` para no repetirlo. Pura.
  * `campanas`: [{ id, name, status, effective_status, objective, created_time, ayer }] (ayer = lo gastado ayer).
  */
-export function alertasGraves({ campanas = [], anuncios = [], semana = [], numero = 0, destino = "", hoy = "", nombre = "", moneda = "USD", umbrales = UMBRALES_3Q } = {}) {
+export function alertasGraves({ campanas = [], anuncios = [], semana = [], numero = 0, numeros = null, destino = "", hoy = "", nombre = "", moneda = "USD", umbrales = UMBRALES_3Q } = {}) {
   const u = { ...UMBRALES_3Q, ...umbrales };
   const cliente = nombre ? ` de ${nombre}` : "";
   const encendidas = new Map(campanas.filter((c) => String(c.status ?? "").toUpperCase() === "ACTIVE").map((c) => [String(c.id), c]));
@@ -750,19 +1082,26 @@ export function alertasGraves({ campanas = [], anuncios = [], semana = [], numer
     const como = String(a.effective_status).toUpperCase() === "DISAPPROVED" ? "rechazó" : "marca con problemas";
     salida.push({ clave: `rechazado:${a.id}`, tipo: "rechazado", texto: `Meta ${como} el anuncio «${a.name ?? a.id}» de «${c.name ?? c.id}»${cliente}: el motivo está en el Ads Manager.` });
   }
-  if (Number(numero) > 0) {
-    const web = destino === "web";
-    for (const f of semana) {
-      const c = encendidas.get(String(f.campaign_id ?? ""));
-      if (!c || !OBJETIVOS_CON_CONVERSACION.has(objetivoODAX(c.objective))) continue;
-      const gasto = num(f.spend);
-      const hechas = web ? primeraDe(f.actions, TIPOS_COMPRA) : accion(f.actions, ACCION_MENSAJE);
-      if (gasto >= u.gastoParaApagar * Number(numero) && !hechas) {
-        salida.push({
-          clave: `sin-resultado:${c.id}`, tipo: "sin-resultado",
-          texto: `«${c.name ?? c.id}»${cliente} gastó ${formatoMoneda(gasto, moneda)} en 7 días sin una ${web ? "compra" : "conversación"} (el número mágico es ${formatoMoneda(numero, moneda)}).`,
-        });
-      }
+  const web = destino === "web";
+  for (const f of semana) {
+    const c = encendidas.get(String(f.campaign_id ?? ""));
+    if (!c) continue;
+    const odax = objetivoODAX(c.objective);
+    // Qué resultado busca esta campaña (y con qué número se juzga).
+    const que = odax === "OUTCOME_LEADS" ? "cliente"
+      : odax === "OUTCOME_SALES" ? (web ? "compra" : "conversacion")
+        : odax === "OUTCOME_ENGAGEMENT" && !web ? "conversacion" : "";
+    if (!que) continue;
+    const ref = Number(numeros?.[que]?.valor) > 0 ? Number(numeros[que].valor) : Number(numeros?.conversacion?.valor) > 0 && que === "cliente" ? Number(numeros.conversacion.valor) : Number(numero);
+    if (!(ref > 0)) continue;
+    const gasto = num(f.spend);
+    const hechas = que === "compra" ? primeraDe(f.actions, TIPOS_COMPRA) : que === "cliente" ? primeraDe(f.actions, TIPOS_CLIENTE) : accion(f.actions, ACCION_MENSAJE);
+    if (gasto >= u.gastoParaApagar * ref && !hechas) {
+      const un = que === "compra" ? "una compra" : que === "cliente" ? "un cliente potencial" : "una conversación";
+      salida.push({
+        clave: `sin-resultado:${c.id}`, tipo: "sin-resultado",
+        texto: `«${c.name ?? c.id}»${cliente} gastó ${formatoMoneda(gasto, moneda)} en 7 días sin ${un} (el número mágico es ${formatoMoneda(ref, moneda)}).`,
+      });
     }
   }
   return salida;
@@ -837,9 +1176,10 @@ export function textoDeRevision(r, { max = 7000 } = {}) {
   const q = r.q1Cuenta;
   const lineas = [
     `Revisión 3Q de las campañas de ${r.cliente?.nombre ?? "el cliente"} (cuenta ${r.cuenta?.nombre || r.cuenta?.externoId || "—"}, ${moneda}). Sólo lectura de lo que corre en el Ads Manager.`,
-    q?.objetivo || q?.equilibrio
-      ? `Número mágico: ${q.metrica.toLowerCase()} ${q.objetivo ? `${d(q.objetivo)} (objetivo)` : "sin objetivo"}${q.equilibrio ? `, equilibrio ${d(q.equilibrio)}` : ""}${r.numero?.tasaCierre ? `; tasa de cierre ${coma(r.numero.tasaCierre)} %` : ""}.`
-      : "Sin números del negocio: cada campaña se compara con su propio mes. Se ponen en Marca → Números del negocio.",
+    q?.valor
+      ? `Número mágico (el mismo para todas las etapas): ${q.metrica.toLowerCase()} ${d(q.valor)}${q.objetivo ? ` (objetivo ${d(q.objetivo)})` : ""}${q.equilibrio ? `, equilibrio ${d(q.equilibrio)}` : ""}${q.roasEquilibrio ? `, ROAS de equilibrio ${coma(q.roasEquilibrio)}` : ""}${r.numero?.tasaCierre ? `; tasa de cierre ${coma(r.numero.tasaCierre)} %` : ""}${r.numero?.de ? `, ${r.numero.de}` : ""}.`
+      : `Sin número mágico: no se sabe si lo que cuesta es caro y NO se pausa nada por costo.${r.numero?.falta?.length ? ` ${r.numero.falta.map((f) => f.texto).join(" ")}` : ""} Se completa en Marca → Números del negocio.`,
+    r.resumen?.frase ?? "",
     q ? `Lo real (${q.metrica.toLowerCase()}): ${VENTANAS.map((w) => `${w} días ${d(q.ventanas[w].gasto)} · ${q.ventanas[w][q.resultado] ?? 0} ${q.resultado}${q.ventanas[w].real != null ? ` · ${d(q.ventanas[w].real)} c/u` : ""}`).join("; ")}.` : "",
   ];
   if (!r.campanas?.length) lineas.push("No tiene campañas activas.");
@@ -848,8 +1188,8 @@ export function textoDeRevision(r, { max = 7000 } = {}) {
     lineas.push(
       "",
       `· «${c.nombre}» · ${c.nombreEtapa ? `${c.nombreEtapa}${c.etapaDe === "manual" ? " (escogida a mano)" : ""}` : "sin etapa"} · ${c.nombreObjetivo}${c.cbo ? " · presupuesto de campaña" : ""}`,
-      `  ${c.veredicto.nombre} — ${c.veredicto.motivo}`,
-      c7 ? `  7 días: ${d(c7.gasto)} · ${c7.resultados ?? 0} ${c.nombreResultado}${c7.costoPorResultado ? ` · ${d(c7.costoPorResultado)} c/u` : ""}${c.referencia?.ref ? ` (aguanta ${d(c.referencia.ref)})` : ""}` : "",
+      `  ${c.semaforo?.texto ? `${c.semaforo.texto} · ` : ""}${c.veredicto.nombre} — ${c.veredicto.motivo}`,
+      c7 ? `  7 días: ${d(c7.gasto)} · ${c7.resultados ?? 0} ${c.nombreResultado}${c7.costoPorResultado ? ` · ${d(c7.costoPorResultado)} c/u` : ""}${c.referencia?.ref ? ` (número mágico ${d(c.referencia.ref)})` : ""}` : "",
     );
     const q2 = c.q2?.metricas ?? [];
     if (q2.length) lineas.push(`  Q2: ${q2.map((m) => lineaQ2(m, moneda)).join("; ")}`);
@@ -886,12 +1226,17 @@ export function pedidoRevisionIA({ marca, revision }) {
  * el CTR único y el costo por conversación (o por compra) real frente al número mágico. `fila`: el total del mes de
  * /insights; `numeros`: { conversacion, compra }. null si la fila no trae lo nuevo. Pura.
  */
-export function agenciaDelInforme(fila, { numeros = null, destino = "", umbrales = UMBRALES_3Q } = {}) {
+export function agenciaDelInforme(fila, { numeros = null, destino = "", umbrales = UMBRALES_3Q, campanas = null } = {}) {
   const c = cifras3q(fila);
   if (!c || (c.clicsUnicos == null && c.ctrUnico == null)) return null;
   const u = { ...UMBRALES_3Q, ...umbrales };
   const web = destino === "web";
   const n = web ? numeros?.compra : numeros?.conversacion;
+  // El costo REAL sólo de las campañas que buscan ese resultado (las de mensajes; en la web, las de ventas): `campanas`
+  // ([{ objective, insights }] del mes), si llegan. Sin ellas, la cuenta entera, como antes.
+  const deEsas = Array.isArray(campanas)
+    ? cifras3q(sumarFilas(campanas.filter((x) => (web ? objetivoODAX(x?.objective) === "OUTCOME_SALES" : ["OUTCOME_ENGAGEMENT", "OUTCOME_SALES"].includes(objetivoODAX(x?.objective)))).map((x) => x.insights)))
+    : c;
   return {
     pctMensajes: web ? null : c.pctMensajes,
     ctrUnico: c.ctrUnico,
@@ -899,9 +1244,13 @@ export function agenciaDelInforme(fila, { numeros = null, destino = "", umbrales
     conversaciones: c.conversaciones,
     compras: c.compras,
     metrica: web ? "Costo por compra" : "Costo por conversación",
-    real: web ? c.costoCompra : c.costoConversacion,
+    real: web ? deEsas.costoCompra : deEsas.costoConversacion,
     objetivo: Number(n?.objetivo) > 0 ? r2(n.objetivo) : null,
     equilibrio: Number(n?.equilibrio) > 0 ? r2(n.equilibrio) : null,
+    // EL número mágico (el mismo de la ficha y la revisión) y, en la web, el ROAS frente al de equilibrio.
+    valor: Number(n?.valor) > 0 ? r2(n.valor) : null,
+    roas: web ? deEsas.roas : null,
+    roasEquilibrio: web && Number(n?.roasEquilibrio) > 0 ? r2(n.roasEquilibrio) : null,
     umbrales: { pctMensajes: u.pctMensajes, ctrUnico: u.ctrUnico },
   };
 }

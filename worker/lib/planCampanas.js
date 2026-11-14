@@ -31,6 +31,7 @@ import {
   mesDelPlan, MESES_DE_PIEZAS,
 } from "../../src/lib/planCiclo.js";
 import { limpiarTiposArte } from "../../src/lib/tiposArte.js";
+import { numeroMagicoDelCliente } from "../../src/lib/numerosNegocio.js";
 
 const leerJSON = (t, d) => {
   if (t && typeof t === "object") return t;
@@ -120,7 +121,10 @@ export async function cicloDelCliente(env, acceso, cliente, mes, { cuenta = null
   const plan = conPiezas(base, candidatas, { ofertas: delMes?.offers ?? "", codigo: delMes?.promoCode ?? "", hoy, aprendido });
   const guia = guiaDeMontaje(plan);
   const progreso = limpiarProgreso(guardado.progreso, guia);
-  return { plan, guardado: { ...guardado, progreso }, avance: avanceDeGuia(guia, progreso) };
+  // EL número mágico del cliente (lib/numerosNegocio.js): la MISMA cifra de la ficha, la revisión, el aviso diario y el
+  // estratega, para todas las etapas del plan (decisión del 14-nov).
+  const numeroMagico = numeroMagicoDelCliente(negocio, { tasaDefecto: manual.tasaCierre, nombre: cliente.name ?? "", moneda: cuenta?.moneda || "USD" });
+  return { plan, guardado: { ...guardado, progreso }, avance: avanceDeGuia(guia, progreso), numeroMagico };
 }
 
 /**

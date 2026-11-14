@@ -143,6 +143,8 @@ export async function armarPlan(env, acceso, cliente, datos = {}) {
     margen: margenEscrito ? datos.margen : numeros?.margen ?? datos.margen,
     margenTipo: margenEscrito && datos.margenTipo === "$" ? "$" : "%",
     tasaCierre: datos.tasaCierre || numeros?.tasaCierre || manual.tasaCierre,
+    // Con los números del negocio y nada tecleado encima, EL número mágico del cliente (el mismo de la ficha y la revisión).
+    magico: !margenEscrito && !datos.tasaCierre ? (datos.destino === "web" ? numeros?.magicoWeb : numeros?.magico) ?? null : null,
   });
   const deNumeros = Boolean(numeros && ((!margenEscrito && numeros.margen) || (!datos.tasaCierre && numeros.tasaCierre) || (!datos.precio && !producto.precio && numeros.ticket)));
   const conWeb = datos.conWeb === true;
