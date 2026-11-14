@@ -4,7 +4,9 @@
 //   ?lote=mes&mes=AAAA-MM                            «Producir el mes» del calendario: el lote en «Mes completo».
 //   ?lote=pauta&etapa=…&nivel=…&n=…&producto=…&pide=…  «Producir los anuncios que faltan» del plan de campañas: el
 //                                                    lote de anuncios por niveles con esa etapa del ciclo de ventas;
-//                                                    las piezas llegan al calendario marcadas «Va a pauta».
+//                                                    las piezas llegan al calendario marcadas «Va a pauta». Con
+//                                                    `niveles=inconsciente:2,problema:1` (en vez de nivel y n), varios
+//                                                    niveles: Presentación los reparte por la regla de 100.
 //   ?lote=anuncios&niveles=a,b&etapa=…&pide=…        «Mejorar los ganchos» y «Anuncios nuevos» de la revisión 3Q: los
 //                                                    niveles de la etapa de esa campaña (3 de cada uno) y, con su
 //                                                    etapa, también marcadas «Va a pauta».
@@ -33,10 +35,15 @@ export function loteDeLaDireccion(q) {
   if (lote !== "pauta") return false;
   const nivel = String(q.get("nivel") ?? "").slice(0, 20);
   const n = Math.max(1, Math.min(6, Math.floor(Number(q.get("n")) || 1)));
+  // Varios niveles («inconsciente:2,problema:1»): cada pieza con el suyo.
+  const varios = Object.fromEntries(String(q.get("niveles") ?? "").split(",").map((x) => x.split(":"))
+    .map(([k, v]) => [String(k ?? "").trim().slice(0, 20), Math.max(0, Math.min(6, Math.floor(Number(v) || 0)))])
+    .filter(([k, v]) => k && v > 0).slice(0, 5));
+  const conVarios = Object.keys(varios).length > 0;
   return {
     alcance: "anuncios",
-    pauta: { etapa, ...(nivel ? { nivel } : {}) },
-    cuantas: nivel ? { [nivel]: n } : null,
+    pauta: { etapa, ...(nivel && !conVarios ? { nivel } : {}) },
+    cuantas: conVarios ? varios : nivel ? { [nivel]: n } : null,
     productoId: String(q.get("producto") ?? "").slice(0, 60),
     indicacion: String(q.get("pide") ?? "").slice(0, 400),
   };
@@ -44,11 +51,14 @@ export function loteDeLaDireccion(q) {
 
 /**
  * La dirección del lote de los anuncios que faltan de una campaña del plan: `base` es la de Crear → Galería del
- * cliente (`construirRuta`), `faltan` el de la campaña ({ n, etapa, nivel, productoId }) y `pide` la indicación para
+ * cliente (`construirRuta`), `faltan` el de la campaña ({ n, etapa, nivel, niveles?, productoId }) y `pide` la indicación para
  * toda la tanda (los tipos de arte que tocan y la diversidad). Pura.
  */
-export function direccionDelLote(base, { n = 1, etapa = "", nivel = "", productoId = "" } = {}, pide = "") {
-  const q = new URLSearchParams({ lote: "pauta", etapa, nivel, n: String(n) });
+export function direccionDelLote(base, { n = 1, etapa = "", nivel = "", niveles = null, productoId = "" } = {}, pide = "") {
+  const lista = Object.entries(niveles && typeof niveles === "object" ? niveles : {}).filter(([, v]) => v > 0);
+  const q = lista.length > 1
+    ? new URLSearchParams({ lote: "pauta", etapa, niveles: lista.map(([k, v]) => `${k}:${v}`).join(",") })
+    : new URLSearchParams({ lote: "pauta", etapa, nivel: lista[0]?.[0] ?? nivel, n: String(lista[0]?.[1] ?? n) });
   if (productoId) q.set("producto", productoId);
   if (pide) q.set("pide", String(pide).slice(0, 400));
   return `${base}?${q}`;
