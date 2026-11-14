@@ -298,7 +298,7 @@ export default function PlanCampanas({ clients = [], pulso = 0, yo = {}, onClien
               <div><dt>Cuenta</dt><dd>{CUENTA[plan.cuenta] ?? plan.cuenta}</dd></div>
               <div><dt>Objetivo</dt><dd>{plan.nombreObjetivo}</dd></div>
               <div><dt>Inversión del ciclo</dt><dd>{dinero(plan.inversion)}{plan.inversionDe ? <span className="hint"> · {ORIGEN_INVERSION[plan.inversionDe]}</span> : null}</dd></div>
-              {textoDelTotal(plan) && <div><dt>Total del mes</dt><dd>{textoDelTotal(plan)}</dd></div>}
+              {textoDelTotal(plan) && <div><dt>Total del mes</dt><dd>{textoDelTotal(plan, dinero)}</dd></div>}
               <div><dt>Reparto{plan.repartoAMano ? " (a mano)" : ""}</dt><dd>{plan.reparto.map((r) => `${r.nombre} ${String(r.pct).replace(".", ",")} %`).join(" · ") || "—"}</dd></div>
               <div><dt>Anuncios por conjunto</dt><dd>{plan.anunciosPorConjunto} <span className="hint">(evaluación 4 como mucho, ascensión 3)</span></dd></div>
             </dl>

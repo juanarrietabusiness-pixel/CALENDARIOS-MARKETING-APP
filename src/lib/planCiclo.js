@@ -446,11 +446,11 @@ export function planDelCiclo({
   };
 }
 
-/** El total del mes dicho en una línea: «$1.053: $1.000 del ciclo y $53 de la temporada». Pura. */
-export function textoDelTotal(plan) {
+/** El total del mes dicho en una línea: «$1053 en total: $1000 del ciclo y $53 de la temporada» (`formato`: el de la pantalla). Pura. */
+export function textoDelTotal(plan, formato = null) {
   const t = plan?.total;
   if (!t || !(t.mes > 0)) return "";
-  const d = (n) => dinero(n, plan.moneda);
+  const d = (n) => (formato ? formato(n) : dinero(n, plan.moneda));
   if (t.temporada > 0 && t.ciclo > 0) return `${d(t.mes)} en total: ${d(t.ciclo)} del ciclo y ${d(t.temporada)} de la temporada`;
   return t.temporada > 0 ? `${d(t.mes)} en total, todo de la temporada` : `${d(t.mes)} en total`;
 }
