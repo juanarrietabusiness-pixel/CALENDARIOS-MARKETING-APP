@@ -20,6 +20,7 @@
 
 import { SIN_TEXTO_VIDEO } from "./videoLimpio.js";
 import { lineaDelGuionPost } from "./guionVideo.js";
+import { armarPedidoVideo, limiteDeStoryboard } from "./pedidoVideo.js";
 
 export const MIN_PLANOS = 3;
 export const MAX_PLANOS = 8;
@@ -221,23 +222,29 @@ export function fotogramasParaVideo(fotogramas = [], max = MAX_STORYBOARD) {
 
 /**
  * El pedido del VIDEO: los planos con sus tiempos, el hilo, el sonido y el estilo; con storyboard, que las imágenes
- * de referencia son los fotogramas EN ORDEN. Pura.
+ * de referencia son los fotogramas EN ORDEN. En el orden fijo de pedidoVideo.js (sujeto → acción → luz → sonido) y,
+ * si pasa de lo que puede medir un storyboard de esos planos, recortado al revés: la voz y el formato no se tocan. Pura.
  */
 export function promptDeReel({ planos = [], hilo = "", sonido = "", musica = "", locucion = "", efectos = "", segundos = 10, estilo = "", conStoryboard = false, personajes = "", sinVoz = false }) {
-  return [
-    `Reel vertical 9:16 de ${segundos} segundos, con varios planos y cortes limpios, calidad de anuncio profesional.`,
-    conStoryboard ? "Las imágenes de referencia son el STORYBOARD, en orden: cada una es un plano. Respeta sus personajes, su lugar, su luz y su paleta." : "",
-    SIN_TEXTO_VIDEO,
-    personajes,
-    hilo ? `Lo que comparten todos los planos: ${hilo}` : "",
-    ...planos.map((p) => `${tramo(p)} ${p.escena}${p.camara ? ` Cámara: ${p.camara}.` : ""}`),
-    sonido ? `Sonido: ${sonido}` : "",
-    musica ? `Música de fondo: ${corto(musica, 300)}.` : "",
-    sinVoz ? "Sin voz ni diálogo: sólo música y efectos de sonido."
+  return armarPedidoVideo({
+    inicio: [
+      `Reel vertical 9:16 de ${segundos} segundos, con varios planos y cortes limpios, calidad de anuncio profesional.`,
+      conStoryboard ? "Las imágenes de referencia son el STORYBOARD, en orden: cada una es un plano. Respeta sus personajes, su lugar, su luz y su paleta." : "",
+      SIN_TEXTO_VIDEO,
+    ],
+    sujeto: [personajes, hilo ? `Lo que comparten todos los planos: ${hilo}` : ""],
+    // Cada plano con su cámara en la misma línea: así un plano nunca se queda sin su movimiento.
+    accion: planos.map((p) => `${tramo(p)} ${p.escena}${p.camara ? ` Cámara: ${p.camara}.` : ""}`),
+    luz: estilo,
+    sonido: [
+      sonido ? `Sonido: ${sonido}` : "",
+      musica ? `Música de fondo: ${corto(musica, 300)}.` : "",
+      efectos ? `Efectos de sonido: ${corto(efectos, 300)}.` : "",
+    ],
+    fin: sinVoz ? "Sin voz ni diálogo: sólo música y efectos de sonido."
       : locucion ? `Locución en off, en español latino neutro, clara y a tiempo con los planos: «${corto(locucion, 500)}».` : "",
-    efectos ? `Efectos de sonido: ${corto(efectos, 300)}.` : "",
-    estilo,
-  ].filter(Boolean).join("\n").slice(0, 4000);
+    max: limiteDeStoryboard(planos.length),
+  });
 }
 
 /** Los planos repartidos en clips de `porClip` s (por dónde empieza cada plano) → [{ n, desde, hasta, planos }]. Pura. */
