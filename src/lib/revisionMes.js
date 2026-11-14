@@ -7,7 +7,9 @@
 //   · REGLAS que no cuestan nada y salen al instante: un precio que no está
 //     en el catálogo, la competencia nombrada, una promoción en una fecha
 //     delicada, voseo («vení», «tenés»), un texto sin llamado a la acción,
-//     más de 30 hashtags. El voseo se arregla con un botón.
+//     más de 30 hashtags. El voseo se arregla con un botón. Y las del GANCHO
+//     (lib/formasGancho.js): una cifra que no está escrita en el catálogo, el estudio ni la idea, y el gancho de miedo
+//     o sensacionalista. Se dicen; no se reescribe ni se bloquea nada.
 //   · Lo que hace falta para ENVIAR: una publicación sin su contenido
 //     (porque es un reel que se graba, o no se pudo hacer) tiene que llevar
 //     la idea clara en su texto, su guion (o el texto de cada lámina) y una
@@ -25,6 +27,7 @@
 import { faltaParaEnviar } from "./completitud";
 import { cantidadesDe } from "./fidelidad.js";
 import { vaAPauta, revisarPauta, resumenPauta, aplicarArregloPauta } from "./pauta.js";
+import { problemasDelGancho, numerosDe } from "./formasGancho.js";
 
 export { faltaParaEnviar, revisarPauta, resumenPauta, aplicarArregloPauta };
 
@@ -95,15 +98,38 @@ export function aplicarArregloTexto(post, codigo) {
 }
 
 /**
+ * Los números que están ESCRITOS (el catálogo y el estudio de mercado): una cifra del gancho que no está aquí ni en la
+ * idea de su publicación se dice «inventada». Pura.
+ */
+export const numerosPermitidos = ({ catalogo = [], estudio = null } = {}) =>
+  numerosDe(`${JSON.stringify(catalogo ?? [])}\n${typeof estudio === "string" ? estudio : JSON.stringify(estudio ?? {})}`);
+
+/**
+ * Lo que las reglas ven en el GANCHO de una publicación (lib/formasGancho.js): «cifra-gancho» sólo con `permitidos` (sin
+ * catálogo ni estudio cargados no se sabe qué está escrito) y sin repetir lo que ya dijo la regla del precio; «miedo»,
+ * siempre. Pura.
+ */
+export function problemasDeGancho(post, { precios = new Set(), permitidos = null } = {}) {
+  const dichas = precios.size ? new Set(cantidadesDe(textoDe(post)).filter((c) => !precios.has(c))) : new Set();
+  return problemasDelGancho(post, { permitidos: permitidos ?? new Set(), excluir: dichas })
+    .filter((p) => p.codigo !== "cifra-gancho" || permitidos);
+}
+
+/**
  * El mes entero: las publicaciones con algo que mirar → [{ date, post, problemas, falta }], en orden. Pura.
  * @param delicadas  { "2026-11-02": "Día de los Difuntos" } (las fechas delicadas del mes).
+ * @param estudio    El estudio de mercado (objeto o texto): con él (o con un catálogo) se revisan las cifras del gancho.
  */
-export function revisarMes(days = [], { catalogo = [], competidores = [], delicadas = {} } = {}) {
+export function revisarMes(days = [], { catalogo = [], competidores = [], delicadas = {}, estudio } = {}) {
   const precios = cantidadesDelCatalogo(catalogo);
+  const permitidos = estudio !== undefined || (Array.isArray(catalogo) && catalogo.length) ? numerosPermitidos({ catalogo, estudio }) : null;
   const salida = [];
   for (const d of [...(days ?? [])].sort((a, b) => (a.date < b.date ? -1 : 1))) {
     for (const post of d?.posts ?? []) {
-      const problemas = problemasDeTexto(post, { precios, competidores, delicada: delicadas[d.date] ?? null })
+      const problemas = [
+        ...problemasDeTexto(post, { precios, competidores, delicada: delicadas[d.date] ?? null }),
+        ...problemasDeGancho(post, { precios, permitidos }),
+      ]
         // Lo que va a pauta revisa su llamado en la revisión de anuncio (a WhatsApp o a la web, no cualquiera).
         .filter((p) => !(p.codigo === "cta" && vaAPauta(post)));
       const falta = faltaParaEnviar(post);

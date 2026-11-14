@@ -28,6 +28,14 @@
 // `textoDelCliente`) y la estrategia del mes: la que manda la pantalla o, si no la manda, la guardada en el calendario
 // de ese mes (`estrategiaDelCalendario`).
 // Comunes: { formato, semilla?, usados?, composiciones? } (las que funcionan con este cliente).
+//
+// EL GANCHO Y EL ÁNGULO (lib/formasGancho.js, el estudio de mercado): `darForma` escoge además la FORMA del gancho de
+// cada pieza (sin repetir las que el cliente usó en sus últimos meses —se leen en la MISMA consulta que las estructuras
+// de carrusel— y, si hay muestra, prefiriendo las que le rinden: `formasQueRinden`, dos lecturas más y sólo con piezas
+// medidas suficientes) y el ÁNGULO de venta del producto de la casilla (del estudio APROBADO, sin repetir el de la
+// vecina; los de público frío en los niveles fríos). Las formas que piden un dato real sólo salen si el cliente lo tiene
+// (`hayDatos`: un precio en el catálogo o pruebas en el estudio). Y el LENGUAJE DEL CLIENTE (la nota del cerebro con sus
+// frases exactas, `RUTA_LENGUAJE`) va en TODOS los modos, entera hasta MAX_LENGUAJE, si existe y no es interna.
 // Por TANDAS: { desde, tamano } escribe sólo esas piezas del plan (el plan sale igual con la misma semilla), y la
 // pantalla las pide una tras otra pasando lo que ya salió en `usados`. Escribir 30 en una sola llamada daba ideas
 // planas: cada pieza recibía muy poca atención. Sin tanda, todas (como antes).
@@ -58,7 +66,13 @@ import { vozUgcDe } from "../cerebro/vozUgc.js";
 import { lineaDeVozUgc } from "../../../src/lib/ugc.js";
 import { bloqueDeFormulas, formulaUsada, lineaDeFormula } from "../../../src/lib/formulasUgc.js";
 import { leerEstructuras } from "../estructurasGuion.js";
-import { productosActivos, productosParaPlan, lineaDeProducto, notaDeProducto, resumenGeneral, limpiarEstudio } from "../../../src/lib/estudioMercado.js";
+import { productosActivos, productosParaPlan, lineaDeProducto, notaDeProducto, resumenGeneral, limpiarEstudio, angulosDeProducto, lineaDeAngulo } from "../../../src/lib/estudioMercado.js";
+import { RUTA_LENGUAJE, TITULO_LENGUAJE, MAX_LENGUAJE } from "../../../src/lib/lenguajeCliente.js";
+import {
+  formaDe, formasDeCalendarios, piezasConForma, piezasConRinde, aprenderFormas, MIN_SENALES_FORMA, DIAS_MADURAR,
+} from "../../../src/lib/formasGancho.js";
+import { rindesDePropias } from "../../../src/lib/loMejor.js";
+import { CAMPOS_GANCHO, CAMPOS_ANGULO } from "../../../src/lib/camposTexto.js";
 import {
   pedidoDeProduccion, leerProduccion, limpiarCuantas, totalDeCuantas, celdasPorNiveles, celdasMatriz, celdasPorTipos, darForma, estructurasDeCalendarios,
   textoDeIdea, FORMATOS_LOTE, COMPOSICIONES, TACTICAS, estructuraDe, textoDelCliente,
@@ -66,7 +80,7 @@ import {
 import { asignarMatriz, pilarDe, idDePilar } from "../../../src/lib/pilares.js";
 import { diasDelLote, planDelMes, mesDe, textoMes } from "../../../src/lib/loteMes.js";
 import { fechasDelMes } from "../../../src/lib/fechasEspeciales.js";
-import { fechaEnZona } from "../../../src/lib/agenda.js";
+import { fechaEnZona, sumarDias } from "../../../src/lib/agenda.js";
 import { conNotasDelDia, notaDelDia, productoDeNota } from "../../../src/lib/notasSemana.js";
 import { planSemanalDeFila } from "../../../src/lib/planSemanal.js";
 import { CLAVES_NIVEL } from "../../../src/lib/consciencia.js";
@@ -122,6 +136,9 @@ export function limpiarCasillas(lista, activos = [], { formatos = null } = {}) {
       ...(formato === "reel" && c.rostro === true ? { rostro: true } : {}),
       // Va a pauta: su caption se escribe como anuncio (lib/pauta.js). Un directo no se pauta.
       ...(formato !== "live" && limpiarPauta(c.pauta) ? { pauta: limpiarPauta(c.pauta) } : {}),
+      // La forma del gancho y el ángulo que ya tiene (lib/formasGancho.js): se respetan (darForma).
+      ...(formaDe(c.formaGancho) ? { formaGancho: c.formaGancho } : {}),
+      ...(/^[\w-]{1,60}$/.test(String(c.angulo ?? "")) ? { angulo: String(c.angulo) } : {}),
     }];
   });
 }
@@ -151,6 +168,8 @@ export function limpiarParaCampos(lista, activos = []) {
       ...(estructuraDe(o.estructura) ? { estructura: estructuraDe(o.estructura).id } : {}),
       ...(COMPOSICIONES.some((x) => x.id === o.composicion) ? { composicionPost: o.composicion } : {}),
       ...(TACTICAS.some(([x]) => x === o.tactica) ? { tacticaPost: o.tactica } : {}),
+      ...(formaDe(o.formaGancho) ? { formaGancho: o.formaGancho } : {}),
+      ...(/^[\w-]{1,60}$/.test(String(o.angulo ?? "")) ? { angulo: String(o.angulo) } : {}),
       ...(c.rostro ? { duracionUgc: duracionUgc(o.duracionUgc), ...(corto(o.formulaUgc, 80) ? { formulaUgc: corto(o.formulaUgc, 80) } : {}) } : {}),
     }];
   });
@@ -188,16 +207,66 @@ async function composicionesAprendidas(acceso, clientId) {
   }
 }
 /**
- * Las estructuras de carrusel que este cliente ya usó (sus tres últimos meses), para no repetirlas: una consulta, sólo
- * cuando el lote puede llevar carruseles.
+ * Lo que este cliente ya usó en sus últimos meses, en UNA consulta: las estructuras de carrusel (sus tres últimos meses,
+ * para no repetirlas) y las formas de gancho (los cuatro, para no repetirlas y para aprender cuál rinde). Los
+ * calendarios se devuelven también (con su id: la cola los nombra así).
  */
-export async function estructurasRecientes(acceso, clientId) {
+export async function recientesDelCliente(acceso, clientId) {
   try {
-    const filas = await acceso.leerColumnas("calendars", ["days"], { client_id: clientId }, "year desc, month desc", 3);
-    return estructurasDeCalendarios(filas.reverse().map((f) => ({ days: leerJSON(f.days) ?? [] })));
+    const filas = await acceso.leerColumnas("calendars", ["id", "days"], { client_id: clientId }, "year desc, month desc", 4);
+    const calendarios = filas.reverse().map((f) => ({ id: f.id, days: leerJSON(f.days) ?? [] }));
+    return { estructuras: estructurasDeCalendarios(calendarios.slice(-3)), formas: formasDeCalendarios(calendarios), calendarios };
   } catch {
-    return [];
+    return { estructuras: [], formas: [], calendarios: [] };
   }
+}
+
+/** Las estructuras de carrusel que este cliente ya usó (sus tres últimos meses), para no repetirlas. */
+export async function estructurasRecientes(acceso, clientId) {
+  return (await recientesDelCliente(acceso, clientId)).estructuras;
+}
+
+/**
+ * Qué FORMAS DE GANCHO le rinden a este cliente (lib/formasGancho.js `aprenderFormas`): sus publicaciones con forma ya
+ * maduras (DIAS_MADURAR), casadas con la cola PUBLICADA y con el «rinde» de sus métricas (la MISMA cuenta de «Lo mejor»,
+ * `rindesDePropias`, corregida por la muestra). Dos lecturas, y sólo si hay al menos MIN_SENALES_FORMA publicaciones con
+ * forma: hasta entonces (las de antes no la tienen), nada. Null si no hay con qué o falla.
+ */
+export async function formasQueRinden(acceso, clientId, calendarios = [], hoy = fechaEnZona()) {
+  const hasta = sumarDias(hoy, -DIAS_MADURAR);
+  const piezas = piezasConForma(calendarios, { hasta });
+  if (piezas.length < MIN_SENALES_FORMA) return null;
+  try {
+    const [cola, metricas] = await Promise.all([
+      acceso.leerColumnas("publicaciones_programadas", ["calendar_id", "post_id", "red", "estado", "variante", "externo_id"], { client_id: clientId, estado: "publicada" }),
+      acceso.leerColumnas("metricas_publicacion", ["cuenta_id", "red", "externo_id", "publicada_at", "interacciones", "guardados", "compartidos"],
+        { client_id: clientId }, "publicada_at desc", 3000),
+    ]);
+    const rindes = rindesDePropias(metricas);
+    const porExterno = new Map(metricas
+      .filter((f) => String(f.publicada_at ?? "").slice(0, 10) <= hasta)
+      .map((f) => [`${f.red}:${f.externo_id}`, rindes.get(f)?.senal ?? null]));
+    const aprendido = aprenderFormas(piezasConRinde(piezas, { cola, rindes: porExterno }));
+    return aprendido.buenas.length || aprendido.malas.length ? aprendido : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Los ángulos de venta de los productos (del estudio APROBADO), para darForma: { productoId → [{ id, nombre, publico, linea }] }. */
+function angulosDelEstudio(estudio, productos = []) {
+  const fuera = {};
+  for (const p of productos) {
+    const lista = angulosDeProducto(estudio, p.id);
+    if (lista.length) fuera[p.id] = lista.map((a) => ({ id: a.id, nombre: a.nombre, publico: a.publico ?? "", linea: lineaDeAngulo(a) }));
+  }
+  return fuera;
+}
+
+/** ¿Tiene el cliente datos REALES con que abrir un gancho (un precio en el catálogo o pruebas en su estudio)? */
+function hayDatosReales(productos = [], estudio = null) {
+  if (productos.some((p) => String(p?.precio ?? "").trim())) return true;
+  return Object.values(limpiarEstudio(estudio)?.productos ?? {}).some((x) => x?.pruebas?.length || String(x?.elementos?.testimonios ?? "").trim());
 }
 const FECHA = /^\d{4}-\d{2}-\d{2}$/;
 /** Cuántas piezas por llamada como mucho (lo que pide la pantalla es 6). */
@@ -236,10 +305,18 @@ export async function produccionDeLote(env, acceso, cliente, datos = {}) {
   const perfiles = general?.perfiles ?? [];
   // Sin las composiciones aprendidas de la pantalla, se leen de la galería (lo hace también «Planificar mes»).
   if (!Array.isArray(datos.composiciones)) orden = await composicionesAprendidas(acceso, cliente.id);
-  // Los carruseles rotan de estructura sin repetir las últimas de ese tipo (errores, mitos, paso a paso…).
-  const puedeCarrusel = formato === "carrusel" || modo === "mes" || (modo === "plan" && datos.casillas.some((c) => c?.formato === "carrusel"))
-    || (modo === "campos" && datos.publicaciones.some((c) => c?.formato === "carrusel" && !c?.estructura));
-  const estructuras = puedeCarrusel ? await estructurasRecientes(acceso, cliente.id) : [];
+  // Los carruseles rotan de estructura sin repetir las últimas de ese tipo (errores, mitos, paso a paso…), y todas las
+  // piezas de forma de gancho sin repetir las de los últimos meses: las dos salen de la MISMA lectura.
+  const recientes = await recientesDelCliente(acceso, cliente.id);
+  const estructuras = recientes.estructuras;
+  // Lo que más le rinde (sólo con muestra), los ángulos del estudio aprobado y si hay datos reales para las formas que
+  // los piden: todo lo que darForma necesita para el gancho y el ángulo.
+  const forma = {
+    formas: recientes.formas,
+    formasAprendidas: await formasQueRinden(acceso, cliente.id, recientes.calendarios, hoy),
+    angulos: angulosDelEstudio(estudio, productosActivos(catalogo)),
+    hayDatos: hayDatosReales(productosActivos(catalogo), estudio),
+  };
 
   let plan;
   let fechas = [];
@@ -258,7 +335,7 @@ export async function produccionDeLote(env, acceso, cliente, datos = {}) {
         ? "Todos los días que escogiste ya tienen publicación. Para diseñarlas, usa «Diseñar las que ya hay»."
         : "Ese mes no tiene días con tipo de contenido en los días escogidos (revisa el ritmo del cliente).");
     }
-    plan = planDelMes(conNotas, { productos: rotan, deseos, perfiles, semilla: datos.semilla, formato, orden, estructuras });
+    plan = planDelMes(conNotas, { productos: rotan, deseos, perfiles, semilla: datos.semilla, formato, orden, estructuras, ...forma });
   } else if (modo === "plan") {
     // El plan ya viene decidido (formato, tipo, producto, nivel…): la forma de cada pieza la pone darForma.
     const celdas = conNotasDelDia(limpiarCasillas(datos.casillas, productosActivos(catalogo)), notas, rotan);
@@ -273,7 +350,7 @@ export async function produccionDeLote(env, acceso, cliente, datos = {}) {
     // El producto foco de la estrategia del mes pesa la mitad de la rotación.
     const foco = typeof datos.estrategia?.focoId === "string" ? datos.estrategia.focoId : "";
     const conMatriz = asignarMatriz(celdas, { productos: rotan, deseos, perfiles, foco }).map((c) => (c.pilar ? { ...c, tipo: c.pilar } : c));
-    plan = darForma(conMatriz, { productos: rotan, semilla: datos.semilla, formato, orden, estructuras });
+    plan = darForma(conMatriz, { productos: rotan, semilla: datos.semilla, formato, orden, estructuras, ...forma });
   } else if (modo === "campos") {
     // Lo que le falta a publicaciones que ya están en el calendario: la misma forma que el plan (la matriz y darForma
     // completan lo que no traen, para el pedido), y lo que ya traen se respeta: su estructura, su composición y su gancho.
@@ -286,8 +363,16 @@ export async function produccionDeLote(env, acceso, cliente, datos = {}) {
     }
     const foco = typeof datos.estrategia?.focoId === "string" ? datos.estrategia.focoId : "";
     const conMatriz = asignarMatriz(celdas, { productos: rotan, deseos, perfiles, foco }).map((c) => (c.pilar ? { ...c, tipo: c.pilar } : c));
-    plan = darForma(conMatriz, { productos: rotan, semilla: datos.semilla, formato, orden, estructuras })
-      .map(({ composicionPost, tacticaPost, ...r }) => ({ ...r, ...(composicionPost ? { composicion: composicionPost } : {}), ...(tacticaPost ? { tactica: tacticaPost } : {}) }));
+    plan = darForma(conMatriz, { productos: rotan, semilla: datos.semilla, formato, orden, estructuras, ...forma })
+      .map(({ composicionPost, tacticaPost, ...r }) => ({ ...r, ...(composicionPost ? { composicion: composicionPost } : {}), ...(tacticaPost ? { tactica: tacticaPost } : {}) }))
+      // La forma del gancho sólo donde vive el gancho (el titular, el caption, el guion), los 3 ganchos sólo si se pide el
+      // guion de la UGC y el ángulo sólo si se escribe lo que la pieza dice: si no, el pedido lleva líneas que nadie usa.
+      .map(({ formaGancho, formasGanchos, angulo, anguloNombre, anguloLinea, ...r }) => ({
+        ...r,
+        ...(r.campos.some((k) => CAMPOS_GANCHO.includes(k)) ? { formaGancho } : {}),
+        ...(formasGanchos && r.rostro && r.campos.includes("guion") ? { formasGanchos } : {}),
+        ...(angulo && r.campos.some((k) => CAMPOS_ANGULO.includes(k)) ? { angulo, anguloNombre, anguloLinea } : {}),
+      }));
   } else if (modo === "publicacion") {
     // Una sola pieza con lo que la publicación ya decidió (su tipo, producto, nivel, deseo y perfil); lo que falte, lo
     // pone la forma del lote. La fecha especial del día también va.
@@ -319,7 +404,7 @@ export async function produccionDeLote(env, acceso, cliente, datos = {}) {
       const delaNota = delPost ? null : productoDeNota(nota, rotan);
       if (delaNota) { celda.productoId = delaNota.id; celda.producto = delaNota.nombre; }
     }
-    plan = darForma([celda], { productos: delPost ? [delPost, ...rotan.filter((x) => x.id !== delPost.id)] : rotan, semilla: datos.semilla, formato, orden, estructuras });
+    plan = darForma([celda], { productos: delPost ? [delPost, ...rotan.filter((x) => x.id !== delPost.id)] : rotan, semilla: datos.semilla, formato, orden, estructuras, ...forma });
   } else {
     let celdas;
     if (modo === "matriz") {
@@ -342,7 +427,7 @@ export async function produccionDeLote(env, acceso, cliente, datos = {}) {
     }
     // Con un producto escogido, también las piezas frías saben de qué producto es el problema (aunque no salga).
     if (producto) celdas = celdas.map((c) => ({ ...c, productoId: producto.id }));
-    plan = darForma(celdas, { productos: rotan, semilla: datos.semilla, formato, orden, estructuras });
+    plan = darForma(celdas, { productos: rotan, semilla: datos.semilla, formato, orden, estructuras, ...forma });
   }
 
   const total = plan.length;
@@ -384,6 +469,15 @@ export async function produccionDeLote(env, acceso, cliente, datos = {}) {
     if (rubro?.texto && !rubro.interna) contexto = [contexto, `SABER DEL RUBRO (úsalo en el contenido educativo):\n${String(rubro.texto).slice(0, 4000)}`].filter(Boolean).join("\n\n");
     else faltan.push("rubro");
   }
+
+  // El LENGUAJE DEL CLIENTE (lib/lenguajeCliente.js): las frases exactas de sus clientes, en TODOS los modos. Por su ruta
+  // o, si alguien la escribió a mano, por su título (sólo si el cerebro tiene notas). Una nota interna no cuenta.
+  let lenguaje = "";
+  try {
+    let nota = await acceso.leerUno("cerebro_notas", { client_id: cliente.id, ruta: RUTA_LENGUAJE }).catch(() => null);
+    if (!nota && contexto) nota = await leerNotaCerebro(env, acceso, cliente.id, TITULO_LENGUAJE, { para: "texto" }).catch(() => null);
+    if (nota?.texto && !nota.interna) lenguaje = String(nota.texto).slice(0, MAX_LENGUAJE);
+  } catch { /* sin la nota, como siempre */ }
 
   // Las UGC: la voz de ESTA marca en sus videos (nota «Voz UGC») y las estructuras de guion de la agencia, para que la
   // IA escoja ENTRE LAS DE UGC (`para`, lib/formulasUgc.js; las de sólo voz en off no se ofrecen aquí). La que escogió
@@ -429,7 +523,7 @@ export async function produccionDeLote(env, acceso, cliente, datos = {}) {
         perfiles: Object.fromEntries(perfiles.map((p) => [p.nombre, lineaDePerfil(p)])),
         fechasEspeciales: fechas.map((f) => `${f.fecha} · ${f.nombre}${f.delicada ? " (delicada: sin promociones)" : ""}`),
         usados: (Array.isArray(datos.usados) ? datos.usados : []).map((t) => String(t ?? "").slice(0, 80)).filter(Boolean).slice(0, 30),
-        estrategia, falta: lineaDeLoQueFalta(faltan), ugc, cliente: textoDelCliente(cliente), pauta: bloquePauta({ conCampo: false }),
+        estrategia, falta: lineaDeLoQueFalta(faltan), ugc, cliente: textoDelCliente(cliente), pauta: bloquePauta({ conCampo: false }), lenguaje,
       }),
       salida,
       funcion: pidenGuion ? "guiones" : plan.length === 1 ? "publicación" : "descripciones",
@@ -456,17 +550,20 @@ export async function produccionDeLote(env, acceso, cliente, datos = {}) {
       identidad: identidadParaFichas(cliente, plan, await manualDelEspacio(acceso).catch(() => null)),
       cliente: textoDelCliente(cliente),
       pauta: bloquePauta({ conCampo: true, enJson: true }),
+      lenguaje,
     }),
     // Las de una imagen escriben además su ficha de diseño (unas 350 palabras más cada una); las que van a pauta, sus
     // textos de anuncio.
-    salida: plan.reduce((t, r) => t + (FORMATOS_LOTE[r.formato ?? formato]?.guiado ? 850 : 950) + (r.pauta ? 650 : 0), 0) + 800,
+    // Y por qué funciona su gancho (`porque`, una línea) y, en una UGC, sus 3 ganchos.
+    salida: plan.reduce((t, r) => t + (FORMATOS_LOTE[r.formato ?? formato]?.guiado ? 850 : 950) + (r.pauta ? 650 : 0) + 60 + (r.rostro ? 120 : 0), 0) + 800,
     funcion: modo === "mes" || modo === "plan" ? "lote del mes" : modo === "publicacion" ? "publicación" : "ideas de anuncios",
   });
   const nombres = new Map(rotan.map((p) => [p.id, p.nombre]));
   // Lo que va a pauta: sus textos de anuncio (vienen en la misma respuesta) y 3 hashtags como mucho.
   const anuncios = enPauta.length ? anunciosDeRespuesta(r.texto, { destino: negocio?.destino ?? "" }) : new Map();
   const ideas = leerProduccion(r.texto, plan, formato)
-    .map(({ lineaPauta: _l, ...i }) => (i.pauta
+    // Lo que sólo era para el pedido (la línea de la pauta, la del ángulo, las formas de los 3 ganchos) no vuelve.
+    .map(({ lineaPauta: _l, anguloLinea: _a, formasGanchos: _f, ...i }) => (i.pauta
       ? { ...i, ...(i.hashtags ? { hashtags: recortarHashtags(i.hashtags) } : {}), ...(anuncios.get(i.n) ? { anuncio: anuncios.get(i.n) } : {}) }
       : i))
     .map((i) => (i.productoId ? { ...i, producto: nombres.get(i.productoId) ?? i.producto ?? "" } : i))

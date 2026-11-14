@@ -127,7 +127,7 @@ export default function VistaMes({
     const delicadas = Object.fromEntries(
       fechasDelMes(cal.year, cal.month, client?.fechasEspeciales).filter((f) => f.delicada).map((f) => [f.fecha, f.nombre]),
     );
-    return new Map(revisarMes(cal.days, { catalogo: mercado?.catalogo ?? [], competidores, delicadas }).map((x) => [x.post.id, x.problemas]));
+    return new Map(revisarMes(cal.days, { catalogo: mercado?.catalogo ?? [], competidores, delicadas, ...(mercado ? { estudio: mercado.estudio ?? mercado.borrador ?? null } : {}) }).map((x) => [x.post.id, x.problemas]));
   }, [cal.days, cal.year, cal.month, client?.fechasEspeciales, mercado]);
   const detalles = useMemo(() => feed.map((f) => ({
     ...f,
