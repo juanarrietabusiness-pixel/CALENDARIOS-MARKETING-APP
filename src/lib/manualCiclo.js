@@ -58,3 +58,16 @@ export function errorDelCiclo(m) {
   if (!(entero(m?.reparto?.presentacion ?? REPARTO_POR_DEFECTO.presentacion) > 0)) return "Presentación necesita algo del presupuesto: es la que trae gente nueva.";
   return "";
 }
+
+/**
+ * El reparto de UN cliente: el suyo a mano si lo tiene y es válido (suma 100), si no el del Manual (el estándar).
+ * `propio` llega de `anuncios_clientes.reparto` (texto JSON u objeto). Devuelve { reparto, aMano }. Pura.
+ */
+export function repartoDelCliente(manualReparto, propio) {
+  let p = propio;
+  if (typeof p === "string") { try { p = JSON.parse(p); } catch { p = null; } }
+  if (p && typeof p === "object" && sumaDelReparto(p) === 100 && entero(p.presentacion) > 0) {
+    return { reparto: limpiarReparto(p), aMano: true };
+  }
+  return { reparto: limpiarReparto(manualReparto), aMano: false };
+}
