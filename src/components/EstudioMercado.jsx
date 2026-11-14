@@ -874,7 +874,7 @@ function DetrasDeLaCompra({ general: g, editable, set }) {
   );
 }
 
-function RevisionGeneral({ general: g, editable, onEditar }) {
+export function RevisionGeneral({ general: g, editable, onEditar }) {
   const ids = useId();
   const set = (ruta) => (v) => onEditar((b) => { ruta(b.general, v); return b; });
   return (
@@ -1036,7 +1036,7 @@ function AngulosDeProducto({ angulos, editable, onCambio, proponer, proponiendo 
   );
 }
 
-function RevisionProducto({ id, estudio: e, producto, client, lectura = false, editable, onEditar, onProponerAngulos = null, proponiendo = false }) {
+export function RevisionProducto({ id, estudio: e, producto, client, lectura = false, editable, onEditar, onProponerAngulos = null, proponiendo = false }) {
   const set = (ruta) => (v) => onEditar((b) => { ruta(b.productos[id], v); return b; });
   const extras = EXTRAS_MERCADO.filter((x) => e.extra?.[x.clave]);
   return (
