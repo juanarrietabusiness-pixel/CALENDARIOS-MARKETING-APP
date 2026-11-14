@@ -499,7 +499,76 @@ export function limpiarDeProducto(d, { nombre = "" } = {}) {
     },
     faltan: lista(d.faltan, 8),
     fuentes: (Array.isArray(d.fuentes) ? d.fuentes : []).map(enlaceValido).filter(Boolean).slice(0, 10),
+    ...(limpiarAngulos(d.angulos).length ? { angulos: limpiarAngulos(d.angulos) } : {}),
   };
+}
+
+// ------------------------------------------------------------
+// Los ÁNGULOS DE VENTA de un producto (investigación del curso, con palabras propias)
+//
+// Un ángulo es UNA forma de contar por qué comprar: un problema concreto, cómo se siente, cómo lo resuelve el
+// producto y lo que lo distingue, con la objeción y la creencia falsa que hay que desarmar. Un producto lleva de 3 a
+// 5, distintos entre sí, para probarlos en anuncios y contenido y aprender cuál vende. Viven en
+// `estudio.productos[id].angulos` (un estudio de antes no los trae: lista vacía). La garantía, SÓLO la real.
+// ------------------------------------------------------------
+
+export const MAX_ANGULOS = 5;
+
+/** Los campos de un ángulo, en orden (la pantalla y la nota del cerebro los enseñan así). */
+export const CAMPOS_ANGULO = Object.freeze([
+  { clave: "problemaExterno", nombre: "Problema (lo que se ve)", max: 300 },
+  { clave: "dolor", nombre: "Lo que siente (el problema por dentro)", max: 300 },
+  { clave: "solucion", nombre: "Cómo lo resuelve", max: 300 },
+  { clave: "diferencial", nombre: "Lo que lo distingue", max: 300 },
+  { clave: "garantia", nombre: "Garantía o prueba (sólo la real)", max: 300 },
+  { clave: "objecion", nombre: "La objeción que hay que responder", max: 300 },
+  { clave: "falsaCreencia", nombre: "La creencia falsa (el mito)", max: 300 },
+]);
+
+/** A quién le habla mejor un ángulo: a quien no conoce la marca (frío) o a quien ya interactuó (tibio). */
+export const PUBLICOS_ANGULO = Object.freeze(["frio", "tibio"]);
+
+/**
+ * Los ángulos de un producto, limpios: nombre obligatorio, id estable (el slug del nombre, sin repetir), los campos
+ * de `CAMPOS_ANGULO`, hasta 5 ganchos y `publico` («frio», «tibio» o vacío). Lo que no es, fuera. Pura.
+ */
+export function limpiarAngulos(entrada) {
+  const vistos = new Set();
+  const salida = [];
+  for (const a of Array.isArray(entrada) ? entrada : []) {
+    if (!a || typeof a !== "object") continue;
+    const nombre = corto(a.nombre, 80);
+    if (!nombre) continue;
+    let id = /^[\w-]{1,60}$/.test(String(a.id ?? "")) ? String(a.id) : slugProducto(nombre) || "angulo";
+    for (let n = 2; vistos.has(id); n++) id = `${slugProducto(nombre) || "angulo"}-${n}`;
+    vistos.add(id);
+    const angulo = { id, nombre };
+    for (const c of CAMPOS_ANGULO) {
+      const t = corto(a[c.clave], c.max);
+      if (t) angulo[c.clave] = t;
+    }
+    angulo.ganchos = lista(a.ganchos, 5, 220);
+    if (PUBLICOS_ANGULO.includes(a.publico)) angulo.publico = a.publico;
+    salida.push(angulo);
+    if (salida.length >= MAX_ANGULOS) break;
+  }
+  return salida;
+}
+
+/** Los ángulos de un producto del estudio (aprobado o borrador), o []. Pura. */
+export const angulosDeProducto = (estudio, productoId) =>
+  limpiarAngulos(estudio?.productos?.[productoId]?.angulos);
+
+/** El ángulo por su id dentro de un producto, o null. Pura. */
+export const anguloDe = (estudio, productoId, anguloId) =>
+  angulosDeProducto(estudio, productoId).find((a) => a.id === anguloId) ?? null;
+
+/** Un ángulo en una línea (lo que lee la IA que escribe con él). Pura. */
+export function lineaDeAngulo(angulo) {
+  const a = limpiarAngulos([angulo])[0];
+  if (!a) return "";
+  const partes = CAMPOS_ANGULO.filter((c) => a[c.clave]).map((c) => `${c.nombre.toLowerCase()}: ${a[c.clave]}`);
+  return `«${a.nombre}»${partes.length ? ` — ${partes.join("; ")}` : ""}`;
 }
 
 /** La respuesta de la IA → el estudio de un producto. Null si no se puede leer. Pura. */
