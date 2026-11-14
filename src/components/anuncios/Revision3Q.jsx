@@ -29,6 +29,11 @@ import Semaforo from "./Semaforo";
 // nuevos» abren el lote de anuncios del Estudio con el nivel de su etapa y lo que se pide; lo demás, al Ads Manager.
 // Al cliente no se le enseña nada de esto.
 //
+// LO QUE SE VE DÍA A DÍA (src/lib/alertas3q.js, debajo del resumen): el ritmo de gasto frente al plan del mes, el destino
+// que falla, el CPM fuera de lo normal, el anuncio que se cansa y el formato que se lleva casi todo, cada una con su
+// semáforo, por qué, qué hacer y dónde. Las cifras de 7 días se comparan con los 7 anteriores, y con pocos resultados
+// lo que pide un cambio fuerte se dice como pista.
+//
 // Cerrar el ciclo (entrega 7, worker/lib/enPauta.js): cada anuncio dice qué publicación del calendario es (o que es un
 // anuncio nuevo, subido aparte), y debajo va «Para pautar» (ParaPautar.jsx, en su chunk): lo orgánico que rindió y no
 // se ha pautado, y lo que se aprende de lo que ya corrió.
@@ -65,8 +70,8 @@ function MetricasQ2({ q2, moneda }) {
   );
 }
 
-/** Las ventanas de 30, 14 y 7 días, lado a lado. */
-function TablaVentanas({ ventanas, nombreResultado = "resultados", moneda, titulo }) {
+/** Las ventanas de 30, 14 y 7 días, lado a lado (y, si se sabe, los 7 días ANTERIORES a los últimos 7). */
+function TablaVentanas({ ventanas, nombreResultado = "resultados", moneda, titulo, anterior = null }) {
   const d = (n) => (n == null ? "—" : formatoMoneda(n, moneda));
   const p = (n) => (n == null ? "—" : `${coma(n)} %`);
   const filas = [
@@ -83,11 +88,11 @@ function TablaVentanas({ ventanas, nombreResultado = "resultados", moneda, titul
       <table className="r3q-tabla">
         <caption className="sr-only">{titulo}</caption>
         <thead>
-          <tr><th scope="col">Métrica</th>{VENTANAS.map((w) => <th key={w} scope="col">{w} días</th>)}</tr>
+          <tr><th scope="col">Métrica</th>{VENTANAS.map((w) => <th key={w} scope="col">{w} días</th>)}{anterior && <th scope="col">7 días antes</th>}</tr>
         </thead>
         <tbody>
           {filas.map(([nombre, valor]) => (
-            <tr key={nombre}><th scope="row">{nombre}</th>{VENTANAS.map((w) => <td key={w}>{valor(ventanas?.[w])}</td>)}</tr>
+            <tr key={nombre}><th scope="row">{nombre}</th>{VENTANAS.map((w) => <td key={w}>{valor(ventanas?.[w])}</td>)}{anterior && <td>{valor(anterior)}</td>}</tr>
           ))}
         </tbody>
       </table>
@@ -116,6 +121,8 @@ function QueHacer({ x }) {
         </>
       )}
       {s.donde && <p className="r3q-donde"><Icon name="external" size={14} /> <span>{s.donde}</span></p>}
+      {s.ojo && <p className="hint r3q-ojo"><Icon name="info" size={14} /> {s.ojo}</p>}
+      {s.ojo && <QueEs termino="pocosDatos" />}
       {v.desglose && <QueEs termino="desglose" />}
       {v.id === "espera" && <QueEs termino="aprendizaje" />}
     </div>
@@ -260,7 +267,9 @@ function Campana({ c, ctx }) {
       <details className="r3q-tecnico">
         <summary>Ver las cifras de la campaña (30, 14 y 7 días)</summary>
         <p className="hint">Lo que toca según el método: {c.veredicto.nombre}. {TEXTO_EXIGENCIA}</p>
-        <TablaVentanas ventanas={c.ventanas} nombreResultado={c.nombreResultado} moneda={ctx.moneda} titulo={`«${c.nombre}» en 30, 14 y 7 días`} />
+        <TablaVentanas ventanas={c.ventanas} anterior={c.anterior7} nombreResultado={c.nombreResultado} moneda={ctx.moneda} titulo={`«${c.nombre}» en 30, 14 y 7 días`} />
+        {c.semana && <p className="hint">{c.semana}</p>}
+        {c.anterior7 && <QueEs termino="semanaAnterior" />}
         <MetricasQ2 q2={c.q2} moneda={ctx.moneda} />
       </details>
       {(c.conjuntos.length > 0 || c.anuncios.length > 0) && (
@@ -291,12 +300,54 @@ function Resumen({ d }) {
     <section className="r3q-tarjeta r3q-resumen" aria-labelledby="r3q-resumen">
       <h2 id="r3q-resumen" className="r3q-titulo"><Icon name="clipboardCheck" size={18} /> Cómo van las campañas</h2>
       <p className="r3q-frase">{d.resumen?.frase}</p>
+      {d.resumen?.avisoPocos && <p className="hint r3q-ojo"><Icon name="info" size={14} /> {d.resumen.avisoPocos}</p>}
       {d.campanas.length > 0 && (
         <ul className="r3q-conteo" aria-label="Campañas por color">
           {Object.entries(SEMAFOROS).filter(([id]) => por[id]).map(([id, s]) => (
             <li key={id}><Semaforo s={s} /> <strong>{por[id]}</strong></li>
           ))}
         </ul>
+      )}
+    </section>
+  );
+}
+
+/**
+ * Lo que se ve DÍA A DÍA (src/lib/alertas3q.js): cada alerta con su semáforo con texto, por qué en una frase, qué hacer
+ * y dónde en el Ads Manager, y su «¿Qué es…?».
+ */
+function AlertasDelDia({ d }) {
+  const lista = d.alertasDia ?? [];
+  if (!lista.length && !d.avisoDia) return null;
+  return (
+    <section className="r3q-tarjeta" aria-labelledby="r3q-dia">
+      <h2 id="r3q-dia" className="r3q-titulo"><Icon name="calendar" size={18} /> Lo que se ve día a día</h2>
+      {d.avisoDia && <p className="hint">{d.avisoDia}</p>}
+      {lista.length > 0 && (
+        <ul className="r3q-elementos">
+          {lista.map((a) => (
+            <li key={a.id} className="r3q-elemento" data-tono={a.semaforo?.tono}>
+              <div className="r3q-elemento-cabeza">
+                <h3 className="r3q-alerta-titulo">{a.titulo}</h3>
+                <Semaforo s={a.semaforo} />
+              </div>
+              <div className="r3q-que-hacer">
+                {a.porque && <p className="r3q-porque"><strong>Por qué:</strong> {a.porque}</p>}
+                {a.pasos?.length > 0 && (
+                  <>
+                    <p className="r3q-que"><strong>Qué hacer:</strong></p>
+                    <ol className="r3q-pasos">{a.pasos.map((p, i) => <li key={i}>{p}</li>)}</ol>
+                  </>
+                )}
+                {a.donde && <p className="r3q-donde"><Icon name="external" size={14} /> <span>{a.donde}</span></p>}
+                {a.termino && <QueEs termino={a.termino} />}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+      {d.presupuestoMes?.total > 0 && (
+        <p className="hint">El ritmo se mide contra el plan del mes: {formatoMoneda(d.presupuestoMes.total, d.cuenta?.moneda)}{d.presupuestoMes.temporada > 0 ? `, con ${formatoMoneda(d.presupuestoMes.temporada, d.cuenta?.moneda)} de la temporada` : ""}.</p>
       )}
     </section>
   );
@@ -544,6 +595,7 @@ export default function Revision3Q({ client, esAdmin = false, soloLectura = fals
           {d.explicacion && <p className="r3q-explicacion">{d.explicacion}</p>}
           {d.avisoIA && <p className="hint">Sin explicación de la IA: {d.avisoIA}</p>}
           <Resumen d={d} />
+          <AlertasDelDia d={d} />
           <div className="r3q-arriba">
             <NumeroMagico d={d} irANegocio={irANegocio} />
             <Ventas v={ventas} roasEquilibrio={d.numero?.roasEquilibrio} irANegocio={irANegocio} />

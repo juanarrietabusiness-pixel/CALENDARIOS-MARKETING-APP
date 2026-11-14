@@ -916,7 +916,55 @@ export function semaforoDe(x, nivel, { moneda = "USD", conjunto = "" } = {}) {
     default:
       pasos = ["Espera a que gaste un poco más para juzgarlo."];
   }
-  return { id, texto: s.texto, tono: s.tono, porque: v.motivo ?? "", pasos, donde };
+  // Con pocos resultados, lo que pide un cambio fuerte se dice como pista, no como sentencia.
+  const res = x?.ventanas?.[30]?.resultados ?? x?.ventanas?.[14]?.resultados ?? null;
+  const ojo = FUERTES.has(v.id) && res !== null && res < POCOS_RESULTADOS
+    ? `Todavía hay pocos datos para concluir (${res} ${res === 1 ? "resultado" : "resultados"} en 30 días; hacen falta unos ${POCOS_RESULTADOS}): tómalo como una pista y vuelve a mirarlo en unos días.`
+    : "";
+  return { id, texto: s.texto, tono: s.tono, porque: v.motivo ?? "", pasos, donde, ...(ojo ? { ojo } : {}) };
+}
+
+/** Con menos resultados que esto (en 30 días) no se concluye fuerte: la pantalla lo dice. */
+export const POCOS_RESULTADOS = 50;
+/** Los veredictos que piden un cambio fuerte (apagar, subir, duplicar, cambiar). */
+const FUERTES = new Set(["apagar", "escalar", "duplicar", "mejorar"]);
+
+/**
+ * Los 7 días ANTERIORES a los últimos 7 (lo de 14 días menos lo de 7): el periodo de la misma duración con el que se
+ * compara la semana. → { gasto, impresiones, clics, resultados, costoPorResultado, cpm, ctr } o null sin nada. Pura.
+ */
+export function semanaAnterior(c14, c7) {
+  if (!c14 || !c7) return null;
+  const gasto = r2(Math.max(0, num(c14.gasto) - num(c7.gasto)));
+  const impresiones = Math.max(0, num(c14.impresiones) - num(c7.impresiones));
+  const clics = Math.max(0, num(c14.clics) - num(c7.clics));
+  const resultados = Math.max(0, num(c14.resultados) - num(c7.resultados));
+  if (!(gasto > 0) && !impresiones) return null;
+  return {
+    gasto, impresiones, clics, resultados,
+    costoPorResultado: resultados ? r2(gasto / resultados) : null,
+    cpm: impresiones ? r2((gasto / impresiones) * 1000) : null,
+    ctr: impresiones ? r2((clics / impresiones) * 100) : null,
+  };
+}
+
+/**
+ * La semana frente a la anterior en una frase («El costo por resultado subió un 32 % frente a los 7 días anteriores
+ * (de $2 a $2,64)»): sólo lo que se movió más de un 15 %. `nombreResultado`: «conversación»… Pura.
+ */
+export function fraseDeLaSemana(c7, ant, { moneda = "USD", nombreResultado = "resultado" } = {}) {
+  if (!c7 || !ant) return "";
+  const d = (n) => formatoMoneda(n, moneda);
+  const cambio = (a, b) => (b > 0 && a !== null && a !== undefined ? ((a - b) / b) * 100 : null);
+  const partes = [];
+  const costo = cambio(c7.costoPorResultado, ant.costoPorResultado);
+  if (costo !== null && Math.abs(costo) >= 15) partes.push(`el costo por ${nombreResultado} ${costo > 0 ? "subió" : "bajó"} un ${Math.round(Math.abs(costo))} % (de ${d(ant.costoPorResultado)} a ${d(c7.costoPorResultado)})`);
+  const res = cambio(c7.resultados, ant.resultados);
+  if (res !== null && Math.abs(res) >= 15) partes.push(`${res > 0 ? "llegaron más" : "llegaron menos"} resultados (${c7.resultados ?? 0} frente a ${ant.resultados})`);
+  const gasto = cambio(c7.gasto, ant.gasto);
+  if (gasto !== null && Math.abs(gasto) >= 15) partes.push(`se gastó un ${Math.round(Math.abs(gasto))} % ${gasto > 0 ? "más" : "menos"}`);
+  if (!partes.length) return "Frente a los 7 días anteriores, va parecido.";
+  return `Frente a los 7 días anteriores: ${partes.join("; ")}.`;
 }
 
 const PEOR_SEMAFORO = (a, b) => (SEMAFOROS[a].orden <= SEMAFOROS[b].orden ? a : b);
@@ -924,13 +972,21 @@ const PEOR_SEMAFORO = (a, b) => (SEMAFOROS[a].orden <= SEMAFOROS[b].orden ? a : 
 /** Los semáforos de una campaña ya revisada: el suyo y el de cada conjunto y anuncio; el de la campaña, el peor de todos. */
 function conSemaforos(c, moneda) {
   const nombreConjunto = new Map((c.conjuntos ?? []).map((s) => [String(s.id), s.nombre]));
-  const conjuntos = (c.conjuntos ?? []).map((s) => ({ ...s, semaforo: semaforoDe(s, "conjunto", { moneda }) }));
-  const anuncios = (c.anuncios ?? []).map((a) => ({ ...a, semaforo: semaforoDe(a, "anuncio", { moneda, conjunto: nombreConjunto.get(String(a.conjuntoId)) ?? "" }) }));
+  // La semana anterior (para comparar con la misma duración) y si hay datos para concluir.
+  const conSemana = (x) => {
+    const ant = semanaAnterior(x.ventanas?.[14], x.ventanas?.[7]);
+    const res = x.ventanas?.[30]?.resultados ?? null;
+    return { ...x, anterior7: ant, muestra: { resultados: res, pocos: res === null || res < POCOS_RESULTADOS } };
+  };
+  const conjuntos = (c.conjuntos ?? []).map((s) => ({ ...conSemana(s), semaforo: semaforoDe(s, "conjunto", { moneda }) }));
+  const anuncios = (c.anuncios ?? []).map((a) => ({ ...conSemana(a), semaforo: semaforoDe(a, "anuncio", { moneda, conjunto: nombreConjunto.get(String(a.conjuntoId)) ?? "" }) }));
   const propio = semaforoDe(c, "campana", { moneda });
   let peor = propio.id;
   for (const x of [...conjuntos, ...anuncios]) if (!x.veredicto?.heredado) peor = PEOR_SEMAFORO(peor, x.semaforo.id);
-  return { ...c, semaforo: propio, semaforoTotal: peor, conjuntos, anuncios };
+  const yo = conSemana(c);
+  return { ...yo, semana: fraseDeLaSemana(c.ventanas?.[7], yo.anterior7, { moneda, nombreResultado: singularResultado(c.nombreResultado) }), semaforo: propio, semaforoTotal: peor, conjuntos, anuncios };
 }
+const singularResultado = (n) => ({ conversaciones: "conversación", compras: "compra", "clientes potenciales": "cliente potencial", clics: "clic" }[String(n ?? "").toLowerCase()] ?? "resultado");
 
 const plural = (n, uno, varios) => `${n} ${n === 1 ? uno : varios}`;
 
@@ -987,7 +1043,16 @@ export function revisar(campanas = [], opciones = {}) {
       if (VEREDICTOS[x.veredicto.id].tono === "mal") pendientes++;
     }
   }
-  return { umbrales: u, campanas: lista, resumen: { campanas: lista.length, porVeredicto, pendientes, porSemaforo, frase: fraseDelResumen(lista) } };
+  // Pocos resultados en toda la cuenta (30 días): nada se concluye fuerte, y la pantalla lo dice arriba.
+  const resultados = lista.reduce((s, c) => s + (c.ventanas?.[30]?.resultados ?? 0), 0);
+  const pocosDatos = lista.length > 0 && resultados < POCOS_RESULTADOS;
+  return {
+    umbrales: u, campanas: lista,
+    resumen: {
+      campanas: lista.length, porVeredicto, pendientes, porSemaforo, frase: fraseDelResumen(lista), resultados,
+      pocosDatos, ...(pocosDatos ? { avisoPocos: `Todavía hay pocos datos para concluir: ${resultados} ${resultados === 1 ? "resultado" : "resultados"} en 30 días en toda la cuenta (hacen falta unos ${POCOS_RESULTADOS}). Lo de abajo son pistas; los cambios grandes, mejor cuando haya más.` } : {}),
+    },
+  };
 }
 
 // ------------------------------------------------------------
@@ -1180,6 +1245,9 @@ export function textoDeRevision(r, { max = 7000 } = {}) {
       ? `Número mágico (el mismo para todas las etapas): ${q.metrica.toLowerCase()} ${d(q.valor)}${q.objetivo ? ` (objetivo ${d(q.objetivo)})` : ""}${q.equilibrio ? `, equilibrio ${d(q.equilibrio)}` : ""}${q.roasEquilibrio ? `, ROAS de equilibrio ${coma(q.roasEquilibrio)}` : ""}${r.numero?.tasaCierre ? `; tasa de cierre ${coma(r.numero.tasaCierre)} %` : ""}${r.numero?.de ? `, ${r.numero.de}` : ""}.`
       : `Sin número mágico: no se sabe si lo que cuesta es caro y NO se pausa nada por costo.${r.numero?.falta?.length ? ` ${r.numero.falta.map((f) => f.texto).join(" ")}` : ""} Se completa en Marca → Números del negocio.`,
     r.resumen?.frase ?? "",
+    r.resumen?.avisoPocos ?? "",
+    // Lo que se ve día a día (src/lib/alertas3q.js), lo que no está sano.
+    ...(r.alertasDia ?? []).filter((a) => a.semaforo?.id !== "sana").slice(0, 6).map((a) => `Día a día · ${a.semaforo?.texto ?? ""} · ${a.titulo}: ${a.porque}`),
     q ? `Lo real (${q.metrica.toLowerCase()}): ${VENTANAS.map((w) => `${w} días ${d(q.ventanas[w].gasto)} · ${q.ventanas[w][q.resultado] ?? 0} ${q.resultado}${q.ventanas[w].real != null ? ` · ${d(q.ventanas[w].real)} c/u` : ""}`).join("; ")}.` : "",
   ];
   if (!r.campanas?.length) lineas.push("No tiene campañas activas.");
@@ -1190,6 +1258,7 @@ export function textoDeRevision(r, { max = 7000 } = {}) {
       `· «${c.nombre}» · ${c.nombreEtapa ? `${c.nombreEtapa}${c.etapaDe === "manual" ? " (escogida a mano)" : ""}` : "sin etapa"} · ${c.nombreObjetivo}${c.cbo ? " · presupuesto de campaña" : ""}`,
       `  ${c.semaforo?.texto ? `${c.semaforo.texto} · ` : ""}${c.veredicto.nombre} — ${c.veredicto.motivo}`,
       c7 ? `  7 días: ${d(c7.gasto)} · ${c7.resultados ?? 0} ${c.nombreResultado}${c7.costoPorResultado ? ` · ${d(c7.costoPorResultado)} c/u` : ""}${c.referencia?.ref ? ` (número mágico ${d(c.referencia.ref)})` : ""}` : "",
+      c.semana ? `  ${c.semana}` : "",
     );
     const q2 = c.q2?.metricas ?? [];
     if (q2.length) lineas.push(`  Q2: ${q2.map((m) => lineaQ2(m, moneda)).join("; ")}`);
