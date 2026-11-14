@@ -90,7 +90,8 @@ export default function RevisionMes({ client, cal, onAbrir, onArreglar, onClose,
     const delicadas = Object.fromEntries(
       fechasDelMes(cal.year, cal.month, client?.fechasEspeciales).filter((f) => f.delicada).map((f) => [f.fecha, f.nombre]),
     );
-    return revisarMes(cal.days, { catalogo: mercado?.catalogo ?? [], competidores, delicadas });
+    // Con el estudio de mercado, las cifras del gancho se comparan también con lo que dice el estudio.
+    return revisarMes(cal.days, { catalogo: mercado?.catalogo ?? [], competidores, delicadas, ...(mercado ? { estudio: mercado.estudio ?? mercado.borrador ?? null } : {}) });
   }, [cal.days, cal.year, cal.month, client?.fechasEspeciales, mercado]);
 
   const todas = useMemo(

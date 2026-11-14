@@ -156,9 +156,10 @@ describe("modo «campos»: lo que le falta a una publicación ya en el calendari
     ] });
     expect(res.status).toBe(200);
     const r = await res.json();
+    // Cada una vuelve además con la forma de gancho con que se escribió (lib/formasGancho.js): la publicación la recuerda.
     expect(r.textos).toEqual([
-      { clave: "p1", n: 1, campos: { descripcion: "¿Llegan visitas? Escríbenos.", hashtags: "#Dcasa #sofacama #panama" } },
-      { clave: "p2", n: 2, campos: { guion: "Portada: 3 errores\nSlide 1: …\nCTA: Escríbenos" } },
+      { clave: "p1", n: 1, campos: { descripcion: "¿Llegan visitas? Escríbenos.", hashtags: "#Dcasa #sofacama #panama" }, formaGancho: expect.any(String) },
+      { clave: "p2", n: 2, campos: { guion: "Portada: 3 errores\nSlide 1: …\nCTA: Escríbenos" }, formaGancho: expect.any(String) },
     ]);
     const t = textoDe(peticiones[0]);
     expect(t).toMatch(/YA ESCRITO \(manda[^)]*\):\n {5}título: «Visitas»\n {5}idea: «Resuelve dónde duermen las visitas»\n {5}texto en la pieza: «¿Llegan visitas\?»/);

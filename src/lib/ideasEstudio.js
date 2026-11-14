@@ -38,7 +38,7 @@ export function planDeIdeas({ n = IDEAS_POR_DEFECTO, tipo = "", productos = [], 
   const s = Math.abs(Math.floor(Number(semilla) || 0));
   const tipos = pilar(tipo) ? [tipo] : PILARES.map((p) => p.id);
   const celdas = Array.from({ length: total }, (_, i) => ({ tipo: tipos[(s + i) % tipos.length] }));
-  return darForma(celdas, { productos, semilla: s }).map(({ conProducto: _c, plantilla: _p, fondo: _f, ...r }) => r);
+  return darForma(celdas, { productos, semilla: s }).map(({ conProducto: _c, plantilla: _p, fondo: _f, formaGancho: _g, ...r }) => r);
 }
 
 /**

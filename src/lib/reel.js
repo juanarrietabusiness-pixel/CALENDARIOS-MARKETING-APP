@@ -81,7 +81,7 @@ export const sinVozPropia = (modelo) => /^(seedance|wan)/.test(String(modelo?.id
 const corto = (t, n) => String(t ?? "").replace(/\s+/g, " ").trim().slice(0, n);
 
 /** Lo que se le pide a la IA para el guion por planos. Pura. */
-export function pedidoDeReel({ marca = "la marca", rubro = "", idea = "", segundos = 10, tipo = "", estilo = "", producto = "", personajes = [], identidad = "", contexto = "", musica = "", locucion = "", estructura = "", criterio = "", guionPost = "", montaje = false, estructuraGuion = "", campoEstructura = false, planos: pedidos = 0, lexico = "" }) {
+export function pedidoDeReel({ marca = "la marca", rubro = "", idea = "", segundos = 10, tipo = "", estilo = "", producto = "", personajes = [], identidad = "", contexto = "", musica = "", locucion = "", estructura = "", criterio = "", guionPost = "", montaje = false, estructuraGuion = "", campoEstructura = false, planos: pedidos = 0, lexico = "", ganchoVisual = "" }) {
   const clips = Math.ceil(segundos / SEGUNDOS_POR_CLIP);
   const nPlanos = planosPedidos(segundos, pedidos);
   return [
@@ -110,6 +110,8 @@ export function pedidoDeReel({ marca = "la marca", rubro = "", idea = "", segund
     // El producto «malo» no se puede confundir con el que se vende.
     `Si un plano enseña un producto «malo» (el de la competencia, el que causa el problema, lo de antes), es SIEMPRE genérico e inconfundible: de otro color, sin logo ni nada de la marca de ${marca}. Dilo también en «hilo».`,
     lexico ? String(lexico).trim() : "",
+    // El gancho VISUAL del primer segundo (lib/formasGancho.js): una sugerencia que escoge el código, no una orden.
+    ganchoVisual ? `El primer plano (lo que detiene el scroll en el primer segundo), una sugerencia: ${corto(ganchoVisual, 300)}. Úsala si encaja con la idea; si no, otra igual de clara.` : "",
     !montaje && soloFlow(segundos) ? `Es un video LARGO que se hará en ${clips} clips de ${SEGUNDOS_POR_CLIP} s que se pegan uno tras otro: ningún plano cruza un múltiplo de ${SEGUNDOS_POR_CLIP} s (cada clip empieza en un plano nuevo), cada clip termina en un momento que enlaza con el siguiente, el gancho va en el primero y el cierre con el llamado en el último. Los personajes, la ropa, el lugar y la luz son los MISMOS en todos.` : "",
     "",
     `Reglas: ${nPlanos} planos que sumen ${segundos} s exactos, contiguos desde 0. El primero detiene el scroll (gancho); el del medio muestra el producto o el resultado; el último cierra con el producto o el resultado y deja ganas de escribir (el logo y el llamado no los dibuja el modelo de video: los modelos los deforman). El video va LIMPIO: ningún plano lleva texto, letras ni subtítulos en pantalla. Nada de reseñas, cifras ni urgencias inventadas. La locución (voz en off) dura lo que el video: como mucho ${Math.floor(segundos * PALABRAS_POR_SEGUNDO)} palabras, en español latino neutro, o vacía si el reel va sólo con música.`,

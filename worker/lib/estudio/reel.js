@@ -17,6 +17,7 @@ import { pedidoDeReel, leerReel } from "../../../src/lib/reel.js";
 import { lineaDeLexico, aplicarLexicoAlReel } from "../../../src/lib/lexico.js";
 import { DURACIONES_OBJETIVO } from "../../../src/lib/duracionesVideo.js";
 import { contextoDeGuion } from "./guionVideo.js";
+import { ganchoVisualPara, lineaDeGanchoVisual, semillaDeTexto } from "../../../src/lib/formasGancho.js";
 import { estructuraDeVoz, usadaEn, ErrorEstructura } from "../estructurasGuion.js";
 
 /** Las duraciones que se escriben (las de siempre y las de la tabla por ruta). */
@@ -80,6 +81,9 @@ export async function guionDeReel(env, acceso, cliente, datos = {}) {
       estructuraGuion: eleccion.texto, campoEstructura: !eleccion.elegida && Boolean(eleccion.texto),
       // Cuántos planos (por defecto, pocos: menos clips que pagar) y el léxico de la marca.
       planos: Number(datos.planos) || 0, lexico: lineaDeLexico(kit.lexico),
+      // El gancho visual del primer segundo, escogido por el código (la misma idea, la misma sugerencia), sólo si nada
+      // dice ya cómo empieza: un anuncio que se sigue o el guion que ya tiene la publicación.
+      ganchoVisual: estructura || ctx.guionPost ? "" : lineaDeGanchoVisual(ganchoVisualPara({ semilla: semillaDeTexto(idea), conProducto: Boolean(ctx.producto) })),
     }),
     salida: segundos > 10 ? 2400 + segundos * 140 : 2600,
     funcion: "guion de video",
