@@ -256,12 +256,15 @@ export function objetivo(x, opciones = {}) {
  * cuenta nueva arranca con presentación y evaluación (decisión 3): el mismo peso entre las dos (75/25). El plan de
  * campañas puede cambiarlo; esto es la cuenta de partida. Pura.
  */
-export function repartoPorEtapas(inversion, { cuenta = "" } = {}) {
+export function repartoPorEtapas(inversion, { cuenta = "", reparto = null } = {}) {
   const total = numero(inversion);
   if (!(total > 0)) return [];
+  // El del cliente (`repartoDelCliente` de lib/manualCiclo.js: a mano o el del Manual), el mismo que usan el plan de
+  // campañas y el Excel; sin él, el de la casa.
+  const pct = (e) => (esObjeto(reparto) && Number.isFinite(Number(reparto[e.id])) ? Math.max(0, Number(reparto[e.id])) : e.reparto);
   const etapas = cuenta === "nueva" ? ETAPAS_CICLO.filter((e) => e.id === "presentacion" || e.id === "evaluacion") : ETAPAS_CICLO;
-  const suma = etapas.reduce((s, e) => s + e.reparto, 0);
-  return etapas.map((e) => ({ id: e.id, nombre: e.nombre, pct: (e.reparto / suma) * 100, monto: (total * e.reparto) / suma }));
+  const suma = etapas.reduce((s, e) => s + pct(e), 0) || 1;
+  return etapas.map((e) => ({ id: e.id, nombre: e.nombre, pct: (pct(e) / suma) * 100, monto: (total * pct(e)) / suma }));
 }
 
 // ------------------------------------------------------------
@@ -290,8 +293,11 @@ function base(x, opciones = {}) {
   const plataforma = v.modo === "plataforma";
   const otros = plataforma ? Math.max(0, v.otrosCanales) : 0;
   const aporteOtros = otros * mg.m;
-  // El presupuesto: el escrito (o el leído de Meta); si no, la inversión que pide la meta del mes.
-  let presupuesto = v.presupuesto;
+  // El presupuesto (decisión de la agencia, 14-nov): el ESCRITO del cliente; si no, la inversión que pide la meta del
+  // mes. Lo gastado en Meta es sólo una referencia que se enseña: un presupuesto con origen «meta» (las fichas de antes
+  // lo guardaban así) no entra en la cuenta. Así la ficha, la revisión, el plan y el aviso diario dan la MISMA cifra.
+  const escrito = v.negocio.presupuesto && v.negocio.presupuesto.origen !== "meta" ? v.presupuesto : null;
+  let presupuesto = escrito;
   let presupuestoDe = presupuesto > 0 ? "negocio" : null;
   if (Number.isFinite(numero(opciones.presupuesto)) && numero(opciones.presupuesto) > 0) {
     presupuesto = numero(opciones.presupuesto);
@@ -302,9 +308,14 @@ function base(x, opciones = {}) {
   }
   const spend = presupuesto > 0 ? presupuesto : 0;
   const fijos = Math.max(0, v.fijos);
-  const valido = mg.valido && spend > 0;
-  const piso = mg.valido ? 1 / mg.m : null;
-  const total = valido ? (fijos + spend - aporteOtros) / (spend * mg.m) : null;
+  // Sin costos no hay margen que repartir: deeplook no da equilibrio sin ellos, y con un margen del 100 % inventado
+  // la revisión juzgaría contra una cifra que no existe (hallazgo 4 del 14-nov).
+  const sinCostos = !v.negocio.costos.length;
+  // Sin costos fijos el equilibrio no depende del presupuesto (se cancela): basta con el margen.
+  const sinFijos = fijos === 0 && !(aporteOtros > 0);
+  const valido = mg.valido && !sinCostos && (spend > 0 || sinFijos);
+  const piso = mg.valido && !sinCostos ? 1 / mg.m : null;
+  const total = valido ? (spend > 0 ? (fijos + spend - aporteOtros) / (spend * mg.m) : piso) : null;
   // Si los otros canales ya pagan los fijos, el total cae bajo el piso: ahí manda el piso (apagar la pauta saldría mejor).
   const pisoManda = valido && total < piso;
   const roas = valido ? (pisoManda ? piso : total) : null;
@@ -312,7 +323,10 @@ function base(x, opciones = {}) {
   const cierre = Math.min(1, Math.max(0, v.tasaCierre / 100));
   const cac = roas > 0 && aov > 0 ? aov / roas : null;
   const utilidad = (r, s = spend) => aporteOtros + r * s * mg.m - fijos - s;
-  return { v, mg, plataforma, otros, aporteOtros, spend, presupuestoDe, fijos, valido, piso, roas, aov, cierre, cac, pisoManda, utilidad };
+  // Las tablas y los escenarios necesitan un presupuesto de verdad (sus columnas salen de él).
+  const conPresupuesto = valido && spend > 0;
+  if (!presupuestoDe && valido) presupuestoDe = "sin-fijos";
+  return { v, mg, plataforma, otros, aporteOtros, spend, presupuestoDe, fijos, valido, conPresupuesto, sinCostos, piso, roas, aov, cierre, cac, pisoManda, utilidad };
 }
 
 /**
@@ -324,15 +338,15 @@ function base(x, opciones = {}) {
 export function equilibrio(x, opciones = {}) {
   const b = base(x, opciones);
   const faltan = [
-    (!b.mg.valido || !b.v.negocio.costos.length) && "costos",
-    !(b.spend > 0) && "presupuesto",
+    (!b.mg.valido || b.sinCostos) && "costos",
+    !(b.spend > 0) && !b.valido && "presupuesto",
     !(b.aov > 0) && "ticket",
   ].filter(Boolean);
   return {
     modo: b.v.modo,
     costosVariables: b.mg.costosVariables,
     margenBruto: b.mg.margenBruto,
-    margenEfectivo: b.mg.valido ? b.mg.m * 100 : null,
+    margenEfectivo: b.mg.valido && !b.sinCostos ? b.mg.m * 100 : null,
     piso: b.piso,
     roas: b.roas,
     cac: b.cac,
@@ -346,6 +360,7 @@ export function equilibrio(x, opciones = {}) {
     // La cuenta es la misma; sólo se avisa: la pauta carga sola todos los fijos (el caso más exigente).
     cargaTodosLosFijos: b.plataforma && b.fijos > 0 && !(b.v.otrosCanales > 0),
     sinMargen: b.mg.costosVariables >= 100,
+    sinCostos: b.sinCostos,
     faltan,
   };
 }
@@ -354,7 +369,7 @@ export function equilibrio(x, opciones = {}) {
 export function utilidadA(x, roas, opciones = {}) {
   const b = base(x, opciones);
   const r = numero(roas);
-  if (!b.valido || !Number.isFinite(r)) return null;
+  if (!b.conPresupuesto || !Number.isFinite(r)) return null;
   return b.utilidad(r);
 }
 
@@ -372,7 +387,7 @@ export function roasDeCosto(x, costo, opciones = {}) {
 export function aUnRoas(x, roas, opciones = {}) {
   const b = base(x, opciones);
   const t = numero(roas);
-  if (!b.valido || !(t > 0)) return null;
+  if (!b.conPresupuesto || !(t > 0)) return null;
   const clientes = b.aov > 0 ? (t * b.spend) / b.aov : null;
   const cac = b.aov > 0 ? b.aov / t : null;
   return {
@@ -408,7 +423,7 @@ function marcarCercana(filas, meta, lo, hi) {
  */
 export function tablaUtilidad(x, opciones = {}) {
   const b = base(x, opciones);
-  if (!b.valido) return null;
+  if (!b.conPresupuesto) return null;
   const columnas = Array.from({ length: 10 }, (_, k) => ({ presupuesto: b.spend * 2.5 ** ((k - 4) / 4), actual: k === 4 }));
   const celdas = (r) => columnas.map((c) => b.utilidad(r, c.presupuesto));
   const eje = opciones.eje ?? (b.v.destino === "web" ? "roas" : "costo");
@@ -502,6 +517,8 @@ export function numeroMagico(x, opciones = {}) {
     nota,
     faltan: [...new Set([...o.faltan, ...e.faltan])],
     tasaCierre: o.tasaCierre,
+    // EL número mágico (el mismo de la revisión, el plan y el estratega) para este tipo de campaña; null en «local».
+    magico: id === "local" ? null : numeroMagicoDelCliente(n, { ...opciones, objetivoCampana: id }),
   };
 }
 
@@ -510,14 +527,196 @@ export function numeroMagico(x, opciones = {}) {
  * WhatsApp, el costo por conversación objetivo. Sin objetivo, el de equilibrio. null si no se puede calcular. Pura.
  */
 export function costoAceptable(x, opciones = {}) {
+  const m = numeroMagicoDelCliente(x, opciones);
+  if (!(m.valor > 0)) return null;
+  return { valor: m.valor, metrica: m.nombreMetrica, de: m.limitadoPor };
+}
+
+// ------------------------------------------------------------
+// EL número mágico del cliente: UNA función para todas las pantallas
+// ------------------------------------------------------------
+
+/**
+ * Las métricas del número mágico: el curso da una por TIPO de campaña (mensajes, tráfico, clientes potenciales, ventas
+ * en la web), nunca por etapa (decisión de la agencia, 14-nov: el mismo número para las cuatro etapas).
+ */
+export const METRICAS_MAGICO = Object.freeze({
+  conversacion: { nombre: "Costo por conversación", resultado: "conversación", resultados: "conversaciones" },
+  cliente_potencial: { nombre: "Costo por cliente potencial", resultado: "cliente potencial", resultados: "clientes potenciales" },
+  compra: { nombre: "Costo por compra", resultado: "compra", resultados: "compras" },
+  clic: { nombre: "Costo por clic único en el enlace", resultado: "clic único", resultados: "clics únicos" },
+});
+
+/** Qué falta para el número mágico, dicho para quien lo arregla (la pantalla pone el botón a la ficha). */
+export const QUE_FALTA_MAGICO = Object.freeze({
+  costos: "Falta el costo del producto (lo que cuesta producir o comprar lo que se vende) para saber cuánto puedes pagar.",
+  "confirmar-costos": "Los costos los estimó la IA y nadie los confirmó: confírmalos antes de juzgar las campañas con ellos.",
+  ticket: "Falta el ticket promedio: cuánto deja de media cada venta.",
+  presupuesto: "Faltan el presupuesto de pauta del mes o la meta de ventas: con costos fijos, el equilibrio depende de cuánto se invierte.",
+  sinMargen: "Los costos se comen toda la venta: con esos números ningún anuncio puede ser rentable.",
+  pctMensajes: "Falta saber cuántos clics acaban en un resultado (el % de mensajes de Meta) para el número de tráfico.",
+});
+
+/** Dinero legible sin arrastrar lib/anuncios.js. Pura. */
+export function dineroCorto(n, moneda = "USD") {
+  if (n == null || !Number.isFinite(Number(n))) return "—";
+  try {
+    return new Intl.NumberFormat("es", { style: "currency", currency: moneda || "USD", maximumFractionDigits: 2 }).format(Number(n));
+  } catch {
+    return `${Number(n).toFixed(2)} ${moneda}`;
+  }
+}
+const pctLegible = (v, d = 1) => `${String(redondear(v, d)).replace(".", ",")} %`;
+const numLegible = (v, d = 2) => String(redondear(v, d)).replace(".", ",");
+
+/**
+ * EL NÚMERO MÁGICO de un cliente: cuánto puede pagar por un resultado. Lo usan la ficha de los números del negocio, la
+ * revisión 3Q (la del cliente y el aviso diario del cron), el informe de anuncios (lo de la agencia), el plan de
+ * campañas y el estratega: TODOS con esta función, para que la cifra sea la misma en cada pantalla.
+ *
+ * La regla (curso, «Cómo nunca perder dinero»: el número mágico es lo que se está dispuesto a pagar; el equilibrio, la
+ * alarma de a partir de dónde se pierde):
+ *   · el OBJETIVO: ticket × % de la venta que se invierte (× la tasa de cierre en mensajes y clientes potenciales);
+ *   · el EQUILIBRIO de deeplook (con costos, ITBMS, devoluciones y los fijos repartidos en el presupuesto);
+ *   · el número mágico es el menor de los dos (sin objetivo, el equilibrio). Sin costos confirmados NO hay: se dice qué
+ *     falta, nunca se juzga contra una cifra inventada.
+ *   · el presupuesto: el escrito del cliente; si no, la inversión que pide la meta del mes. Lo gastado en Meta en 30
+ *     días (`gastoMeta30`) sólo se enseña como referencia: no entra en la cuenta.
+ *
+ * `destino`: «whatsapp» o «web» (si no, el del negocio); `objetivoCampana`: «mensajes», «clientes», «trafico» o
+ * «ventas» (si no, el del destino); `lectura`: lo de Meta en 30 días (sólo para el % de clic a resultado del número de
+ * tráfico); `tasaDefecto`: la del Manual; `nombre` y `moneda`, para las frases. Pura.
+ *
+ * → { valor, metrica: "conversacion"|"compra"|"cliente_potencial"|"clic", nombreMetrica, resultado, resultados,
+ *     objetivo, equilibrio, limitadoPor: "objetivo"|"equilibrio"|"", roasObjetivo, roasEquilibrio, alarma,
+ *     textoAlarma, presupuesto, presupuestoDe: "escrito"|"meta-ventas"|"sin-fijos"|null, gastoMeta30, tasaCierre,
+ *     destino, de, falta: [{ id, texto }], explicacion: [frases con los números del cliente], palancas: [...] }
+ */
+export function numeroMagicoDelCliente(x, { gastoMeta30 = null, destino = "", objetivoCampana = "", tasaDefecto, lectura = null, nombre = "", moneda = "USD" } = {}) {
   const n = limpiarNegocio(x);
-  const o = objetivo(n, opciones);
-  const e = equilibrio(n, opciones);
-  const web = n.destino === "web";
-  const valor = web ? o.costoCompra ?? e.cac : o.costoConversacion ?? e.costoConversacion;
-  if (!(valor > 0)) return null;
-  const deObjetivo = web ? o.costoCompra !== null : o.costoConversacion !== null;
-  return { valor: redondear(valor), metrica: web ? "Costo por compra" : "Costo por conversación", de: deObjetivo ? "objetivo" : "equilibrio" };
+  const dest = destino === "web" || destino === "whatsapp" ? destino : n.destino === "web" ? "web" : "whatsapp";
+  const idObj = OBJETIVO_CAMPANA[objetivoCampana] ? objetivoCampana : objetivoCampanaDe(dest);
+  const metrica = idObj === "ventas" ? "compra" : idObj === "clientes" ? "cliente_potencial" : idObj === "trafico" ? "clic" : "conversacion";
+  const v = valoresDe(n, { tasaDefecto });
+  const o = objetivo(n, { tasaDefecto });
+  const e = equilibrio(n, { tasaDefecto });
+  const mg = margenes(v);
+  const falta = [];
+  const poner = (id) => { if (!falta.some((f) => f.id === id)) falta.push({ id, texto: QUE_FALTA_MAGICO[id] }); };
+  if (!n.costos.length) poner("costos");
+  else if (!n.costos.some((c) => c.origen !== "estimado")) poner("confirmar-costos");
+  else if (!mg.valido) poner("sinMargen");
+  if (!(v.ticket > 0)) poner("ticket");
+  if (n.costos.length && e.faltan.includes("presupuesto")) poner("presupuesto");
+  const bloqueado = falta.length > 0;
+  const web = metrica === "compra" || (metrica === "clic" && dest === "web");
+  let obj = web ? o.costoCompra : o.costoConversacion;
+  let eq = web ? e.cac : e.costoConversacion;
+  if (metrica === "clic") {
+    // Tráfico (curso: «costo por clic único en el enlace»): el clic vale lo que vale el resultado por la parte de los
+    // clics que acaban en él (en WhatsApp, el % de mensajes; en la web, visitas × compras).
+    const l = esObjeto(lectura) ? lectura : null;
+    const paso = web
+      ? (l?.pctVisitas > 0 && l?.pctCompras > 0 ? (l.pctVisitas / 100) * (l.pctCompras / 100) : null)
+      : (l?.pctMensajes > 0 ? l.pctMensajes / 100 : null);
+    if (paso) { obj = obj !== null ? obj * paso : null; eq = eq !== null ? eq * paso : null; } else { obj = null; eq = null; poner("pctMensajes"); }
+  }
+  if (bloqueado) { obj = null; eq = null; }
+  let valor = null;
+  let limitadoPor = "";
+  if (obj > 0 && eq > 0) { valor = Math.min(obj, eq); limitadoPor = obj <= eq ? "objetivo" : "equilibrio"; }
+  else if (eq > 0) { valor = eq; limitadoPor = "equilibrio"; }
+  const alarma = obj > 0 && eq > 0 && obj > eq;
+  const presupuestoDe = e.presupuestoDe === "negocio" ? "escrito" : e.presupuestoDe === "objetivo" ? "meta-ventas" : e.presupuestoDe === "sin-fijos" ? "sin-fijos" : null;
+  const d = (k) => dineroCorto(k, moneda);
+  const def = METRICAS_MAGICO[metrica];
+  const tasa = v.tasaCierre;
+  const conTasa = !web;
+  const porQue = metrica === "cliente_potencial" ? "cliente potencial" : "conversación";
+  // Lo que se le explica a la persona, con SUS números (la fórmula paso a paso).
+  const explicacion = [];
+  if (v.ticket > 0 && n.costos.length && mg.valido) {
+    explicacion.push(`Cada venta deja de media ${d(v.ticket)}. Después de los costos (${pctLegible(mg.costosVariables)}), el ITBMS (${pctLegible(v.itbms, 0)}) y las devoluciones (${pctLegible(v.devoluciones)}) te quedan ${d(v.ticket * mg.m)} por venta.`);
+  }
+  if (o.costoCompra > 0) explicacion.push(`Decidiste invertir el ${pctLegible(v.invertir)} de cada venta en conseguirla: ${d(o.costoCompra)} por venta.`);
+  if (conTasa && o.costoConversacion > 0) {
+    explicacion.push(`Si cierras ${numLegible(tasa, 1)} de cada 100 ${porQue === "conversación" ? "conversaciones" : "clientes potenciales"}, puedes pagar ${d(o.costoConversacion)} por cada ${porQue} (${d(o.costoCompra)} × ${pctLegible(tasa)}).`);
+  }
+  if (!bloqueado && e.roas > 0) {
+    const fijosTxt = v.fijos > 0 && e.presupuesto ? ` con tus costos fijos (${d(v.fijos)} al mes) repartidos en ${presupuestoDe === "escrito" ? "el presupuesto de" : "la inversión que pide la meta,"} ${d(e.presupuesto)}` : "";
+    const eqTxt = web ? `${d(e.cac)} por venta (tienes que vender ${numLegible(e.roas)} veces lo que inviertes)` : d(e.costoConversacion);
+    explicacion.push(`Para no perder dinero${fijosTxt}, cada ${web ? "venta" : porQue} puede costar como mucho ${eqTxt}.`);
+  }
+  if (metrica === "clic" && valor > 0) explicacion.push(`En una campaña de tráfico eso es ${d(valor)} por clic único en el enlace (sólo una parte de los clics acaban en ${web ? "compra" : "conversación"}).`);
+  if (valor > 0) {
+    explicacion.push(limitadoPor === "objetivo"
+      ? `Tu número mágico es ${d(valor)} por ${def.resultado}: lo que decidiste invertir, dentro del límite.`
+      : alarma
+        ? `Lo que decidiste invertir pasa del límite: tu número mágico baja a ${d(valor)} por ${def.resultado} (el equilibrio). Baja el % a invertir o mejora el margen.`
+        : `Tu número mágico es ${d(valor)} por ${def.resultado}: el límite para no perder dinero (no hay % a invertir escrito).`);
+  }
+  const de = valor > 0
+    ? `con los números del negocio${nombre ? ` de ${nombre}` : ""}${presupuestoDe === "escrito" ? " y su presupuesto escrito" : presupuestoDe === "meta-ventas" ? " y la inversión que pide su meta de ventas" : ""}`
+    : "";
+  return {
+    valor: valor > 0 ? redondear(valor) : null,
+    metrica, nombreMetrica: def.nombre, resultado: def.resultado, resultados: def.resultados,
+    objetivo: obj > 0 ? redondear(obj) : null,
+    equilibrio: eq > 0 ? redondear(eq) : null,
+    limitadoPor,
+    roasObjetivo: !bloqueado && o.roas > 0 ? redondear(o.roas) : null,
+    roasEquilibrio: !bloqueado && e.roas > 0 ? redondear(e.roas) : null,
+    alarma,
+    textoAlarma: alarma ? "Lo que decidiste invertir por venta pasa del equilibrio: con esa meta se pierde dinero. Baja el % a invertir o mejora el margen." : "",
+    presupuesto: e.presupuesto ?? null,
+    presupuestoDe,
+    gastoMeta30: numero(gastoMeta30) > 0 ? redondear(numero(gastoMeta30)) : null,
+    tasaCierre: tasa,
+    destino: dest,
+    de,
+    falta,
+    explicacion,
+  };
+}
+
+/**
+ * Las 3 PALANCAS para mejorar el equilibrio (curso, «Las 3 palancas»: margen, costos fijos y valor del cliente), con
+ * los números del cliente: cuánto podría costar una venta si se mueve cada una. Sólo con costos y ticket.
+ * → [{ id, titulo, texto }]. Pura.
+ */
+export function palancasDelEquilibrio(x, { tasaDefecto, moneda = "USD" } = {}) {
+  const n = limpiarNegocio(x);
+  const v = valoresDe(n, { tasaDefecto });
+  const e = equilibrio(n, { tasaDefecto });
+  if (!(e.cac > 0) || !(v.ticket > 0)) return [];
+  const d = (k) => dineroCorto(k, moneda);
+  const salida = [];
+  // Margen: 5 puntos menos en el costo más grande.
+  const mayor = n.costos.reduce((m, c, i) => (c.pct > (n.costos[m]?.pct ?? -1) ? i : m), 0);
+  if (n.costos[mayor]?.pct >= 5) {
+    const e2 = equilibrio({ ...n, costos: n.costos.map((c, i) => (i === mayor ? { ...c, pct: c.pct - 5 } : c)) }, { tasaDefecto });
+    if (e2.cac > 0) salida.push({ id: "margen", titulo: "Margen", texto: `Negociar con proveedores, comprar por volumen o pedir descuentos, sin bajar la calidad. Con 5 puntos menos de «${n.costos[mayor].nombre}», cada venta podría costar hasta ${d(e2.cac)} en vez de ${d(e.cac)}.` });
+  }
+  if (v.fijos > 0) {
+    const e2 = equilibrio({ ...n, fijos: { valor: v.fijos * 0.9, origen: "agencia" } }, { tasaDefecto });
+    if (e2.cac > 0) salida.push({ id: "fijos", titulo: "Costos fijos", texto: `Quitar lo que no hace falta (suscripciones, gastos que nadie usa). Con un 10 % menos de fijos (${d(v.fijos * 0.9)} al mes), cada venta podría costar hasta ${d(e2.cac)}.` });
+  }
+  const e3 = equilibrio({ ...n, ticket: { valor: v.ticket * 1.1, origen: "agencia" } }, { tasaDefecto });
+  if (e3.cac > 0) salida.push({ id: "valor", titulo: "Valor del cliente", texto: `Subir el precio si hace falta, vender complementos o combos, que vuelvan a comprar antes. Con un ticket un 10 % más alto (${d(v.ticket * 1.1)}), cada venta podría costar hasta ${d(e3.cac)}.` });
+  return salida;
+}
+
+/** Lo que Meta reporta, dicho una vez donde se compara con el equilibrio (curso: separar lo bruto de lo neto). */
+export const NOTA_BRUTO = "Meta reporta las ventas EN BRUTO: con el ITBMS y sin descontar devoluciones. Por eso el equilibrio ya los descuenta: un ROAS que en Meta parece bueno puede estar perdiendo dinero.";
+
+/**
+ * ¿Un porcentaje escrito como fracción? «0,15» en el % a invertir o en la tasa de cierre casi siempre es «15 %». → el
+ * texto del aviso, o "". Pura.
+ */
+export function avisoDeFraccion(id, valor) {
+  const n = numero(valor);
+  if (!["invertir", "tasaCierre"].includes(id) || !(n > 0 && n < 1)) return "";
+  return `¿Quisiste decir ${numLegible(n * 100)} %? Aquí se escribe el porcentaje entero (15 es el 15 %), no la fracción.`;
 }
 
 // ------------------------------------------------------------
