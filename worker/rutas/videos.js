@@ -237,11 +237,14 @@ async function rutasDelCliente(req, env, { acceso, usuario, partes, metodo }) {
         idea: b.idea, segundos: b.segundos, formato: b.formato, postId: typeof b.postId === "string" ? b.postId : "",
         estructuraId: typeof (b.estructuraId ?? b.formulaId) === "string" ? b.estructuraId ?? b.formulaId : "",
         conFondos: b.conFondos === true, estilo,
+        // Un video de la galería ya DESGLOSADO toma por toma: el guion sigue su forma (sin desglose, como siempre).
+        videoReferenciaId: typeof b.videoReferenciaId === "string" ? b.videoReferenciaId : "",
       });
       const publicacion = r.postId ? await publicacionDelCliente(acceso, clienteId, r.postId) : null;
       return json({
         guion: r.guion, avisos: r.avisos, corregido: r.corregido, aviso: r.aviso, publicacion, estructura: r.estructura,
         referencias: r.referencias ?? 0, fondos: r.fondos ?? 0, ...(estilo ? { estilo: { id: estilo.id, nombre: estilo.nombre } } : {}),
+        ...(r.sigueVideo ? { sigueVideo: r.sigueVideo } : {}),
       });
     } catch (e) {
       if (e instanceof ErrorGuion || e instanceof ErrorIA) return error(e.message, e.estado ?? 502);

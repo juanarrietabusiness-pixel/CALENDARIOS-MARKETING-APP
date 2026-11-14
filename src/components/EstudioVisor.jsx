@@ -15,6 +15,8 @@ const ExtraerUgc = lazy(() => import("./calendario/ExtraerUgc"));
 // «Guardar como plantilla» va en su chunk: el del Estudio está en su tope.
 const GuardarPlantilla = lazy(() => import("./GuardarPlantilla"));
 const VideoListo = lazy(() => import("./VideoListo"));
+// «Desglosar toma por toma»: la IA describe el video sin opinar, para que un reel siga su forma (en su chunk).
+const DesgloseVideo = lazy(() => import("./DesgloseVideo"));
 // «Poner en una publicación…»: lo que ya está en la galería, a un post de cualquier mes (sin crear ni cobrar).
 const PonerEnPublicacion = lazy(() => import("./PonerEnPublicacion"));
 // «Variaciones para anuncios»: de esta pieza maestra, las de un conjunto de anuncios (sólo se descarga al pulsarlo).
@@ -327,6 +329,9 @@ export default function Visor({
           {!video && !lectura && clienteId && <Suspense fallback={null}><GuardarPlantilla key={`p-${a.id}`} clienteId={clienteId} archivo={a} onGuardada={onPlantilla} /></Suspense>}
           {video && clienteId && esVideoReal(a) && (
             <Suspense fallback={null}><VideoListo key={`v-${a.id}`} clienteId={clienteId} archivoId={a.id} src={a.src} inicial={a.ajustes?.revisionVideo} /></Suspense>
+          )}
+          {video && clienteId && esVideoReal(a) && (
+            <Suspense fallback={null}><DesgloseVideo key={`d-${a.id}`} clienteId={clienteId} archivoId={a.id} src={a.src} nombre={a.prompt} inicial={a.ajustes?.deconstruccion} lectura={lectura} /></Suspense>
           )}
           {!video && (onRevisar || revision) && <RevisionDeMarca revision={revision} onRevisar={onRevisar} onCorregir={lectura ? null : onCorregir} />}
           <div className="est-visor-acciones">

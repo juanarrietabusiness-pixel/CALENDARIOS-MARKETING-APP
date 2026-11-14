@@ -20,6 +20,7 @@
 
 import { SIN_TEXTO_VIDEO } from "./videoLimpio.js";
 import { lineaDelGuionPost } from "./guionVideo.js";
+import { armarPedidoVideo, limiteDeStoryboard } from "./pedidoVideo.js";
 
 export const MIN_PLANOS = 3;
 export const MAX_PLANOS = 8;
@@ -81,7 +82,7 @@ export const sinVozPropia = (modelo) => /^(seedance|wan)/.test(String(modelo?.id
 const corto = (t, n) => String(t ?? "").replace(/\s+/g, " ").trim().slice(0, n);
 
 /** Lo que se le pide a la IA para el guion por planos. Pura. */
-export function pedidoDeReel({ marca = "la marca", rubro = "", idea = "", segundos = 10, tipo = "", estilo = "", producto = "", personajes = [], identidad = "", contexto = "", musica = "", locucion = "", estructura = "", criterio = "", guionPost = "", montaje = false, estructuraGuion = "", campoEstructura = false, planos: pedidos = 0, lexico = "", ganchoVisual = "" }) {
+export function pedidoDeReel({ marca = "la marca", rubro = "", idea = "", segundos = 10, tipo = "", estilo = "", producto = "", personajes = [], identidad = "", contexto = "", musica = "", locucion = "", estructura = "", criterio = "", guionPost = "", montaje = false, estructuraGuion = "", campoEstructura = false, planos: pedidos = 0, lexico = "", ganchoVisual = "", secuencia = "" }) {
   const clips = Math.ceil(segundos / SEGUNDOS_POR_CLIP);
   const nPlanos = planosPedidos(segundos, pedidos);
   return [
@@ -98,6 +99,8 @@ export function pedidoDeReel({ marca = "la marca", rubro = "", idea = "", segund
     locucion ? `Locución que se quiere (respétala si cabe): ${corto(locucion, 500)}` : "",
     // Un anuncio que ya funciona: su forma, no su marca ni sus palabras.
     estructura ? `ESTRUCTURA A SEGUIR (es la de un anuncio que ya funciona, de otra marca): copia su forma —el orden de los momentos, el ritmo, el tipo de gancho y de cierre— con el producto y la marca de ${marca}; nunca su marca, sus personajes ni su texto.\n${corto(estructura, 1500)}` : "",
+    // Un video DESGLOSADO toma por toma (lib/deconstructor.js): su mapa de secuencia resumido, para seguir su forma.
+    secuencia ? `${String(secuencia).trim().slice(0, 2000)}\nLos planos de este reel siguen esa secuencia: el mismo orden de momentos, el mismo ritmo de cortes y los mismos tamaños de plano y movimientos de cámara, con lo que se ve de ${marca}.` : "",
     // La ESTRUCTURA de guion de la agencia para la voz en off (lib/formulasUgc.js): la escogida, en esta duración, o la
     // lista para que la IA escoja y diga cuál en el campo «estructura» del JSON. Es la forma; la voz de la marca, aparte.
     estructuraGuion ? `ESTRUCTURA DEL GUION (la voz en off y los planos siguen sus tramos):\n${String(estructuraGuion).trim().slice(0, 3000)}` : "",
@@ -223,23 +226,29 @@ export function fotogramasParaVideo(fotogramas = [], max = MAX_STORYBOARD) {
 
 /**
  * El pedido del VIDEO: los planos con sus tiempos, el hilo, el sonido y el estilo; con storyboard, que las imágenes
- * de referencia son los fotogramas EN ORDEN. Pura.
+ * de referencia son los fotogramas EN ORDEN. En el orden fijo de pedidoVideo.js (sujeto → acción → luz → sonido) y,
+ * si pasa de lo que puede medir un storyboard de esos planos, recortado al revés: la voz y el formato no se tocan. Pura.
  */
 export function promptDeReel({ planos = [], hilo = "", sonido = "", musica = "", locucion = "", efectos = "", segundos = 10, estilo = "", conStoryboard = false, personajes = "", sinVoz = false }) {
-  return [
-    `Reel vertical 9:16 de ${segundos} segundos, con varios planos y cortes limpios, calidad de anuncio profesional.`,
-    conStoryboard ? "Las imágenes de referencia son el STORYBOARD, en orden: cada una es un plano. Respeta sus personajes, su lugar, su luz y su paleta." : "",
-    SIN_TEXTO_VIDEO,
-    personajes,
-    hilo ? `Lo que comparten todos los planos: ${hilo}` : "",
-    ...planos.map((p) => `${tramo(p)} ${p.escena}${p.camara ? ` Cámara: ${p.camara}.` : ""}`),
-    sonido ? `Sonido: ${sonido}` : "",
-    musica ? `Música de fondo: ${corto(musica, 300)}.` : "",
-    sinVoz ? "Sin voz ni diálogo: sólo música y efectos de sonido."
+  return armarPedidoVideo({
+    inicio: [
+      `Reel vertical 9:16 de ${segundos} segundos, con varios planos y cortes limpios, calidad de anuncio profesional.`,
+      conStoryboard ? "Las imágenes de referencia son el STORYBOARD, en orden: cada una es un plano. Respeta sus personajes, su lugar, su luz y su paleta." : "",
+      SIN_TEXTO_VIDEO,
+    ],
+    sujeto: [personajes, hilo ? `Lo que comparten todos los planos: ${hilo}` : ""],
+    // Cada plano con su cámara en la misma línea: así un plano nunca se queda sin su movimiento.
+    accion: planos.map((p) => `${tramo(p)} ${p.escena}${p.camara ? ` Cámara: ${p.camara}.` : ""}`),
+    luz: estilo,
+    sonido: [
+      sonido ? `Sonido: ${sonido}` : "",
+      musica ? `Música de fondo: ${corto(musica, 300)}.` : "",
+      efectos ? `Efectos de sonido: ${corto(efectos, 300)}.` : "",
+    ],
+    fin: sinVoz ? "Sin voz ni diálogo: sólo música y efectos de sonido."
       : locucion ? `Locución en off, en español latino neutro, clara y a tiempo con los planos: «${corto(locucion, 500)}».` : "",
-    efectos ? `Efectos de sonido: ${corto(efectos, 300)}.` : "",
-    estilo,
-  ].filter(Boolean).join("\n").slice(0, 4000);
+    max: limiteDeStoryboard(planos.length),
+  });
 }
 
 /** Los planos repartidos en clips de `porClip` s (por dónde empieza cada plano) → [{ n, desde, hasta, planos }]. Pura. */

@@ -698,14 +698,18 @@ export async function recrear(env, acceso, usuario, { clave, clienteId, camino: 
 
   // Video animado: la IA escribe el guion por escenas con la idea y la estructura del original; queda unido al post.
   if (camino === "animado") {
+    // El original primero (bajarlo no cuesta): si es un video ya DESGLOSADO toma por toma, el guion sigue su forma.
+    const archivo = await traerArchivo(env, acceso, cliente, p, { miniatura: p.formato !== "video" }).catch(() => null);
     let g;
     try {
-      g = await escribirGuion(env, acceso, cliente, { idea: brief, segundos: p.formato === "video" ? 30 : 20, formato: "9:16" });
+      g = await escribirGuion(env, acceso, cliente, {
+        idea: brief, segundos: p.formato === "video" ? 30 : 20, formato: "9:16",
+        ...(archivo?.tipo === "video" ? { videoReferenciaId: archivo.id } : {}),
+      });
     } catch (e) {
       if (e instanceof ErrorGuion || e instanceof ErrorIA) throw new ErrorLoMejor(e.message, e.estado ?? 502);
       throw e;
     }
-    const archivo = await traerArchivo(env, acceso, cliente, p, { miniatura: p.formato !== "video" }).catch(() => null);
     // La publicación recuerda la estructura de guion que siguió la voz (`post.estructuraVoz`, lib/formulasUgc.js).
     const post = { ...base, referencias: referenciaDe(p, archivo), ...(g.estructura?.id ? { estructuraVoz: g.estructura.id } : {}) };
     const { calendarId } = await meterPublicacion(env, acceso, cliente, fecha, post);
@@ -718,6 +722,7 @@ export async function recrear(env, acceso, usuario, { clave, clienteId, camino: 
       aviso.push(`La publicación está creada, pero el guion no se guardó: ${e.message}`);
     }
     if (g.aviso) aviso.push(g.aviso);
+    if (g.sigueVideo) aviso.push(`El guion sigue la forma del original, toma por toma (${g.sigueVideo.tomas} tomas).`);
     return { fecha, calendarId, postId: post.id, camino, videoId: video?.id ?? null, aviso: aviso.join(" ") };
   }
 

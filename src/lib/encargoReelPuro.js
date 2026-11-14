@@ -26,7 +26,10 @@ export function resultadoDeReel(e, archivos = new Map()) {
     if (p.fase === "fallido") return { error: p.error || "El fotograma no salió." };
     if (p.fase !== "hecho") return { cargando: true };
     const a = archivos.get(finalDePaso(p));
-    return a ? { archivo: a } : { error: "El fotograma se creó pero no aparece en la galería." };
+    if (!a) return { error: "El fotograma se creó pero no aparece en la galería." };
+    // «¿Listo para animar?» (lib/listoAnimar.js): el de SU ficha; uno corregido después no lo lleva.
+    const animable = a.ajustes?.animable ?? (p.animable?.archivoId === a.id ? p.animable : null);
+    return animable ? { archivo: a, animable } : { archivo: a };
   });
   const clips = (e.pasos ?? []).map((p) => {
     const c = p.clip;

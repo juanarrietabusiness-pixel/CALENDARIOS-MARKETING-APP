@@ -47,7 +47,7 @@ export function textoDePublicacion(post) {
  * catálogo con los IDs de la galería de sus fotos; `personaje`: el aspecto del kit (o null); `errores`: los del intento
  * anterior, para corregirlos sobre `anterior`. Pura.
  */
-export function pedidoDeGuionAnimado({ marca, idea, publicacion = "", segundos, formato = "9:16", contexto = "", productos = "", personaje = null, errores = [], anterior = "", criterio = "", estructura = "", marcaVideo = "", referencias = 0, conFondos = false, galeria = "", estiloGuardado = "", maxFondos = undefined }) {
+export function pedidoDeGuionAnimado({ marca, idea, publicacion = "", segundos, formato = "9:16", contexto = "", productos = "", personaje = null, errores = [], anterior = "", criterio = "", estructura = "", marcaVideo = "", referencias = 0, conFondos = false, galeria = "", estiloGuardado = "", maxFondos = undefined, secuencia = "" }) {
   const f = FORMATOS_VIDEO[formato] ? formato : "9:16";
   const s = duracionAnimado(segundos);
   const partes = [
@@ -79,6 +79,8 @@ export function pedidoDeGuionAnimado({ marca, idea, publicacion = "", segundos, 
     // IA escoja y diga cuál en el campo «estructura». Manda en el orden de los momentos de la voz; el gancho del
     // principio y el cierre con el logo y el llamado se quedan.
     estructura ? `\nESTRUCTURA DEL GUION (reparte las escenas y la voz en sus tramos; el gancho y el cierre con el logo y el llamado se quedan)\n${String(estructura).trim()}` : "",
+    // Un video DESGLOSADO toma por toma (lib/deconstructor.js): cada toma es una escena; se sigue su forma.
+    secuencia ? `\n${String(secuencia).trim().slice(0, 2000)}\nEn un video animado cada toma es una ESCENA: sigue cuántas son, su orden y su ritmo relativo; el tamaño del plano y el movimiento de cámara se traducen a cómo entra y se mueve lo que hay en cada escena.` : "",
     "",
     contexto ? `LA MARCA\n${contexto}` : "",
     productos ? `CATÁLOGO (las fotos son el producto REAL; en una capa «imagen» va su ID en «archivo»)\n${productos}` : "",

@@ -22,6 +22,7 @@
 import { lineaDelGuionPost } from "./guionVideo.js";
 import { captionYHashtags } from "./videoCorto.js";
 import { lineasDeContenido } from "./pilares";
+import { armarPedidoVideo, MAX_PEDIDO_VIDEO } from "./pedidoVideo.js";
 
 /** Lo que dura: el modelo decide cuáles tiene. 15 s es el tope de un clip de MiniMax H3 y de Kling 3.0. */
 export const DURACIONES_PRODUCTO = Object.freeze([10, 12, 15]);
@@ -31,8 +32,8 @@ export const PALABRAS_POR_SEGUNDO_PRODUCTO = 2.5;
 export const PREFERIDOS_PRODUCTO = Object.freeze(["minimax-h3-kie", "kling-3-kie", "seedance-2-5-kie", "wan-3-kie", "pixverse-6-kie", "seedance-2-kie"]);
 /** Seedance y Wan se inventan la voz (mal, en español): van con música, sin locución (como en el Reel IA). */
 export const sinVozEnProducto = (modelo) => /^(seedance|wan)/.test(String(modelo?.id ?? modelo ?? ""));
-/** Lo más largo que puede ser el prompt del video: corto a propósito. */
-export const MAX_PROMPT_VIDEO_PRODUCTO = 1400;
+/** Lo más largo que puede ser el prompt del video: corto a propósito (el tope de todo pedido de video de un plano). */
+export const MAX_PROMPT_VIDEO_PRODUCTO = MAX_PEDIDO_VIDEO;
 
 const corto = (t, n) => String(t ?? "").replace(/\s+/g, " ").trim().slice(0, n);
 
@@ -143,7 +144,7 @@ export function escenaDelCierre({ producto = "", conLogo = true } = {}) {
   return [
     `Último fotograma (el cierre) de un reel vertical 9:16: ${nombre}, el de las fotos de referencia, IDÉNTICO (mismo empaque, colores y textos, sin redibujarlo), protagonista en el centro del tercio inferior, sobre una superficie limpia con los colores de la marca, con un detalle natural alrededor y una sombra suave.`,
     conLogo ? "El logo de la marca, nítido y de buen tamaño, centrado en el tercio superior, como firma del video." : "",
-    "Luz suave, mucho espacio negativo y ningún otro texto.",
+    "Luz suave, una zona tranquila de la escena alrededor del producto y ningún otro texto.",
   ].filter(Boolean).join(" ");
 }
 
@@ -156,13 +157,16 @@ export function promptDeVideoProducto(guion, { conVoz = true } = {}) {
   const voz = conVoz && guion.locucion
     ? `Voz en off en español latino neutro, cálida y natural, que dice exactamente: «${guion.locucion}».`
     : "Sin voz ni diálogo.";
-  const partes = [
-    `Video vertical 9:16 de ${guion.segundos} segundos, una sola toma continua que arranca exactamente en la imagen inicial y termina exactamente en la imagen final.`,
-    ...guion.tramos.filter((t) => t.accion).map((t) => `${t.desde}–${t.hasta} s: ${t.accion}.`),
-    guion.camara && `Cámara: ${guion.camara}.`,
-    voz,
-    guion.musica && `Música: ${guion.musica}.`,
-    "Movimiento natural y realista. Sin texto ni subtítulos en pantalla; el único logo es el que ya trae la imagen final, tal cual.",
-  ];
-  return partes.filter(Boolean).join(" ").replace(/\.\./g, ".").slice(0, MAX_PROMPT_VIDEO_PRODUCTO);
+  // En el orden fijo (acción → cámara → sonido; el sujeto ya lo traen las dos imágenes) y, si pasa de 1.000, recortado
+  // al revés (pedidoVideo.js). La duración, la voz entre comillas y lo de no escribir texto no se tocan.
+  return armarPedidoVideo({
+    inicio: `Video vertical 9:16 de ${guion.segundos} segundos, una sola toma continua que arranca exactamente en la imagen inicial y termina exactamente en la imagen final.`,
+    accion: guion.tramos.filter((t) => t.accion).map((t) => `${t.desde}–${t.hasta} s: ${String(t.accion).replace(/\.+$/, "")}.`),
+    camara: guion.camara ? `Cámara: ${String(guion.camara).replace(/\.+$/, "")}.` : "",
+    movimiento: "Movimiento natural y realista.",
+    sonido: guion.musica ? `Música: ${String(guion.musica).replace(/\.+$/, "")}.` : "",
+    fin: [voz, "Sin texto ni subtítulos en pantalla; el único logo es el que ya trae la imagen final, tal cual."],
+    max: MAX_PROMPT_VIDEO_PRODUCTO,
+    separador: " ",
+  });
 }
