@@ -34,7 +34,16 @@ import { URI_VISTA, MIME_VISTA, conMetaDeVista, conEnlace, metaDeVista } from ".
 import { PAGINA_VISTA } from "../lib/mcpVista/pagina.generada.js";
 
 const VERSIONES = ["2025-06-18", "2025-03-26", "2024-11-05"];
-const INSTRUCCIONES = `Herramientas de la agencia Juancito Ads: sus clientes, sus calendarios de contenido, la cola de publicación en Instagram, Facebook y TikTok, las tareas, el banco de ideas y los resultados. Consulta antes de escribir (listar_clientes, ver_calendario) y confirma con la persona antes de borrar o cancelar. Las horas son de Panamá. Para DISEÑAR piezas de un cliente, lee antes guia_de_diseno. ${REGLA_RECETAS}`;
+// El MÉTODO de la agencia (el curso de campañas: estudio de mercado, ángulos, formas de gancho, lenguaje del cliente, regla del
+// anuncio, número mágico, plan de campañas) vive en el CÓDIGO del calendario y sólo se aplica si el trabajo pasa por sus
+// herramientas. Sin esto, Claude escribía los textos a pelo y los guardaba con crear_publicacion: el calendario los guardaba tal cual.
+const METODO = "EL MÉTODO DE LA AGENCIA VIVE EN EL CALENDARIO: no lo reinventes ni uses calculadoras o métodos de otros skills para sus clientes. "
+  + "TEXTOS de un cliente (ideas, texto de la pieza, captions, guiones, hashtags): escribir_textos (el calendario los escribe con su motor) o, si la persona quiere que los escribas tú, pide antes ficha_de_textos, síguela al pie de la letra y guarda cada campo con editar_publicacion (con forma_gancho y angulo); lo que guardes vuelve con los AVISOS del calendario: corrígelos. No escribas textos sueltos con crear_publicacion. "
+  + "Un MES: estrategia_del_mes → preparar_mes → escribir_textos con cliente y mes (repite hasta que no queden) → revisar_mes → disenar_piezas. "
+  + "Antes de escribir de un cliente, ver_estudio_mercado (precios exactos, 7 maletas, ángulos). Las notas «Lenguaje del cliente», «Saber del rubro» y «Voz UGC», con proponer_nota_cerebro; recordar algo, con guardar_en_cerebro y siempre tras el sí de la persona. "
+  + "Presupuesto, número mágico, cuánto pagar por resultado o si una campaña pierde dinero: numeros_del_negocio, plan_de_campanas y revisar_campanas; los textos de los anuncios del plan, escribir_textos_anuncios; cambiar el plan, ajustar_plan_campanas. "
+  + "Lo que pida confirmado: true, enséñaselo antes a la persona y sólo con su sí. ";
+const INSTRUCCIONES = `Herramientas de la agencia Juancito Ads: sus clientes, sus calendarios de contenido, la cola de publicación en Instagram, Facebook y TikTok, las tareas, el banco de ideas y los resultados. Consulta antes de escribir (listar_clientes, ver_calendario) y confirma con la persona antes de borrar o cancelar. Las horas son de Panamá. ${METODO}Para DISEÑAR piezas de un cliente, lee antes guia_de_diseno. ${REGLA_RECETAS}`;
 
 // Claude (y cualquier cliente MCP) llama desde otro origen, con Bearer:
 // sin cookies, así que abrir CORS no expone ninguna sesión.

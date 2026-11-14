@@ -23,7 +23,7 @@ import { programar, programarLote, cancelarPendientes, resincronizarCalendario, 
 import { normalizarHora } from "../../src/lib/horas.js";
 import { limpiarPauta, vaAPauta, describirPauta, limpiarAnuncio } from "../../src/lib/pauta.js";
 import { formaDe } from "../../src/lib/formasGancho.js";
-import { nuevaIdea } from "../../src/lib/bancoIdeas.js";
+import { nuevaIdea, enlaceLimpio } from "../../src/lib/bancoIdeas.js";
 import { aprobadasSinProgramar, fechaHora } from "../../src/lib/cola.js";
 import { fechaEnZona, sumarDias } from "../../src/lib/agenda.js";
 import { obtenerOCrearMes, moverDeMes, ErrorMes } from "./meses.js";
@@ -72,7 +72,7 @@ export const HERRAMIENTAS_MCP = Object.freeze([
   { name: "revisar_campanas", description: "La revisión 3Q de los anuncios que corren en el Ads Manager de un cliente: su número mágico, lo real en 30, 14 y 7 días y cada campaña activa con su etapa, qué hacer con cada conjunto y anuncio (qué pasó, por qué, qué cambiar) y qué publicación del calendario es cada anuncio (o si es un anuncio nuevo). Sólo lee de Meta: no cambia nada ni gasta.", inputSchema: { type: "object", properties: { ...clienteParam }, required: ["cliente"] }, annotations: { readOnlyHint: true, openWorldHint: true } },
   {
     name: "crear_publicacion",
-    description: "Añade una publicación al calendario del cliente para ese día (el calendario de ese mes tiene que existir). Queda pendiente de aprobación. Si lleva texto, el calendario lo revisa con sus reglas y devuelve sus avisos. Para que los textos salgan con el método de la agencia, mejor escribir_textos (o ficha_de_textos) después de crearla.",
+    description: "Añade una publicación al calendario del cliente para ese día (si ese mes aún no tenía calendario, se crea). Queda pendiente de aprobación. Si lleva texto, el calendario lo revisa con sus reglas y devuelve sus avisos. Para que los textos salgan con el método de la agencia, mejor escribir_textos (o ficha_de_textos) después de crearla.",
     inputSchema: {
       type: "object",
       properties: {
@@ -97,6 +97,7 @@ export const HERRAMIENTAS_MCP = Object.freeze([
         titulo: { type: "string" }, idea: { type: "string" }, descripcion: { type: "string" }, guion: { type: "string" },
         texto_pieza: { type: "string", description: "Lo que va escrito encima del diseño (no el caption): titular, apoyo y precio, una línea cada uno." },
         escena: { type: "string", description: "Qué se ve en la pieza (lo lee el director al diseñarla)." },
+        referencia: { type: "string", description: "El enlace de la referencia (un video o post de Instagram, TikTok, YouTube… que inspira la pieza; lo ve el cliente). Empieza por https://. \"\" lo quita." },
         forma_gancho: { type: "string", description: "El id de la forma del gancho que dio ficha_de_textos (así el calendario aprende qué forma le rinde al cliente). \"\" la quita." },
         angulo: { type: "string", description: "El id del ángulo de venta que dio ficha_de_textos. \"\" lo quita." },
         anuncio: {
@@ -302,13 +303,16 @@ export function crearHerramientasMCP({ env, acceso, usuario }) {
 
     async editar_publicacion({
       publicacion_id: id, titulo, idea, descripcion, guion, texto_pieza: textoPieza, hashtags, hora: h, formato, redes, nota_interna: nota, pauta: p,
-      escena, forma_gancho: formaGancho, angulo, anuncio: a,
+      escena, forma_gancho: formaGancho, angulo, anuncio: a, referencia,
     }) {
       const { cal, days, dia, indice, post } = await buscar(id);
       if (formato !== undefined && !FORMATOS.includes(formato)) throw new ErrorHerramienta(`Formato no válido: ${formato}.`);
       // La forma del gancho y el ángulo que dio ficha_de_textos: con ellos el calendario aprende qué forma le rinde.
       if (formaGancho !== undefined && formaGancho !== "" && !formaDe(formaGancho)) throw new ErrorHerramienta(`No existe la forma de gancho «${formaGancho}»: usa el id que dio ficha_de_textos.`);
       if (angulo !== undefined && angulo !== "" && !/^[\w-]{1,60}$/.test(String(angulo))) throw new ErrorHerramienta("El ángulo es su id (el que dio ficha_de_textos): letras, números y guiones.");
+      // El enlace de la referencia (lo pide «falta para enviar» de lo que va al cliente sin contenido): limpio como el banco.
+      const referenceLink = referencia === undefined ? undefined : referencia === "" ? "" : enlaceLimpio(referencia);
+      if (referencia && !referenceLink) throw new ErrorHerramienta("La referencia tiene que ser un enlace que empiece por https://.");
       const anuncio = a === undefined ? undefined : limpiarAnuncio(a);
       if (a !== undefined && !anuncio) throw new ErrorHerramienta("«anuncio» lleva al menos un texto: { textos: [..], titulos: [..], descripcion, boton }.");
       // «Va a pauta» (src/lib/pauta.js): { etapa, como } limpio, o false para quitarla (y que no se vuelva a proponer).
@@ -317,7 +321,7 @@ export function crearHerramientasMCP({ env, acceso, usuario }) {
       const cambios = Object.fromEntries(Object.entries({
         title: titulo, idea, descripcion, guion, textoPieza, hashtagsFinales: hashtags, publishTime: hora(h), format: formato,
         redes: Array.isArray(redes) ? redes.filter((r) => REDES.includes(r)) : undefined, comment: nota, pauta,
-        escena, formaGancho, angulo: angulo === undefined ? undefined : String(angulo), anuncio,
+        escena, formaGancho, angulo: angulo === undefined ? undefined : String(angulo), anuncio, referenceLink,
       }).filter(([, v]) => v !== undefined));
       if (!Object.keys(cambios).length) throw new ErrorHerramienta("No indicaste nada que cambiar.");
       dia.posts[indice] = { ...post, ...cambios };

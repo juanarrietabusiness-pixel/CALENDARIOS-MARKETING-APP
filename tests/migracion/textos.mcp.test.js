@@ -319,6 +319,15 @@ describe("revisar_mes y la revisión al guardar", () => {
     expect(posts()[0]).toMatchObject({ formaGancho: forma, angulo: "visitas", anuncio: { textos: ["Uno. Escríbenos por WhatsApp."], boton: "WHATSAPP_MESSAGE" } });
   });
 
+  it("editar_publicacion guarda el enlace de la referencia (limpio) y lo quita con \"\"", async () => {
+    sembrarMes([{ date: "2030-03-04", posts: [{ id: "p1", format: "post", status: "pending", idea: "Sofá" }] }]);
+    expect((await llamar("editar_publicacion", { publicacion_id: "p1", referencia: "esto no es un enlace" })).error).toBe(true);
+    expect((await llamar("editar_publicacion", { publicacion_id: "p1", referencia: "Mira este https://www.instagram.com/reel/abc123/ ." })).error).toBe(false);
+    expect(posts()[0].referenceLink).toBe("https://www.instagram.com/reel/abc123/");
+    expect((await llamar("editar_publicacion", { publicacion_id: "p1", referencia: "" })).error).toBe(false);
+    expect(posts()[0].referenceLink).toBe("");
+  });
+
   it("crear_publicacion con texto también se revisa", async () => {
     sembrarMes([]);
     const r = await llamar("crear_publicacion", { cliente: "Dcasa", fecha: "2030-03-05", formato: "post", descripcion: "Vení hoy. Escribinos" });
