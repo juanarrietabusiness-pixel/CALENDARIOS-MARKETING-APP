@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   revisar, cifras3q, q2De, accionesQ3, estadoQ1, referencia, etapaDeNombre, etapaDeCampana, limpiarEtapas, enlaceAdsManager,
   tipoDeResultado, q1DeCuenta, alertasGraves, comoDiagnostico, textoDeRevision, pedidoRevisionIA, agenciaDelInforme,
-  rankingsDe, sumarFilas, valorQ2, EXIGENCIA_ETAPA, ETAPAS_REVISION, METRICAS_Q2,
+  rankingsDe, sumarFilas, valorQ2, FRECUENCIA_ETAPA, ETAPAS_REVISION, METRICAS_Q2,
 } from "./tresQ.js";
 import { UMBRALES_3Q, limpiarUmbrales3q, CAMPOS_UMBRALES_3Q } from "./umbrales3q.js";
 import { ACCION_MENSAJE } from "./anuncios.js";
@@ -62,18 +62,23 @@ describe("las cifras de una fila (las métricas que faltaban)", () => {
 });
 
 describe("Q1: frente al número mágico", () => {
-  it("lo que aguanta: el número mágico por la exigencia de su etapa, nunca por encima del equilibrio", () => {
-    expect(referencia({ tipo: "conversacion", etapa: "evaluacion", numeros: NUMEROS })).toMatchObject({ ref: 1, objetivo: 1, equilibrio: 3, de: "numero-magico" });
-    expect(referencia({ tipo: "conversacion", etapa: "presentacion", numeros: NUMEROS }).ref).toBe(1.3);
-    expect(referencia({ tipo: "conversacion", etapa: "conversion", numeros: NUMEROS }).ref).toBe(0.8);
-    // Presentación aguanta más, pero el equilibrio manda.
-    expect(referencia({ tipo: "conversacion", etapa: "presentacion", numeros: { conversacion: { objetivo: 1, equilibrio: 1.1 } } }).ref).toBe(1.1);
-    // Sin objetivo, el equilibrio; sin ninguno, el promedio de 30 días; lo tecleado manda.
+  it("el número mágico es UNO para todas las etapas (sin ajuste por etapa), nunca por encima del equilibrio", () => {
+    expect(referencia({ tipo: "conversacion", numeros: NUMEROS })).toMatchObject({ ref: 1, objetivo: 1, equilibrio: 3, de: "numero-magico" });
+    // La etapa ya no entra: lo de antes (×1,3 en presentación, ×0,8 en conversión) se quitó (decisión del 14-nov).
+    expect(referencia({ tipo: "conversacion", etapa: "presentacion", numeros: NUMEROS }).ref).toBe(1);
+    expect(referencia({ tipo: "conversacion", etapa: "conversion", numeros: NUMEROS }).ref).toBe(1);
+    // El objetivo nunca pasa del equilibrio.
+    expect(referencia({ tipo: "conversacion", numeros: { conversacion: { objetivo: 2, equilibrio: 1.1 } } })).toMatchObject({ ref: 1.1, de: "equilibrio" });
+    // El de numeroMagicoDelCliente (con `valor`) manda.
+    expect(referencia({ tipo: "conversacion", numeros: { conversacion: { valor: 0.38, objetivo: 0.38, equilibrio: 0.84 } } }).ref).toBe(0.38);
+    // Sin objetivo, el equilibrio; lo tecleado manda.
     expect(referencia({ tipo: "conversacion", numeros: { conversacion: { objetivo: null, equilibrio: 2 } } })).toMatchObject({ ref: 2, de: "equilibrio" });
-    expect(referencia({ tipo: "clic", numeros: NUMEROS, c30: { costoPorResultado: 0.4 } })).toMatchObject({ ref: 0.4, de: "promedio" });
     expect(referencia({ tipo: "conversacion", numeros: NUMEROS, costoMax: 5 })).toMatchObject({ ref: 5, de: "escrito" });
-    // Una compra en la web se mide con su costo por compra.
+    // Sin número mágico NO se compara con el promedio del mes: queda de referencia, sin juzgar.
+    expect(referencia({ tipo: "clic", numeros: NUMEROS, c30: { costoPorResultado: 0.4 } })).toMatchObject({ ref: 0, promedio: 0.4, de: "promedio" });
+    // Una compra en la web se mide con su costo por compra y, con su ROAS de equilibrio, por ROAS.
     expect(referencia({ tipo: "compra", numeros: NUMEROS }).ref).toBe(20);
+    expect(referencia({ tipo: "compra", numeros: { compra: { valor: 20, roasEquilibrio: 2.5, roasObjetivo: 4 } } })).toMatchObject({ porRoas: true, roasEquilibrio: 2.5 });
   });
 
   it("los estados: sano, caro, fuera, pierde, sin resultados y pronto", () => {
@@ -86,6 +91,16 @@ describe("Q1: frente al número mágico", () => {
     expect(estadoQ1({ gasto: 0.5, resultados: 0 }, R)).toBe("pronto");
     expect(estadoQ1({ gasto: 0 }, R)).toBe("sin-gasto");
     expect(estadoQ1(null, R)).toBe("sin-gasto");
+    // Sin número mágico no se sabe si es caro.
+    expect(estadoQ1({ gasto: 40, resultados: 0 }, { ref: 0 })).toBe("sin-numero");
+  });
+
+  it("en la web, con valor de compra, la Q1 va por ROAS frente al de equilibrio (hallazgo 8)", () => {
+    const R = { ref: 20, equilibrio: 25, porRoas: true, roasEquilibrio: 2.5, roasObjetivo: 4 };
+    // Una venta grande: 40 $ por compra (más que el equilibrio de 25) pero vende 5 veces lo invertido: NO pierde.
+    expect(estadoQ1({ gasto: 200, resultados: 5, costoPorResultado: 40, roas: 5 }, R)).toBe("sano");
+    expect(estadoQ1({ gasto: 200, resultados: 5, costoPorResultado: 40, roas: 3 }, R)).toBe("caro");
+    expect(estadoQ1({ gasto: 200, resultados: 5, costoPorResultado: 40, roas: 2 }, R)).toBe("pierde");
   });
 });
 
@@ -232,11 +247,12 @@ describe("el veredicto: desglose, aprendizaje y cuándo se pausa", () => {
     expect(revisar([campana({ presupuestoDiario: 20 })], opciones).campanas[0].cbo).toBe(false);
   });
 
-  it("la etapa sale del nombre o de lo escogido a mano, y cambia lo que se le exige", () => {
-    // 1,2 $ por conversación: caro en evaluación (aguanta 1), sano en presentación (aguanta 1,3).
+  it("la etapa sale del nombre o de lo escogido a mano, y NO cambia el número mágico (sólo la frecuencia)", () => {
+    // 1,2 $ por conversación: por encima del número mágico (1) en presentación y en evaluación por igual.
     const i = tres(fila({ gasto: 12, conv: 10 }));
-    expect(revisar([campana({ nombre: "Café · Presentación", conjunto: { i } })], opciones).campanas[0].conjuntos[0].veredicto.id).not.toBe("mejorar");
+    expect(revisar([campana({ nombre: "Café · Presentación", conjunto: { i } })], opciones).campanas[0].conjuntos[0].veredicto.id).toBe("mejorar");
     expect(revisar([campana({ nombre: "Café · Evaluación", conjunto: { i } })], opciones).campanas[0].conjuntos[0].veredicto.id).toBe("mejorar");
+    expect(revisar([campana({ nombre: "Café · Conversión", conjunto: { i } })], opciones).campanas[0].conjuntos[0].veredicto.id).toBe("mejorar");
     const manual = revisar([campana({ nombre: "Sofás octubre", conjunto: { i } })], { ...opciones, etapas: { 800: "presentacion" } }).campanas[0];
     expect(manual).toMatchObject({ etapa: "presentacion", etapaDe: "manual", nombreEtapa: "Presentación" });
     // El nombre manda sobre lo escogido a mano.
@@ -269,7 +285,7 @@ describe("la etapa de cada campaña", () => {
     expect(etapaDeCampana({ id: "800", nombre: "X" }, { 800: "ascension" })).toEqual({ id: "ascension", de: "manual" });
     expect(etapaDeCampana({ id: "800", nombre: "X" }, {})).toEqual({ id: "", de: "" });
     expect(ETAPAS_REVISION.map((e) => e.id)).toEqual(["presentacion", "evaluacion", "conversion", "ascension", "temporada"]);
-    expect(Object.keys(EXIGENCIA_ETAPA)).toEqual(expect.arrayContaining(["presentacion", "evaluacion", "conversion", "ascension", "temporada", ""]));
+    expect(Object.keys(FRECUENCIA_ETAPA)).toEqual(expect.arrayContaining(["presentacion", "evaluacion", "conversion", "ascension", "temporada", ""]));
   });
 });
 
@@ -283,9 +299,16 @@ describe("el Ads Manager, la cuenta y lo grave", () => {
 
   it("la Q1 de la cuenta: lo real de todas las campañas en cada ventana frente al número mágico", () => {
     const q = q1DeCuenta({ 30: [fila({ gasto: 30, conv: 30 }), fila({ gasto: 30, conv: 10 })], 14: [fila({ gasto: 20, conv: 10 })], 7: [fila({ gasto: 20, conv: 4 })] }, { numeros: NUMEROS });
-    expect(q).toMatchObject({ metrica: "Costo por conversación", objetivo: 1, equilibrio: 3, estado: "pierde" });
+    // La Q1 es la del MES (30 días); la última semana da la tendencia.
+    expect(q).toMatchObject({ metrica: "Costo por conversación", objetivo: 1, equilibrio: 3, valor: 1, estado: "caro", dias: 30, tendencia: "empeora" });
     expect(q.ventanas[30]).toMatchObject({ gasto: 60, conversaciones: 40, real: 1.5, estado: "caro" });
     expect(q.ventanas[14].estado).toBe("caro");
+    expect(q.ventanas[7].estado).toBe("pierde");
+    // El costo real sólo de las campañas que buscan conversaciones: el tráfico no las encarece.
+    const conTrafico = q1DeCuenta({ 30: [{ ...fila({ gasto: 30, conv: 30 }), objective: O }, { ...fila({ gasto: 70, conv: 0 }), objective: "OUTCOME_TRAFFIC" }], 14: [], 7: [] }, { numeros: NUMEROS });
+    expect(conTrafico.ventanas[30]).toMatchObject({ gasto: 30, gastoTotal: 100, real: 1 });
+    // Sin número mágico, no se juzga.
+    expect(q1DeCuenta({ 30: [fila({ gasto: 30, conv: 3 })], 14: [], 7: [] }, {}).estado).toBe("sin-numero");
     const web = q1DeCuenta({ 30: [], 14: [], 7: [] }, { destino: "web", numeros: NUMEROS });
     expect(web).toMatchObject({ metrica: "Costo por compra", objetivo: 20, estado: "sin-gasto" });
   });
@@ -308,9 +331,16 @@ describe("el Ads Manager, la cuenta y lo grave", () => {
     // Sin número mágico no hay «el doble»; con el Manual pidiendo el triple, 10 $ no llegan a 3 × 4.
     expect(alertasGraves({ campanas, semana: [{ campaign_id: "1", spend: "10", actions: [] }], numero: 0, hoy: "2026-11-06" }).map((x) => x.tipo)).toEqual(["sin-gasto"]);
     expect(alertasGraves({ campanas, semana: [{ campaign_id: "1", spend: "10", actions: [] }], numero: 4, hoy: "2026-11-06", umbrales: { gastoParaApagar: 3 } }).map((x) => x.tipo)).toEqual(["sin-gasto"]);
-    // En la web cuenta la compra, no la conversación.
-    const web = alertasGraves({ campanas, semana: [{ campaign_id: "1", spend: "10", actions: [{ action_type: ACCION_MENSAJE, value: "4" }] }], numero: 2, destino: "web", hoy: "2026-11-06" });
+    // En la web cuenta la compra, no la conversación (en una campaña de Ventas).
+    const ventas = campanas.map((c) => (c.id === "1" ? { ...c, objective: "OUTCOME_SALES" } : c));
+    const web = alertasGraves({ campanas: ventas, semana: [{ campaign_id: "1", spend: "10", actions: [{ action_type: ACCION_MENSAJE, value: "4" }] }], numero: 2, destino: "web", hoy: "2026-11-06" });
     expect(web.map((x) => x.tipo)).toContain("sin-resultado");
+    // Una de clientes potenciales no es «sin una conversación»: se mira el cliente potencial.
+    const leads = campanas.map((c) => (c.id === "1" ? { ...c, objective: "OUTCOME_LEADS" } : c));
+    const conLead = alertasGraves({ campanas: leads, semana: [{ campaign_id: "1", spend: "10", actions: [{ action_type: "lead", value: "2" }] }], numero: 2, hoy: "2026-11-06" });
+    expect(conLead.map((x) => x.tipo)).not.toContain("sin-resultado");
+    const sinLead = alertasGraves({ campanas: leads, semana: [{ campaign_id: "1", spend: "10", actions: [] }], numero: 2, hoy: "2026-11-06" });
+    expect(sinLead.find((x) => x.tipo === "sin-resultado").texto).toMatch(/sin un cliente potencial/);
   });
 });
 
@@ -327,7 +357,7 @@ describe("lo de antes, en texto y en el informe", () => {
     const t = textoDeRevision({ ...r, cliente: { nombre: "Café Luna" }, cuenta: { nombre: "Café Ads", moneda: "USD" }, numero: { tasaCierre: 5 },
       q1Cuenta: q1DeCuenta({ 30: [fila({ gasto: 60, conv: 60 })], 14: [], 7: [] }, { numeros: NUMEROS }) });
     expect(t).toMatch(/Revisión 3Q de las campañas de Café Luna/);
-    expect(t).toMatch(/Número mágico: costo por conversación .*1,00.*objetivo/);
+    expect(t).toMatch(/Número mágico \(el mismo para todas las etapas\): costo por conversación 1,00/);
     expect(t).toMatch(/Evaluación/);
     expect(t).toMatch(/Q3 · Un llamado más claro a escribir/);
     expect(pedidoRevisionIA({ marca: "Café Luna", revision: { ...r, cliente: { nombre: "Café Luna" }, cuenta: { moneda: "USD" } } })).toMatch(/no inventes ninguna cifra/);

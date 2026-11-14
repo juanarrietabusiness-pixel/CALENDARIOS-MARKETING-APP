@@ -8,8 +8,8 @@ import {
   resumenPresupuesto,
 } from "../lib/anuncios";
 import { numeroCorto } from "../lib/resultados";
+import { navegar } from "../lib/rutas";
 
-const AsistenteCampana = lazy(() => import("../components/anuncios/AsistenteCampana"));
 const DialogoActivar = lazy(() => import("../components/anuncios/DialogoActivar"));
 const Estratega = lazy(() => import("../components/anuncios/Estratega"));
 const Diagnostico = lazy(() => import("../components/anuncios/Diagnostico"));
@@ -21,10 +21,12 @@ const InformesAnuncios = lazy(() => import("../components/anuncios/InformesAnunc
 // Arriba el cliente y su cuenta publicitaria; debajo las cifras de la
 // cuenta en el rango (con el gasto por día), las campañas con su estado,
 // objetivo, presupuesto, gasto y resultados, y cada una se abre para ver
-// sus conjuntos y anuncios. «Nueva campaña» crea TODO en pausa; activar es
-// del administrador, con un diálogo que enseña lo que se va a gastar.
-// «Estratega» arma el plan (también para alguien de fuera) y lo lleva a
-// «Nueva campaña» con todo puesto. «Informe» es el de publicidad del mes
+// sus conjuntos y anuncios. Las campañas se MONTAN en el Ads Manager: aquí no
+// se crean (decisión de la agencia); «Plan de campañas» arma la estrategia
+// entera con sus anuncios y textos. Lo que se creó desde aquí antes se sigue
+// activando (administrador, con un diálogo que enseña lo que se va a gastar).
+// «Estratega» arma el plan de alguien de fuera (o de un producto suelto) con
+// sus textos para copiar. «Informe» es el de publicidad del mes
 // para el cliente, aparte del de redes. «Revisión 3Q» es la de Resultados →
 // Anuncios del cliente (la misma pantalla, en un diálogo).
 //
@@ -195,7 +197,6 @@ export default function Campanas({ clients = [], pulso = 0, yo = {}, onClienteNu
   const [historial, setHistorial] = useState([]);
   const [aviso, setAviso] = useState("");
   const [fallo, setFallo] = useState("");
-  const [asistente, setAsistente] = useState(false); // false | true | { inicial } (el borrador del estratega)
   const [estratega, setEstratega] = useState(false);
   const [diagnostico, setDiagnostico] = useState(false);
   const [informes, setInformes] = useState(false);
@@ -302,7 +303,7 @@ export default function Campanas({ clients = [], pulso = 0, yo = {}, onClienteNu
         <div className="page-header-top">
           <div>
             <h1 className="page-title">Anuncios</h1>
-            <p className="hint">Las campañas de Meta de cada cliente: cifras, conjuntos y anuncios. Lo que se crea aquí nace en pausa.</p>
+            <p className="hint">Las campañas de Meta de cada cliente: cifras, conjuntos y anuncios. Las campañas se montan en el Ads Manager; la estrategia, con sus anuncios y textos, se arma en «Plan de campañas».</p>
           </div>
           <div className="page-header-actions">
             {esAdmin && estado?.conectado && !(faltan?.length) && (
@@ -321,11 +322,10 @@ export default function Campanas({ clients = [], pulso = 0, yo = {}, onClienteNu
                 <Icon name="sparkles" size={16} /> Estratega
               </button>
             )}
-            {!soloLectura && (
-              <button type="button" className="btn btn-primary" onClick={() => setAsistente(true)} disabled={!listo}>
-                <Icon name="plus" size={16} /> Nueva campaña
-              </button>
-            )}
+            <button type="button" className="btn btn-primary" disabled={!clienteId}
+              onClick={() => navegar(`/plan-campanas?cliente=${encodeURIComponent(clienteId)}`)}>
+              <Icon name="layers" size={16} /> Plan de campañas
+            </button>
           </div>
         </div>
       </div>
@@ -393,7 +393,7 @@ export default function Campanas({ clients = [], pulso = 0, yo = {}, onClienteNu
           <section className="anu-tarjeta" aria-labelledby={`${ids}-camp`}>
             <h2 id={`${ids}-camp`}>Campañas</h2>
             {!datos ? <p className="hint" role="status">Cargando campañas…</p> : datos.campanas.length === 0 ? (
-              <p className="hint">Esta cuenta no tiene campañas. Crea la primera con «Nueva campaña».</p>
+              <p className="hint">Esta cuenta no tiene campañas. Ármalas en «Plan de campañas» y móntalas en el Ads Manager.</p>
             ) : (
               <ul className="anu-campanas">
                 {datos.campanas.map((c) => (
@@ -422,19 +422,10 @@ export default function Campanas({ clients = [], pulso = 0, yo = {}, onClienteNu
       )}
 
       <Suspense fallback={null}>
-        {asistente && cuenta && (
-          <AsistenteCampana
-            clientId={clienteId}
-            cuenta={cuenta}
-            inicial={asistente?.inicial ?? null}
-            onClose={() => setAsistente(false)}
-            onCreada={(r) => { setAsistente(false); setAviso(`«${r.nombre}» se creó en pausa. No gasta nada hasta que el administrador la active.`); void cargar(); }}
-          />
-        )}
         {estratega && (
-          <Estratega clients={clients} clienteId={clienteId} cuentaLista={listo} moneda={moneda} zona={cuenta?.zona || "America/Panama"}
+          <Estratega clients={clients} clienteId={clienteId} moneda={moneda} zona={cuenta?.zona || "America/Panama"}
             onClienteNuevo={onClienteNuevo}
-            onCrear={(borrador) => { setEstratega(false); setAsistente({ inicial: borrador }); }}
+            onPlan={(id) => { setEstratega(false); navegar(`/plan-campanas?cliente=${encodeURIComponent(id)}`); }}
             onCerrar={() => setEstratega(false)} />
         )}
         {diagnostico && (

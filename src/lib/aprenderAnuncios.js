@@ -7,6 +7,12 @@
 // `TIPOS_ARTE`), el NIVEL de consciencia, la COMPOSICIÓN y la ETAPA del ciclo en que corrió— el costo por resultado de
 // cada valor, y cuál sale más barato y cuál más caro.
 //
+// DENTRO DE CADA ETAPA (corrección del 14-nov): una pieza de Presentación (gente que no conoce la marca) siempre
+// cuesta más que una de Conversión, así que comparar rasgos mezclando etapas premiaba lo que corría en las etapas
+// baratas, y la línea llegaba a decir «evita Presentación». Ahora cada rasgo (tipo de arte, nivel, composición) se
+// compara SÓLO entre piezas de la misma etapa, y la etapa nunca es una conclusión: no se recomienda evitar ninguna
+// (cada una tiene su papel en el ciclo). `porRasgo.etapa` queda como dato.
+//
 // LA MUESTRA, decidida así y dicha en `motivo`:
 //
 //   · La unidad es la PIEZA (la publicación), no el anuncio: la misma publicación en tres conjuntos son tres anuncios
@@ -137,48 +143,67 @@ export function preferenciasDeAnuncios(enPauta, publicaciones = null, { minGasto
     : r2(Math.max(guardado.referencia ? VECES_NUMERO_MAGICO * guardado.referencia : 0, PARTE_DE_LA_MEDIANA * tipica));
   const muestra = delTipo.filter((p) => p.gasto >= umbral);
 
-  const porRasgo = {};
-  const mejores = [];
-  const peores = [];
-  for (const r of RASGOS) {
+  /** Los grupos de un rasgo en unas piezas, del más barato al más caro. */
+  const gruposDe = (piezas, r) => {
     const grupos = new Map();
-    for (const p of muestra) {
+    for (const p of piezas) {
       const id = p.rasgos[r.id];
       if (!id) continue;
       if (!grupos.has(id)) grupos.set(id, { id, nombre: p.nombres[r.id] || id, lista: [] });
       grupos.get(id).lista.push(p);
     }
-    const lista = [...grupos.values()].map((g) => ({ id: g.id, nombre: g.nombre, piezas: g.lista.length, ...costoDe(g.lista) }))
+    return [...grupos.values()].map((g) => ({ id: g.id, nombre: g.nombre, piezas: g.lista.length, ...costoDe(g.lista) }))
       .sort((a, b) => (a.costo ?? Infinity) - (b.costo ?? Infinity));
-    porRasgo[r.id] = lista;
-    const validos = lista.filter((g) => g.piezas >= MIN_PIEZAS);
-    if (validos.length < 2) continue;
-    const total = costoDe(muestra.filter((p) => validos.some((g) => g.id === p.rasgos[r.id])));
-    if (!(total.costo > 0)) continue;
-    const mejor = validos[0];
-    const peor = validos[validos.length - 1];
-    if (mejor.costo != null && mejor.costo <= MAS_BARATO * total.costo) {
-      mejores.push({ rasgo: r.id, nombreRasgo: r.nombre, id: mejor.id, nombre: mejor.nombre, costo: mejor.costo, total: total.costo, piezas: mejor.piezas });
-    }
-    if (peor !== mejor && (peor.costo == null || peor.costo >= MAS_CARO * total.costo)) {
-      peores.push({ rasgo: r.id, nombreRasgo: r.nombre, id: peor.id, nombre: peor.nombre, costo: peor.costo, total: total.costo, piezas: peor.piezas });
+  };
+  const porRasgo = Object.fromEntries(RASGOS.map((r) => [r.id, gruposDe(muestra, r)]));
+  const mejores = [];
+  const peores = [];
+  // Por etapa: cada rasgo se compara entre piezas de la MISMA etapa. La etapa no es un rasgo que se concluya.
+  const porEtapa = new Map();
+  for (const p of muestra) {
+    const e = p.rasgos.etapa || "";
+    if (!porEtapa.has(e)) porEtapa.set(e, { id: e, nombre: p.nombres.etapa || "", lista: [] });
+    porEtapa.get(e).lista.push(p);
+  }
+  for (const etapa of porEtapa.values()) {
+    for (const r of RASGOS.filter((x) => x.id !== "etapa")) {
+      const validos = gruposDe(etapa.lista, r).filter((g) => g.piezas >= MIN_PIEZAS);
+      if (validos.length < 2) continue;
+      const total = costoDe(etapa.lista.filter((p) => validos.some((g) => g.id === p.rasgos[r.id])));
+      if (!(total.costo > 0)) continue;
+      const mejor = validos[0];
+      const peor = validos[validos.length - 1];
+      const enEtapa = { etapa: etapa.id, nombreEtapa: etapa.nombre };
+      if (mejor.costo != null && mejor.costo <= MAS_BARATO * total.costo) {
+        mejores.push({ rasgo: r.id, nombreRasgo: r.nombre, id: mejor.id, nombre: mejor.nombre, costo: mejor.costo, total: total.costo, piezas: mejor.piezas, ...enEtapa });
+      }
+      if (peor !== mejor && (peor.costo == null || peor.costo >= MAS_CARO * total.costo)) {
+        peores.push({ rasgo: r.id, nombreRasgo: r.nombre, id: peor.id, nombre: peor.nombre, costo: peor.costo, total: total.costo, piezas: peor.piezas, ...enEtapa });
+      }
     }
   }
 
   const d = (n) => formatoMoneda(n, moneda);
   const resultado = singularDe(nombreResultado);
-  const articulo = (x) => (x.rasgo === "composicion" || x.rasgo === "etapa" ? "la" : "el");
-  const dicho = (x, conTotal) => `${articulo(x)} ${x.nombreRasgo} «${x.nombre}» (${x.costo == null ? `sin ${nombreResultado}` : d(x.costo)}${conTotal ? ` frente a ${d(x.total)} del total` : ""})`;
-  const partes = [
-    mejores.length ? `sale más barato ${mejores.map((x) => dicho(x, true)).join(", ")}` : "",
-    peores.length ? `sale más caro ${peores.map((x) => dicho(x, false)).join(", ")}` : "",
-  ].filter(Boolean);
+  const articulo = (x) => (x.rasgo === "composicion" ? "la" : "el");
+  const dicho = (x, conTotal) => `${articulo(x)} ${x.nombreRasgo} «${x.nombre}» (${x.costo == null ? `sin ${nombreResultado}` : d(x.costo)}${conTotal ? ` frente a ${d(x.total)} de su etapa` : ""})`;
+  const etapas = [...new Set([...mejores, ...peores].map((x) => x.etapa))];
+  const partes = etapas.map((e) => {
+    const m = mejores.filter((x) => x.etapa === e);
+    const p = peores.filter((x) => x.etapa === e);
+    const nombre = (m[0] ?? p[0]).nombreEtapa;
+    const dentro = [
+      m.length ? `sale más barato ${m.map((x) => dicho(x, true)).join(", ")}` : "",
+      p.length ? `sale más caro ${p.map((x) => dicho(x, false)).join(", ")}` : "",
+    ].filter(Boolean).join("; ");
+    return nombre ? `en ${nombre}, ${dentro}` : dentro;
+  });
   const hay = partes.length > 0;
   const linea = hay
-    ? `Lo que ya se probó en pauta con esta marca (costo por ${resultado}, últimos 30 días, ${muestra.length} piezas con gasto suficiente): ${partes.join("; ")}. Para lo que va a pauta, prefiere lo que sale más barato y evita lo más caro, pero deja una pieza de cada cuatro para probar algo distinto: con todo igual, Meta deja de distinguir los anuncios y no se sigue aprendiendo.`
+    ? `Lo que ya se probó en pauta con esta marca (costo por ${resultado}, últimos 30 días, ${muestra.length} piezas con gasto suficiente): ${partes.join("; ")}. Cada comparación es DENTRO de su etapa (todas las etapas hacen falta: no dejes ninguna). Para lo que va a pauta, prefiere lo que sale más barato y evita lo más caro, pero deja una pieza de cada cuatro para probar algo distinto: con todo igual, Meta deja de distinguir los anuncios y no se sigue aprendiendo.`
     : "";
   const motivo = hay ? "" : !todas.length
     ? "Todavía no hay piezas del calendario que hayan corrido en el Ads Manager con gasto."
-    : `Todavía no hay con qué comparar: hace falta que al menos dos valores de un mismo rasgo (tipo de arte, nivel, composición o etapa) tengan ${MIN_PIEZAS} piezas pautadas cada uno con gasto suficiente (${d(umbral)} o más en 30 días). Hoy cuentan ${muestra.length} de ${todas.length}.`;
+    : `Todavía no hay con qué comparar: hace falta que, dentro de una misma etapa, al menos dos valores de un mismo rasgo (tipo de arte, nivel o composición) tengan ${MIN_PIEZAS} piezas pautadas cada uno con gasto suficiente (${d(umbral)} o más en 30 días). Hoy cuentan ${muestra.length} de ${todas.length}.`;
   return { muestra: muestra.length, piezas: todas.length, minimo: MIN_PIEZAS, minGasto: umbral, tipoResultado, nombreResultado, moneda, porRasgo, mejores, peores, linea, motivo };
 }

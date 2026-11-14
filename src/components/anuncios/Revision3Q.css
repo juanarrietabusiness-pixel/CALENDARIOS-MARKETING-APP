@@ -82,3 +82,22 @@
 .r3q-publicacion { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); padding: var(--sp-2); background: var(--surface-3); border-radius: var(--radius-sm); }
 .r3q-publicacion-texto { flex: 1 1 180px; min-width: 0; display: flex; flex-direction: column; font-size: var(--fs-xs); overflow-wrap: anywhere; }
 .r3q-publicacion-sin { margin: 0; }
+
+/* Para quien no hizo el curso (14-nov): el resumen, el porqué, los pasos y dónde; lo técnico, plegado. */
+.r3q-resumen { border-left: 4px solid var(--accent); }
+.r3q-frase { margin: 0 0 var(--sp-2); font-size: var(--fs-md); font-weight: 600; }
+.r3q-conteo { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--sp-2) var(--sp-3); font-size: var(--fs-sm); }
+.r3q-conteo li { display: inline-flex; align-items: center; gap: var(--sp-1); }
+.r3q-numero { margin: 0 0 var(--sp-1); font-size: var(--fs-md); }
+.r3q-numero strong { font-size: var(--fs-lg); }
+.r3q-subtitulo { margin: var(--sp-3) 0 var(--sp-1); font-size: var(--fs-sm); }
+.r3q-que-hacer { display: flex; flex-direction: column; gap: var(--sp-1); font-size: var(--fs-sm); }
+.r3q-porque, .r3q-que, .r3q-donde, .r3q-dentro { margin: 0; }
+.r3q-pasos { margin: 0; padding-left: var(--sp-5); display: flex; flex-direction: column; gap: 2px; font-size: var(--fs-sm); }
+.r3q-donde { display: flex; align-items: flex-start; gap: var(--sp-1); padding: var(--sp-2); background: var(--surface-2); border-radius: var(--radius-sm); font-size: var(--fs-xs); overflow-wrap: anywhere; }
+.r3q-donde svg { flex-shrink: 0; margin-top: 2px; }
+.r3q-dentro { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-1); font-size: var(--fs-xs); }
+.r3q-tecnico summary { cursor: pointer; font-size: var(--fs-xs); color: var(--text-dim); min-height: var(--tap-sm); display: flex; align-items: center; }
+.r3q-tecnico[open] { display: flex; flex-direction: column; gap: var(--sp-2); }
+.r3q-q2-frases { list-style: none; margin: 0; padding: 0; font-size: var(--fs-xs); color: var(--text-dim); display: flex; flex-direction: column; gap: 2px; }
+.r3q-q2-frases li[data-mal="true"] { color: var(--danger); }

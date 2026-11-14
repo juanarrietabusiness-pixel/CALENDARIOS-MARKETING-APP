@@ -6,11 +6,11 @@ import { leerMercado, guardarCatalogo } from "../../lib/mercado";
 import { productosActivos, ELEMENTOS_MERCADO, limpiarCatalogo } from "../../lib/estudioMercado";
 import { OBJETIVOS, DESTINOS, TIPOS_CONJUNTO, formatoMoneda } from "../../lib/anuncios";
 import {
-  economia, escenarios, planABorrador, planATexto, TIPOS_OFERTA, etapaEmbudoDe, leerPlan,
+  economia, escenarios, planATexto, TIPOS_OFERTA, etapaEmbudoDe, leerPlan,
 } from "../../lib/estratega";
 import { fechaEnZona } from "../../lib/agenda";
 import { leerNegocio } from "../../lib/negocioApi";
-import { equilibrio } from "../../lib/numerosNegocio";
+import { equilibrio, numeroMagicoDelCliente } from "../../lib/numerosNegocio";
 import "./Estratega.css";
 
 // ============================================================
@@ -22,8 +22,9 @@ import "./Estratega.css";
 // lo que haya y él saca las 7 maletas. Devuelve el plan: embudo, cuentas
 // (las hace el código), tres escenarios, públicos, de 4 a 6 anuncios con
 // sus textos y mejoras de oferta como sugerencia. Se ajusta hablándole, se
-// guarda, se copia, y «Crear la campaña con esto» abre «Nueva campaña» con
-// todo puesto (se crea en pausa, como siempre).
+// guarda y se copia con los textos de cada anuncio. Las campañas se montan en
+// el Ads Manager (el calendario ya no las crea): para un cliente, «Armar su
+// plan de campañas» lleva al plan del mes, con sus anuncios, textos y Excel.
 //
 // «Pegar el plan del otro bot» pasa a esta forma un plan escrito fuera.
 // ============================================================
@@ -140,7 +141,7 @@ function Plan({ r, moneda, diario, dias }) {
   );
 }
 
-export default function Estratega({ clients = [], clienteId = "", cuentaLista = false, moneda = "USD", zona = "America/Panama", onCrear, onClienteNuevo, onCerrar }) {
+export default function Estratega({ clients = [], clienteId = "", moneda = "USD", zona = "America/Panama", onPlan, onClienteNuevo, onCerrar }) {
   const ids = useId();
   const [para, setPara] = useState(clienteId ? "cliente" : "fuera");
   const [cliente, setCliente] = useState(clienteId);
@@ -182,6 +183,9 @@ export default function Estratega({ clients = [], clienteId = "", cuentaLista = 
       const nuevos = {
         margen: r.negocio.costos.length && e.margenEfectivo > 0 ? String(Math.round(e.margenEfectivo * 10) / 10) : "",
         tasaCierre: r.negocio.tasaCierre?.valor > 0 ? String(r.negocio.tasaCierre.valor) : "",
+        // EL número mágico del cliente (el mismo de la ficha y la revisión), por conversación y por compra.
+        magico: numeroMagicoDelCliente(r.negocio, { tasaDefecto: r.tasaDefecto, objetivoCampana: "mensajes" }),
+        magicoWeb: numeroMagicoDelCliente(r.negocio, { tasaDefecto: r.tasaDefecto, objetivoCampana: "ventas" }),
       };
       const antes = numerosAntes.current;
       numerosAntes.current = nuevos;
@@ -212,7 +216,10 @@ export default function Estratega({ clients = [], clienteId = "", cuentaLista = 
   const elegido = activos.find((p) => p.id === productoId) ?? null;
   const productoNombre = para === "cliente" && elegido ? elegido.nombre : otro.nombre;
   const precio = para === "cliente" && elegido ? elegido.precio : otro.precio;
-  const eco = economia({ precio, margen: cifras.margen, margenTipo: cifras.margenTipo, tasaCierre: cifras.tasaCierre || undefined });
+  // Con los números del negocio sin tocar, EL número mágico del cliente; lo tecleado encima manda.
+  const sinTocar = numeros && cifras.margen === numeros.margen && (cifras.tasaCierre || "") === (numeros.tasaCierre || "");
+  const magico = sinTocar ? (destino === "web" ? numeros.magicoWeb : numeros.magico) : null;
+  const eco = economia({ precio, margen: cifras.margen, margenTipo: cifras.margenTipo, tasaCierre: cifras.tasaCierre || undefined, magico: magico?.valor > 0 ? magico : null });
   const ocupado = Boolean(trabajando);
 
   const armar = async ({ conCambio = false } = {}) => {
@@ -282,12 +289,11 @@ export default function Estratega({ clients = [], clienteId = "", cuentaLista = 
     try {
       const c = await onClienteNuevo({ name: externo.nombre, industry: externo.rubro });
       if (otro.nombre) await guardarCatalogo(c.dbId || c.id, limpiarCatalogo([{ nombre: otro.nombre, precio: otro.precio, beneficios: otro.descripcion, tipo: "producto", activo: true }]));
-      setAviso({ ok: true, texto: `«${externo.nombre}» ya es cliente${otro.nombre ? `, con «${otro.nombre}» en su catálogo` : ""}. Asígnale su página y su cuenta publicitaria para crear la campaña.` });
+      setAviso({ ok: true, texto: `«${externo.nombre}» ya es cliente${otro.nombre ? `, con «${otro.nombre}» en su catálogo` : ""}. Asígnale su página y su cuenta publicitaria para revisar sus campañas.` });
     } catch (e) { setAviso({ ok: false, texto: e.message }); }
     setTrabajando("");
   };
 
-  const crearCampana = () => onCrear(planABorrador(r.plan, { hoy, cliente: nombreCliente, producto: r.producto?.nombre || productoNombre }), cliente);
   const texto = r ? planATexto(r.plan, {
     marca: para === "cliente" ? nombreCliente : externo.nombre, eco: r.eco,
     filas: escenarios({ diario: r.plan.presupuesto.diario || Number(cifras.diario), dias: r.plan.presupuesto.dias || Number(cifras.dias), costos: r.plan.costos, eco: r.eco }),
@@ -374,7 +380,7 @@ export default function Estratega({ clients = [], clienteId = "", cuentaLista = 
           {para === "cliente" && (numeros?.margen || numeros?.tasaCierre) && (
             <p className="hint">{numeros.margen && numeros.tasaCierre ? "El margen (efectivo) y la tasa de cierre salen" : numeros.margen ? "El margen (efectivo) sale" : "La tasa de cierre sale"} de Marca → Números del negocio.</p>
           )}
-          {eco && <p className="hint" role="status">Con esto, cada resultado puede costar como mucho <strong>{DINERO(eco.costoMaxResultado, moneda)}</strong> (para ganar, {DINERO(eco.costoObjetivo, moneda)}).</p>}
+          {eco && <p className="hint" role="status">Con esto, cada resultado puede costar como mucho <strong>{DINERO(eco.costoMaxResultado, moneda)}</strong> (para ganar, {DINERO(eco.costoObjetivo, moneda)}){eco.de ? `, ${eco.de}: el mismo número mágico de la ficha y la revisión` : ""}.</p>}
 
           <div className="est-fila">
             <div className="field">
@@ -438,9 +444,8 @@ export default function Estratega({ clients = [], clienteId = "", cuentaLista = 
                 <button type="button" className="btn btn-secondary" disabled={ocupado} onClick={crearCliente}>{trabajando === "cliente" ? "Creando…" : "Guardar como cliente"}</button>
               )}
               {para === "cliente" && (
-                <button type="button" className="btn btn-primary" disabled={ocupado || !(cuentaLista && cliente === clienteId)} onClick={crearCampana}
-                  title={cuentaLista && cliente === clienteId ? undefined : "Escoge este cliente en Anuncios y asígnale su cuenta publicitaria"}>
-                  <Icon name="megaphone" size={16} /> Crear la campaña con esto
+                <button type="button" className="btn btn-primary" disabled={ocupado || !onPlan} onClick={() => onPlan?.(cliente)}>
+                  <Icon name="layers" size={16} /> Armar su plan de campañas
                 </button>
               )}
             </>

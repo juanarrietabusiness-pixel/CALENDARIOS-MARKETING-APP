@@ -104,7 +104,12 @@ export { DESEOS_REISS, NIVELES_CONSCIENCIA, nombreDeNivel };
 const CLAVES_NIVEL = NIVELES_CONSCIENCIA.map((n) => n.clave);
 
 /** Lo que admite Meta en un anuncio (lo que no se ve recortado en el feed). */
-export const LIMITES_ANUNCIO = Object.freeze({ titulo: 40, textoPrincipal: 300, descripcion: 30 });
+/**
+ * Los topes de un anuncio. El del texto principal es UNO para toda la aplicación (el estudio de mercado, los textos de
+ * lo que va a pauta —lib/pauta.js— y el asistente de campañas —lib/anuncios.js `MAX_TEXTO`—): antes eran 300, 600 y
+ * 2.000 según la pantalla. 600 deja sitio al de evaluación, más largo a propósito.
+ */
+export const LIMITES_ANUNCIO = Object.freeze({ titulo: 40, textoPrincipal: 600, descripcion: 30 });
 
 export const MAX_PRODUCTOS = 30;
 

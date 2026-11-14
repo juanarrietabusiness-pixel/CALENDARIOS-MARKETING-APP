@@ -335,8 +335,13 @@ src/
                           conjuntos), los conjuntos con públicos y exclusiones, qué pieza va en cada anuncio (ordenada por lo que
                           se aprendió de sus anuncios), la guía de montaje, las 5 hojas del Excel de estrategia y el texto (puro;
                           también el Worker)
-    manualCiclo.js        Lo del Manual que lee el plan: el reparto por etapa (60/20/10/10, que sume 100) y los anuncios por
-                          conjunto (4–6) (puro)
+    manualCiclo.js        Lo del Manual que lee el plan: el reparto por etapa (60/20/10/10, que sume 100), el de un cliente a
+                          mano (`repartoDelCliente`) y los anuncios por conjunto (3–6) (puro)
+    anunciosPlan.js       Los ANUNCIOS del plan de campañas: «¿Qué vas a hacer?» (campañas, productos, lo que se quiere lograr), lo
+                          decidido de cada hueco de anuncio (publicación escogida o «anuncio nuevo», cómo se monta, sus textos), el
+                          pedido de sus textos a la IA y su lectura, «Cambiar» (cualquier publicación del cliente) (puro)
+    textosNivel.js        Cómo se le habla a cada NIVEL de consciencia en un anuncio y la regla de 100 (qué nivel lleva cada anuncio
+                          de una campaña; el tipo de lo que se produce para un nivel) (puro; también el Worker)
     xlsx.js               Un .xlsx sin librería: SpreadsheetML mínimo sobre lib/zip.js (puro)
     lotePauta.js          El lote del Estudio abierto por la dirección: ?lote=mes, ?lote=pauta (el plan de campañas) y
                           ?lote=anuncios (la revisión 3Q) (puro)
@@ -710,7 +715,8 @@ src/
                           partir de un plan de la agencia); el diálogo de la barra, el asistente del mes y la ficha lo usan (lazy)
     calendario/fechasEspeciales.jsx  Escoger las fechas de un cliente (importante, ocultar, propias, IA)
     CalendarView.jsx      Vista de lista y de rejilla, filtros, generación, envío
-    anuncios/AsistenteCampana.jsx  «Nueva campaña»: objetivo y destino (web o WhatsApp), públicos (1–3), anuncios (1–6, carrusel), revisar
+    anuncios/AsistenteCampana.jsx  «Nueva campaña» por API (objetivo, públicos, anuncios): YA NO SE ABRE desde ningún sitio (decisión del 14-nov:
+                          las campañas se montan en el Ads Manager); se conserva por si vuelve
     anuncios/DialogoActivar.jsx    Activar: el presupuesto y las fechas, y escribir ACTIVAR
     anuncios/Estratega.jsx         El estratega: para un cliente o alguien de fuera, el plan, ajustarlo, guardarlo y llevarlo
                           a «Nueva campaña» (lazy)
@@ -737,6 +743,8 @@ src/
     anuncios/Revision3Q.jsx  La revisión 3Q en pantalla (Resultados → Anuncios y el diálogo de Anuncios → Campañas) (lazy)
     anuncios/RevisarCampanasDia.jsx  Mi día: «Revisar las campañas de <cliente>» cada 6 días
     anuncios/ManualCiclo.jsx  El reparto por etapa y los anuncios por conjunto en Ajustes → Manual de campañas
+    anuncios/AnunciosDelPlan.jsx  Los anuncios de cada campaña del plan de campañas: la publicación sugerida o escogida («Cambiar»), cómo
+                          se monta en el Ads Manager y sus textos (a mano o «Escribir los textos» con la IA)
     anuncios/ParaPautar.jsx  «Para pautar» en Resultados → Anuncios: lo que rindió, su texto como anuncio, «Marcar Va a pauta» y
                           lo que se aprende de sus anuncios (lazy, dentro de la revisión 3Q)
     calendario/enPautaPublicacion.jsx  «En pauta · Presentación · 0,80 US$ por conversación» en la pestaña Idea (sólo D1)
@@ -5503,6 +5511,39 @@ son del servidor.
   ascensión con el motivo.
   · **La pantalla trae sus propios estilos** (PlanCampanas.css): los de /campanas viven en el chunk de Campañas y no se cargan
   si se entra directo a /plan-campanas.
+- **El plan de campañas es EL sitio de la estrategia, también de los ANUNCIOS y sus textos** (decisión de la agencia del 14
+  de noviembre; `src/lib/anunciosPlan.js`, `src/lib/textosNivel.js`, `AnunciosDelPlan.jsx`). Lo que no se ve en la pantalla:
+  · **Lo guardado del plan de un mes** (`planes_campana`, `datos`): `ajustes.que` («¿Qué vas a hacer?»: `campanas` —vacía =
+  el ciclo de la cuenta—, `productos` «foco» | «varios» | «todos», `productoIds`, `logro`) y `anuncios` ({ "<campaña>:a<n>":
+  { pieza: { calendarId, postId } | nuevo: true, como: "publicacion" | "subir", textos: la forma de `post.anuncio`, editado?,
+  ia?, por, at } }), fundido hueco a hueco (`fundirAnunciosPlan`: otra publicación borra los textos de la anterior; null
+  vuelve a lo sugerido). El id del hueco es el del paso de la guía.
+  · **Con campañas escogidas, la inversión se reparte entre ellas** (como la cuenta nueva, 75/25: `repartoDelPlan` con
+  `soloIds`), y la temporada va sólo si se escogió (aunque el mes no la traiga: «la pidió la agencia»).
+  · **El reparto a mano** es `anuncios_clientes.reparto` (0078), `PUT …/ciclo { reparto }` con `actualizar` y sólo esa
+  columna (null: «Volver al estándar»); el servidor no guarda uno que no sume 100.
+  · **Qué se sugiere en cada hueco, en orden**: lo escogido a mano manda; luego los anuncios que YA FUNCIONARON
+  (`anunciosQueFuncionaron` sobre `en_pauta`: costo de 30 días dentro del número mágico de ese día, o 3 resultados sin
+  él), lo publicado que rindió y lo de «Va a pauta». Con productos escogidos, sólo lo de esos productos. Lo escogido y lo
+  que funcionó puede ser de CUALQUIER mes: esos calendarios se leen aparte (`soloClaves`) y entra aunque no esté publicado
+  ni marcado (`incluir` de `candidatasDelCalendario`). `c.anuncios` sólo trae los huecos llenos, cada uno con su `n`:
+  se busca con `anuncioEn(c, n)`, no por índice.
+  · **Con la publicación ya subida** (`como: "publicacion"`) el texto principal ES su caption (se enseña y se revisa con
+  `problemasDePauta`) y sólo se escriben título y descripción; subiendo la pieza, de 3 a 5 textos, títulos, descripción y
+  botón. `POST …/ciclo { escribir, reescribir? }` los pide a la IA (`pedidoDeTextosPlan`, función «ideas de anuncios»)
+  con el nivel de cada hueco (`nivelesParaHuecos`: la regla de 100 dentro de su etapa) y su tabla de cómo hablarle, los
+  productos con su precio, la publicación escogida, «lo que quieres lograr», la ficha del cliente y el cerebro. Se
+  guardan con el plan fijando la pieza del hueco, y en `post.anuncio` SIN pisar lo que tenía (`rellenarAnuncioDelPost`);
+  lo que escribió una persona en el plan no se reescribe salvo con `reescribir`. Lo que escribe una persona (`PUT` con
+  `textos` y `editado`) sí reemplaza en `post.anuncio`. Las dos escriben una vez por calendario (`updated_at` como
+  condición, la cola y `calendario:recargar` sin pestaña) y, si la publicación no iba a pauta, la marcan en su etapa.
+  · **Lo que falta de Presentación se pide por niveles** (`?lote=pauta&niveles=inconsciente:2,problema:1`) y en el lote cada
+  pieza que va a pauta toma el tipo de su nivel (`tipoParaNivel`: un educativo en los fríos, nunca «Anuncio» con precio).
+  · **El Excel es el de la agencia hoja por hoja**: B «Presupuesto de la campaña Advantage+» es un sí/no y la cifra diaria
+  va en C (Evaluación, Conversión, Ascensión y la Especial) o en E por conjunto (Presentación), con lo de la campaña y los
+  anuncios en celdas combinadas; más una hoja «Textos de los anuncios».
+  · **Un plan del mes en curso arranca HOY** (`hoy` en `planDelCiclo`) y el total del mes dice el ciclo y la temporada aparte
+  (`plan.total`, `textoDelTotal`).
 - **«En pauta» sale del creativo de cada anuncio, leído en la MISMA llamada de la revisión 3Q** (entrega 7; `worker/lib/enPauta.js`,
   `src/lib/enPauta.js`, `src/lib/aprenderAnuncios.js`, `anuncios_clientes.en_pauta`, 0073). Cosas que no se ven:
   · **Se casa por el id que guardó la cola al publicar** (`publicaciones_programadas.externo_id`; en Instagram también el
@@ -6009,6 +6050,15 @@ son del servidor.
 - **`wrangler d1 migrations apply` pinta la tabla ENTERA de migraciones tras cada una**: su salida crece con el cuadrado de
   cuántas hay, y con la 0076 (72 migraciones) pasó del 1 MB que `execFile` admite por defecto. `npm run test:vivo` moría con
   «stdout maxBuffer length exceeded» antes de arrancar el Worker, con el SQL perfecto. `tests/vivo/espacio.js` le da 64 MB.
+
+- **UN solo número mágico y nada de crear campañas desde la app** (decisiones del 14-nov). `numeroMagicoDelCliente`
+  (src/lib/numerosNegocio.js) es LA cifra de la ficha, la revisión 3Q (también el cron), el informe de anuncios, el plan de
+  campañas y el estratega: el menor entre el objetivo y el equilibrio, con el presupuesto escrito (o el que pide la meta;
+  lo gastado en Meta sólo se enseña) y SIN ajuste por etapa (`EXIGENCIA_ETAPA` se quitó). Sin costos no hay número: se dice
+  qué falta y no se juzga contra una cifra inventada. «Decisión» es, como en el curso, quien YA COMPRÓ (va en Ascensión);
+  el empujón es la etapa Conversión con textos de nivel Producto. «Nueva campaña» (crear por la API) ya no se abre: la
+  página de Anuncios lleva a «Plan de campañas», que da campañas, conjuntos, anuncios (cualquier publicación, o una nueva)
+  y sus textos según el nivel de consciencia de su etapa; el estratega de un cliente lleva a su plan.
 
 ## Documentos relacionados
 

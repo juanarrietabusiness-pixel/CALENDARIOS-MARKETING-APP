@@ -48,7 +48,7 @@ describe("limpiar el kit", () => {
     const k = limpiarKitWhatsApp(JSON.parse(RESPUESTA_IA));
     expect(k.respuestas.map((r) => r.atajo)).toEqual(["precio", "envio", "precio2", "garantia"]);
     expect(k.respuestas[3].objecion).toBe(true);
-    expect(k.etiquetas).toEqual([{ nombre: "Nuevo", etapa: "presentacion", cuando: "Escribió" }, { nombre: "Compró", etapa: "ascension", cuando: "" }]);
+    expect(k.etiquetas).toEqual([{ nombre: "Nuevo", etapa: "conversion", cuando: "Escribió" }, { nombre: "Compró", etapa: "ascension", cuando: "" }]);
     expect(k.guiones[0].preguntas).toEqual(["¿Para qué espacio?", "¿Para cuándo?"]);
   });
 

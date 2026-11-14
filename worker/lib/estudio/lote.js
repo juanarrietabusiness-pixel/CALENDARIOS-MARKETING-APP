@@ -70,6 +70,7 @@ import { fechaEnZona } from "../../../src/lib/agenda.js";
 import { conNotasDelDia, notaDelDia, productoDeNota } from "../../../src/lib/notasSemana.js";
 import { planSemanalDeFila } from "../../../src/lib/planSemanal.js";
 import { CLAVES_NIVEL } from "../../../src/lib/consciencia.js";
+import { tipoParaNivel } from "../../../src/lib/textosNivel.js";
 import { bloqueDeMarca, kitVacio } from "../../../src/lib/kitMarca.js";
 import { lineaDeTiposArte, nombresDeSesgos } from "../../../src/lib/tiposArte.js";
 import { lineaDePlantilla, bloqueDeDisenoPorTipo } from "../../../src/lib/director.js";
@@ -335,7 +336,9 @@ export async function produccionDeLote(env, acceso, cliente, datos = {}) {
     } else {
       celdas = celdasPorNiveles(limpiarCuantas(datos.cuantas));
       // «Producir los anuncios que faltan» del plan de campañas: todas van a pauta en esa etapa, cada una con su nivel.
-      if (limpiarPauta(datos.pauta)) celdas = celdas.map((c) => ({ ...c, pauta: limpiarPauta({ ...datos.pauta, nivel: c.nivel }) }));
+      // Y cada una con el TIPO que pide su nivel (lib/textosNivel.js): en los fríos (inconsciente, problema), un
+      // educativo, nunca un «Anuncio» de venta directa con precio, que choca con un producto que todavía no se ve.
+      if (limpiarPauta(datos.pauta)) celdas = celdas.map((c) => ({ ...c, tipo: tipoParaNivel(c.nivel), pauta: limpiarPauta({ ...datos.pauta, nivel: c.nivel }) }));
     }
     // Con un producto escogido, también las piezas frías saben de qué producto es el problema (aunque no salga).
     if (producto) celdas = celdas.map((c) => ({ ...c, productoId: producto.id }));

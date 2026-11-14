@@ -174,7 +174,8 @@ describe("qué se marca solo (decisión 9)", () => {
     ];
     const s = sugerirPauta(items, { ofertas: "15 % en colchones hasta el 30" });
     expect(s.map((x) => x.id)).toEqual(["a", "b", "c", "d"]);
-    expect(s[0].pauta).toMatchObject({ etapa: "conversion", auto: true, motivo: "Tipo «Anuncio» del plan semanal" });
+    // «Decisión» es quien YA compró (el curso): ascensión.
+    expect(s[0].pauta).toMatchObject({ etapa: "ascension", auto: true, motivo: "Tipo «Anuncio» del plan semanal" });
     expect(s[1].pauta.etapa).toBe("evaluacion");
     expect(s[2]).toMatchObject({ motivo: "La oferta del mes", pauta: { etapa: "conversion" } });
     // Sin oferta en el mes, «Beneficios» no va solo.
@@ -209,7 +210,7 @@ describe("qué se marca solo (decisión 9)", () => {
 });
 
 describe("la revisión de anuncio", () => {
-  const conPauta = (descripcion, extra = {}) => post({ pauta: { etapa: "presentacion" }, descripcion, anuncio: { textos: ["Uno"] }, ...extra });
+  const conPauta = (descripcion, extra = {}) => post({ pauta: { etapa: "presentacion" }, descripcion, anuncio: { textos: ["Una sala pequeña también merece un sofá cama. Escríbenos por WhatsApp."] }, ...extra });
   const codigos = (p, ctx) => problemasDePauta(p, ctx).map((x) => x.codigo);
   const BUENO = "Tu sala pequeña también merece un sofá cama que se abre en un segundo.\n\nEscríbenos por WhatsApp y te ayudamos a escoger el tuyo.";
 

@@ -30,6 +30,7 @@ import { crearAcceso, clientesSinInformeAnuncios } from "./acceso.js";
 import { difundir } from "./vivo.js";
 import { graph, ErrorMeta } from "./meta.js";
 import { agenciaDelMes, CAMPOS_NUEVOS_3Q } from "./revision3q.js";
+import { limpiarNegocio } from "../../src/lib/numerosNegocio.js";
 import { ahora, uuid } from "./ids.js";
 import { fechaEnZona } from "../../src/lib/agenda.js";
 import { rangoInsights, modificadorInsights, CAMPOS_INSIGHTS } from "../../src/lib/anuncios.js";
@@ -100,7 +101,7 @@ async function estadisticasDelMes(env, token, cuenta, rango) {
  * Lo que se lee de Meta para el informe de `mes`, ya convertido en cifras. `extra` (si llega) recibe el total del mes
  * tal cual (`extra.total`): de ahí sale lo que sólo ve la agencia, que no va en las cifras (las ve el cliente).
  */
-export async function datosDelMes(env, token, cuenta, mes, desdeApp = [], extra = null) {
+export async function datosDelMes(env, token, cuenta, mes, desdeApp = [], extra = null, { destino = "" } = {}) {
   const { desde, hasta } = limitesDelMes(mes);
   const previo = limitesDelMes(mesPrevio(mes));
   const rango = rangoInsights({ desde, hasta });
@@ -112,10 +113,10 @@ export async function datosDelMes(env, token, cuenta, mes, desdeApp = [], extra 
     listarCampanas(env, token, cuenta, rangoAntes),
     anunciosDelMes(env, token, cuenta, rango),
   ]);
-  if (extra) extra.total = total;
+  if (extra) { extra.total = total; extra.campanas = campanas; }
   const cifras = cifrasInformeAnuncios({
     mes, desde, hasta, cuenta: { nombre: cuenta.nombre, moneda: cuenta.moneda },
-    total, anterior: anteriorBruto?.data?.[0] ?? null, campanas, campanasAnterior, dias, anuncios, desdeApp,
+    total, anterior: anteriorBruto?.data?.[0] ?? null, campanas, campanasAnterior, dias, anuncios, desdeApp, destino,
   });
   // Las imágenes de los mejores, incrustadas: la del anuncio y, si no, su miniatura.
   const porId = new Map(anuncios.map((x) => [String(x.id), x]));
@@ -187,10 +188,12 @@ export async function generarInformeAnuncios(env, acceso, { clientId, mes, usuar
     const token = await conexion.token();
     const registros = await acceso.leer("campanas_anuncios", { client_id: clientId });
     const leido = {};
-    const cifras = await datosDelMes(env, token, cuenta, mes, registros.map((r) => r.campana_id), leido);
+    // Con destino WhatsApp, Interacción y Ventas cuentan sólo conversaciones (lib/anuncios.js, `resultadosDe`).
+    const { destino } = await acceso.leerUno("anuncios_clientes", { client_id: clientId }).then((f) => limpiarNegocio(JSON.parse(f?.negocio || "{}"))).catch(() => ({ destino: "" }));
+    const cifras = await datosDelMes(env, token, cuenta, mes, registros.map((r) => r.campana_id), leido, { destino });
     // Lo que ve SÓLO la agencia (el % de mensajes, el CTR único y el número mágico frente al costo real): va aparte de
     // las cifras, y el enlace del cliente no lo lleva (informeAnunciosPorTestigo sólo da cifras y análisis).
-    const agencia = await agenciaDelMes(acceso, clientId, leido.total).catch((e) => { console.warn("informe de anuncios, agencia:", e?.message); return null; });
+    const agencia = await agenciaDelMes(acceso, clientId, leido.total, { campanas: leido.campanas }).catch((e) => { console.warn("informe de anuncios, agencia:", e?.message); return null; });
 
     // El análisis es de la IA y no puede tumbar las cifras: sin él, el informe sale igual y la agencia lo sabe.
     const avisos = [];

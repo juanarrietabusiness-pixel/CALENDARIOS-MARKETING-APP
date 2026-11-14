@@ -67,7 +67,7 @@ describe("«Para pautar»", () => {
 
   it("ya marcada, o quien sólo mira: sin el botón de marcar; de fuera del calendario: «Ver en Instagram»", () => {
     const marcada = pintar(Candidata, { x: { ...x, marcada: true }, ctx });
-    expect(marcada).toContain("Va a pauta en Evaluación: falta montarla en el Ads Manager.");
+    expect(marcada).toContain("Va a pauta en Evaluación: falta montarla en el Ads Manager (abajo, cómo).");
     expect(marcada).not.toContain("Marcar «Va a pauta»");
     expect(pintar(Candidata, { x, ctx: { ...ctx, soloLectura: true } })).not.toContain("Marcar «Va a pauta»");
     const fuera = pintar(Candidata, { x: { ...x, clave: "instagram:1", delCalendario: false, calendarId: undefined, postId: undefined, enlace: "https://www.instagram.com/p/AAA/", problemas: [] }, ctx });

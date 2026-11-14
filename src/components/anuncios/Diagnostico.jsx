@@ -8,7 +8,8 @@ import { useDialogA11y } from "../../hooks/useDialogA11y";
 //
 // Es la REVISIÓN 3Q (Revision3Q.jsx, la misma de Resultados → Anuncios del cliente) en un diálogo: una sola
 // implementación de las reglas y de la pantalla. Antes eran las reglas de src/lib/diagnostico.js con un costo
-// aceptable tecleado; ahora el costo sale del número mágico (Marca → Números del negocio) y por etapa, y las reglas de
+// aceptable tecleado; ahora el costo sale del número mágico (Marca → Números del negocio, el mismo para todas las
+// etapas), y las reglas de
 // antes son la base de la revisión (src/lib/tresQ.js).
 // ============================================================
 

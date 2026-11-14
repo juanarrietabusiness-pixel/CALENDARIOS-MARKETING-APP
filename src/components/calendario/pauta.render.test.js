@@ -52,7 +52,7 @@ describe("lo que va a pauta se pinta", () => {
     const cal = {
       id: "cal1", year: 2026, month: 10, days: [{ date: "2026-11-02", posts: [
         { id: "a", format: "post", title: "Sofá", descripcion: "¡Hoy abrimos!\n#sofa #a #b #c", pauta: { etapa: "presentacion" } },
-        { id: "b", format: "post", title: "Lista", descripcion: BUENO, pauta: { etapa: "conversion" }, anuncio: { textos: ["x"] } },
+        { id: "b", format: "post", title: "Lista", descripcion: BUENO, pauta: { etapa: "conversion" }, anuncio: { textos: ["Una sala pequeña merece un buen sofá. Escríbenos por WhatsApp."] } },
       ] }],
     };
     const html = pintar(RevisionMes, { client: { id: "c1", name: "Dcasa" }, cal, onAbrir: nada, onArreglar: nada, onClose: nada, incrustado: true });

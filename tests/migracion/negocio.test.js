@@ -270,7 +270,9 @@ describe("lo que sabe Meta (30 días, sólo lectura)", () => {
   it("una llamada a los insights de la cuenta, y cada métrica en su unidad", async () => {
     await conMeta();
     const d = await (await negocio(JEFE)).json();
-    expect(llamadas).toHaveLength(1);
+    // La cuenta entera y, aparte, por campaña (el costo por conversación sólo de las de mensajes).
+    expect(llamadas).toHaveLength(2);
+    expect(llamadas[1].params).toMatchObject({ level: "campaign", fields: "campaign_id,objective,spend,actions" });
     expect(llamadas[0].ruta).toBe("/act_111/insights");
     expect(llamadas[0].params).toMatchObject({ date_preset: "last_30d", access_token: "token-persona" });
     expect(llamadas[0].params.fields).toContain("unique_inline_link_clicks");
@@ -301,7 +303,7 @@ describe("lo que sabe Meta (30 días, sólo lectura)", () => {
       ? respuesta({ error: { message: "(#100) unknown field", code: 100 } }, 400)
       : respuesta({ data: [{ spend: "100", impressions: "20000", reach: "10000", cpm: "5", actions: [{ action_type: ACCION_MENSAJE, value: "50" }] }] }));
     const d = await (await negocio(JEFE)).json();
-    expect(llamadas).toHaveLength(2);
+    expect(llamadas).toHaveLength(3);
     expect(d.lectura).toMatchObject({ gasto: 100, conversaciones: 50, costoConversacion: 2, frecuencia: 2 });
   });
 
@@ -390,7 +392,8 @@ describe("lo leen el diagnóstico y el estratega", () => {
     await conMeta();
     // Sin números: cada campaña se compara con su promedio de 30 días (60 ÷ 5 = 12): nada que apagar.
     let d = await (await pedir(JEFE, "/anuncios/clientes/c1/diagnostico", { method: "POST", body: {} })).json();
-    expect(d.origenCosto).toBe("promedio");
+    // Sin números NO se compara con el promedio del mes (decisión del 14-nov): no se pausa nada por costo.
+    expect(d.origenCosto).toBe("sin-numero");
     expect(d.hallazgos.filter((h) => h.accion === "apagar")).toEqual([]);
     // Con números: 20 × 16 % × 9 % = 0,288 por conversación; 12 es más de 1,5 veces eso → apagar.
     await negocio(JEFE, "c1", "", { method: "PUT", body: { negocio: NUMEROS } });
@@ -416,8 +419,10 @@ describe("lo leen el diagnóstico y el estratega", () => {
     const r = await pedir(JEFE, "/anuncios/estratega", { method: "POST", body: { clientId: "c1", productoId: "p-lavado" } });
     expect(r.status).toBe(200);
     const d = await r.json();
-    // Margen 60 % sin ITBMS ni devoluciones; 9 de cada 100 compran: 45 × 60 % × 9 % = 2,43.
-    expect(d.eco).toMatchObject({ precio: 45, ganancia: 27, tasaCierre: 9, costoMaxResultado: 2.43 });
+    // Con los números del negocio, EL número mágico del cliente (el mismo de la ficha y la revisión, con su ticket de
+    // 20): el límite es el equilibrio, 20 × 60 % × 9 % = 1,08, y el objetivo, 20 × 16 % × 9 % = 0,29.
+    expect(d.eco).toMatchObject({ precio: 45, ganancia: 27, tasaCierre: 9, costoMaxResultado: 1.08, costoObjetivo: 0.29 });
+    expect(d.eco.de).toMatch(/números del negocio/);
     expect(d.deNumeros).toBe(true);
     // Lo tecleado sigue mandando.
     const t = await (await pedir(JEFE, "/anuncios/estratega", { method: "POST", body: { clientId: "c1", productoId: "p-lavado", margen: 50, tasaCierre: 10 } })).json();

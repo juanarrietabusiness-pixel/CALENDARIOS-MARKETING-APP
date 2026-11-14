@@ -251,14 +251,15 @@ describe("lo que ve la agencia", () => {
     expect(d.semanas[7].semana).toBe("2026-09-14");
     expect(d.meta).toEqual({ estado: "ok", mensaje: "", moneda: "USD" });
     expect(d.testigo).toBe(t);
-    // Las ventas de cada semana con las conversaciones de la ANTERIOR: 4 con 80, 3 con 60, 2 con 50.
-    expect(d.resumen.tasa).toMatchObject({ ventas: 9, conversaciones: 190, suficiente: true, semanas: ["2026-11-02", "2026-10-26", "2026-10-19"] });
-    expect(d.resumen.tasa.tasa).toBeCloseTo(9 / 190);
-    expect(d.resumen.tasaUsada).toBeCloseTo(9 / 190);
-    // 1.350 vendidos con 40 + 30 + 30 de pauta.
-    expect(d.resumen.gasto).toBe(100);
-    expect(d.resumen.roas).toBeCloseTo(13.5);
-    expect(d.resumen.costoPorVenta).toBeCloseTo(100 / 9);
+    // Las ventas de cada semana con las conversaciones de la ANTERIOR, y SÓLO semanas cerradas: la del 2 de noviembre
+    // va a medias (hoy es viernes 6) y no cuenta. 3 con 60 y 2 con 50.
+    expect(d.resumen.tasa).toMatchObject({ ventas: 5, conversaciones: 110, suficiente: true, semanas: ["2026-10-26", "2026-10-19"] });
+    expect(d.resumen.tasa.tasa).toBeCloseTo(5 / 110);
+    expect(d.resumen.tasaUsada).toBeCloseTo(5 / 110);
+    // 750 vendidos con 30 + 30 de pauta.
+    expect(d.resumen.gasto).toBe(60);
+    expect(d.resumen.roas).toBeCloseTo(12.5);
+    expect(d.resumen.costoPorVenta).toBeCloseTo(60 / 5);
     expect(d.resumen.sinMedir).toBeNull();
     // UNA llamada a Meta, una semana más atrás de las ocho (para cruzar la más vieja).
     expect(llamadasMeta).toHaveLength(1);

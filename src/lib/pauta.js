@@ -32,11 +32,10 @@ export const MIN_TEXTOS = 3;
 export const MAX_TEXTOS = 5;
 export const MAX_TITULOS = 5;
 /**
- * Un texto principal, como mucho. El estudio de mercado escribe UNO por producto de hasta 300 (LIMITES_ANUNCIO); aquí
- * van varios, y el de evaluación es más largo a propósito (detalles, beneficios, una objeción): el tope es el del
- * caption.
+ * Un texto principal, como mucho: el tope ÚNICO de la aplicación (LIMITES_ANUNCIO del estudio de mercado, el mismo del
+ * asistente de campañas). El de evaluación es más largo a propósito (detalles, beneficios, una objeción).
  */
-export const MAX_TEXTO_ANUNCIO = 600;
+export const MAX_TEXTO_ANUNCIO = LIMITES_ANUNCIO.textoPrincipal;
 export const MAX_TITULO_ANUNCIO = LIMITES_ANUNCIO.titulo;
 export const MAX_DESCRIPCION_ANUNCIO = LIMITES_ANUNCIO.descripcion;
 /** Lo que se ve de un anuncio antes de «más»: ahí tiene que estar el gancho. */
@@ -293,12 +292,13 @@ export function deLaOferta(post = {}, { ofertas = "", codigo = "" } = {}) {
 }
 
 /**
- * La etapa que se propone: la oferta del mes va a conversión; un «Anuncio» por su nivel (el «Listo para comprar» de
- * la app es quien está por decidir: conversión; el del producto, evaluación); lo demás, presentación. Pura.
+ * La etapa que se propone: la oferta del mes va a conversión; un «Anuncio» por su nivel —«Decisión» es quien YA
+ * COMPRÓ (el curso; decisión de la agencia del 14-nov): ascensión; el del producto, evaluación—; lo demás,
+ * presentación. Pura.
  */
 export function etapaSugerida(post = {}, { oferta = false } = {}) {
   if (oferta) return "conversion";
-  if (post?.nivel === "decision") return "conversion";
+  if (post?.nivel === "decision") return "ascension";
   if (post?.nivel === "producto") return "evaluacion";
   return etapaDeNivel(post?.nivel) || "presentacion";
 }
@@ -309,16 +309,45 @@ export function etapaSugerida(post = {}, { oferta = false } = {}) {
  * alguien desmarcó (`pauta === false`). `items`: [{ id, post }] o publicaciones. → [{ id, pauta (con `auto`), motivo }].
  * Pura.
  */
-export function sugerirPauta(items = [], { ofertas = "", codigo = "" } = {}) {
-  return (items ?? []).flatMap((x) => {
-    const post = x?.post ?? x;
-    const id = String(x?.id ?? x?.clave ?? post?.id ?? "");
-    if (!id || !post || post.format === "live" || post.status === "published" || post.pauta === false || vaAPauta(post)) return [];
+export function sugerirPauta(items = [], { ofertas = "", codigo = "", cuenta = "" } = {}) {
+  const lista = (items ?? []).map((x) => ({ x, post: x?.post ?? x, id: String(x?.id ?? x?.clave ?? (x?.post ?? x)?.id ?? "") }))
+    .filter(({ id, post }) => id && post && post.format !== "live" && post.status !== "published" && post.pauta !== false && !vaAPauta(post));
+  const salida = [];
+  for (const { post, id } of lista) {
     const oferta = deLaOferta(post, { ofertas, codigo });
-    if (post.pilar !== "anuncio" && !oferta) return [];
+    if (post.pilar !== "anuncio" && !oferta) continue;
     const motivo = oferta ? "La oferta del mes" : "Tipo «Anuncio» del plan semanal";
-    return [{ id, motivo, pauta: limpiarPauta({ etapa: etapaSugerida(post, { oferta }), como: "", auto: true, motivo }) }];
+    salida.push({ id, motivo, etapa: etapaSugerida(post, { oferta }) });
+  }
+  // PRESENTACIÓN también (antes nunca caía nada ahí, y es la etapa con más presupuesto): lo que le habla a quien aún no
+  // conoce la marca —un educativo, un diferenciador, contenido humano o una solución a un problema, en nivel frío—,
+  // como mucho `MAX_PRESENTACION_AUTO` (el curso pide de 3 a 6 anuncios por conjunto).
+  const yaEn = new Set(salida.map((s) => s.id));
+  const frias = lista.filter(({ post, id }) => !yaEn.has(id) && TIPOS_PRESENTACION.has(post.pilar) && NIVELES_FRIOS.has(post.nivel));
+  const faltan = Math.max(0, MAX_PRESENTACION_AUTO - salida.filter((s) => s.etapa === "presentacion").length);
+  for (const { id } of frias.slice(0, faltan)) salida.push({ id, motivo: "Para quien aún no conoce la marca", etapa: "presentacion" });
+  // Una cuenta NUEVA sólo corre Presentación y Evaluación (decisión 3): lo de conversión o ascensión se perdería sin
+  // avisar. Va a Evaluación y lo dice (`cuentaNueva`).
+  return salida.map(({ id, motivo, etapa }) => {
+    const nueva = cuenta === "nueva" && (etapa === "conversion" || etapa === "ascension");
+    const m = nueva ? `${motivo} (cuenta nueva: va a Evaluación)` : motivo;
+    return { id, motivo: m, ...(nueva ? { cuentaNueva: etapa } : {}), pauta: limpiarPauta({ etapa: nueva ? "evaluacion" : etapa, como: "", auto: true, motivo: m }) };
   });
+}
+
+/** Cuántas se marcan solas para Presentación, como mucho. */
+export const MAX_PRESENTACION_AUTO = 4;
+const TIPOS_PRESENTACION = new Set(["educativo", "diferenciador", "humano", "solucion", "maletas"]);
+const NIVELES_FRIOS = new Set(["inconsciente", "problema", "solucion"]);
+
+/**
+ * El aviso de una cuenta nueva: lo que iba a conversión o ascensión se movió a evaluación (una cuenta nueva sólo corre
+ * Presentación y Evaluación). "" si no hubo ninguna. Pura.
+ */
+export function avisoCuentaNueva(sugeridas = []) {
+  const n = (sugeridas ?? []).filter((s) => s?.cuentaNueva).length;
+  if (!n) return "";
+  return `Cuenta nueva: ${n === 1 ? "una publicación que iba" : `${n} publicaciones que iban`} a Conversión o Ascensión ${n === 1 ? "va" : "van"} a Evaluación. Una cuenta nueva sólo corre Presentación y Evaluación hasta tener historial.`;
 }
 
 /** Los días con la pauta de las publicaciones de `pautas` (id → pauta, o `false` para quitarla y que no se vuelva a proponer). Lo que no está, igual. Pura. */
@@ -413,6 +442,40 @@ export function problemasDePauta(post, { destino = "", otras = [] } = {}) {
     if (igual) salida.push({ codigo: "parecida", texto: `Casi igual a la del ${igual.date ? fechaLegible(igual.date) : "otro día"} (también de ${nombreEtapaCiclo(p.etapa).toLowerCase()}): Meta las trataría como el mismo anuncio.`, ia: "Escribir otra distinta", distintaDe: String(igual.post.descripcion || igual.post.script || "").slice(0, 300) });
   }
   if (!tieneTextosAnuncio(post)) salida.push({ codigo: "textos", texto: "Le faltan sus textos de anuncio aparte (para montarlo subiendo la pieza).", ia: "Escribir los textos del anuncio" });
+  else salida.push(...problemasDeTextosAnuncio(post.anuncio, { destino }));
+  return salida;
+}
+
+/**
+ * Lo que la revisión ve en los textos de anuncio APARTE (`post.anuncio`: los que se pegan al subir la pieza), con las
+ * mismas reglas del caption: lo que caduca, lo que dice de quien lee, la primera línea y el llamado. Antes sólo se
+ * revisaba el caption y un texto de anuncio con «¡Sólo hoy!» se iba al Ads Manager así. Un problema por regla (con
+ * qué textos), no uno por texto. Pura.
+ */
+export function problemasDeTextosAnuncio(anuncio, { destino = "" } = {}) {
+  const a = limpiarAnuncio(anuncio, { destino });
+  if (!a?.textos.length) return [];
+  const salida = [];
+  const cuales = (lista) => (lista.length === 1 ? `el texto ${lista[0]}` : `los textos ${lista.slice(0, -1).join(", ")} y ${lista.at(-1)}`);
+  const caducan = [];
+  const personales = [];
+  const largos = [];
+  let palabra = "";
+  let frase = "";
+  a.textos.forEach((t, i) => {
+    const m = CADUCA.exec(t);
+    if (m) { caducan.push(i + 1); palabra ||= m[1].trim(); }
+    const p = PERSONAL.exec(t);
+    if (p) { personales.push(i + 1); frase ||= p[1].trim(); }
+    if (primeraLinea(t).length > PRIMERA_LINEA) largos.push(i + 1);
+  });
+  const ia = "Reescribir los textos del anuncio";
+  if (caducan.length) salida.push({ codigo: "caduca-anuncio", texto: `En ${cuales(caducan)} del anuncio dice «${palabra}»: un anuncio corre semanas y eso caduca.`, ia });
+  if (personales.length) salida.push({ codigo: "personal-anuncio", texto: `En ${cuales(personales)} del anuncio, «${frase}» dice algo de quien lee: Meta rechaza los anuncios que afirman atributos personales.`, ia });
+  if (largos.length) salida.push({ codigo: "primera-linea-anuncio", texto: `En ${cuales(largos)} del anuncio la primera línea pasa de ${PRIMERA_LINEA} caracteres: el gancho queda escondido tras «más».`, ia });
+  const web = destino === "web";
+  const sinLlamado = a.textos.map((t, i) => ((web ? LLAMADO_WEB : LLAMADO_WHATSAPP).test(t) ? 0 : i + 1)).filter(Boolean);
+  if (sinLlamado.length) salida.push({ codigo: "llamado-anuncio", texto: `${cuales(sinLlamado).replace(/^./, (c) => c.toUpperCase())} del anuncio no ${sinLlamado.length === 1 ? "invita" : "invitan"} a ${web ? "entrar a la web a comprar" : "escribir por WhatsApp"}.`, ia });
   return salida;
 }
 

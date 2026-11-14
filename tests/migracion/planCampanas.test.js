@@ -171,7 +171,7 @@ describe("el plan de un cliente y un mes", () => {
     expect(plan.campanas.some((c) => c.id === "temporada")).toBe(false);
     expect(plan.inversion).toBe(500);
     expect(plan.campanas[0].presupuesto.mensual).toBe(300);
-    expect(guardado.ajustes).toEqual({ temporada: { incluir: false }, inversion: 500 });
+    expect(guardado.ajustes).toEqual({ temporada: { incluir: false }, inversion: 500, que: { campanas: [], productos: "foco", productoIds: [], logro: "" } });
     // Marcar después no se lleva los ajustes.
     await ciclo(JEFE, "c1", "", { method: "PUT", body: { mes: "2026-11", marcar: { "presentacion:campana": true } } });
     expect((await (await ciclo(JEFE)).json()).plan.inversion).toBe(500);
@@ -187,6 +187,115 @@ describe("el plan de un cliente y un mes", () => {
     expect((await ciclo(LECTOR)).status).toBe(200);
     expect((await ciclo(LECTOR, "c1", "", { method: "PUT", body: { mes: "2026-11", marcar: { "presentacion:campana": true } } })).status).toBe(403);
     expect((await ciclo(OTRA, "c9")).status).toBe(200);
+  });
+});
+
+describe("la estrategia entera: qué vas a hacer, el reparto a mano y los anuncios con sus textos", () => {
+  const sse = (tipo, datos) => `event: ${tipo}\ndata: ${JSON.stringify(datos)}\n\n`;
+  const flujo = (texto) => new Response([
+    sse("message_start", { message: { model: "x", usage: { input_tokens: 2000 } } }),
+    sse("content_block_start", { index: 0, content_block: { type: "text", text: "" } }),
+    sse("content_block_delta", { index: 0, delta: { type: "text_delta", text: texto } }),
+    sse("content_block_stop", { index: 0 }),
+    sse("message_delta", { delta: { stop_reason: "end_turn" }, usage: { output_tokens: 400 } }),
+  ].join(""), { headers: { "content-type": "text/event-stream" } });
+  const leerPost = (cal, id) => JSON.parse(db.sqlite.prepare("select days from calendars where id = ?").get(cal).days).flatMap((d) => d.posts).find((p) => p.id === id);
+
+  it("«¿Qué vas a hacer?» se guarda y rehace el plan: sólo conversión y temporada, con un producto", async () => {
+    const r = await ciclo(JEFE, "c1", "", { method: "PUT", body: { mes: "2026-11", ajustes: { que: { campanas: ["conversion", "temporada"], productos: "foco", productoIds: ["sofa"], logro: "Vender el sofá cama en Black Friday." } } } });
+    expect(r.status).toBe(200);
+    const { plan, guardado } = await r.json();
+    expect(plan.campanas.map((c) => c.id)).toEqual(["conversion", "temporada"]);
+    expect(plan.campanas[0].presupuesto.mensual).toBe(200);
+    expect(plan.que.logro).toBe("Vender el sofá cama en Black Friday.");
+    expect(guardado.ajustes.que.campanas).toEqual(["conversion", "temporada"]);
+  });
+
+  it("el reparto a mano se guarda en anuncios_clientes (sólo esa columna), no se guarda si no suma 100 y «Volver al estándar» lo quita", async () => {
+    const malo = await ciclo(JEFE, "c1", "", { method: "PUT", body: { mes: "2026-11", reparto: { presentacion: 70, evaluacion: 20, conversion: 10, ascension: 10 } } });
+    expect(malo.status).toBe(400);
+    expect((await malo.json()).error).toMatch(/suma 110/);
+    const r = await ciclo(JEFE, "c1", "", { method: "PUT", body: { mes: "2026-11", reparto: { presentacion: 70, evaluacion: 10, conversion: 10, ascension: 10 } } });
+    expect(r.status).toBe(200);
+    const { plan } = await r.json();
+    expect(plan.repartoAMano).toBe(true);
+    expect(plan.campanas.slice(0, 4).map((c) => c.presupuesto.mensual)).toEqual([140, 20, 20, 20]);
+    const fila = db.sqlite.prepare("select negocio, reparto from anuncios_clientes where client_id = 'c1'").get();
+    expect(JSON.parse(fila.reparto)).toEqual({ presentacion: 70, evaluacion: 10, conversion: 10, ascension: 10 });
+    expect(JSON.parse(fila.negocio)).toMatchObject({ tipo: "productos" });
+    // Se queda para los meses siguientes.
+    expect((await (await ciclo(JEFE, "c1", "2026-12")).json()).plan.repartoAMano).toBe(true);
+    const vuelta = await (await ciclo(JEFE, "c1", "", { method: "PUT", body: { mes: "2026-11", reparto: null } })).json();
+    expect(vuelta.plan.repartoAMano).toBe(false);
+    expect(db.sqlite.prepare("select reparto from anuncios_clientes where client_id = 'c1'").get().reparto).toBeNull();
+  });
+
+  it("escoger cualquier publicación para un anuncio (de otro mes, sin publicar) y escribir sus textos a mano: van también a la publicación", async () => {
+    const r = await ciclo(JEFE, "c1", "", { method: "PUT", body: { mes: "2026-11", anuncios: {
+      "presentacion:a2": { pieza: { calendarId: "cal-10", postId: "p2" }, como: "subir", textos: { textos: ["Uno", "Dos", "Tres"], titulos: ["Sofá cama"], descripcion: "Envío gratis" }, editado: true },
+      "presentacion:a3": { nuevo: true },
+    } } });
+    expect(r.status).toBe(200);
+    const { plan, enPublicaciones } = await r.json();
+    const pre = plan.campanas[0];
+    expect(pre.anuncios.map((a) => [a.n, a.origen, a.pieza?.postId ?? null])).toEqual([[1, "publicada", "p1"], [2, "elegido", "p2"], [3, "nuevo", null]]);
+    expect(pre.anuncios[1]).toMatchObject({ como: "subir", editado: true, textos: { textos: ["Uno", "Dos", "Tres"] } });
+    expect(enPublicaciones).toBe(1);
+    expect(leerPost("cal-10", "p2").anuncio).toEqual({ textos: ["Uno", "Dos", "Tres"], titulos: ["Sofá cama"], descripcion: "Envío gratis", boton: "WHATSAPP_MESSAGE" });
+    expect(leerPost("cal-10", "p2").pauta).toMatchObject({ etapa: "presentacion" });
+    // null vuelve el hueco a lo sugerido.
+    const otra = await (await ciclo(JEFE, "c1", "", { method: "PUT", body: { mes: "2026-11", anuncios: { "presentacion:a3": null } } })).json();
+    expect(otra.plan.campanas[0].anuncios.some((a) => a.nuevo)).toBe(false);
+    expect(otra.guardado.anuncios["presentacion:a2"]).toMatchObject({ pieza: { postId: "p2" }, editado: true });
+  });
+
+  it("la IA escribe los textos con el nivel de cada anuncio: con la publicación, sólo título y descripción; no pisa lo de la publicación", async () => {
+    env.ANTHROPIC_API_KEY = "k";
+    const pedidos = [];
+    vi.stubGlobal("fetch", async (url, opciones = {}) => {
+      const u = String(url);
+      if (u.startsWith("https://api.anthropic.com/v1/models")) return Response.json({ data: [{ id: "claude-sonnet-5" }] });
+      if (u.startsWith("https://api.anthropic.com/v1/messages")) {
+        pedidos.push(JSON.parse(opciones.body));
+        return flujo(JSON.stringify({ anuncios: [
+          { n: 1, textos: ["no va"], titulos: ["El sofá que se abre en 10 s"], descripcion: "Envío gratis", boton: "WHATSAPP_MESSAGE" },
+          { n: 2, textos: ["Tu visita se queda.", "Diez segundos.", "Hecho en Panamá."], titulos: ["Sofá cama"], descripcion: "Desde $450", boton: "WHATSAPP_MESSAGE" },
+        ] }));
+      }
+      throw new Error(`fetch inesperado a ${u}`);
+    });
+    const sinPieza = await ciclo(JEFE, "c1", "", { method: "POST", body: { mes: "2026-11", escribir: ["presentacion:a4"] } });
+    expect(sinPieza.status).toBe(400);
+    const r = await ciclo(JEFE, "c1", "", { method: "POST", body: { mes: "2026-11", escribir: ["presentacion:a1", "evaluacion:a1"] } });
+    expect(r.status).toBe(200);
+    const out = await r.json();
+    expect(out.escritos).toBe(2);
+    const prompt = pedidos[0].messages[0].content;
+    expect(prompt).toMatch(/CÓMO SE LE HABLA A CADA NIVEL/);
+    expect(prompt).toMatch(/1\. Campaña de presentación[^\n]*nivel Inconsciente/);
+    expect(prompt).toMatch(/Se monta con la PUBLICACIÓN YA SUBIDA[\s\S]*Escribe SÓLO "titulos" y "descripcion"/);
+    expect(prompt).toMatch(/2\. Campaña de evaluación[^\n]*\n {3}Se monta SUBIENDO LA PIEZA/);
+    expect(prompt).toMatch(/Sofá cama[^\n]*precio: \$450/);
+    const [pre, eva] = out.plan.campanas;
+    expect(pre.anuncios[0]).toMatchObject({ como: "publicacion", ia: true, textos: { textos: [], titulos: ["El sofá que se abre en 10 s"], descripcion: "Envío gratis" } });
+    // p3 ya tenía sus textos de anuncio: no se pisan; p1 no tenía: se le ponen el título y la descripción.
+    expect(eva.anuncios[0].textos.textos).toEqual(["Tu visita se queda.", "Diez segundos.", "Hecho en Panamá."]);
+    expect(leerPost("cal-11", "p3").anuncio.textos).toEqual(["Texto uno", "Texto dos", "Texto tres"]);
+    expect(leerPost("cal-10", "p1").anuncio).toMatchObject({ titulos: ["El sofá que se abre en 10 s"], descripcion: "Envío gratis" });
+    // Lo que escribió una persona no se reescribe en «todos los que faltan»; con «reescribir», sí.
+    await ciclo(JEFE, "c1", "", { method: "PUT", body: { mes: "2026-11", anuncios: { "presentacion:a1": { textos: { titulos: ["El mío"], descripcion: "Mío" }, editado: true } } } });
+    expect((await ciclo(JEFE, "c1", "", { method: "POST", body: { mes: "2026-11", escribir: ["presentacion:a1"] } })).status).toBe(400);
+    expect((await ciclo(JEFE, "c1", "", { method: "POST", body: { mes: "2026-11", escribir: ["presentacion:a1"], reescribir: true } })).status).toBe(200);
+    // Sólo lectura no escribe.
+    expect((await ciclo(LECTOR, "c1", "", { method: "POST", body: { mes: "2026-11", escribir: ["presentacion:a1"] } })).status).toBe(403);
+  });
+
+  it("el Excel y el texto los llevan", async () => {
+    await ciclo(JEFE, "c1", "", { method: "PUT", body: { mes: "2026-11", anuncios: { "presentacion:a1": { textos: { titulos: ["Título del plan"], descripcion: "Desde $450" }, editado: true } } } });
+    const acceso = crearAcceso(db, JEFE);
+    const r = await crearEjecutor({ env, acceso }).ejecutar({ id: "t1", name: "plan_de_campanas", input: { cliente: "Dcasa", mes: "2026-11" } });
+    expect(r.content).toContain("· Título del plan");
+    expect(r.content).toContain("Descripción: Desde $450");
   });
 });
 

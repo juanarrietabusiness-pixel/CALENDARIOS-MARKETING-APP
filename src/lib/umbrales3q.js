@@ -12,6 +12,7 @@
 /** Los umbrales de partida. Todos los % van de 0 a 100. */
 export const UMBRALES_3Q = Object.freeze({
   pctMensajes: 50,
+  pctMensajesPausar: 15,
   ctrUnico: 2,
   tasa3s: 20,
   tiempoVideo: 5,
@@ -26,6 +27,7 @@ export const UMBRALES_3Q = Object.freeze({
 /** Cada umbral: qué es, en qué unidad y entre qué valores se acepta (lo de fuera vuelve al de partida). */
 export const CAMPOS_UMBRALES_3Q = Object.freeze([
   { id: "pctMensajes", nombre: "% de mensajes por debajo de", unidad: "%", min: 1, max: 100, ayuda: "De cada 100 que dan clic, cuántos escriben. Por debajo, el llamado a escribir no es claro." },
+  { id: "pctMensajesPausar", nombre: "Pausar si el % de mensajes baja de", unidad: "%", min: 1, max: 100, ayuda: "Si de cada 100 que dan clic escriben menos que esto (con 40 clics o más en 30 días), el anuncio no lleva a la conversación: se pausa aunque no haya número mágico." },
   { id: "ctrUnico", nombre: "CTR único por debajo de", unidad: "%", min: 0.1, max: 20, ayuda: "De cada 100 personas que lo ven, cuántas dan clic. Por debajo, la pieza no para el dedo." },
   { id: "tasa3s", nombre: "Reproducciones de 3 s por debajo de", unidad: "%", min: 1, max: 100, ayuda: "De cada 100 impresiones de un video, cuántas se quedan 3 segundos. Por debajo, el gancho no engancha." },
   { id: "tiempoVideo", nombre: "Tiempo de reproducción por debajo de", unidad: "s", min: 1, max: 60, ayuda: "Lo que se queda de media la gente en el video. Por debajo, el guion o la edición sueltan." },
@@ -33,7 +35,7 @@ export const CAMPOS_UMBRALES_3Q = Object.freeze([
   { id: "frecuenciaCalida", nombre: "Frecuencia (quien ya conoce la marca) por encima de", unidad: "veces", min: 1, max: 30, ayuda: "Lo mismo en evaluación, conversión y ascensión: públicos chicos que repiten más." },
   { id: "cpm", nombre: "CPM por encima de su mes en", unidad: "%", min: 5, max: 300, ayuda: "Cuánto más caras las mil impresiones de esta semana frente a las de los 30 días." },
   { id: "diasCambio", nombre: "Esperar tras un cambio", unidad: "días", min: 1, max: 14, ayuda: "Tras crear o cambiar algo, cuántos días se espera antes de juzgarlo (el algoritmo aprende)." },
-  { id: "apagar", nombre: "Fuera del número mágico: más de", unidad: "veces", min: 1, max: 5, ayuda: "Cuántas veces lo que aguanta su etapa tiene que costar un resultado para pausarlo." },
+  { id: "apagar", nombre: "Fuera del número mágico: más de", unidad: "veces", min: 1, max: 5, ayuda: "Cuántas veces el número mágico tiene que costar un resultado (en 30 días y también en la última semana) para pausarlo. Por encima del equilibrio se pausa siempre." },
   { id: "gastoParaApagar", nombre: "Gastado antes de pausar", unidad: "veces", min: 1, max: 10, ayuda: "Cuántas veces el número mágico tiene que haber gastado para poder juzgarlo." },
 ]);
 

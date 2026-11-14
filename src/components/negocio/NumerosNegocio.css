@@ -143,3 +143,14 @@
   .nn-campos, .nn-sim-entradas { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .nn-cifras { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: var(--sp-5); }
 }
+
+/* EL número mágico arriba, con su cuenta paso a paso (14-nov); las cifras por separado, plegadas. */
+.nn-unico { display: flex; flex-direction: column; gap: var(--sp-1); }
+.nn-unico-cifra { margin: 0; font-size: var(--fs-md); }
+.nn-unico-cifra strong { font-size: var(--fs-xl); }
+.nn-explicacion { margin: var(--sp-1) 0 0; padding-left: var(--sp-5); display: flex; flex-direction: column; gap: 2px; font-size: var(--fs-sm); }
+.nn-detalle summary { cursor: pointer; font-size: var(--fs-xs); color: var(--text-dim); min-height: var(--tap-sm); display: flex; align-items: center; }
+.nn-detalle[open] { display: flex; flex-direction: column; gap: var(--sp-2); }
+.nn-palancas { padding: var(--sp-3); background: var(--surface-2); border-radius: var(--radius-sm); }
+.nn-palancas ul { margin: var(--sp-1) 0 0; padding-left: var(--sp-4); font-size: var(--fs-sm); display: flex; flex-direction: column; gap: var(--sp-1); }
+.nn-fraccion { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-1); color: var(--accent-alt); }

@@ -2,7 +2,8 @@
 // Lo del Manual de campañas que lee EL PLAN DE CAMPAÑAS (puro y pequeño)
 //
 // El reparto del presupuesto por etapa del ciclo de ventas (60/20/10/10 por defecto, decisión 1 de
-// docs/propuesta-curso-campanas.md) y cuántos anuncios lleva cada conjunto (de 4 a 6, 4 por defecto: decisión 12).
+// docs/propuesta-curso-campanas.md) y cuántos anuncios lleva cada conjunto (de 3 a 6, 4 por defecto: decisión 12; el
+// curso pone además un tope por etapa —evaluación 4, ascensión 3—, que aplica el plan: `TOPE_ANUNCIOS` de planCiclo.js).
 // Vive aparte de estratega.js a propósito: `limpiarManual` lo llama en una línea (`...limpiarManualCiclo(m)`) y el plan
 // (lib/planCiclo.js) importa estratega.js por la nomenclatura; con esto en planCiclo.js serían dos archivos que se
 // importan el uno al otro.
@@ -12,7 +13,7 @@ import { ETAPAS_CICLO } from "./cicloVentas.js";
 
 /** El reparto de la casa: el de cada etapa del ciclo de ventas (cicloVentas.js). */
 export const REPARTO_POR_DEFECTO = Object.freeze(Object.fromEntries(ETAPAS_CICLO.map((e) => [e.id, e.reparto])));
-export const MIN_ANUNCIOS_CONJUNTO = 4;
+export const MIN_ANUNCIOS_CONJUNTO = 3;
 export const MAX_ANUNCIOS_CONJUNTO = 6;
 export const ANUNCIOS_POR_DEFECTO = 4;
 
@@ -40,7 +41,7 @@ export function limpiarReparto(r) {
   return sumaDelReparto(salida) === 100 && salida.presentacion > 0 ? salida : { ...REPARTO_POR_DEFECTO };
 }
 
-/** Cuántos anuncios por conjunto: de 4 a 6; lo que no se entiende, 4. Pura. */
+/** Cuántos anuncios por conjunto: de 3 a 6; lo que no se entiende, 4. Pura. */
 export function limpiarAnunciosPorConjunto(v) {
   const n = entero(v);
   return n >= MIN_ANUNCIOS_CONJUNTO && n <= MAX_ANUNCIOS_CONJUNTO ? n : ANUNCIOS_POR_DEFECTO;
@@ -57,4 +58,17 @@ export function errorDelCiclo(m) {
   if (suma !== 100) return `El reparto suma ${suma} %: tiene que sumar 100.`;
   if (!(entero(m?.reparto?.presentacion ?? REPARTO_POR_DEFECTO.presentacion) > 0)) return "Presentación necesita algo del presupuesto: es la que trae gente nueva.";
   return "";
+}
+
+/**
+ * El reparto de UN cliente: el suyo a mano si lo tiene y es válido (suma 100), si no el del Manual (el estándar).
+ * `propio` llega de `anuncios_clientes.reparto` (texto JSON u objeto). Devuelve { reparto, aMano }. Pura.
+ */
+export function repartoDelCliente(manualReparto, propio) {
+  let p = propio;
+  if (typeof p === "string") { try { p = JSON.parse(p); } catch { p = null; } }
+  if (p && typeof p === "object" && sumaDelReparto(p) === 100 && entero(p.presentacion) > 0) {
+    return { reparto: limpiarReparto(p), aMano: true };
+  }
+  return { reparto: limpiarReparto(manualReparto), aMano: false };
 }

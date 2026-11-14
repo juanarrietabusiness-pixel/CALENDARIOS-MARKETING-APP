@@ -594,7 +594,8 @@ describe("el diagnóstico de las campañas activas", () => {
         if (nivel === "adset") {
           return respuesta({ data: [
             { campaign_id: "800", adset_id: "901", ...(de7 ? ins(15, 12, { frequency: "1.4" }) : ins(60, 40)) },
-            { campaign_id: "800", adset_id: "9012", ...(de7 ? ins(20, 2) : ins(60, 30)) },
+            // Abierto va mal el MES entero (6 $ por clic, el triple de lo aceptable) y la semana también: se apaga.
+            { campaign_id: "800", adset_id: "9012", ...(de7 ? ins(20, 2) : ins(60, 10)) },
           ] });
         }
         return respuesta({ data: [{ campaign_id: "800", adset_id: "901", ad_id: "9031", ...(de7 ? ins(10, 8, { frequency: "3.6" }) : ins(40, 30)) }] });

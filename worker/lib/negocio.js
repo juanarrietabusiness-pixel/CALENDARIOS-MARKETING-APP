@@ -30,10 +30,11 @@ import { leerMercado } from "./mercado.js";
 import { contexto as contextoCerebro } from "./cerebro/cerebro.js";
 import { llamarIA, ErrorIA } from "./cerebro/ia.js";
 import { limpiarManual } from "../../src/lib/estratega.js";
+import { repartoDelCliente } from "../../src/lib/manualCiclo.js";
 import { ACCION_MENSAJE } from "../../src/lib/anuncios.js";
 import { productosActivos, catalogoATexto } from "../../src/lib/estudioMercado.js";
 import {
-  limpiarNegocio, costoAceptable, equilibrio, pedidoPropuesta, leerPropuesta, ticketDelCatalogo, queFaltaProponer,
+  limpiarNegocio, costoAceptable, equilibrio, pedidoPropuesta, leerPropuesta, ticketDelCatalogo, queFaltaProponer, numeroMagicoDelCliente,
 } from "../../src/lib/numerosNegocio.js";
 
 const leerJSON = (t, d) => { try { return JSON.parse(t) ?? d; } catch { return d; } };
@@ -50,10 +51,15 @@ export async function leerNegocio(acceso, clientId) {
   return limpiarNegocio(leerJSON(f?.negocio, {}));
 }
 
+/** El Manual de campañas del espacio, limpio. */
+async function manualDelEspacio(acceso) {
+  const fila = await acceso.leerUno("ajustes_espacio", { id: acceso.ownerId });
+  return limpiarManual(leerJSON(fila?.manual_campanas, {}));
+}
+
 /** La tasa de cierre por defecto del espacio: la del Manual de campañas (la del curso si nadie la cambió). */
 export async function tasaDelManual(acceso) {
-  const fila = await acceso.leerUno("ajustes_espacio", { id: acceso.ownerId });
-  return limpiarManual(leerJSON(fila?.manual_campanas, {})).tasaCierre;
+  return (await manualDelEspacio(acceso)).tasaCierre;
 }
 
 /** Guarda los números (limpios) con quién y cuándo. Sólo toca la columna `negocio` de la fila del cliente. */
@@ -77,13 +83,20 @@ export async function costoAceptableDelCliente(acceso, clientId) {
 
 /**
  * Lo que el estratega toma de los números del negocio: el ticket (si el producto no tiene precio), el margen
- * efectivo en % (si hay costos escritos) y la tasa de cierre (si se escribió o se midió). Cada uno null si no está.
+ * efectivo en % (si hay costos escritos), la tasa de cierre (si se escribió o se midió) y EL número mágico del cliente
+ * (`magico`, de `numeroMagicoDelCliente`: la misma cifra de la ficha y la revisión). Cada uno null si no está.
  */
 export async function numerosParaEstratega(acceso, clientId) {
-  const n = await leerNegocio(acceso, clientId);
-  const e = equilibrio(n);
+  const [n, tasaDefecto] = await Promise.all([leerNegocio(acceso, clientId), tasaDelManual(acceso)]);
+  const e = equilibrio(n, { tasaDefecto });
   const margen = n.costos.length && e.margenEfectivo > 0 ? r2(e.margenEfectivo) : null;
-  return { ticket: n.ticket?.valor ?? null, margen, tasaCierre: n.tasaCierre?.valor > 0 ? n.tasaCierre.valor : null };
+  // Por conversación (WhatsApp) y por compra (web): el estratega escoge el de su destino.
+  const magico = numeroMagicoDelCliente(n, { tasaDefecto, objetivoCampana: "mensajes" });
+  const magicoWeb = numeroMagicoDelCliente(n, { tasaDefecto, objetivoCampana: "ventas" });
+  return {
+    ticket: n.ticket?.valor ?? null, margen, tasaCierre: n.tasaCierre?.valor > 0 ? n.tasaCierre.valor : null,
+    magico: magico.valor > 0 ? magico : null, magicoWeb: magicoWeb.valor > 0 ? magicoWeb : null,
+  };
 }
 
 // ------------------------------------------------------------
@@ -165,6 +178,23 @@ export function lecturaDeInsights(fila, { moneda = "USD", dias = 30 } = {}) {
   };
 }
 
+const OBJETIVOS_MENSAJES = new Set(["OUTCOME_ENGAGEMENT", "OUTCOME_SALES", "MESSAGES", "POST_ENGAGEMENT", "CONVERSIONS"]);
+
+/**
+ * De las filas de /insights por campaña (con `objective`), el gasto y las conversaciones SÓLO de las que buscan
+ * mensajes, y su costo por conversación. null si ninguna fila dice su objetivo (no se sabe cuáles son) o si todas son
+ * de mensajes (sale lo mismo que la cuenta). Pura.
+ */
+export function costoDeMensajes(filas = []) {
+  const conObjetivo = (Array.isArray(filas) ? filas : []).filter((f) => f?.objective);
+  if (!conObjetivo.length) return null;
+  const deMensajes = conObjetivo.filter((f) => OBJETIVOS_MENSAJES.has(String(f.objective).toUpperCase()));
+  if (deMensajes.length === conObjetivo.length) return null;
+  const gasto = deMensajes.reduce((s, f) => s + num(f.spend), 0);
+  const conv = deMensajes.reduce((s, f) => s + accion(f.actions, [ACCION_MENSAJE]), 0);
+  return { gastoMensajes: r2(gasto), conversacionesMensajes: conv, costoConversacion: conv > 0 ? gasto / conv : null };
+}
+
 /** Lo de Meta en 30 días, o por qué no hay: { lectura, aviso }. Nunca tumba la ficha. */
 export async function lecturaMeta(env, acceso, cuenta) {
   if (!cuenta) return { lectura: null, aviso: "Sin cuenta publicitaria asignada: no hay cifras de Meta. Se asigna en Anuncios." };
@@ -184,7 +214,17 @@ export async function lecturaMeta(env, acceso, cuenta) {
     }
     const fila = datos?.data?.[0] ?? null;
     if (!fila) return { lectura: null, aviso: "La cuenta no gastó nada en los últimos 30 días." };
-    return { lectura: lecturaDeInsights(fila, { moneda: cuenta.moneda }), aviso: null };
+    const lectura = lecturaDeInsights(fila, { moneda: cuenta.moneda });
+    // El costo por conversación «real» sólo de las campañas que buscan mensajes (Interacción o Ventas): una de tráfico o
+    // de alcance gasta sin buscar conversaciones y las encarecía de mentira. Una llamada más, por campaña; si falla, el
+    // de la cuenta entera.
+    try {
+      const porCampana = (await graph(env, token, ruta, { params: { level: "campaign", fields: "campaign_id,objective,spend,actions", date_preset: "last_30d", limit: 200 } }))?.data ?? [];
+      Object.assign(lectura, costoDeMensajes(porCampana) ?? {});
+    } catch (e) {
+      if (!(e instanceof ErrorMeta)) throw e;
+    }
+    return { lectura, aviso: null };
   } catch (e) {
     if (e instanceof ErrorAnuncios || e instanceof ErrorMeta) return { lectura: null, aviso: mensajeAnuncios(e) };
     throw e;
@@ -243,10 +283,19 @@ export async function rutasNegocio(req, env, { acceso, usuario, clientId, accion
   const url = new URL(req.url);
 
   if (!accion && metodo === "GET") {
-    const [negocio, tasaDefecto] = await Promise.all([leerNegocio(acceso, cliente.id), tasaDelManual(acceso)]);
+    const [fila, manual] = await Promise.all([acceso.leerUno("anuncios_clientes", { client_id: cliente.id }), manualDelEspacio(acceso)]);
+    const negocio = limpiarNegocio(leerJSON(fila?.negocio, {}));
+    const tasaDefecto = manual.tasaCierre;
     const { lectura, aviso } = url.searchParams.get("meta") === "0" ? { lectura: null, aviso: null } : await lecturaMeta(env, acceso, cuenta);
     return json({
       negocio, tasaDefecto,
+      // El reparto por etapa del cliente: el suyo a mano (`anuncios_clientes.reparto`, lo escribe el plan de campañas)
+      // o el del Manual. El mismo que usan el plan y el Excel. → { reparto: { presentacion, … }, aMano }.
+      reparto: repartoDelCliente(manual.reparto, fila?.reparto ?? null),
+      // EL número mágico (el mismo de la revisión, el plan y el estratega), con lo gastado en Meta sólo de referencia.
+      numeroMagico: numeroMagicoDelCliente(negocio, {
+        tasaDefecto, gastoMeta30: lectura?.gasto ?? null, lectura, nombre: cliente.name ?? "", moneda: cuenta?.moneda || "USD",
+      }),
       cuenta: cuenta ? { nombre: cuenta.nombre, moneda: cuenta.moneda } : null,
       lectura, avisoMeta: aviso,
       // La tasa de cierre MEDIDA por el enlace de ventas (entrega 4): { tasa, ventas, conversaciones, desde }. Hasta

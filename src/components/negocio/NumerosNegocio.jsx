@@ -4,8 +4,10 @@ import { TIPOS_NEGOCIO, DESTINOS_NEGOCIO, CUENTA_NEGOCIO } from "../../lib/ciclo
 import {
   CAMPOS_NEGOCIO, COSTOS_SUGERIDOS, MAX_COSTOS, MODOS_EQUILIBRIO, OBJETIVOS_CAMPANA, MODOS_SIMULADOR, CAMPOS_SIMULADOR,
   ORIGENES_DATO, limpiarNegocio, modoDe, origenDe, objetivo, equilibrio, numeroMagico, aUnRoas, tablaUtilidad,
-  escenarios, entradasDelSimulador, conLecturaMeta, conTasaMedida, repartoPorEtapas, modoSimuladorDe, numero,
+  escenarios, entradasDelSimulador, conTasaMedida, repartoPorEtapas, modoSimuladorDe, numero, palancasDelEquilibrio,
+  avisoDeFraccion, NOTA_BRUTO,
 } from "../../lib/numerosNegocio";
+import QueEs from "../anuncios/QueEs";
 import { leerNegocio, guardarNegocio, proponerNegocio } from "../../lib/negocioApi";
 import "./NumerosNegocio.css";
 
@@ -21,8 +23,11 @@ const VentasSemana = lazy(() => import("./VentasSemana"));
 // modos del Simulador, prellenado con lo que la cuenta hizo en Meta en 30 días). La IA PROPONE lo que falta y queda
 // «estimado» hasta que una persona lo confirma; nada se guarda hasta «Guardar los números».
 //
-// Lo que no se ve: lo de Meta (el presupuesto) y la tasa medida por el enlace de ventas entran en el formulario al
-// abrirlo, con su origen; si otra persona guarda mientras se edita, no se pisa lo de nadie (aviso y «Releer»).
+// EL número mágico (`numeroMagicoDelCliente`, el mismo de la revisión 3Q, el plan, el aviso diario y el estratega) va
+// arriba, con cada paso de la cuenta escrito con los números del cliente, lo que falta y, si no da, las 3 palancas.
+// Lo gastado en Meta en 30 días es SÓLO una referencia (decisión del 14-nov): ya no entra en el formulario como
+// presupuesto. La tasa medida por el enlace de ventas sí entra, con su origen; si otra persona guarda mientras se
+// edita, no se pisa lo de nadie (aviso y «Releer»). El reparto por etapa es el del cliente (`repartoDelCliente`).
 // ============================================================
 
 const aTexto = (n) => (n === null || n === undefined || !Number.isFinite(Number(n)) ? "" : String(Math.round(Number(n) * 10000) / 10000).replace(".", ","));
@@ -116,6 +121,16 @@ function Ayuda({ campo }) {
   );
 }
 
+/** Las 3 palancas para mejorar el equilibrio (curso), con los números del cliente. */
+function Palancas({ palancas }) {
+  return (
+    <div className="nn-palancas">
+      <p className="label" style={{ margin: 0 }}>Cómo mejorar el equilibrio (las 3 palancas)</p>
+      <ul>{palancas.map((p) => <li key={p.id}><strong>{p.titulo}:</strong> {p.texto}</li>)}</ul>
+    </div>
+  );
+}
+
 /** Una fila de cifras: nombre y valor. */
 const Cifra = ({ nombre, valor, nota, fuerte }) => (
   <div className="nn-cifra" data-fuerte={fuerte ? "si" : undefined}>
@@ -157,8 +172,8 @@ export default function NumerosNegocio({ client, lectura = false, pulso = 0 }) {
       if (conMeta) meta.current = { lectura: leido.lectura, avisoMeta: leido.avisoMeta };
       const r = { ...leido, ...meta.current };
       setDatos(r);
-      // Lo de Meta (presupuesto) y lo medido (tasa de cierre) entran en el formulario con su origen.
-      const inicial = conTasaMedida(conLecturaMeta(r.negocio, r.lectura), r.medida);
+      // Lo medido (tasa de cierre) entra en el formulario con su origen. Lo gastado en Meta, no: es sólo una referencia.
+      const inicial = conTasaMedida(r.negocio, r.medida);
       const f = formDe(inicial);
       setForm(f);
       setBase(huella(negocioDe(f)));
@@ -201,9 +216,10 @@ export default function NumerosNegocio({ client, lectura = false, pulso = 0 }) {
       o, e, magico, roasEnsayo,
       ensayo: roasEnsayo ? aUnRoas(negocio, roasEnsayo, opciones) : null,
       tabla: tablaUtilidad(negocio, { ...opciones, roas: o.roas, costo: o.costoConversacion }),
-      reparto: repartoPorEtapas(o.inversion, { cuenta: negocio.cuenta }),
+      reparto: repartoPorEtapas(o.inversion, { cuenta: negocio.cuenta, reparto: datos?.reparto?.reparto ?? null }),
+      palancas: palancasDelEquilibrio(negocio, { ...opciones, moneda: datos?.cuenta?.moneda ?? "USD" }),
     };
-  }, [negocio, opciones, objCampana, datos?.lectura, roasPrueba]);
+  }, [negocio, opciones, objCampana, datos?.lectura, datos?.reparto, datos?.cuenta?.moneda, roasPrueba]);
 
   const prellenado = useMemo(() => entradasDelSimulador(modoSim, datos?.lectura, negocio ?? {}), [modoSim, datos?.lectura, negocio]);
   const defSim = MODOS_SIMULADOR.find((m) => m.id === modoSim) ?? MODOS_SIMULADOR[0];
@@ -247,7 +263,7 @@ export default function NumerosNegocio({ client, lectura = false, pulso = 0 }) {
       const g = formDe(conTasaMedida(r.negocio, datos?.medida));
       setForm(g);
       setBase(huella(negocioDe(g)));
-      setAviso({ tipo: "ok", texto: "Guardado: el diagnóstico y el estratega ya los usan." });
+      setAviso({ tipo: "ok", texto: "Guardado: la revisión de las campañas, el plan y el estratega ya usan este número mágico." });
     } catch (e) {
       if (e.estado === 409 && e.datos?.negocio) {
         setAviso({ tipo: "otro", texto: e.message });
@@ -294,7 +310,10 @@ export default function NumerosNegocio({ client, lectura = false, pulso = 0 }) {
   };
   const propuestos = propuesta ? [...Object.keys(propuesta.datos ?? {}), ...(propuesta.costos?.length ? ["costos"] : [])] : [];
 
-  const { o, e, magico, ensayo, tabla, reparto, roasEnsayo } = calculos;
+  const { o, e, magico, ensayo, tabla, reparto, roasEnsayo, palancas } = calculos;
+  // EL número mágico (el mismo de la revisión): con los datos tal como están en el formulario.
+  const unico = magico.magico;
+  const gastoMeta = datos?.lectura?.gasto > 0 ? datos.lectura.gasto : null;
   const formatoMagico = (v) => (magico.unidad === "veces" ? f.veces(v) : f.dinero(v));
   const modoUsado = modoDe(negocio);
   const destinoNombre = DESTINOS_NEGOCIO.find((d) => d.id === destino)?.nombre;
@@ -313,6 +332,24 @@ export default function NumerosNegocio({ client, lectura = false, pulso = 0 }) {
           </div>
         </div>
         <div className="nn-magico-cuerpo">
+          {unico && unico.valor > 0 && (
+            <div className="nn-unico">
+              <p className="nn-unico-cifra">Puede pagar hasta <strong>{f.dinero(unico.valor)}</strong> por {unico.resultado}.</p>
+              <p className="hint" style={{ margin: 0 }}>Es el número que usan la revisión de las campañas, el plan de campañas, el aviso diario y el estratega: el mismo para todas las etapas.</p>
+              <ol className="nn-explicacion">{unico.explicacion.map((t, i) => <li key={i}>{t}</li>)}</ol>
+            </div>
+          )}
+          {unico && !(unico.valor > 0) && unico.falta?.length > 0 && (
+            <div className="notice notice-warn">
+              <p style={{ margin: 0 }}><strong>Todavía no hay número mágico.</strong> Sin él, la revisión de las campañas no puede decir si algo es caro y no pausa nada por costo.</p>
+              <ul style={{ margin: "var(--sp-1) 0 0" }}>{unico.falta.map((x) => <li key={x.id}>{x.texto}</li>)}</ul>
+            </div>
+          )}
+          {gastoMeta && <p className="hint">En los últimos 30 días Meta gastó {f.dinero(gastoMeta)}: es sólo una referencia. La cuenta usa el presupuesto escrito o, si no hay, la inversión que pide la meta de ventas.</p>}
+          <QueEs termino="numeroMagico" />
+          <QueEs termino="equilibrio" />
+          <details className="nn-detalle">
+            <summary>Las cifras por separado (objetivo, equilibrio y lo de Meta)</summary>
           <p className="nn-metrica">{magico.metrica}</p>
           <div className="nn-magico-cifras">
             <div><span className="nn-etiqueta">Objetivo</span><strong className="nn-grande">{formatoMagico(magico.objetivo)}</strong></div>
@@ -330,6 +367,8 @@ export default function NumerosNegocio({ client, lectura = false, pulso = 0 }) {
           </div>
           {magico.nota && <p className="hint">{magico.nota}</p>}
           {magico.faltan.length > 0 && <p className="hint">Para calcularlo falta: {faltanTexto(magico.faltan)}.</p>}
+          </details>
+          {(magico.alarma || (unico && !(unico.valor > 0) && e.roas !== null)) && palancas.length > 0 && <Palancas palancas={palancas} />}
         </div>
       </section>
 
@@ -433,6 +472,15 @@ export default function NumerosNegocio({ client, lectura = false, pulso = 0 }) {
                   )}
                   {v.nota && <span className="hint">{v.nota}</span>}
                 </div>
+                {avisoDeFraccion(c.id, v.texto) && (
+                  <p className="hint nn-fraccion" role="status">
+                    {avisoDeFraccion(c.id, v.texto)}{" "}
+                    {puede && <button type="button" className="btn btn-ghost btn-sm" onClick={() => setCampo(c.id, aTexto(numero(v.texto) * 100))}>Usar {aTexto(numero(v.texto) * 100)} %</button>}
+                  </p>
+                )}
+                {c.id === "presupuesto" && v.origen === "meta" && v.texto.trim() && (
+                  <p className="hint">Este presupuesto vino de lo gastado en Meta y no entra en la cuenta: escribe el del mes (o bórralo y se usa la inversión que pide la meta).</p>
+                )}
                 <Ayuda campo={c} />
               </div>
             );
@@ -499,7 +547,8 @@ export default function NumerosNegocio({ client, lectura = false, pulso = 0 }) {
       {/* «Tus ventas de la semana»: lo que apunta el cliente por su enlace. Con eso sale la tasa de cierre MEDIDA, que
           manda sobre la escrita (`conTasaMedida`): entra en el formulario y se guarda con «Guardar». */}
       <Suspense fallback={null}>
-        <VentasSemana clientId={client.id} cliente={client} lectura={lectura} onTasaMedida={alMedir} />
+        <VentasSemana clientId={client.id} cliente={client} lectura={lectura} onTasaMedida={alMedir}
+          tasaDefecto={(negocio?.tasaCierre?.valor ?? datos?.tasaDefecto ?? 5) / 100} roasEquilibrio={unico?.roasEquilibrio ?? null} />
       </Suspense>
 
       {/* ---- Cuánto invertir ---- */}
@@ -517,7 +566,9 @@ export default function NumerosNegocio({ client, lectura = false, pulso = 0 }) {
         {o.avisos.map((a) => <p key={a.codigo} className="notice notice-warn">{a.texto}</p>)}
         {reparto.length > 0 && (
           <>
-            <p className="label" style={{ marginTop: "var(--sp-3)" }}>Por etapa del ciclo de ventas</p>
+            <p className="label" style={{ marginTop: "var(--sp-3)" }}>
+              Por etapa del ciclo de ventas {datos?.reparto?.aMano ? "(repartido a mano para este cliente en el plan de campañas)" : "(el estándar del Manual de campañas)"}
+            </p>
             <ul className="nn-reparto">
               {reparto.map((r) => <li key={r.id}><span>{r.nombre}</span><span>{f.pct(r.pct)} · {f.dinero(r.monto)}</span></li>)}
             </ul>
@@ -543,6 +594,10 @@ export default function NumerosNegocio({ client, lectura = false, pulso = 0 }) {
             nota={e.presupuestoDe === "objetivo" ? "la inversión que pide la meta (no hay presupuesto escrito)" : e.presupuestoDe ? "el del mes" : ""} />
         </dl>
         {e.faltan.length > 0 && <p className="hint">Para calcularlo falta: {faltanTexto(e.faltan)}.</p>}
+        {e.sinCostos && <p className="notice notice-warn">Sin los costos variables no hay equilibrio: con un margen inventado del 100 % todo parecería rentable. Escribe al menos el costo del producto.</p>}
+        <p className="hint">{NOTA_BRUTO}</p>
+        <QueEs termino="margen" />
+        <QueEs termino="roasEquilibrio" />
         {e.pisoManda && <p className="hint">Las ventas de otros canales ya pagan los costos fijos: a la pauta sólo se le pide pagarse sola (el piso).</p>}
         {e.cargaTodosLosFijos && (
           <p className="notice notice-warn">Así sale el caso más exigente: la pauta carga sola todos los costos fijos. Añade las ventas de tienda u otros canales, o deja los fijos en 0 para ver el piso.</p>

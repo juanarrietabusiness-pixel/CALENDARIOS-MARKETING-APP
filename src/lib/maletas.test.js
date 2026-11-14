@@ -34,7 +34,7 @@ describe("una maleta", () => {
 
   it("las objeciones cuentan también las respondidas en el estudio", () => {
     expect(estadoDeMaleta("objeciones", "", { objeciones: [{ objecion: "Caro", respuesta: "Menos que uno nuevo" }, { objecion: "Tarda", respuesta: "Una hora" }] }).estado).toBe("verde");
-    expect(estadoDeMaleta("objeciones", "", { objeciones: [{ objecion: "Caro", respuesta: "" }] }).estado).toBe("rojo");
+    expect(estadoDeMaleta("objeciones", "", { objeciones: [{ objecion: "Caro", respuesta: "" }] }).estado).toBe("ambar"); // escrita, pero sin su respuesta
   });
 
   it("detecta el relleno sin castigar lo concreto", () => {
