@@ -149,11 +149,17 @@ src/
                           «No volver a preguntar» (lo enciende el administrador)
     estudioHiggsfield.json  Los modelos de Higgsfield (también los que siguen un video), GENERADOS de su esquema: no se edita a mano
                           (`node scripts/estudio/generar-higgsfield.mjs`)
-    estudioMercado.js     El estudio de mercado: catálogo (productos y precios), lo general (perfiles, deseos de
-                          Reiss, nivel de consciencia), los 7 elementos por producto, ganchos por nivel, textos de
-                          anuncio, referencias de la competencia; pedidos a la IA, notas y documento (puro; también
-                          lo importa el Worker)
+    estudioMercado.js     El estudio de mercado: catálogo (productos y precios), lo general (perfiles con el trabajo que le
+                          encargan y cuánto les pesa, deseos de Reiss, nivel de consciencia y, opcional, lo que hay detrás
+                          de la compra: problema por fuera y por dentro, cree/necesita, antes y después, cómo la justifica,
+                          lo gastado, la competencia indirecta y los anuncios del rubro), las 7 maletas por producto con
+                          sus ÁNGULOS DE VENTA (3–5, con ganchos y público frío o tibio), ganchos por nivel, textos de
+                          anuncio, referencias de la competencia; pedidos a la IA, notas y documento (puro; también el Worker)
     mercado.js            Cliente de /api/mercado (también el contenido de la competencia y traer un enlace de Instagram)
+    lenguajeCliente.js    «Lenguaje del cliente»: el material numerado (lo pegado, la competencia, la Bandeja, la encuesta,
+                          la nota de ahora), comprobar que cada frase esté TAL CUAL en él (sin mayúsculas, tildes ni
+                          espacios de más; devuelve el trozo original), contar cuántos la dicen, ocultar las marcas de la
+                          competencia («otra marca»), la nota del cerebro y lo que leen el estudio y los ángulos (puro)
     competencia.js        El contenido de la competencia en Instagram: el código de un enlace, ordenar por lo que funcionó, el @
                           de la página pública de «insertar» (puro; también lo importa el Worker)
     inspiracion.js        Inspiración: las cuentas fijas de cada cliente (10, competencia o inspiración; lee los @ sueltos de
@@ -255,6 +261,15 @@ src/
     modosFoto.js          Los atajos de «¿Qué quieres?»: modos de foto de producto y la versión de temporada (puro)
     portadaClic.js        «Portada que da clic»: 16 conceptos, el titular que se lee a 120 px, la escena por formato (puro)
     revisionVideo.js      «¿Está listo este video?»: los criterios, el pedido al motor que lo ve y el veredicto (puro; también el Worker)
+    deconstructor.js      «Desglosar toma por toma»: el pedido para que el motor VEA un video y lo describa sin opinar
+                          (ficha técnica, lo que se repite, el mapa de secuencia, el montaje), su lectura (tomas contiguas,
+                          la cuenta, el ritmo de los cortes, sin palabras de valor), el texto y el mapa RESUMIDO que sigue un
+                          guion (`resumenDeSecuencia`) (puro; también el Worker)
+    pedidoVideo.js        Los pedidos a un modelo de video, cortos y en orden fijo (lo fijo, sujeto → acción → luz → cámara →
+                          movimiento → sonido) y su recorte al revés si pasan de 1.000 (`armarPedidoVideo`; un storyboard,
+                          `limiteDeStoryboard`): el clip, el video con storyboard y el del producto (puro)
+    listoAnimar.js        «¿Listo para animar?» del storyboard: los cuatro criterios, el pedido a la IA que mira los fotogramas,
+                          el veredicto (lo pone el código) y su frase (puro; también el Worker)
     piezasJuntas.js       «Las piezas juntas»: la rejilla de la hoja del mes, el pedido a la IA y su lectura (puro; también el Worker)
     hojaPiezas.js         La hoja de «Las piezas juntas»: las imágenes del mes numeradas en un JPEG (lienzo)
     revisionVideoApi.js   Cliente de /api/estudio/<c>/revisar-video y /serie (fuera de lib/estudio.js, que arrastra el catálogo)
@@ -276,6 +291,13 @@ src/
                           referencia, pedidos a la IA (puro; también lo importa el Worker)
     aprendizajeVisual.js  Lo que el kit aprende de los «Me gusta» y la papelera del Estudio: el pedido a la IA, las
                           guardas de las reglas, `kit.aprendido` en el bloque de la marca (puro; también lo importa el Worker)
+    anclasEstilo.js       Las REFERENCIAS DE ESTILO de la marca (`kit.anclas`, hasta 6): limpiar, el aviso de lo que parece una
+                          persona o una marca, las sugerencias de la casa y la línea corta que va en toda pieza (puro)
+    kitDesdeImagenes.js   «Preparar desde imágenes» (moodboard): el pedido a la IA que MIRA de 3 a 10 imágenes de la galería, su
+                          lectura (sólo lo visual) y `fundirMoodboard` (no toca presets, logo, reglas ni plantillas) (puro)
+    variacionesAnuncio.js «Variaciones para anuncios»: de 3 a 5, qué cambia cada una (gancho, ángulo, composición, fondo,
+                          detalle, encuadre), el encargo del director con la pieza maestra y el nombre de su carpeta (puro;
+                          también el Worker)
     loteAnuncios.js       La producción en lote: las casillas (niveles, matriz deseos × perfiles × niveles, tipos),
                           la forma de cada pieza, el pedido y su lectura, la escena, la publicación y qué
                           composiciones funcionan con cada cliente (puro; también el Worker)
@@ -290,6 +312,11 @@ src/
                           cuenta cada pieza en pantalla (puro)
     edicion.js            Editar una imagen ya hecha: el pedido, con qué modelo, la proporción (puro; también el Worker)
     estructurasCarrusel.js  Las estructuras de un carrusel (errores, mitos, paso a paso…): rotar por tipo sin repetir (puro)
+    formasGancho.js       Las FORMAS DE GANCHO de la agencia (22, con palabras propias: cómo, niveles, voces, tipo, si piden
+                          un dato real, si sirven en pauta, dónde van) y los ganchos visuales del primer segundo de un reel;
+                          cuál toca a cada pieza (`formaPara`, `formasParaGanchos` para las 3 de una UGC), lo que se aprende
+                          de los resultados del cliente (`aprenderFormas`) y las reglas del gancho: cifra que no está en
+                          ningún sitio y frases de miedo (`problemasDelGancho`) (puro, sin importaciones; también el Worker)
     loteMes.js            El lote del MES completo: días por el ritmo y la temporada y su plan (puro; también el Worker)
     ideasEstudio.js       «Dame ideas» del Estudio: el plan (tipo, composición, producto), el pedido y su lectura
                           (puro; también lo importa el Worker)
@@ -328,6 +355,10 @@ src/
                           número mágico (30/14/7 días), Q2 con umbrales, Q3 (qué hacer y a dónde ir), efecto desglose,
                           aprendizaje, cuándo se pausa, la etapa de cada campaña, lo grave del cron (puro; también el Worker)
     umbrales3q.js         Los umbrales de la revisión 3Q (los del Manual de campañas) y su limpieza (puro, pequeño)
+    alertas3q.js          LO QUE SE VE DÍA A DÍA en la revisión 3Q, sobre la serie diaria de Meta: el ritmo de gasto frente al
+                          plan del mes, el destino que falla (clics sin conversaciones, o menos por clic con el CTR igual), el CPM
+                          fuera de lo normal (de fuera o suyo), el anuncio que se cansa y el formato que se lleva casi todo; lo
+                          grave para el cron (puro; también el Worker)
     revision3qApi.js      Cliente de /api/anuncios/clientes/<c>/revision, /etapas y /revision/pendientes
     planCiclo.js          El PLAN DE CAMPAÑAS (curso, entrega 6): las campañas del ciclo (presentación y evaluación en una cuenta
                           nueva, las cuatro con historial, y la de TEMPORADA si el mes trae oferta o fecha comercial), su
@@ -588,6 +619,8 @@ src/
     EstudioCompositor.jsx Qué crear: tipo, prompt, modelo (ordenar/filtrar), ajustes, imágenes de apoyo
     EstudioVisor.jsx      La pieza grande (imagen o video) con todo lo que se sabe de ella, «Usar como logo»
                           y «Revisar marca»
+    VariacionesAnuncio.jsx  «Variaciones para anuncios» del visor: cuántas (3–5), qué cambia cada una y el costo total con el
+                          segundo toque (lazy: el chunk del Estudio está en su tope)
     ContenidoCompetencia.jsx  «Su contenido en Instagram» (pestaña Competencia del estudio de mercado): las publicaciones de
                           un competidor, las mejores primero; analizar como referencia o extraer su guion UGC (lazy)
     Inspiracion.jsx       Referencias → Lo mejor (era la pestaña Inspiración) = «Lo mejor» FILTRADO por el cliente (y el ojo del calendario, donde se arrastra
@@ -679,6 +712,8 @@ src/
     calendario/OpcionesCrearAqui.jsx  Tipo, estilo, modelo y plantilla de «Crear la imagen aquí» (lazy)
     Cerebro.jsx           Marca → Cerebro (era la pestaña Cerebro): las notas de un cliente, ficha desactualizada, datos que no cuadran, añadir
                           (qué es), actualizar desde GitHub, filtros, buscar, subir
+    LenguajeCliente.jsx   «Lenguaje del cliente» de Marca → Cerebro → Más: pegar reseñas propias o de 1 estrella de la
+                          competencia y las marcas a ocultar; la propuesta se abre en el editor de notas (lazy)
     NotaLegible.jsx       Una nota del cerebro formateada para leer (títulos, listas, tablas, [[enlaces]])
     ConversacionesChat.jsx  La lista de conversaciones del asistente: abrir, nueva, renombrar, borrar (segundo toque)
     GuardarEnCerebro.jsx  «¿Lo guardo en el cerebro?»: lo que propone el asistente, corregible, a la espera de un sí
@@ -710,6 +745,8 @@ src/
     calendario/ConMusica.jsx  «Publicar con música» en la pestaña Pieza: la foto → un reel con música (pista con «Escuchar», duración,
                           movimiento) y «Volver a la foto»; el carrusel → a mano con la música de Instagram y su canción (lazy)
     VideoListo.jsx        «¿Está listo este video?»: en la pestaña Subir y en el visor del Estudio (lazy)
+    DesgloseVideo.jsx     «Desglosar toma por toma» en el visor de un video del Estudio: el costo, la cuenta, el mapa de
+                          secuencia plegado, «Copiar el desglose» y «Desglosar otra vez» (lazy)
     calendario/avisoTemporada.jsx  «Se acerca …»: la fecha comercial del cliente en tres semanas y cómo reutilizar una pieza
     calendario/PlanSemanal.jsx  «Plan semanal de <empresa>»: el editor ÚNICO (`EditorSemana`: formato, tipo, hora y nota de cada día,
                           partir de un plan de la agencia); el diálogo de la barra, el asistente del mes y la ficha lo usan (lazy)
@@ -877,7 +914,9 @@ worker/
                           (lo que TOCA la base: usos, señales, refuerzo, notas automáticas,
                           historial, resultados y correcciones); proponer.js (la IA propone
                           reglas y una persona las decide); rubro.js y vozUgc.js (la IA propone
-                          «Saber del rubro» y la «Voz UGC»; se guardan como nota)
+                          «Saber del rubro» y la «Voz UGC»; se guardan como nota); lenguaje.js (la IA propone
+                          «Lenguaje del cliente» con lo pegado, la Bandeja —sólo lo de otros— y la encuesta; el código
+                          descarta toda frase que no esté tal cual; no guarda)
     herramientasServidor.js  Lo que el asistente consulta sin el navegador:
                           web, el cerebro (notas cortas enteras), calendarios, tareas, ideas
     equipo.js             Avisos (guardar y anunciar), historial y asignaciones
@@ -887,6 +926,9 @@ worker/
   videosProyectos.js    Los proyectos de video animado: crear, guardar, editar UNA escena y aprobar (la ruta y las
                           herramientas van por aquí)
     estudio/reelDelMes.js  Los reels de un mes (el asistente del mes): el costo sin crear nada y, con el sí, el encargo de cada uno
+    estudio/deconstructor.js  El desglose de un video de la galería (por `verVideo`, guardado en `ajustes.deconstruccion`) y
+                          `secuenciaDeVideo`, lo que leen el guion del reel por planos y el del video animado
+    estudio/listoAnimar.js  «¿Listo para animar?»: la IA mira las copias de 512 px de todo el storyboard en UNA llamada
     estudio/directorMusical.js  El director musical: lee el video guardado, el kit y al cliente y propone la música de Suno
                           (`proponerMusica`, guardada en R2 para la confirmación, con lo de la biblioteca que encaja); «Me gusta»
                           a la marca (`musicaALaMarca`)
@@ -944,11 +986,13 @@ worker/
     informes.js           Informes: listar, generar, compartir; el público va en index.js
     auditorias.js         Auditorías: listar, generar, compartir; la pública va en index.js
     biblioteca.js         /api/biblioteca: buscar (GET) y los filtros guardados
-    mercado.js            /api/mercado/<cliente>: catálogo, estudio por pasos, borrador, aprobar, referencias
+    mercado.js            /api/mercado/<cliente>: catálogo, estudio por pasos, borrador, aprobar, referencias, «Proponer
+                          ángulos» de un producto (POST …/estudio/angulos: al borrador)
     cerebro.js            /api/cerebro/<cliente>: notas, buscar, contexto, grafo, señales, aprender,
-                          propuestas, importar, preparar
+                          propuestas, importar, preparar, rubro, voz UGC y lenguaje del cliente
     estudio.js            /api/estudio/<cliente>: galería, trabajos (pedir, avanzar, cancelar,
-                          reintentar), archivos, papelera y carpetas
+                          reintentar), archivos, papelera y carpetas; el kit desde imágenes (POST …/kit/moodboard) y el
+                          desglose de un video (POST …/archivos/<id>/deconstruir)
     mcp.js                El servidor MCP (/mcp), su OAuth (/oauth/*, /.well-known/*) y
                           el permiso y las conexiones (/api/mcp/*)
     vistaMedio.js         /api/vista-medio/<testigo>/<nombre>: un audio o video firmado para la vista previa del chat de
@@ -5423,7 +5467,8 @@ son del servidor.
   · **Qué se marca solo** (`sugerirPauta`): las del tipo «Anuncio» y las de la oferta del mes (`offers`/`promoCode`: el tipo
   «Beneficios», el código, una cifra o dos palabras de la oferta). Al poner el plan del asistente del mes salen marcadas con
   `auto` y se dice cuántas; lo que YA estaba en el calendario sólo se propone (con su casilla), nunca se marca sin verse.
-  La etapa sugerida va por el nivel: el `decision` de la app es «listo para comprar» (conversión), no el «ya compró» del curso.
+  La etapa sugerida va por el nivel: el `decision` de la app es «listo para comprar» (conversión; ver la entrada del número
+  mágico).
   · **La revisión de anuncio son REGLAS** (lo que caduca, la primera línea, el llamado a WhatsApp o a la web, más de 3
   hashtags, lo que dice de quien lee, «casi igual a otra de su etapa» por la primera línea o el 60 % de las palabras). Los
   bordes de palabra van con `\p{L}` y no con `\b`: `\b` sólo entiende ASCII y «acné» o «últimas» no casaban. Lo que no se
@@ -6055,10 +6100,184 @@ son del servidor.
   (src/lib/numerosNegocio.js) es LA cifra de la ficha, la revisión 3Q (también el cron), el informe de anuncios, el plan de
   campañas y el estratega: el menor entre el objetivo y el equilibrio, con el presupuesto escrito (o el que pide la meta;
   lo gastado en Meta sólo se enseña) y SIN ajuste por etapa (`EXIGENCIA_ETAPA` se quitó). Sin costos no hay número: se dice
-  qué falta y no se juzga contra una cifra inventada. «Decisión» es, como en el curso, quien YA COMPRÓ (va en Ascensión);
-  el empujón es la etapa Conversión con textos de nivel Producto. «Nueva campaña» (crear por la API) ya no se abre: la
+  qué falta y no se juzga contra una cifra inventada. «Decisión (listo para comprar)» es quien lo sabe todo y sólo le
+  falta el EMPUJÓN —la oferta, la garantía, la urgencia real— (el «más consciente» de Schwartz y los prompts de
+  investigación del curso; los apuntes decían «ya compró» y se unificó): va en Conversión (con Producto: la regla de 100
+  da 2 de Producto por 1 de Decisión) y en Ascensión, donde quien ya compró recibe el mismo empujón para volver. Un
+  «Anuncio» en nivel Decisión se sugiere a Conversión. «Nueva campaña» (crear por la API) ya no se abre: la
   página de Anuncios lleva a «Plan de campañas», que da campañas, conjuntos, anuncios (cualquier publicación, o una nueva)
   y sus textos según el nivel de consciencia de su etapa; el estratega de un cliente lleva a su plan.
+- **El estudio de mercado más profundo, los ángulos de venta y el «Lenguaje del cliente»: lo que dice el cliente lo
+  comprueba el CÓDIGO** (investigación del curso; `src/lib/estudioMercado.js`, `src/lib/lenguajeCliente.js`,
+  `worker/lib/mercado.js`, `worker/lib/cerebro/lenguaje.js`; sin migración). Lo que no se ve en la pantalla:
+  · **Todo lo nuevo es OPCIONAL y sólo se escribe si trae algo** (`profundoDeGeneral`, `limpiarPerfil`, los ángulos): un
+  estudio aprobado de antes se lee y se vuelve a limpiar IGUAL, sin claves nuevas (un test lo exige), y su resumen sale como
+  antes. Lo profundo de lo general (problema por fuera y por dentro, cree/necesita, antes y después, cómo justifica la
+  compra, lo gastado, la competencia indirecta y los anuncios del rubro) sólo llega con «Rehacer todo» o escribiéndolo a
+  mano en el borrador: no hay un botón barato para un estudio ya aprobado.
+  · **`resumenGeneral` es lo que viaja a otras llamadas** (el motor de ideas, el kit, los ángulos): lo nuevo va en SIETE
+  líneas, cada una con su tope (`breve`), y sin nombres de la competencia (`quitarMarcas` con los competidores del estudio).
+  Si alguien suma un bloque, que sume una línea corta, no el bloque entero. La nota del cerebro sí lo lleva entero (sin
+  marcas). La respuesta de la IA del estudio subió a 9.000 de salida (lo general venía de 7.000 y cada producto de 6.000): con lo nuevo y los ángulos, se cortaba.
+  · **Los ángulos (`productos[id].angulos`, 3–5) van en la nota de cada producto por defecto** (`notaDeProducto(…, {
+  angulos: true })`), y así los lee también el lote (worker/lib/estudio/lote.js). El pedido de los ángulos pasa
+  `{ angulos: false }` para no leer los de antes.
+  · **Una garantía o prueba en un ángulo sólo es real si el estudio del producto tiene alguna** (maleta de garantía o de
+  testimonios, u objeciones/pruebas): si no, `sinGarantiaInventada` la quita y suma «Una garantía o una prueba real…» a
+  `faltan`. Sólo en el camino de la IA (`leerDeProducto`, `leerAngulos`): lo que escribe una persona en el borrador no se
+  toca.
+  · **«Proponer ángulos» escribe en el BORRADOR, nunca en lo aprobado** (`estudioConAngulos` quita `aprobadoAt`; si no hay
+  borrador se crea desde el aprobado, como «Llevar al estudio» de WhatsApp). Es barato: sin búsqueda web, con lo que ya
+  dice el estudio. Relee la fila antes de escribir: si en medio otra persona guardó el borrador, se escribe sobre lo suyo.
+  · **Una frase del «Lenguaje del cliente» que no esté TAL CUAL en el material se DESCARTA** (`leerLenguaje`,
+  `fraseEnTexto`): se compara sin mayúsculas, tildes, comillas ni espacios de más, por palabras enteras, y se guarda el
+  trozo ORIGINAL (así se ve como lo escribió el cliente). La IA no cuenta: `veces` es cuántos comentarios la dicen; una
+  frase que ya estaba en la nota se cuenta con su peso de entonces, sin sumarla dos veces. Lo que sólo dicen clientes de
+  la competencia va a «Lo que odian de otras opciones», nunca como elogio, y las marcas pasan a «otra marca».
+  · **De la Bandeja sólo lo de OTROS** (`propio: 0`, los 150 más recientes) y de la encuesta las respuestas con su
+  pregunta. Sin nada que leer (sólo la nota de ahora no cuenta), 409 sin llamar a la IA; con ninguna frase comprobada,
+  502. No guarda: se abre en el editor con el id de la nota si ya existía, y NO es interna (la lee quien escribe).
+  · **Nada de esto se ha probado contra la IA real**: los tests (tests/migracion/mercado.angulos.test.js) usan un `fetch`
+  de mentira.
+- **La FORMA del gancho la escoge el CÓDIGO, no la IA; los ángulos y el lenguaje del cliente llegan al motor de ideas**
+  (`src/lib/formasGancho.js`, `darForma` y `lineaDePieza` en loteAnuncios.js, `formasQueRinden` y `recientesDelCliente` en
+  worker/lib/estudio/lote.js; sin migración). Dejada a la IA, todos los ganchos salían con la misma pregunta. Lo que no se ve:
+  · **Una forma por casilla**, como la composición o la estructura del carrusel: no la de la vecina, que encaje con el nivel
+  (si no queda ninguna, se relaja primero la voz y luego el nivel), en pauta sólo las que sirven (`pauta: false` fuera), las
+  que piden un dato real (`requiereDato`) sólo si el estudio o el catálogo traen pruebas o cifras (`hayDatosReales`) y,
+  entre las que quedan, la menos usada en los últimos 3 meses del cliente (la MISMA lectura que las estructuras del
+  carrusel). Una casilla que ya trae una forma válida la conserva. La línea de la pieza dice «forma del gancho: «X» — cómo;
+  va en el caption / la portada / el primer segundo» y la táctica (`TACTICAS`) sigue al lado: la táctica es QUÉ empuja, la
+  forma CÓMO se dice. La idea vuelve con `porque` (≤ 160, se enseña en el lote) y la publicación guarda `post.formaGancho`
+  (`publicacionDePieza`, `rellenarConIdea`, `publicacionDelPlan`; `reemplazarConIdea` la cambia con «Otra»). En «campos»
+  la forma sólo se guarda si se escribió un campo donde va el gancho (`CAMPOS_GANCHO`) y la publicación no tenía.
+  · **Aprender sólo con muestra**: `formasQueRinden` mira primero si hay al menos `MIN_SENALES_FORMA` (6) publicaciones con
+  forma y maduras (5 días); sin eso no lee nada más (cero consultas extra). Con eso, la cola (lo publicado como post) y las
+  métricas orgánicas, y el «rinde» de cada una es el de «Lo mejor» (`rindesDePropias`: contra la mediana de su cuenta).
+  Una forma con 3 piezas o más que rinde ≥ 1,2× es buena (va en una de cada dos casillas) y ≤ 0,75×, mala (no sale si
+  quedan otras dos). Las publicaciones de antes no tienen forma: hasta que se acumulen, nada cambia.
+  · **Los ángulos de venta** del estudio APROBADO (`angulosDeProducto`, del agente del estudio de mercado) se leen en el
+  servidor y pasan a `darForma`: «frío» en los niveles fríos, «tibio» en los demás, sin repetir el de la vecina; su línea
+  (`lineaDeAngulo`) se arma en el Worker para que loteAnuncios.js no arrastre el estudio de mercado. La publicación guarda
+  `post.angulo`. Sin ángulos (un estudio de antes), nada.
+  · **El lenguaje del cliente** es la nota del cerebro por su ruta (`RUTA_LENGUAJE`; o por su título si se escribió a mano),
+  hasta `MAX_LENGUAJE`, en TODOS los modos (niveles, matriz, tipos, mes, plan, publicación, campos), con la regla «usa SUS
+  palabras; no inventes citas ni testimonios». Una nota interna no cuenta.
+  · **Las reglas del gancho son código y sólo avisan** (`problemasDelGancho`, en «Revisar el mes»): una cifra del gancho
+  (%, dinero, «3×», «500 clientes») que no está en el catálogo, el estudio ni la idea, y frases de miedo de una lista
+  ESTRECHA (una lista ancha avisaría de todo y se dejaría de leer). Sin catálogo ni estudio cargados la cifra NO se mira
+  (todas serían «inventadas»); los años y los teléfonos no son cifras; lo que ya avisó la regla del precio no se repite. Lo
+  personal sigue en `pauta.js`. El pedido las prohíbe en una línea (`REGLA_GANCHO`): no se reescribe ni se bloquea nada.
+  · **UGC: tres ganchos con tres formas distintas** (`formasParaGanchos`, la primera es la de la pieza); viajan en la
+  casilla (`formasGanchos`) sólo para el pedido y no vuelven en la respuesta. Pedir sólo los hashtags no lleva ni forma ni
+  ganchos.
+  · **El reel por planos** recibe UNA sugerencia de gancho visual para el primer plano (`ganchoVisualPara`, por la semilla
+  de la idea; los que piden el producto sólo si lo hay), salvo que siga una estructura o el guion de la publicación.
+  · **Nada de esto se ha probado contra Anthropic real**: tests/migracion/formasGancho.test.js usa un `fetch` de mentira y
+  una D1 de verdad.
+- **El plan de campañas ya no reparte por «lo que mejor funcionó va a presentación», y la revisión 3Q mira también la
+  serie DIARIA** (`src/lib/planCiclo.js`, `src/lib/alertas3q.js`, `worker/lib/revision3q.js`). El Excel del plan salía
+  con «18-65+» en todos los conjuntos, nombres cortados a media palabra, anuncios nombrados unos por tipo de arte y otros
+  por título, todo lo que rindió en presentación (conversión, ascensión y temporada vacías), públicos que competían y
+  campañas de 1 $ al día sin decir nada. Lo que no se ve en la pantalla:
+  · **La edad** sale del texto del perfil del estudio o, si no la dice, de la maleta «Público» del producto
+  (`edadDeTexto`: «de 30 a 45», «entre 25 y 38», «mayores de 40»; «de 30 a 45 minutos» no es una edad); sólo la llevan los
+  conjuntos de intereses. Los demás van sin edad en el nombre y «Edad: abierta» en la guía (un público de quien ya
+  interactuó no se recorta).
+  · **Todo dato del nombre va ya cortado en una palabra** (`enPalabra`): `nombreConPlantilla` corta cada dato a 60 a
+  media palabra. El nombre del anuncio es UNA regla: el ángulo de venta; si no, el título de la pieza; un nuevo, su nivel.
+  · **Cada pieza a la etapa donde mejor encaja** (`encajeEnEtapa`: lo que habla de precio u oferta suma mucho en
+  conversión y resta en presentación; su tipo de arte, en las campañas que lo piden; su nivel, en la etapa de ese nivel;
+  un nivel frío fuera de presentación resta). Primero cada una a su mejor etapa; lo que sobra, a la siguiente que le
+  sirva. Un aviso de «parecida» sólo sale si esa pieza no entró en ninguna otra campaña.
+  · **Evaluación: el conjunto de 90 días excluye al de 30** (si no, pujan por la misma persona). La temporada NO excluye
+  (es la misma gente a propósito): se avisa (`temporada-compite`) y se dice que no se suba evaluación esos días.
+  · **Presupuesto bajo** = menos de `MIN_DIARIO` por unidad, o con número mágico menos de 7 resultados a la semana, o sin
+  él menos de `DIARIO_POCO` (3) al día; con la semana calculada del mensual (no del diario redondeado). Un solo aviso
+  `presupuesto-juntar` propone con los números del plan: menos conjuntos en presentación, evaluación en uno, sólo
+  presentación y evaluación (con el 75/25) o cuánto subir. `conversion-chica` se quitó (lo cubre esto).
+  · **Los ángulos de venta salen SÓLO del estudio APROBADO** (`estudioAprobado`: el Worker pasa `mercado.estudio`, nunca
+  el borrador). Presentación prueba los fríos y las demás los tibios (y los que no dicen); los menos usados por las otras
+  campañas primero. Lo escogido se guarda en `anuncios[hueco].angulo` ({ productoId, id, nombre }, o `false` = «sin
+  ángulo»; `angulo: null` en el PUT vuelve al sugerido; cambiar de publicación no lo toca) y lo de antes, sin `angulo`,
+  vale igual. Con la pieza de otro producto, el sugerido se cambia por uno de ESE producto. «Escribir los textos» fija en
+  el hueco el ángulo con el que escribió (si mañana se sugiere otro, los textos no cuadrarían). `anunciosPlan.js` no
+  importa el estudio de mercado: el Worker le pasa la línea ya hecha (`lineaDeAngulo`).
+  · **Qué ángulo gana** es un rasgo más de `preferenciasDeAnuncios` con la misma muestra mínima: el de la publicación
+  (`post.angulo`, objeto o texto: `anguloDePost`, que también recuerda `fotoDePublicacion`) o el del hueco del plan
+  donde corrió (`angulosDeLosPlanes`, una lectura de los últimos 12 planes, en `preferenciasDelCliente` y en «Para
+  pautar»; el GET de «En pauta» del panel no la hace: se abre mucho).
+  · **La serie diaria son 2 llamadas más en la revisión (14) y 1 en el cron (6)**: por campaña desde el 1 del mes o 14
+  días atrás (`desdeDeLaSerie`) y por anuncio 14 días, con `time_increment=1` y `time_range`, SIN los campos nuevos (no
+  pueden tumbar la serie con un #100). Si falla, null: la revisión sale igual y `avisoDia` lo dice. Hoy no cuenta (va a
+  medias): todo es hasta AYER.
+  · **El ritmo se mide contra el MISMO presupuesto que pone el plan** (`presupuestoDelMes`, que llama a `planDelCiclo`
+  sin catálogo ni estudio: la inversión de los números o la escrita en el plan del mes, más la temporada con las fechas
+  especiales del cliente y el calendario del mes). Dos lecturas de D1 (`planes_campana` y `calendars`). Sin números,
+  «sin datos» y dónde se completan.
+  · **Al cron sólo van el destino roto y el gasto más de un 30 % adelantado** (`alertasGravesDiarias`, con su clave en
+  `alertas.claves`: no se repite al día siguiente). El CPM, el cansancio y el formato son de la pantalla.
+  · **«7 días antes» es 14 menos 7** (`semanaAnterior`); y con menos de `POCOS_RESULTADOS` (50) en 30 días, el semáforo de
+  lo que pide un cambio fuerte (apagar, subir, duplicar, cambiar) lleva `ojo` («tómalo como una pista») y el resumen,
+  `avisoPocos`.
+  · **Nada de esto se ha probado contra Meta real**: los tests usan un `fetch` de mentira (la forma de la serie es la de
+  la documentación de /insights con `time_increment`).
+- **Las referencias de estilo, la línea «Emoción», el kit desde imágenes y las variaciones para anuncios** (decisión de la
+  agencia: dar al director y al motor un ambiente de marca, la intención de cada pieza, un kit sacado de lo que ya gusta y,
+  de una pieza que funciona, las de un conjunto de anuncios; `src/lib/anclasEstilo.js`, `kitDesdeImagenes.js`,
+  `variacionesAnuncio.js`; sin migración). Lo que no se ve en la pantalla:
+  · **`kit.anclas` sólo se escribe si hay alguna** (un kit de antes queda igual, también su bloque de la marca) y SIEMPRE
+  son genéricas: `avisoDeAncla` marca una marca conocida (también de película o de revista, en minúsculas) o una palabra
+  con mayúscula a mitad de frase o seguida de un número. Las que avisan se GUARDAN (lo decide la persona, que ve el aviso)
+  pero no van a ninguna pieza (`anclasUsables`), y lo que propone la IA («Preparar con IA», el moodboard) se descarta al
+  leerlo. En el bloque de la marca van con tope (`MAX_LINEA_ANCLAS`: entran las que caben); `fundirKit` las conserva si la
+  propuesta no trae.
+  · **«Emoción» va detrás de «Pieza» en `FORMATO_FICHA`** y en `PRESCINDIBLES` entre Evitar y Fondo: al acortar, se va
+  después de Marca y Evitar. Una ficha de antes, sin esa línea, se limpia, se acorta y da el mismo texto exacto que
+  siempre (un test lo exige). `fichaDelPedido` la lee porque va dentro de la ficha (sin línea en blanco).
+  · **El moodboard NO guarda**: `POST /api/estudio/<c>/kit/moodboard` (función «kit desde imágenes», hueco «análisis»)
+  exige de 3 a 10 imágenes de ESE cliente (PNG, JPG o WEBP, fuera de la papelera: si una no lo es, 400 sin llamar a la IA)
+  y manda copias de 512 px (`miniaturaDe`, importado EN EL MOMENTO: kit.js → miniaturas.js → cuadros.js → kit.js sería un
+  ciclo); con menos de 3 copias, 503. La pantalla funde sólo lo visual (`fundirMoodboard`: una paleta vacía deja la de antes).
+  · **Las variaciones van por `/versiones` con `para: "anuncios"`** (`variacionesParaAnuncios` en worker/lib/estudio/prompt.js)
+  y por el director con la maestra como imagen especial (`papel: "maestra"`, nuevo en `PAPELES`) y un concepto fijo: cada
+  ficha es una llamada y van a la vez. Con texto, los ganchos primero (el titular nuevo DELANTE y el resto exacto:
+  `textoDeVariacion`); con la plantilla de texto encima (`sinTexto`), ningún gancho. Sin el director, NO hay respaldo: 502.
+  · **Quedan juntas en una carpeta normal «Variaciones · <titular>»** (`carpetaParaVariaciones` en lib/visorEstudio.js: si el
+  nombre existe, « (2)»…; con el tope de carpetas, sueltas) y la maestra entra si estaba suelta. NO se apilan como versiones
+  (`deArchivo`): apiladas, la galería enseñaría una sola. Van con `uso: null`: no se ponen en la publicación desde la que se
+  abrió el visor.
+  · **El costo** es el de la versión del modelo × cuántas, con `decidir` (0,50 $ y «crear sin preguntar»); la llamada del
+  director no se cuenta (es texto). La pantalla vive en VariacionesAnuncio.jsx (lazy): el chunk del Estudio está a 20,44 kB.
+  · **Nada de esto se ha probado contra Anthropic ni los motores reales**: los tests usan un `fetch` de mentira.
+- **El VIDEO: desglosar toma por toma, seguir su forma, «¿listo para animar?» y pedidos cortos** (`src/lib/deconstructor.js`,
+  `listoAnimar.js`, `pedidoVideo.js`; `worker/lib/estudio/deconstructor.js`, `listoAnimar.js`). Cosas que no se ven:
+  · **El desglose es CARO (tokens de video) y sólo a pedido**: `POST /api/estudio/<c>/archivos/<id>/deconstruir`, «Desglosar
+  toma por toma» del visor y `deconstruir_video` (Claude y el asistente; con `video_referencia` en `crear_reel`). Queda en
+  `ajustes.deconstruccion` de la ficha y la segunda vez sale gratis, salvo `otraVez`. Con Meta como motor de video va por
+  fotogramas (409 `fotogramas` y el navegador repite; por MCP lo dice) y lo marca: sin audio, tomas aproximadas. La IA
+  describe; lo demás lo cuenta el CÓDIGO (`leerDeconstruccion`: las tomas ordenadas y contiguas, la media, el ritmo de los
+  cortes) y quita las palabras de valor que se le escapan («elegante», «cinematográfico»…: `limpiadas` dice cuántas).
+  · **Seguir la forma es seguir el MAPA RESUMIDO, nunca el video**: `guionDeReel` lo lee del video de una referencia del
+  estudio de mercado (`ref.archivoId`) o de `videoReferenciaId` (uno de la galería; escogido sin desglose, 400 sin llamar a
+  la IA) y el pedido lleva `resumenDeSecuencia` (≤ 1.800, hasta 12 tomas y el resto contado) con «nunca su marca, sus
+  personas, su texto ni lo que dice». El video animado de «Recrear para…» de «Lo mejor» lo sigue (cada toma, una escena):
+  por eso el original se trae ANTES de escribir el guion (bajarlo no cuesta; un TikTok cuya dirección caducó gasta su
+  crédito de Scrape Creators como antes, aunque el guion falle después). Nada se desglosa solo: sin desglose, como antes.
+  · **«¿Listo para animar?» retrasa UN paso el cierre del reel** (`porRevisarAnimar` en `reelTerminado`): cuando el encargo
+  se para a revisar, la IA mira las copias de 512 px (Container; sin él, la original si es PNG/JPEG de ≤ 1,2 MB: las
+  tarjetas SVG del motor de prueba no se miran) en una llamada. El resultado va en `p.animable` (con el id del fotograma
+  mirado: uno corregido después ya no lo lleva) y en `ajustes.animable` de la ficha, que es lo que lee la pantalla. Sin IA,
+  sin copias, si falla o al cerrarse por plazo, `datos.animable` lleva `error`/`omitido` y el encargo se cierra igual: es un
+  aviso, nunca bloquea `continuarReel`.
+  · **Un pedido de video no se corta por el final** (`armarPedidoVideo`): lo fijo —el formato y la duración, que Omni lee del
+  texto; la voz entre comillas; `SIN_TEXTO_VIDEO`— no se toca; primero se COMPRIME lo que pasa de su `TOPE_PARTE` (el bloque
+  de la marca, que llegaba entero hasta 3.000) y luego se corta al revés: sonido, movimiento, cámara, luz, acción y, lo
+  último, el sujeto. Un storyboard mide `limiteDeStoryboard` (1.000 + 250 por plano, hasta 2.500): con 1.000 para todo, un
+  reel de cuatro planos perdía los últimos. Con un kit largo, el estilo de la marca queda en ~240 caracteres en el pedido de
+  video, a propósito.
+  · Funciones nuevas en el hueco «análisis»: «desglose de video» y «fotograma listo para animar». **Nada de esto se ha
+  probado contra Gemini, Meta ni Anthropic reales**: los tests usan `fetch` de mentira.
 
 ## Documentos relacionados
 

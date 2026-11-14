@@ -836,3 +836,69 @@ describe("un solo director: el carrusel, las correcciones de la agencia y lo que
     expect(r.fichas[2].plantilla).toBeUndefined();
   });
 });
+
+describe("POST /api/estudio/<cliente>/versiones con `para: \"anuncios\"` («Variaciones para anuncios»)", () => {
+  const MAESTRA = "Pieza: post 4:5 — anuncio del sofá cama.\nComposición: el sofá a la derecha, titular arriba del 8 al 20 %.\nTexto (exacto, sin cambiar una letra): titular «Duerme como en casa» (9 %); apoyo «Desde $399» (4 %).";
+  const data = Buffer.from("x".repeat(60)).toString("base64");
+  // El director contesta CADA pieza por su número (una llamada por pieza: van a la vez, con el concepto ya dado).
+  function directorPorPieza() {
+    peticiones = [];
+    vi.stubGlobal("fetch", async (url, opciones = {}) => {
+      const u = String(url);
+      if (u.startsWith("https://api.anthropic.com/v1/models")) return Response.json({ data: [{ id: "claude-sonnet-5" }] });
+      if (u.startsWith("https://api.anthropic.com/v1/messages")) {
+        const cuerpo = JSON.parse(opciones.body);
+        peticiones.push(cuerpo);
+        const n = Number(textoDe(cuerpo).match(/LAS PIEZAS:\n(\d+)\./)?.[1] ?? 1);
+        const ficha = `Pieza: post 4:5 — variación ${n}.\nComposición: el sofá ${n % 2 ? "a la izquierda" : "desde arriba"}, titular arriba del 8 al 20 %.\nTexto (exacto, sin cambiar una letra): titular «Variación ${n}» (9 %); apoyo «Desde $399» (4 %).`;
+        return flujo(JSON.stringify({ concepto: "x", piezas: [{ n, ficha }] }));
+      }
+      throw new Error(`fetch inesperado a ${u}`);
+    });
+  }
+  const variaciones = (datos) => pedir("/api/estudio/c1/versiones", { method: "POST", body: { idea: MAESTRA, tipo: "imagen", para: "anuncios", original: { media_type: "image/jpeg", data }, ...datos } });
+
+  it("el director MIRA la maestra y escribe N fichas, cada una cambiando lo suyo; no crea nada", async () => {
+    directorPorPieza();
+    const res = await variaciones({ n: 4, texto: "Duerme como en casa\nDesde $399" });
+    expect(res.status).toBe(200);
+    const r = await res.json();
+    expect(r.ficha).toBe(true);
+    expect(r.ejes).toEqual(["gancho", "angulo", "composicion", "pregunta"]);
+    expect(r.versiones).toHaveLength(4);
+    expect(r.versiones[0]).toMatch(/^Pieza: post 4:5 — variación 1\./);
+    expect(peticiones).toHaveLength(4);
+    for (const p of peticiones) {
+      expect(p.messages[0].content[0].type).toBe("image");
+      expect(textoDe(p)).toMatch(/LA IMAGEN 1 ES LA PIEZA MAESTRA de un conjunto de anuncios/);
+      expect(textoDe(p)).toMatch(/CONCEPTO DE LA TANDA \(síguelo\): Variaciones de una pieza maestra/);
+      expect(textoDe(p)).not.toMatch(/margen del 40|200 dólares/);
+    }
+    const pedidoDe = (n) => textoDe(peticiones.find((p) => textoDe(p).includes(`LAS PIEZAS:\n${n}.`)));
+    // El gancho: otro titular, el resto exacto.
+    expect(pedidoDe(1)).toMatch(/Cambia el GANCHO/);
+    expect(pedidoDe(1)).toMatch(/texto EXACTO de la pieza: «Desde \$399»\n/);
+    expect(pedidoDe(1)).toMatch(/Antes el titular era «Duerme como en casa»/);
+    // Lo demás: el mismo texto, exacto.
+    expect(pedidoDe(2)).toMatch(/Cambia el ÁNGULO/);
+    expect(pedidoDe(2)).toMatch(/texto EXACTO de la pieza: «Duerme como en casa» \/ «Desde \$399»/);
+    expect(pedidoDe(3)).toMatch(/Cambia la COMPOSICIÓN/);
+    expect(db.sqlite.prepare("select count(*) as n from estudio_trabajos").get().n).toBe(0);
+    expect(db.sqlite.prepare("select funcion from consumo_ia").get().funcion).toBe("director de arte");
+  });
+
+  it("con el texto puesto por la plantilla encima: ningún gancho y sin texto en la imagen", async () => {
+    directorPorPieza();
+    const r = await (await variaciones({ n: 3, texto: "Duerme como en casa", sinTexto: true })).json();
+    expect(r.ejes).toEqual(["angulo", "composicion", "fondo"]);
+    for (const p of peticiones) expect(textoDe(p)).toMatch(/SIN TEXTO en la imagen/);
+  });
+
+  it("de 3 a 5 y sólo imágenes: si no, no se llama a nadie", async () => {
+    directorPorPieza();
+    expect((await variaciones({ n: 2 })).status).toBe(400);
+    expect((await variaciones({ n: 6 })).status).toBe(400);
+    expect((await variaciones({ n: 3, tipo: "video" })).status).toBe(400);
+    expect(peticiones).toHaveLength(0);
+  });
+});

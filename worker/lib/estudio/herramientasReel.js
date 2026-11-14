@@ -5,13 +5,16 @@
 //                         storyboard en orden, el video o los clips y, si se pide, el montaje con la voz de la marca, el
 //                         texto, los subtítulos y el logo. Lo que sale se pone SOLO en su publicación. Primero el plan con
 //                         su costo (NO SE CREÓ NADA); sólo con el «sí» de la persona, confirmado=true
-//   · estado_reel         cómo va (fotogramas, video o clips, montaje) y, de lo listo, las IMÁGENES del storyboard
+//   · estado_reel         cómo va (fotogramas, video o clips, montaje) y, de lo listo, las IMÁGENES del storyboard y si
+//                         cada fotograma está «listo para animar» (el aviso de listoAnimar.js)
 //   · continuar_reel      tras revisar el storyboard: el video o los clips (con su costo y confirmación)
 //   · montar_reel         «Montarlo aquí»: el proyecto de video animado; en automático, además la voz (SIEMPRE se
 //                         confirma: confirmado_voz) y el render
 //   · video_listo         «¿Está listo este video?» sobre un video de la galería, el mp4 de un video animado o el de una
 //                         publicación
 //   · extraer_guion_ugc   la transcripción de un video (de la galería o de YouTube) adaptada a la marca como UGC
+//   · deconstruir_video   el DESGLOSE objetivo de un video de la galería, toma por toma (ficha técnica, lo que se repite,
+//                         el mapa de secuencia y el montaje); queda en su ficha y crear_reel puede seguir su forma
 //
 // Sólo en el MCP: herramientas.js (la del asistente) importa herramientasVideo.js, y desde aquí se llega a encargos.js y
 // a mercado.js, que por herramientasServidor.js volverían a herramientas.js (el ciclo que deja las definiciones sin
@@ -24,6 +27,7 @@ import { lineasDeMedios } from "./vistaMedios.js";
 import { crearCarpeta } from "./galeria.js";
 import { guionDeReel } from "./reel.js";
 import { revisarVideo } from "./revisionVideo.js";
+import { deconstruirVideo } from "./deconstructor.js";
 import { extraerUgc, leerMercado, ErrorMercado } from "../mercado.js";
 import { kitDe } from "./kit.js";
 import { estadoMotores } from "./motores.js";
@@ -41,6 +45,9 @@ import { estiloDeMarca, limpiarKit } from "../../../src/lib/kitMarca.js";
 import { fotosDelCatalogo } from "../../../src/lib/estudioMercado.js";
 import { textoDelGuionReel, ganchoDe, llamadoDe } from "../../../src/lib/montajeReel.js";
 import { FRASE_VEREDICTO } from "../../../src/lib/revisionVideo.js";
+import { textoDeDeconstruccion } from "../../../src/lib/deconstructor.js";
+import { resumenDeAnimar } from "../../../src/lib/listoAnimar.js";
+import { finalDePaso } from "../../../src/lib/encargoReelPuro.js";
 
 /** Un error de lo pedido: vuelve a Claude con `isError` (el mismo que el director: mcp.js ya lo conoce). */
 export const ErrorReel = ErrorDiseno;
@@ -146,6 +153,7 @@ export const DEFINICIONES_REEL_MCP = Object.freeze([
         publicacion_id: { type: "string", description: "La publicación del calendario (de ver_calendario): el guion sigue el que ya tiene y el resultado se pone en ella." },
         producto_id: { type: "string", description: "Un producto del catálogo (de guia_de_diseno): su precio exacto y sus fotos reales." },
         estructura_id: { type: "string", description: "La ESTRUCTURA de guion de la agencia que sigue la voz en off (de ver_estructuras con para=voz). Si se omite, la IA escoge la que encaje y la respuesta dice cuál." },
+        video_referencia: { type: "string", description: "Opcional: el ID de la galería de un video YA DESGLOSADO (deconstruir_video) cuya FORMA sigue el guion: el orden de las tomas, el ritmo de cortes, los planos y los movimientos de cámara, con la marca y el producto del cliente (nunca su marca, sus personas ni su texto)." },
         salida: { type: "string", enum: ["uno", "clips"], description: "uno: un solo video con todo; clips: un clip por plano (para montar). Si se omite, la que mejor sale con esa duración." },
         montar: { type: "boolean", description: "true (por defecto): montarlo con la voz, el texto, los subtítulos y el logo, y renderizarlo a mp4." },
         revisar: { type: "boolean", description: "true (por defecto): se para tras el storyboard para que la persona lo revise ANTES de pagar el video (luego continuar_reel). false sólo si la persona pide saltarse la revisión." },
@@ -160,7 +168,7 @@ export const DEFINICIONES_REEL_MCP = Object.freeze([
   },
   {
     name: "estado_reel",
-    description: "Cómo va un reel de crear_reel: los fotogramas (con sus IMÁGENES, para que las mires), el video o los clips, el montaje (si espera que se confirme la voz, su costo) y si ya está en su publicación. No gasta.",
+    description: "Cómo va un reel de crear_reel: los fotogramas (con sus IMÁGENES, para que las mires, y si están listos para animar: un aviso con su porqué que no bloquea), el video o los clips, el montaje (si espera que se confirme la voz, su costo) y si ya está en su publicación. No gasta.",
     inputSchema: { type: "object", properties: { encargo_id: { type: "string" } }, required: ["encargo_id"] },
     annotations: soloLectura,
   },
@@ -219,6 +227,19 @@ export const DEFINICIONES_REEL_MCP = Object.freeze([
     },
     annotations: escribe,
   },
+  {
+    name: "deconstruir_video",
+    description: "DESGLOSA un video de la galería toma por toma, sin opinar: la ficha técnica (duración, proporción, cómo se grabó), lo que se repite (personas, lugares, color, luz, audio), el MAPA DE SECUENCIA (cada toma con sus segundos, tamaño de plano, ángulo, movimiento de cámara, lo que pasa, lo que se dice y la transición) y el montaje. Sirve para copiar la FORMA de un video que funciona: después crear_reel con video_referencia la sigue. La IA lo VE (Gemini; si el motor del espacio es Meta, hay que hacerlo desde la aplicación). Cuesta céntimos de video; queda guardado en su ficha y la segunda vez sale gratis, salvo otra_vez.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        cliente: clienteP, archivo_id: { type: "string", description: "El ID del video en la galería del cliente (de ver_estudio)." },
+        otra_vez: { type: "boolean", description: "true: desglosarlo de nuevo aunque ya lo esté (se paga otra vez)." },
+      },
+      required: ["cliente", "archivo_id"],
+    },
+    annotations: escribe,
+  },
 ]);
 
 /** `buscarPublicacion(postId)` → { cal, post… } (el de mcp.js). */
@@ -264,6 +285,8 @@ export function crearHerramientasReel({ env, acceso, resolverCliente, usuario, b
       `Reel «${e.titulo}» (encargo ${e.id}): ${e.estado === "en_marcha" ? "en marcha" : e.estado}. ${e.nota ?? ""}`.trim(),
       e.error ? `Motivo: ${e.error}` : "",
       `Storyboard: ${hechos} de ${e.pasos.length} fotogramas.`,
+      // «¿Listo para animar?»: un aviso con su porqué por fotograma (sólo el del fotograma que se miró).
+      resumenDeAnimar(e.pasos.filter((p) => p.fase === "hecho").map((p) => ({ n: p.plano?.n, animable: p.animable?.archivoId === finalDePaso(p) ? p.animable : null }))),
       r.salida === "uno" ? `Video: ${{ espera: "espera la revisión (continuar_reel)", nuevo: "en cola", generando: "creándose", hecho: `listo (archivo ${v.archivoId})`, fallido: `no salió: ${v.error}` }[v.fase] ?? v.fase}.` : "",
       r.salida === "clips" && clips.length ? lineaDeClips(e.pasos, Boolean(m)) : "",
       m ? `Montaje: ${m.fase}${m.videoId ? ` (video animado ${m.videoId}: míralo con ver_video y ver_escenas)` : ""}${m.fase === "confirmar" ? ` · la voz cuesta ${m.costoTexto || "unos céntimos"}: pregúntale a la persona y, con su sí, montar_reel con confirmado_voz=true` : ""}${m.error ? ` · ${m.error}` : ""}${m.nota ? ` · ${m.nota}` : ""}.` : "",
@@ -277,7 +300,7 @@ export function crearHerramientasReel({ env, acceso, resolverCliente, usuario, b
   }
 
   return {
-    async crear_reel({ cliente, idea = "", segundos, planos: planosPedidos = 0, publicacion_id: postId = "", producto_id: productoId = "", estructura_id: estructuraId = "", salida, montar = true, revisar = true, voz = "", guion: guionDado, confirmado, confirmado_voz: confirmadoVoz }) {
+    async crear_reel({ cliente, idea = "", segundos, planos: planosPedidos = 0, publicacion_id: postId = "", producto_id: productoId = "", estructura_id: estructuraId = "", video_referencia: videoReferenciaId = "", salida, montar = true, revisar = true, voz = "", guion: guionDado, confirmado, confirmado_voz: confirmadoVoz }) {
       const c = await resolverCliente(cliente);
       return conErrores(async () => {
         const activos = activosDe(env);
@@ -286,7 +309,7 @@ export function crearHerramientasReel({ env, acceso, resolverCliente, usuario, b
         let guion = guionDado && typeof guionDado === "object" && Array.isArray(guionDado.planos) ? guionDado : null;
         let escrito = false;
         if (!guion) {
-          guion = await guionDeReel(env, acceso, c, { idea, segundos: Number(segundos) || DURACION_REEL_POR_DEFECTO, planos: Number(planosPedidos) || 0, productoId, postId, montaje: montar !== false, estructuraId });
+          guion = await guionDeReel(env, acceso, c, { idea, segundos: Number(segundos) || DURACION_REEL_POR_DEFECTO, planos: Number(planosPedidos) || 0, productoId, postId, montaje: montar !== false, estructuraId, videoReferenciaId: String(videoReferenciaId || "") });
           escrito = true;
         } else if (estructuraId && !guion.estructuraId) {
           // Un guion que escribió Claude con una estructura: se apunta si existe en el espacio.
@@ -305,6 +328,7 @@ export function crearHerramientasReel({ env, acceso, resolverCliente, usuario, b
           return [
             `NO SE CREÓ NADA TODAVÍA${escrito ? " (sólo se escribió el guion)" : ""}. Plan del reel de ${c.name}: ${cifra}; unos ${textoCosto(total)} ahora${montar !== false ? ", más la voz del montaje (se confirma aparte)" : ""}. ${revisa ? "" : textoDelAhorro(plan)}`.trim(),
             saldo.texto,
+            guion.sigueVideo ? `El guion sigue la forma del video ${guion.sigueVideo.archivoId}, toma por toma (${guion.sigueVideo.tomas} tomas).` : "",
             textoDelGuion(guion),
             `Dile a la persona el guion y la cifra. Sólo si dice que sí, repite crear_reel con guion = este JSON (o corregido) y confirmado=true:\n${JSON.stringify(guion)}`,
           ].filter(Boolean).join("\n\n");
@@ -428,6 +452,25 @@ export function crearHerramientasReel({ env, acceso, resolverCliente, usuario, b
           a.descripcion ? `CAPTION:\n${a.descripcion}` : "",
           `El original, transcrito (para la fórmula): gancho «${r.original?.gancho ?? ""}», ${r.original?.duracion ?? "?"} s.`,
         ].filter(Boolean).join("\n\n");
+      });
+    },
+
+    async deconstruir_video({ cliente, archivo_id: archivoId = "", otra_vez: otraVez }) {
+      const c = await resolverCliente(cliente);
+      return conErrores(async () => {
+        if (!archivoId) throw new ErrorReel("Di qué video: archivo_id (de ver_estudio).");
+        let r;
+        try {
+          r = await deconstruirVideo(env, acceso, c, { archivoId: String(archivoId), otraVez: otraVez === true });
+        } catch (e) {
+          if (e?.codigo === "fotogramas") throw new ErrorReel("El motor de video del espacio es Meta: necesita los fotogramas, que saca el navegador. Desglósalo desde la aplicación (Estudio → el video → «Desglosar toma por toma»).");
+          throw e;
+        }
+        return [
+          r.guardada ? "Desglose guardado (no se pagó otra vez; otra_vez=true para repetirlo)." : "Desglose hecho y guardado en la ficha del video.",
+          textoDeDeconstruccion(r.deconstruccion),
+          `Para que un reel siga esta forma: crear_reel con video_referencia="${archivoId}".`,
+        ].join("\n\n");
       });
     },
   };

@@ -13,10 +13,12 @@ import { leerMercado } from "../mercado.js";
 import { kitDe } from "./kit.js";
 import { estructuraATexto } from "../../../src/lib/estudioMercado.js";
 import { nombreDePreset, lineaDeEstilo, estiloDeLaPieza, bloqueDeMarca } from "../../../src/lib/kitMarca.js";
-import { pedidoDeReel, leerReel } from "../../../src/lib/reel.js";
+import { pedidoDeReel, leerReel, planosPedidos } from "../../../src/lib/reel.js";
+import { secuenciaDeVideo } from "./deconstructor.js";
 import { lineaDeLexico, aplicarLexicoAlReel } from "../../../src/lib/lexico.js";
 import { DURACIONES_OBJETIVO } from "../../../src/lib/duracionesVideo.js";
 import { contextoDeGuion } from "./guionVideo.js";
+import { ganchoVisualPara, lineaDeGanchoVisual, semillaDeTexto } from "../../../src/lib/formasGancho.js";
 import { estructuraDeVoz, usadaEn, ErrorEstructura } from "../estructurasGuion.js";
 
 /** Las duraciones que se escriben (las de siempre y las de la tabla por ruta). */
@@ -25,7 +27,9 @@ const SEGUNDOS = new Set([4, 6, 8, 10, 15, 20, 30, 40, ...DURACIONES_OBJETIVO]);
 /**
  * `datos`: { idea, segundos?, preset?, estilo?, productoId?, personajes?: [ids], musica?, locucion?, referenciaId?,
  * postId?, guionPost?, montaje? } → { hilo, planos, musica, locucion, efectos, descripcion, gancho, llamado }.
- * `referenciaId`: un anuncio de la competencia ya analizado (estudio de mercado): el guion sigue su ESTRUCTURA.
+ * `referenciaId`: un anuncio de la competencia ya analizado (estudio de mercado): el guion sigue su ESTRUCTURA y, si su
+ * video está DESGLOSADO toma por toma, también su mapa de secuencia (lib/deconstructor.js).
+ * `videoReferenciaId`: un video de la galería ya desglosado: el guion sigue su secuencia (sin desglose, 400).
  * `postId` / `guionPost`: la publicación de la que sale: el guion que ya tiene se SIGUE (antes se ignoraba).
  * `montaje` (por defecto, sí): pide lo que se dice y se lee por plano, el gancho y el llamado.
  * `estructuraId` (o `formulaId`): la ESTRUCTURA de guion de la agencia que sigue la voz en off; sin ella, la IA escoge
@@ -35,6 +39,8 @@ export async function guionDeReel(env, acceso, cliente, datos = {}) {
   let idea = String(datos.idea ?? "").trim().slice(0, 1500);
   // El anuncio que ya funciona: su estructura tramo a tramo (o, sin ella, su gancho y por qué funciona).
   let estructura = "";
+  // El video de esa referencia (o el escogido de la galería), si está desglosado toma por toma.
+  let videoRef = String(datos.videoReferenciaId ?? "").trim();
   if (datos.referenciaId) {
     try {
       const { referencias } = await leerMercado(acceso, cliente.id);
@@ -44,8 +50,16 @@ export async function guionDeReel(env, acceso, cliente, datos = {}) {
         estructura = [estructuraATexto(a.estructura), a.gancho && `Gancho: ${a.gancho}`, a.porQueFunciona && `Por qué funciona: ${a.porQueFunciona}`].filter(Boolean).join(". ");
         if (!idea) idea = a.ideaParaNosotros || "Adapta este anuncio a nuestra marca y producto.";
       }
+      if (!videoRef && ref?.archivoId) videoRef = String(ref.archivoId);
     } catch { /* sin estudio de mercado */ }
   }
+  const segundosPedidos = SEGUNDOS.has(Number(datos.segundos)) ? Number(datos.segundos) : 10;
+  // Su FORMA toma por toma (sin desglose, como siempre). Uno escogido a propósito tiene que estar desglosado.
+  const secuencia = videoRef ? await secuenciaDeVideo(acceso, cliente.id, videoRef, { unidad: "planos", cuantos: planosPedidos(segundosPedidos, Number(datos.planos) || 0) }) : null;
+  if (datos.videoReferenciaId && !secuencia) {
+    throw Object.assign(new Error("Ese video no está desglosado todavía: desglósalo primero (en el Estudio, ábrelo y «Desglosar toma por toma»)."), { estado: 400 });
+  }
+  if (!idea && secuencia) idea = "Un reel de nuestra marca y nuestro producto que siga la forma de este video de referencia.";
   const ctx = await contextoDeGuion(env, acceso, cliente, {
     productoId: datos.productoId ?? "", consulta: `${idea} contacto whatsapp beneficios`, postId: datos.postId ?? "",
     guionPost: String(datos.guionPost ?? "").slice(0, 3000),
@@ -54,7 +68,7 @@ export async function guionDeReel(env, acceso, cliente, datos = {}) {
   if (!idea && ctx.post) idea = String(ctx.post.idea || ctx.post.title || ctx.post.titulo || "").trim().slice(0, 1500);
   if (!idea && ctx.guionPost) idea = "El reel de esta publicación, con su guion.";
   if (!idea) throw Object.assign(new Error("Escribe la idea central: la promoción, el beneficio o lo que quieres contar."), { estado: 400 });
-  const segundos = SEGUNDOS.has(Number(datos.segundos)) ? Number(datos.segundos) : 10;
+  const segundos = segundosPedidos;
   // La ESTRUCTURA de guion de la agencia que sigue la voz en off: la escogida o, sin escoger, la que escoja la IA entre
   // las de voz (y diga en su JSON). Una escogida que ya no está es un 400.
   let eleccion;
@@ -80,6 +94,10 @@ export async function guionDeReel(env, acceso, cliente, datos = {}) {
       estructuraGuion: eleccion.texto, campoEstructura: !eleccion.elegida && Boolean(eleccion.texto),
       // Cuántos planos (por defecto, pocos: menos clips que pagar) y el léxico de la marca.
       planos: Number(datos.planos) || 0, lexico: lineaDeLexico(kit.lexico),
+      // El gancho visual del primer segundo, escogido por el código (la misma idea, la misma sugerencia), sólo si nada
+      // dice ya cómo empieza: un anuncio que se sigue, un video desglosado o el guion que ya tiene la publicación.
+      ganchoVisual: estructura || ctx.guionPost || secuencia?.texto ? "" : lineaDeGanchoVisual(ganchoVisualPara({ semilla: semillaDeTexto(idea), conProducto: Boolean(ctx.producto) })),
+      secuencia: secuencia?.texto ?? "",
     }),
     salida: segundos > 10 ? 2400 + segundos * 140 : 2600,
     funcion: "guion de video",
@@ -93,5 +111,7 @@ export async function guionDeReel(env, acceso, cliente, datos = {}) {
     ...guion, segundos, modelo: r.modelo, aviso: r.aviso ?? null,
     // La estructura que siguió (viaja con el guion al encargo, y de ahí al montaje y a la publicación).
     ...(usada ? { estructuraId: usada.id, estructuraNombre: usada.nombre } : {}),
+    // El video desglosado cuya forma sigue (lo dice la pantalla y lo recuerda el encargo).
+    ...(secuencia ? { sigueVideo: { archivoId: secuencia.archivoId, tomas: secuencia.tomas } } : {}),
   };
 }

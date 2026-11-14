@@ -31,8 +31,9 @@
 // ============================================================
 
 import {
-  lineaDePieza, REGLA_FORMATO, GUION_DE_FORMATO, textoEstrategiaDelMes, captionYHashtags, MAX_TITULO, MAX_GUION, MAX_BRIEF,
+  lineaDePieza, REGLA_FORMATO, GUION_DE_FORMATO, textoEstrategiaDelMes, captionYHashtags, bloqueDeLenguaje, MAX_TITULO, MAX_GUION, MAX_BRIEF,
 } from "./loteAnuncios.js";
+import { formaDe, REGLA_GANCHO } from "./formasGancho.js";
 import { CAMPOS_TEXTO, llevaCampo } from "./reglasFormato.js";
 import { reglaUgc, duracionUgc, palabrasQueCaben, leerGuionConGanchos, limpiarGanchos } from "./ugc.js";
 import { limpiarPauta, lineaDePauta, bloqueDeAnuncio, limpiarAnuncio, recortarHashtags, tieneTextosAnuncio, CAMPO_ANUNCIO, MAX_HASHTAGS_PAUTA } from "./pauta.js";
@@ -45,6 +46,13 @@ export const FORMATOS_CAMPOS = Object.freeze(["post", "historia", "carrusel", "r
 export const MAX_ESCRITO = 1500;
 /** Cuántas publicaciones por llamada como mucho. */
 export const MAX_PUBLICACIONES_CAMPOS = 12;
+/**
+ * Los campos donde vive el GANCHO (el titular, la primera línea del caption, el primer plano o la portada): sólo si se
+ * pide alguno, la pieza lleva su forma de gancho (lib/formasGancho.js) y la publicación la recuerda.
+ */
+export const CAMPOS_GANCHO = Object.freeze(["textoPieza", "descripcion", "guion"]);
+/** Los campos donde cuenta el ángulo de venta (lo que la pieza dice y por qué). */
+export const CAMPOS_ANGULO = Object.freeze(["idea", "textoPieza", "descripcion", "guion", "anuncio"]);
 
 const NOMBRE = Object.freeze({
   titulo: "título", idea: "idea", escena: "qué se ve", textoPieza: "texto en la pieza", guion: "guion", descripcion: "caption", hashtags: "hashtags",
@@ -84,7 +92,7 @@ export function casillaDeCampos(post = {}, day = {}, { campos = [], semana = "",
   return {
     clave: String(post.id ?? ""), formato,
     ...(day?.date ? { fecha: day.date } : {}),
-    ...Object.fromEntries(["pilar", "pilarSub", "productoId", "nivel", "deseo", "perfil", "estructura", "composicion", "tactica"].map((k) => [k, post[k] || ""]).filter(([, v]) => v)),
+    ...Object.fromEntries(["pilar", "pilarSub", "productoId", "nivel", "deseo", "perfil", "estructura", "composicion", "tactica", "formaGancho", "angulo"].map((k) => [k, post[k] || ""]).filter(([, v]) => v)),
     ...(semana || day?.concept ? { semana: semana || day.concept } : {}),
     ...(especial || day?.specialDate ? { especial: especial || day.specialDate } : {}),
     ...(formato === "reel" && post.rostro ? { rostro: true, duracionUgc: duracionUgc(post.duracionUgc), ...(post.formulaUgc ? { formulaUgc: String(post.formulaUgc) } : {}) } : {}),
@@ -106,7 +114,7 @@ function comoEsCadaCampo(pedidos, plan) {
     pedidos.has("idea") ? `- "idea": qué comunica la publicación y por qué funciona, en una o dos frases (${MAX_BRIEF} caracteres). Si ya tiene una, MEJÓRALA conservando su tema, su producto, su oferta y su enfoque: no la cambies por otra idea ni por otro formato.` : "",
     pedidos.has("textoPieza") ? '- "textoPieza": lo que va ESCRITO encima del diseño (no el caption): un titular de hasta 8 palabras y, en otra línea (\\n), una frase de apoyo corta; si el tipo lleva precio u oferta, el precio EXACTO del catálogo en una tercera línea. Sin el signo «·».' : "",
     ...[...formatos].map((f) => (f === "ugc"
-      ? '- "guion" (en las UGC): el guion para GRABAR, por tramos, uno por línea, con la forma de «PARA LAS UGC» de abajo; y "ganchos": 3 ganchos alternativos para el primer tramo (lo que dice, palabra por palabra).'
+      ? '- "guion" (en las UGC): el guion para GRABAR, por tramos, uno por línea, con la forma de «PARA LAS UGC» de abajo; y "ganchos": 3 ganchos alternativos para el primer tramo (lo que dice, palabra por palabra), uno con cada forma que dice su pieza.'
       : GUION_DE_FORMATO[f] ? GUION_DE_FORMATO[f].replace('- "guion":', `- "guion" (en ${f === "live" ? "un directo" : `un ${f}`}):`) : "")),
     pedidos.has("descripcion") ? `- "descripcion": el texto de la publicación (caption), de 2 a 4 frases: gancho en la primera línea, emojis con medida y un llamado a la acción con el contacto de la ficha si el tipo lo pide. SIN hashtags (van aparte).${conPauta ? " En las que VAN A PAUTA es el texto principal del anuncio: sigue LO QUE VA A PAUTA." : ""}` : "",
     pedidos.has("hashtags") ? `- "hashtags": de 5 a 10 hashtags útiles (del tema, del rubro y de la zona; los de la marca si la ficha los trae; ninguno de otra marca), separados por espacios.${conPauta ? ` En las que van a pauta, ${MAX_HASHTAGS_PAUTA} como mucho (o ninguno).` : ""}` : "",
@@ -121,7 +129,7 @@ function comoEsCadaCampo(pedidos, plan) {
  */
 export function pedidoDeCampos({
   marca = "la marca", plan = [], productos = {}, perfiles = {}, estudio = "", contexto = "", usados = [], fechasEspeciales = [],
-  estrategia = null, falta = "", ugc = "", cliente = "", pauta = "",
+  estrategia = null, falta = "", ugc = "", cliente = "", pauta = "", lenguaje = "",
 }) {
   const pedidos = new Set(plan.flatMap((r) => r.campos ?? []));
   // Lo que va a pauta: la regla del anuncio con el tipo de negocio y el destino del cliente (lo pone el Worker con sus
@@ -163,11 +171,13 @@ export function pedidoDeCampos({
     "- Precios, ofertas, garantías y cifras: sólo los del catálogo y EXACTOS como allí. No inventes reseñas, testimonios, seguidores, porcentajes ni plazos; una urgencia sólo con una fecha real.",
     "- Un día marcado «sin promociones» no vende ni da precios. No nombres a la competencia.",
     "- Que dos publicaciones no se parezcan: ni el mismo gancho ni el mismo llamado a la acción.",
+    plan.some((r) => formaDe(r.formaGancho)) ? REGLA_GANCHO : "",
     ...(falta ? [`- ${falta}`] : []),
     usados.length ? `- Estos títulos ya están en el mes: no repitas ninguno ni su idea:\n${usados.slice(0, 30).map((t) => `  · ${corto(t, 80)}`).join("\n")}` : "",
     "",
     estudio ? `ESTUDIO DE MERCADO:\n${String(estudio).slice(0, 8000)}\n` : "",
     contexto ? `LO QUE SE SABE DE LA MARCA:\n${String(contexto).slice(0, 6000)}\n` : "",
+    bloqueDeLenguaje(lenguaje),
     ugcs.length ? `PARA LAS UGC:\n${[...duraciones.map((d) => `${duraciones.length > 1 ? `De ${d} s:\n` : ""}${reglaUgc(d)}`), String(ugc ?? "").slice(0, 7000)].filter(Boolean).join("\n\n")}\n` : "",
     `Responde SOLO con JSON, una por número y sólo con los campos que pide cada una, así: {"textos":[{"n":1,"descripcion":"…","hashtags":"#… #…"${pedidos.has("anuncio") ? ',"anuncio":{"textos":["…","…","…"],"titulos":["…"],"descripcion":"…","boton":"WHATSAPP_MESSAGE"}' : ""}}]}`,
   ].filter((l, i, t) => l !== "" || t[i - 1] !== "").join("\n").replace(/\n{3,}/g, "\n\n");
@@ -225,10 +235,16 @@ export function leerCampos(texto, plan = [], { destino = "" } = {}) {
       if (a?.textos.length) campos.anuncio = a;
     }
     if (!Object.keys(campos).length) return [];
+    // La forma del gancho y el ángulo con que se escribió (los decidió el motor): la publicación los recuerda si no
+    // los tenía (`aplicarCampos`), y sólo si se escribió algo donde viven.
+    const conGancho = formaDe(r.formaGancho) && Object.keys(campos).some((k) => CAMPOS_GANCHO.includes(k));
+    const conAngulo = r.angulo && Object.keys(campos).some((k) => CAMPOS_ANGULO.includes(k));
     return [{
       clave: r.clave, n: r.n, campos,
       ...(ganchos.length ? { ganchos } : {}),
       ...(r.rostro && corto(x.formula, 60) ? { formula: corto(x.formula, 60) } : {}),
+      ...(conGancho ? { formaGancho: r.formaGancho } : {}),
+      ...(conAngulo ? { angulo: r.angulo } : {}),
     }];
   });
 }
@@ -252,6 +268,9 @@ export function aplicarCampos(post = {}, textos = {}, { reemplazar = [] } = {}) 
     if (lleno(valorEnPost(post, campo)) && !reemplazar.includes(campo)) continue;
     cambios[clave] = valor;
   }
+  // La forma del gancho y el ángulo, si la publicación no los tenía y lo nuevo se escribió donde viven.
+  if (formaDe(textos?.formaGancho) && !post.formaGancho && CAMPOS_GANCHO.some((k) => cambios[CAMPOS_TEXTO[k]])) cambios.formaGancho = textos.formaGancho;
+  if (textos?.angulo && !post.angulo && CAMPOS_ANGULO.some((k) => cambios[k === "anuncio" ? "anuncio" : CAMPOS_TEXTO[k]])) cambios.angulo = String(textos.angulo).slice(0, 60);
   if (cambios.guion && post.format === "reel" && post.rostro) {
     if (textos.ganchos?.length) cambios.ganchosUgc = textos.ganchos;
     cambios.duracionUgc = duracionUgc(post.duracionUgc);

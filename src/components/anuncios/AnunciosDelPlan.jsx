@@ -15,8 +15,10 @@ import { tipoArteDe } from "../../lib/tiposArte";
 // no) o «Anuncio nuevo» sin publicación: el plan sugiere, no limita. Por anuncio, cómo se monta en el Ads Manager
 // («Usar la publicación ya subida»: el texto principal es su caption y se escriben el título y la descripción; o
 // «Subir la pieza»: de 3 a 5 textos principales, títulos, descripción y botón) y sus textos, que se escriben a mano o
-// con «Escribir los textos» (la IA, con el nivel de consciencia de ese anuncio). Lo puro en src/lib/anunciosPlan.js y
-// src/lib/planCiclo.js; lo guarda el Worker con el plan (y en `post.anuncio` de su publicación).
+// con «Escribir los textos» (la IA, con el nivel de consciencia de ese anuncio). Con el estudio de mercado aprobado,
+// cada hueco lleva además el ÁNGULO DE VENTA que prueba (el que sugiere el plan o el que se escoja aquí): sus textos lo
+// cuentan. Lo puro en src/lib/anunciosPlan.js y src/lib/planCiclo.js; lo guarda el Worker con el plan (y en
+// `post.anuncio` de su publicación).
 // ============================================================
 
 const lineas = (t) => String(t ?? "").split("\n").map((x) => x.trim()).filter(Boolean);
@@ -98,6 +100,7 @@ function AnuncioDelPlan({ a, n, c, plan, soloLectura, ocupado, onGuardar, onEscr
             <p className="hint">Nivel {nombreNivelTexto(nivel).toLowerCase() || "de su etapa"}{info ? `: ${info.hablale}` : ""}</p>
           </div>
         </div>
+        <AnguloDelHueco c={c} n={n} plan={plan} slot={slot} soloLectura={soloLectura} onGuardar={onGuardar} />
         {!soloLectura && (
           <div className="plan-anuncio-acciones">
             <button type="button" className="btn btn-secondary btn-sm" onClick={onCambiar}><Icon name="search" size={16} /> Escoger una publicación</button>
@@ -126,6 +129,7 @@ function AnuncioDelPlan({ a, n, c, plan, soloLectura, ocupado, onGuardar, onEscr
           </p>
         </div>
       </div>
+      <AnguloDelHueco c={c} n={n} plan={plan} slot={slot} soloLectura={soloLectura} onGuardar={onGuardar} />
       {!soloLectura && (
         <div className="plan-anuncio-acciones">
           <button type="button" className="btn btn-secondary btn-sm" onClick={onCambiar}><Icon name="refresh" size={16} /> Cambiar</button>
@@ -215,6 +219,46 @@ function AnuncioDelPlan({ a, n, c, plan, soloLectura, ocupado, onGuardar, onEscr
       </div>
       {!a.nuevo && <p className="hint plan-como-monta">{textoDeLaPieza(a)}</p>}
     </li>
+  );
+}
+
+const PARA_QUIEN = { frio: "para quien no te conoce", tibio: "para quien ya te conoce" };
+const claveDe = (a) => (a ? `${a.productoId}:${a.id}` : "");
+
+/**
+ * El ÁNGULO DE VENTA que prueba un hueco: el que sugiere el plan (los del estudio aprobado, frío en presentación y tibio
+ * en las demás) o el que se escoja; «Sin ángulo» lo quita. Sin ángulos en el estudio, no se enseña.
+ */
+function AnguloDelHueco({ c, n, plan, slot, soloLectura, onGuardar }) {
+  const id = useId();
+  const pool = plan.angulos ?? [];
+  if (!pool.length) return null;
+  const actual = c.angulosHuecos?.[n - 1] ?? null;
+  const entero = pool.find((x) => claveDe(x) === claveDe(actual)) ?? null;
+  const escogido = actual ? !actual.sugerido : false;
+  const valor = actual ? claveDe(actual) : "";
+  const cambiar = (v) => {
+    if (v === "__sugerido") { void onGuardar(slot, { angulo: null }); return; }
+    if (!v) { void onGuardar(slot, { angulo: false }); return; }
+    const x = pool.find((a) => claveDe(a) === v);
+    if (x) void onGuardar(slot, { angulo: { productoId: x.productoId, id: x.id, nombre: x.nombre } });
+  };
+  return (
+    <div className="field plan-angulo">
+      <label className="label" htmlFor={`${id}-a`}>Ángulo de venta que prueba{actual?.sugerido ? " (lo sugiere el plan)" : ""}</label>
+      <select id={`${id}-a`} className="input" value={valor} disabled={soloLectura} onChange={(e) => cambiar(e.target.value)} aria-describedby={`${id}-h`}>
+        {escogido && <option value="__sugerido">Volver al que sugiere el plan</option>}
+        <option value="">Sin ángulo (los textos prueban varios)</option>
+        {pool.map((a) => (
+          <option key={claveDe(a)} value={claveDe(a)}>«{a.nombre}»{plan.productos?.length === 1 ? "" : ` · ${a.producto}`}{a.publico ? ` · ${PARA_QUIEN[a.publico]}` : ""}</option>
+        ))}
+      </select>
+      <p className="hint" id={`${id}-h`}>
+        {entero
+          ? [entero.problemaExterno && `Problema: ${entero.problemaExterno}`, entero.diferencial && `Lo que lo distingue: ${entero.diferencial}`].filter(Boolean).join(" · ") || "Todos los textos de este anuncio lo cuentan, cada uno de otra forma."
+          : actual ? "Ese ángulo ya no está en el estudio de mercado: escoge otro." : "Sin ángulo: los textos prueban formas distintas de contarlo."}
+      </p>
+    </div>
   );
 }
 

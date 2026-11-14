@@ -24,6 +24,7 @@ import { ErrorEstudio } from "./trabajos.js";
 import { aBase64 } from "./gemini.js";
 import { limpiarKit, kitVacio, pedidoDeKit, leerKit, pedidoDeRevision, leerRevision } from "../../../src/lib/kitMarca.js";
 import { estudioParaElKit } from "../../../src/lib/estudioMercado.js";
+import { pedidoDeKitDesdeImagenes, leerKitDesdeImagenes, MIN_MOODBOARD, MAX_MOODBOARD } from "../../../src/lib/kitDesdeImagenes.js";
 
 const leerJSON = (t, d) => { try { return JSON.parse(t) ?? d; } catch { return d; } };
 const CONSULTA_VISUAL = "estilo visual identidad paleta colores hex fotografía iluminación composición tipografía logo evitar negativos";
@@ -133,6 +134,51 @@ export async function subirFuente(env, cliente, archivo) {
   await env.MEDIA.put(clave, bytes, { httpMetadata: { contentType: tipo[0] } });
   const nombre = String(archivo.name ?? "").replace(/\.[a-z0-9]+$/i, "").replace(/[-_]+/g, " ").trim().slice(0, 60);
   return { clave, nombre };
+}
+
+/** Lo que se sabe del cliente por su ficha (sin el cerebro): lo comparten «Preparar con IA» y el moodboard. */
+const fichaDelCliente = (cliente) => [
+  cliente.industry && `Rubro: ${cliente.industry}`,
+  cliente.descripcion && `Descripción: ${String(cliente.descripcion).slice(0, 800)}`,
+  cliente.audiencia && `Público: ${String(cliente.audiencia).slice(0, 400)}`,
+].filter(Boolean).join("\n");
+
+/** El lado de las copias que mira la IA en el moodboard: como las vistas del director (512 px). */
+const LADO_MOODBOARD = 512;
+
+/**
+ * «Preparar desde imágenes»: la IA MIRA de 3 a 10 imágenes de la galería de ESTE cliente (su moodboard: las que le
+ * gustan a la marca, suyas o subidas de otras cuentas) y PROPONE lo visual del kit —estilo, luz, paleta con su papel,
+ * referencias de estilo genéricas y lo que nunca—. No guarda nada: la pantalla lo funde en el formulario
+ * (`fundirMoodboard`) y una persona lo revisa. Va una copia reducida de cada una (miniaturas.js).
+ */
+export async function prepararKitDesdeImagenes(env, acceso, cliente, archivoIds) {
+  const ids = [...new Set((Array.isArray(archivoIds) ? archivoIds : []).map((x) => String(x ?? "").slice(0, 80)).filter((x) => /^[\w-]{1,80}$/.test(x)))];
+  if (ids.length < MIN_MOODBOARD) throw new ErrorEstudio(`Escoge al menos ${MIN_MOODBOARD} imágenes.`, 400);
+  if (ids.length > MAX_MOODBOARD) throw new ErrorEstudio(`Como mucho ${MAX_MOODBOARD} imágenes.`, 400);
+  // Sólo de ESTE cliente (la capa acota por dueño y aquí por cliente), imágenes de verdad y fuera de la papelera.
+  const filas = await acceso.leerVarios("estudio_archivos", ["id", "clave", "mime", "tipo", "borrado_at"], "id", ids, { client_id: cliente.id });
+  const validas = ids.map((id) => filas.find((f) => f.id === id))
+    .filter((f) => f && !f.borrado_at && f.tipo === "imagen" && /^image\/(png|jpeg|webp)$/.test(String(f.mime ?? "")));
+  if (validas.length < ids.length) throw new ErrorEstudio("Alguna de las imágenes no es de la galería de este cliente (o no es una foto: PNG, JPG o WEBP).", 400);
+  // En el momento: miniaturas.js lee cuadros.js, que lee este archivo (estático sería un ciclo).
+  const { miniaturaDe } = await import("./miniaturas.js");
+  const bloques = [];
+  for (const f of validas) {
+    const m = await miniaturaDe(env, f.clave, { mime: f.mime, lado: LADO_MOODBOARD }).catch(() => null);
+    if (m?.datos) bloques.push({ type: "image", source: { type: "base64", media_type: m.mime || "image/jpeg", data: m.datos } });
+  }
+  if (bloques.length < MIN_MOODBOARD) {
+    throw new ErrorEstudio(`No se pudieron preparar las imágenes para mirarlas (salieron ${bloques.length} de ${validas.length}). Prueba otra vez en un momento, o con imágenes más ligeras.`, 503);
+  }
+  const r = await llamarIA(env, acceso, cliente, {
+    prompt: [...bloques, { type: "text", text: pedidoDeKitDesdeImagenes({ marca: cliente.name, rubro: cliente.industry ?? "", n: bloques.length, actual: kitDe(cliente), ficha: fichaDelCliente(cliente) }) }],
+    salida: 1600,
+    funcion: "kit desde imágenes",
+  });
+  const leido = leerKitDesdeImagenes(r.texto);
+  if (!leido) throw new ErrorEstudio("La IA no devolvió un estilo que se pueda leer. Inténtalo otra vez.", 502);
+  return { ...leido, vistas: bloques.length, modelo: r.modelo, aviso: r.aviso };
 }
 
 /** La IA propone el kit y un preset por tipo de contenido a partir del cerebro y la ficha. No guarda nada. */

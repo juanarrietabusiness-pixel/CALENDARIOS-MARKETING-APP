@@ -113,6 +113,8 @@ export const guardarLexico = (clienteId, lexico) => pedir(`${base(clienteId)}/ki
 
 /** La IA PROPONE el kit desde el cerebro del cliente: `{ kit, dudas, conCerebro }`. No guarda. */
 export const prepararKit = (clienteId) => pedir(`${base(clienteId)}/kit/preparar`, post());
+/** «Preparar desde imágenes»: la IA MIRA 3–10 imágenes de la galería y propone lo visual: `{ kit, dudas, vistas }`. No guarda. */
+export const prepararKitDesdeImagenes = (clienteId, archivoIds) => pedir(`${base(clienteId)}/kit/moodboard`, post({ archivoIds }));
 
 /** La IA mira una imagen de la galería contra el kit: `{ puntaje, cumple, falla, sugerencia }`. */
 export const revisarMarca = (clienteId, archivoId) => pedir(`${base(clienteId)}/revisar`, post({ archivoId }));

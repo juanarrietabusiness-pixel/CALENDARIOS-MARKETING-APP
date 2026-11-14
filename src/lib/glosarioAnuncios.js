@@ -25,6 +25,12 @@ export const GLOSARIO = Object.freeze({
   etapa: "En qué punto de la compra está la gente a la que le habla la campaña: Presentación (no te conoce), Evaluación (te vio y compara), Conversión (ya te escribió) o Ascensión (ya te compró).",
   margen: "Lo que le queda al negocio de cada venta después de pagar lo que cuesta el producto, el envío y las comisiones, sin el impuesto y sin las devoluciones.",
   bruto: "Meta reporta las ventas en bruto: con el ITBMS y sin descontar devoluciones. Por eso el equilibrio ya los descuenta: un ROAS que en Meta parece bueno puede estar perdiendo dinero.",
+  ritmo: "Si el gasto del mes va al paso que pide el plan: lo que se planeó para el mes, repartido por los días que ya pasaron. Si va muy adelantado, el dinero se acaba antes de fin de mes; si va atrasado, algo no está entregando.",
+  destino: "A dónde lleva el anuncio: el WhatsApp del cliente o su web. Si la gente sigue dando clic como siempre pero llegan menos conversaciones, el anuncio funciona y lo que falla está después del clic.",
+  cansado: "Un anuncio se cansa cuando la gente que lo ve ya lo conoce y le da clic cada vez menos. Se nota en que su CTR baja día a día frente a sus primeros días. Se renueva con una versión nueva de la pieza.",
+  formato: "Video, imagen o carrusel. Meta le da más dinero al formato que mejor le funciona; si casi todo va a uno, no se sabe si los otros venderían más barato.",
+  pocosDatos: "Con pocos resultados, un anuncio puede parecer bueno o malo por suerte. Hacen falta unos 50 resultados para concluir con confianza; antes, lo que dice la revisión es una pista.",
+  semanaAnterior: "Los 7 días anteriores a los últimos 7: se compara con un periodo del mismo largo para no confundir un mes entero con una semana.",
 });
 
 /** Cómo se nombra cada término en la pantalla (para el «¿Qué es…?»). */
@@ -33,4 +39,6 @@ export const NOMBRE_TERMINO = Object.freeze({
   aprendizaje: "la fase de aprendizaje", desglose: "el efecto desglose", ctrUnico: "el CTR único", pctMensajes: "el % de mensajes",
   tasa3s: "la tasa de 3 segundos", tiempoVideo: "el tiempo de reproducción", frecuencia: "la frecuencia", cpm: "el CPM",
   cbo: "el presupuesto de campaña", roas: "el ROAS", etapa: "la etapa", margen: "el margen", bruto: "«en bruto»",
+  ritmo: "el ritmo de gasto", destino: "el destino", cansado: "un anuncio cansado", formato: "el formato",
+  pocosDatos: "«pocos datos»", semanaAnterior: "«7 días antes»",
 });

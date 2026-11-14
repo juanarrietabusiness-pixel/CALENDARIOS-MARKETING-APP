@@ -15,8 +15,12 @@ const ExtraerUgc = lazy(() => import("./calendario/ExtraerUgc"));
 // «Guardar como plantilla» va en su chunk: el del Estudio está en su tope.
 const GuardarPlantilla = lazy(() => import("./GuardarPlantilla"));
 const VideoListo = lazy(() => import("./VideoListo"));
+// «Desglosar toma por toma»: la IA describe el video sin opinar, para que un reel siga su forma (en su chunk).
+const DesgloseVideo = lazy(() => import("./DesgloseVideo"));
 // «Poner en una publicación…»: lo que ya está en la galería, a un post de cualquier mes (sin crear ni cobrar).
 const PonerEnPublicacion = lazy(() => import("./PonerEnPublicacion"));
+// «Variaciones para anuncios»: de esta pieza maestra, las de un conjunto de anuncios (sólo se descarga al pulsarlo).
+const VariacionesAnuncio = lazy(() => import("./VariacionesAnuncio"));
 
 // ============================================================
 // El visor: la imagen (o el video) grande y todo lo que se sabe de ella
@@ -176,6 +180,7 @@ export default function Visor({
   const [cuantas, setCuantas] = useState(1);
   const [extrayendo, setExtrayendo] = useState(false);
   const [poniendo, setPoniendo] = useState(false);
+  const [variando, setVariando] = useState(false);
   const m = modeloPorId(a.modelo);
   const puedeOtra = !lectura && !a.subido && costoOtra != null && onOtraIgual;
   const video = a.tipo === "video";
@@ -300,6 +305,18 @@ export default function Visor({
                   </button>
                 </span>
               </div>
+              {!video && (
+                <button type="button" className="btn btn-ghost btn-sm" style={{ justifySelf: "start" }} aria-expanded={variando} aria-controls={`${id}-var`}
+                  title="Esta pieza como maestra: 3 a 5 más con su mismo estilo para un conjunto de anuncios" onClick={() => setVariando((v) => !v)}>
+                  <Icon name="layers" size={14} /> Variaciones para anuncios
+                </button>
+              )}
+              {!video && variando && (
+                <Suspense fallback={<p role="status" className="hint">Cargando…</p>}>
+                  <VariacionesAnuncio id={`${id}-var`} archivo={a} costo={costoVersion} estimado={Boolean((elegido ?? m)?.estimado)} ocupado={versionando}
+                    onCrear={(n) => onOtrasVersiones(n, modeloSel, "anuncios")} onCerrar={() => setVariando(false)} />
+                </Suspense>
+              )}
               {!editando && selector(`El de esta pieza (${nombreDelModelo(a.modelo) || "el mismo"})`)}
               <p className="hint" style={{ margin: 0 }}>
                 «Otra igual» repite el pedido con la marca de hoy. «Otra versión»: la misma información y el mismo texto con otra composición (el director la rediseña mirando esta). Salen revisadas por el control y con el logo.
@@ -312,6 +329,9 @@ export default function Visor({
           {!video && !lectura && clienteId && <Suspense fallback={null}><GuardarPlantilla key={`p-${a.id}`} clienteId={clienteId} archivo={a} onGuardada={onPlantilla} /></Suspense>}
           {video && clienteId && esVideoReal(a) && (
             <Suspense fallback={null}><VideoListo key={`v-${a.id}`} clienteId={clienteId} archivoId={a.id} src={a.src} inicial={a.ajustes?.revisionVideo} /></Suspense>
+          )}
+          {video && clienteId && esVideoReal(a) && (
+            <Suspense fallback={null}><DesgloseVideo key={`d-${a.id}`} clienteId={clienteId} archivoId={a.id} src={a.src} nombre={a.prompt} inicial={a.ajustes?.deconstruccion} lectura={lectura} /></Suspense>
           )}
           {!video && (onRevisar || revision) && <RevisionDeMarca revision={revision} onRevisar={onRevisar} onCorregir={lectura ? null : onCorregir} />}
           <div className="est-visor-acciones">

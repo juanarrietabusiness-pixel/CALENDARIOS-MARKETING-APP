@@ -20,6 +20,7 @@ import { pedidoDeLote, crearReelDeIdea } from "../lib/loteEstudio";
 import { lanzarLote, lanzarCarruselDeIdea, resultadoDePaso } from "../lib/loteServidor";
 import { seguirEncargo, terminarEncargo, cancelarEncargo, resultadoDeCarrusel } from "../lib/encargosApi";
 import { resumenControl } from "../lib/control";
+import { formaDe } from "../lib/formasGancho";
 import { modelosParaCarrusel, modeloParaCarrusel } from "../lib/carruselEstudio";
 import { modelosParaReel, modeloRecomendadoParaReel } from "../lib/reelEstudio";
 import { DIAS_LOTE, diasDelLote, diasConTipo, carpetaDelMes, fechaCortaLote, mesDe, textoMes, diasConPublicacion, casillasConPlantilla, diasConPlantilla } from "../lib/loteMes";
@@ -567,7 +568,7 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
   else if (ideas.some((i) => i.deseo || i.perfil)) {
     grupos = [...new Set(ideas.map((i) => `${i.deseo ?? ""}|${i.perfil ?? ""}`))].map((k) => {
       const [d, p] = k.split("|");
-      return { clave: k, titulo: [d && `Deseo de ${d}`, p].filter(Boolean).join(" · "), ayuda: "del inconsciente al que ya compró", ideas: ideas.filter((i) => `${i.deseo ?? ""}|${i.perfil ?? ""}` === k) };
+      return { clave: k, titulo: [d && `Deseo de ${d}`, p].filter(Boolean).join(" · "), ayuda: "del inconsciente al que sólo le falta el empujón", ideas: ideas.filter((i) => `${i.deseo ?? ""}|${i.perfil ?? ""}` === k) };
     });
   } else grupos = NIVELES_CONSCIENCIA.map((n) => ({ clave: n.clave, titulo: n.nombre, ayuda: n.ayuda, ideas: ideas.filter((i) => i.nivel === n.clave) })).filter((g) => g.ideas.length);
   const listas = Object.values(resultados).filter((r) => r.opciones).length;
@@ -857,9 +858,12 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
                             </select>
                           </label>
                           <p className="hint">
-                            Gancho: {nombreTactica(i.tactica)}.
+                            Gancho: {nombreTactica(i.tactica)}
+                            {formaDe(i.formaGancho) && <>, con la forma <span title={`${formaDe(i.formaGancho).como}. Por ejemplo: «${formaDe(i.formaGancho).ejemplo}»`}>«{formaDe(i.formaGancho).nombre}»</span></>}.
+                            {i.anguloNombre ? ` Ángulo de venta: «${i.anguloNombre}».` : ""}
                             {i.productoId && productoDe(i) ? ` Producto: ${productoDe(i).nombre}${i.conProducto === false ? " (no se ve: se habla del problema)" : fotosDe(i).length ? " (con sus fotos)" : " (sin fotos)"}.` : ""}
                           </p>
+                          {i.porque && <p className="hint"><Icon name="sparkles" size={12} /> Por qué funciona este gancho: {i.porque}</p>}
                         </div>
                         <div className="field">
                           <label className="label" htmlFor={`${ids}-to-${i.id}`}>Título</label>

@@ -169,6 +169,9 @@ export function rellenarConIdea(post = {}, idea = {}) {
     hashtagsFinales: conCaption ? idea.hashtags || "" : "",
     composicion: idea.composicion || "",
     tactica: idea.tactica || "",
+    // La forma del gancho y el ángulo de venta (lib/formasGancho.js, el estudio de mercado): para no repetirlos y aprender.
+    formaGancho: idea.formaGancho || "",
+    angulo: idea.angulo || "",
     ...(carrusel && idea.estructura ? { estructura: idea.estructura } : {}),
     // Lo que trae la matriz, si la publicación no lo tenía (así «Crear con IA» sabe de qué producto es).
     ...(idea.productoId ? { productoId: idea.productoId, producto: idea.producto ?? "" } : {}),
@@ -186,10 +189,12 @@ export function rellenarConIdea(post = {}, idea = {}) {
   if (idea.imagen && !carrusel && !video && igual(queda.escena, idea.escena) && igual(queda.textoPieza, propuesta.textoPieza)) {
     Object.assign(cambios, camposDePromptListo(queda, idea.imagen));
   }
+  // Los 3 ganchos de una UGC (uno con cada forma), si no tenía.
+  if (video && post.rostro && idea.ganchos?.length && !(Array.isArray(post.ganchosUgc) && post.ganchosUgc.length)) cambios.ganchosUgc = idea.ganchos;
   // Lo que va a pauta: sus textos de anuncio aparte (un objeto), si no tenía (lib/pauta.js; aquí sin importarlo: este
   // archivo lo carga el panel y la regla del anuncio arrastra el estudio de mercado).
   if (idea.anuncio?.textos?.length && !post.anuncio?.textos?.length) cambios.anuncio = idea.anuncio;
-  const NOMBRES = { title: "título", idea: "idea", escena: "qué se ve", textoPieza: "texto de la pieza", guion: "guion", descripcion: "descripción", hashtagsFinales: "hashtags", anuncio: "textos del anuncio" };
+  const NOMBRES = { title: "título", idea: "idea", escena: "qué se ve", textoPieza: "texto de la pieza", guion: "guion", descripcion: "descripción", hashtagsFinales: "hashtags", anuncio: "textos del anuncio", ganchosUgc: "ganchos" };
   return { cambios, campos: Object.keys(cambios).map((k) => NOMBRES[k]).filter(Boolean) };
 }
 
@@ -228,7 +233,11 @@ export function reemplazarConIdea(post = {}, idea = {}) {
     hashtagsFinales: idea.hashtags || post.hashtagsFinales || "",
     composicion: idea.composicion || "",
     tactica: idea.tactica || "",
+    // La forma del gancho y el ángulo de la idea nueva (se pidió otra: se reemplazan).
+    formaGancho: idea.formaGancho || "",
+    angulo: idea.angulo || "",
     ...(guiado && idea.estructura ? { estructura: idea.estructura } : {}),
+    ...(post.format === "reel" && post.rostro && idea.ganchos?.length ? { ganchosUgc: idea.ganchos } : {}),
     // Lo que va a pauta: los textos de anuncio de la idea nueva (se pidió otra: también se reemplazan).
     ...(idea.anuncio?.textos?.length ? { anuncio: idea.anuncio } : {}),
     sugerencia: "",

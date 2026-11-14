@@ -49,6 +49,13 @@ export const estudiarGeneral = (clienteId, material = "") =>
 export const estudiarProducto = (clienteId, productoId, material = "") =>
   gastando(() => pedir(`${base(clienteId)}/estudio/producto`, post({ productoId, material })));
 
+/**
+ * «Proponer ángulos» de un producto que ya tiene su estudio: la propuesta va al BORRADOR (se crea desde el aprobado si
+ * no había). → { borrador, angulos, aviso }.
+ */
+export const proponerAngulos = (clienteId, productoId) =>
+  gastando(() => pedir(`${base(clienteId)}/estudio/angulos`, post({ productoId })));
+
 /** Guarda lo corregido a mano; `null` descarta el borrador. */
 export const guardarBorrador = (clienteId, borrador) => pedir(`${base(clienteId)}/estudio/borrador`, put({ borrador }));
 

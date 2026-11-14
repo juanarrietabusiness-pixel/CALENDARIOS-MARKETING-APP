@@ -22,6 +22,9 @@
 //   POST   /<cliente>/importar           Llenar el cerebro desde el repositorio { carpeta?, actualizar? }
 //   POST   /<cliente>/preparar           La IA escribe la ficha técnica y las cifras { forzar? }
 //   POST   /<cliente>/rubro              La IA PROPONE la nota «Saber del rubro» (no guarda; se guarda con PUT /nota)
+//   POST   /<cliente>/lenguaje           La IA PROPONE la nota «Lenguaje del cliente» { texto?, competencia?, marcas? }: las
+//                                        frases exactas de sus clientes (lo pegado, la Bandeja y la encuesta), comprobadas
+//                                        por el código (no guarda; se guarda con PUT /nota)
 //   GET    /<cliente>/voz-ugc            La nota «Voz UGC» ({ id, texto } o vacía): la lee el guion UGC del panel
 //   POST   /<cliente>/voz-ugc            La IA PROPONE la «Voz UGC» desde sus guiones UGC (no guarda)
 //
@@ -46,6 +49,7 @@ import { ErrorIA } from "../lib/cerebro/ia.js";
 import { ErrorRepositorio } from "../lib/cerebro/repositorio.js";
 import { prepararFicha, ErrorPreparar, fichaDesactualizada } from "../lib/cerebro/preparar.js";
 import { proponerRubro } from "../lib/cerebro/rubro.js";
+import { proponerLenguaje } from "../lib/cerebro/lenguaje.js";
 import { datosQueNoCuadran } from "../../src/lib/datosCerebro.js";
 import { proponerVozUgc, vozUgcDe } from "../lib/cerebro/vozUgc.js";
 
@@ -292,6 +296,19 @@ export async function rutasCerebro(req, env, { acceso, partes, metodo }) {
   if (sub === "rubro" && metodo === "POST") {
     try {
       return json(await proponerRubro(env, acceso, cliente));
+    } catch (e) {
+      if (e instanceof ErrorIA) return error(e.message, e.estado ?? 502, e.cause);
+      throw e;
+    }
+  }
+
+  // ---------- «Lenguaje del cliente»: la IA la PROPONE y el código comprueba cada frase (se guarda con PUT /nota) ----------
+  if (sub === "lenguaje" && metodo === "POST") {
+    const b = (await cuerpo(req)) ?? {};
+    try {
+      return json(await proponerLenguaje(env, acceso, cliente, {
+        texto: String(b.texto ?? ""), competencia: String(b.competencia ?? ""), marcas: String(b.marcas ?? "").slice(0, 2000),
+      }));
     } catch (e) {
       if (e instanceof ErrorIA) return error(e.message, e.estado ?? 502, e.cause);
       throw e;

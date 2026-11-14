@@ -211,7 +211,8 @@ describe("las 7 maletas del curso", () => {
     const p = pedidoDeProducto({ marca: "Dcasa", producto: CATALOGO[0], general: GENERAL });
     expect(p).toContain('"elementos":{"publico":"…","problema":"…","solucion":"…","diferenciales":"…","testimonios":"…","objeciones":"…","garantia":"…"}');
     expect(p).toMatch(/Testimonios y garantía, SÓLO los que estén/);
-    expect(p).not.toMatch(/"cliente":|"dolor":|"confianza":/);
+    // Las maletas, con sus claves nuevas (el «dolor» de un ÁNGULO de venta es otra cosa: va en «angulos»).
+    expect(p.match(/"elementos":\{[^}]*\}/)[0]).not.toMatch(/"cliente":|"dolor":|"confianza":/);
   });
 
   it("el estudio general propone de 3 a 5 sesgos por perfil, se guardan y se leen al escribir", () => {
@@ -237,7 +238,7 @@ describe("las referencias de la competencia", () => {
     expect(a.deseo).toBe("Ahorro");
     const nota = notaDeReferencia({ id: "r1", competidor: "LimpiaYa", desde: "2026-07-01", analisis: a });
     expect(nota).toContain("# Referencia de la competencia: LimpiaYa");
-    expect(nota).toContain("- Nivel de consciencia: Decisión (ya compró)");
+    expect(nota).toContain("- Nivel de consciencia: Decisión (listo para comprar)");
     expect(leerReferencia("nada")).toBeNull();
   });
 

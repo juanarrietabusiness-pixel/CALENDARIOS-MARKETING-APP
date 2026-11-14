@@ -12,6 +12,7 @@ import { pedidoDeFotograma, promptDeReel, fotogramasParaVideo, sinVozPropia } fr
 import { lineaDeReferencia } from "./referencias.js";
 import { ajusteDeDuracion } from "./videoCorto.js";
 import { SIN_TEXTO_VIDEO } from "./videoLimpio.js";
+import { armarPedidoVideo } from "./pedidoVideo.js";
 
 /** Los modelos que sirven para el VIDEO de un reel (storyboard o imagen inicial), del más barato al más caro. */
 export function modelosParaReel(activos = {}) {
@@ -104,16 +105,20 @@ export function pedidoDeClip({ modelo, plano, fotograma, hilo = "", estilo = "",
   const duracion = ajusteDeDuracion(modelo, segundos) ?? undefined;
   return {
     modelo: modelo.id, n: 1, medios,
-    prompt: [
-      `Video vertical 9:16${duracion ? ` de ${duracion} segundos` : ""} que arranca EXACTAMENTE en esta imagen y la anima, calidad de anuncio profesional: ${String(plano.escena ?? "").trim()}`,
-      plano.camara ? `Cámara: ${plano.camara}.` : "",
-      hilo ? `Lo que se mantiene: ${hilo}` : "",
-      personajes,
-      estilo,
-      "Un solo plano continuo, sin cortes; los personajes, el producto y la luz, iguales a la imagen.",
-      "Sin voz ni música: el sonido se pone en la edición.",
-      SIN_TEXTO_VIDEO,
-    ].filter(Boolean).join("\n").slice(0, 3000),
+    // En el orden fijo (sujeto → acción → luz → cámara) y como mucho 1.000 caracteres (pedidoVideo.js): lo que no se
+    // recorta nunca es que arranca en la imagen, un solo plano, sin voz ni música y sin texto.
+    prompt: armarPedidoVideo({
+      inicio: `Video vertical 9:16${duracion ? ` de ${duracion} segundos` : ""} que arranca EXACTAMENTE en esta imagen y la anima, calidad de anuncio profesional.`,
+      sujeto: personajes,
+      accion: `Qué pasa: ${String(plano.escena ?? "").trim()}`,
+      luz: [hilo ? `Lo que se mantiene: ${hilo}` : "", estilo],
+      camara: plano.camara ? `Cámara: ${plano.camara}.` : "",
+      fin: [
+        "Un solo plano continuo, sin cortes; los personajes, el producto y la luz, iguales a la imagen.",
+        "Sin voz ni música: el sonido se pone en la edición.",
+        SIN_TEXTO_VIDEO,
+      ],
+    }),
     ajustes: ajustesDe(modelo, { aspectRatio: "9:16", ...(duracion ? { duration: duracion } : {}), sonido: "no" }, medios),
   };
 }

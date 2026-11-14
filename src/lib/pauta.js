@@ -69,7 +69,7 @@ export const botonPorDefecto = (destino) => (destino === "web" ? "SHOP_NOW" : "W
  * El nivel de consciencia que toca a cada etapa si nadie dice otro (uno de los de su etapa en lib/cicloVentas.js):
  * en presentación, quien sabe que tiene el problema (el grueso de la gente que no conoce la marca).
  */
-export const NIVEL_POR_ETAPA = Object.freeze({ presentacion: "problema", evaluacion: "solucion", conversion: "producto", ascension: "decision" });
+export const NIVEL_POR_ETAPA = Object.freeze({ presentacion: "problema", evaluacion: "solucion", conversion: "decision", ascension: "decision" });
 
 /** Cómo se escribe el anuncio de cada etapa (va en el pedido a la IA). */
 export const COMO_ESCRIBE_ETAPA = Object.freeze({
@@ -292,13 +292,12 @@ export function deLaOferta(post = {}, { ofertas = "", codigo = "" } = {}) {
 }
 
 /**
- * La etapa que se propone: la oferta del mes va a conversión; un «Anuncio» por su nivel —«Decisión» es quien YA
- * COMPRÓ (el curso; decisión de la agencia del 14-nov): ascensión; el del producto, evaluación—; lo demás,
- * presentación. Pura.
+ * La etapa que se propone: la oferta del mes va a conversión; un «Anuncio» por su nivel —«Decisión» es quien sólo
+ * necesita el empujón para comprar: conversión; el del producto, evaluación—; lo demás, presentación. Pura.
  */
 export function etapaSugerida(post = {}, { oferta = false } = {}) {
   if (oferta) return "conversion";
-  if (post?.nivel === "decision") return "ascension";
+  if (post?.nivel === "decision") return "conversion";
   if (post?.nivel === "producto") return "evaluacion";
   return etapaDeNivel(post?.nivel) || "presentacion";
 }

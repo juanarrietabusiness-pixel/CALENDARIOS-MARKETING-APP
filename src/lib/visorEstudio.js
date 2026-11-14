@@ -31,6 +31,7 @@ import { textoDeLaFicha } from "./director";
 import { textoDelPedido } from "./control";
 import { conMarcaDeHoy } from "./marcaDeHoy";
 import { pasoListo, lanzarEnServidor, esperarEnServidor } from "./piezaServidor";
+import { carpetaDeVariaciones, EJES_VARIACION } from "./variacionesAnuncio";
 
 const COMILLAS = /["“”«»]([^"“”«»]+)["“”«»]/g;
 
@@ -123,10 +124,61 @@ export async function pedirOtraIgual({ clienteId, a, p, kit = {}, uso = null, se
 }
 
 /**
- * «Otra versión distinta»: el DIRECTOR escribe 1–3 fichas nuevas mirando la original, con el mismo texto (también cuando
- * la original no tenía ficha); se quedan el tipo, el estilo y las referencias, y la marca va la de hoy.
+ * La carpeta donde quedan juntas las variaciones de una pieza maestra («Variaciones · <titular>»; si ya hay una con ese
+ * nombre, « (2)»…). La maestra entra también si estaba suelta. Si no se puede crear (el tope de carpetas), null: las
+ * piezas salen sueltas en la galería y el mensaje no nombra carpeta.
  */
-export async function pedirVersiones({ clienteId, a, n = 1, p, kit = {}, uso = null, seguir = () => true, alFallo = () => {} }) {
+async function carpetaParaVariaciones(clienteId, a) {
+  const titulo = textoDePieza(a).split("\n")[0] || new Date().toLocaleDateString("es-PA", { day: "numeric", month: "short" });
+  for (let i = 1; i <= 5; i++) {
+    const nombre = carpetaDeVariaciones(titulo, i);
+    try {
+      const { carpeta } = await api.crearCarpeta(clienteId, nombre);
+      if (!carpeta?.id) return null;
+      if (!a.carpetaId) await api.cambiarArchivo(clienteId, a.id, { carpetaId: carpeta.id }).catch(() => null);
+      return carpeta;
+    } catch (e) {
+      // Otra con el mismo nombre: la siguiente; el tope de carpetas u otro error: sin carpeta.
+      if (!/ya hay una carpeta/i.test(e?.message ?? "")) return null;
+    }
+  }
+  return null;
+}
+
+/**
+ * «Variaciones para anuncios»: de la pieza MAESTRA, 3–5 fichas del director que conservan su ADN y cambian cada una una
+ * cosa (src/lib/variacionesAnuncio.js); van juntas a una carpeta y por el servidor como las demás. No se ponen en la
+ * publicación de la que se abrió el visor: son un conjunto de anuncios, cada una para lo suyo.
+ */
+async function pedirVariaciones({ clienteId, a, n, p, kit, seguir, alFallo }) {
+  const { escena, cola } = api.partirEscena(ideaDelPedido(a.prompt));
+  // Con el texto puesto por la plantilla encima, el motor no lo escribe: no hay gancho que cambiar.
+  const sinTexto = Boolean(plantillaDe(a));
+  const texto = sinTexto ? "" : textoDePieza(a);
+  const r = await api.versionesDeIdea(clienteId, { idea: escena, n, tipo: "imagen", original: a.src, texto, sinTexto, para: "anuncios" });
+  const carpeta = await carpetaParaVariaciones(clienteId, a);
+  const escenas = r.versiones.map((v) => [v, cola].filter(Boolean).join(" "));
+  const hecho = await mandar({
+    clienteId, a, p: { ...p, carpetaId: carpeta?.id ?? p.carpetaId ?? null }, escenas, kit, uso: null,
+    textos: r.versiones.map((v) => (sinTexto ? texto : textoDeLaFicha(v) || texto)), seguir, alFallo, titulo: "Variaciones para anuncios",
+  });
+  const cambian = (r.ejes ?? []).map((e) => EJES_VARIACION[e]?.nombre.toLowerCase()).filter(Boolean).join(", ");
+  return {
+    ...hecho, carpeta,
+    texto: [
+      `Pedidas ${escenas.length} variaciones para anuncios con ${p.modelo.nombre}${cambian ? ` (${cambian})` : ""}: ${carpeta ? `quedan juntas en la carpeta «${carpeta.nombre}»${a.carpetaId ? "" : ", con la maestra"}` : "aparecen en la galería"}, ya revisadas.`,
+      r.aviso ?? "",
+    ].filter(Boolean).join(" "),
+  };
+}
+
+/**
+ * «Otra versión distinta»: el DIRECTOR escribe 1–3 fichas nuevas mirando la original, con el mismo texto (también cuando
+ * la original no tenía ficha); se quedan el tipo, el estilo y las referencias, y la marca va la de hoy. Con
+ * `para: "anuncios"`, las variaciones de un conjunto de anuncios (`pedirVariaciones`).
+ */
+export async function pedirVersiones({ clienteId, a, n = 1, p, kit = {}, uso = null, para = "", seguir = () => true, alFallo = () => {} }) {
+  if (para === "anuncios") return pedirVariaciones({ clienteId, a, n, p, kit, seguir, alFallo });
   const { escena, cola } = api.partirEscena(ideaDelPedido(a.prompt));
   const texto = a.tipo === "video" ? "" : textoDePieza(a);
   const r = await api.versionesDeIdea(clienteId, { idea: escena, n, tipo: a.tipo, original: a.src, texto });

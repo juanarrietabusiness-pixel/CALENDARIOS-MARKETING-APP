@@ -8,6 +8,7 @@ import { modelosParaCarrusel, modeloParaCarrusel } from "../lib/carruselEstudio"
 import { modelosParaReel, modeloRecomendadoParaReel, modeloParaTramo, crearFotograma, editarImagen, pedidoDeVideo, corregirTramo, modelosParaClips, modeloParaClips, pedidoDeClip } from "../lib/reelEstudio";
 import { duracionesDeReel, haceDuracion, duracionDeClip, DURACION_REEL_POR_DEFECTO } from "../lib/duracionesVideo";
 import { resultadoDeReel, finalDePaso } from "../lib/encargoReelPuro";
+import { fraseDeAnimar } from "../lib/listoAnimar";
 import { lanzarReel, continuarReel, montarReel, fotogramaFinal, listarEncargos, leerEncargo, seguirEncargo } from "../lib/encargosApi";
 import { textoDelGuionReel } from "../lib/montajeReel";
 import { crearZip } from "../lib/zip";
@@ -82,6 +83,8 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
   // Un anuncio que ya funciona (referencias analizadas del estudio de mercado): el guion sigue su estructura.
   const [referencias, setReferencias] = useState([]);
   const [referenciaId, setReferenciaId] = useState(inicial.referenciaId ?? "");
+  // Un video de la galería DESGLOSADO toma por toma (lib/deconstructor.js): el guion sigue su forma.
+  const [videoRefId, setVideoRefId] = useState(inicial.videoReferenciaId ?? "");
   // La ESTRUCTURA de guion de la agencia que sigue la voz en off ("" = la escoge la IA) y «Guardar como estructura».
   const [estructuraId, setEstructuraId] = useState("");
   const [sacarEstructura, setSacarEstructura] = useState(false);
@@ -125,6 +128,7 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
   }, [clienteId]);
 
   const productos = estudio?.productos ?? [];
+  const desglosados = useMemo(() => (estudio?.archivos ?? []).filter((a) => a.tipo === "video" && !a.borradoAt && a.ajustes?.deconstruccion?.tomas?.length), [estudio?.archivos]);
   const modelosImagen = useMemo(() => modelosParaCarrusel(activos), [activos]);
   // Las listas van del más barato al más caro; si nadie escoge, el recomendado.
   const modeloImagen = modelosImagen.find((m) => m.id === modeloImagenId) ?? modelosImagen.find((m) => m.id === modeloParaCarrusel(activos).id) ?? modelosImagen[0] ?? null;
@@ -265,7 +269,7 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
     try {
       const r = await api.guionDeReel(clienteId, {
         idea, segundos: duracion, preset, estilo, productoId: productoId || undefined, personajes, referenciaId: referenciaId || undefined,
-        estructuraId: estructuraId || undefined,
+        videoReferenciaId: videoRefId || undefined, estructuraId: estructuraId || undefined,
         // El guion que YA tiene la publicación: el reel lo sigue en vez de inventar otro.
         ...(inicial.guionPost ? { guionPost: inicial.guionPost } : {}), ...(inicial.postId ? { postId: inicial.postId } : {}),
         montaje: true,
@@ -273,7 +277,7 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
       setGuion(r);
       setPaso("planos");
       setSacarEstructura(false);
-      setAviso({ ok: true, texto: ["Revisa los planos: qué se ve, lo que se dice y lo que se lee. El video va limpio: el texto lo pone el montaje.", r.estructuraNombre ? `Sigue la estructura «${r.estructuraNombre}».` : "", r.aviso ?? ""].filter(Boolean).join(" ") });
+      setAviso({ ok: true, texto: ["Revisa los planos: qué se ve, lo que se dice y lo que se lee. El video va limpio: el texto lo pone el montaje.", r.estructuraNombre ? `Sigue la estructura «${r.estructuraNombre}».` : "", r.sigueVideo ? `Sigue la forma del video de referencia, toma por toma (${r.sigueVideo.tomas} tomas).` : "", r.aviso ?? ""].filter(Boolean).join(" ") });
     } catch (e) {
       setAviso({ ok: false, texto: e.message });
     } finally {
@@ -622,7 +626,17 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
                 <option value="">Ninguno</option>
                 {referencias.map((r) => <option key={r.id} value={r.id}>{[r.competidor || "Referencia", r.medio === "video" ? "video" : "imagen", r.analisis?.gancho].filter(Boolean).join(" · ").slice(0, 110)}</option>)}
               </select>
-              <p className="hint">El guion copia su forma —orden, ritmo, gancho y cierre— con tu marca y tu producto. Sin idea escrita, usa la que propuso el análisis.</p>
+              <p className="hint">El guion copia su forma —orden, ritmo, gancho y cierre— con tu marca y tu producto. Sin idea escrita, usa la que propuso el análisis. Si su video está desglosado toma por toma, sigue además su secuencia.</p>
+            </div>
+          )}
+          {desglosados.length > 0 && (
+            <div className="field">
+              <label className="label" htmlFor={`${ids}-vref`}>Seguir la forma de un video desglosado (opcional)</label>
+              <select id={`${ids}-vref`} className="input" value={videoRefId} onChange={(e) => setVideoRefId(e.target.value)}>
+                <option value="">Ninguno</option>
+                {desglosados.map((a) => <option key={a.id} value={a.id}>{`${String(a.prompt || "Video").slice(0, 70)} · ${a.ajustes.deconstruccion.tomas.length} tomas`}</option>)}
+              </select>
+              <p className="hint">Los planos siguen su secuencia —cuántas tomas, el ritmo de los cortes, los planos y los movimientos de cámara— con tu marca y tu producto; nunca su marca, sus personas ni su texto. Un video se desglosa en el Estudio: ábrelo y «Desglosar toma por toma».</p>
             </div>
           )}
           {/* La estructura de guion de la agencia que sigue la voz en off (o la escoge la IA). */}
@@ -795,6 +809,12 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
                   <strong>{tramo(p)}</strong>
                   <p className="hint" style={{ margin: 0 }}>{p.escena}</p>
                   {f?.error && <p className="revision-problema">{f.error}</p>}
+                  {/* «¿Listo para animar?»: un aviso con su porqué; no bloquea nada. */}
+                  {f?.animable && !tocando[i] && (
+                    <p className={f.animable.ok ? "hint" : "revision-problema"} style={{ margin: 0 }}>
+                      <Icon name={f.animable.ok ? "check" : "alert"} size={14} /> {fraseDeAnimar(f.animable)}
+                    </p>
+                  )}
                   {paso === "fotogramas" && !ocupado && res?.storyboardListo && !enMarcha && !tocando[i] && (
                     <div className="carrusel-lamina-acciones">
                       {f?.archivo && (
@@ -892,7 +912,7 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
         ) : (
           <>
             {paso === "idea" && (
-              <button type="button" className="btn btn-primary" disabled={Boolean(ocupado) || (!idea.trim() && !referenciaId && !inicial.guionPost)} onClick={escribir}>
+              <button type="button" className="btn btn-primary" disabled={Boolean(ocupado) || (!idea.trim() && !referenciaId && !videoRefId && !inicial.guionPost)} onClick={escribir}>
                 <Icon name="sparkles" size={18} /> {ocupado === "guion" ? "Escribiendo el guion…" : `Proponer el guion de ${duracion} s`}
               </button>
             )}

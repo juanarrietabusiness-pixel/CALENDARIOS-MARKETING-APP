@@ -35,11 +35,12 @@ import { limpiarManual, nombreConPlantilla } from "./estratega.js";
 import { limpiarReparto, limpiarAnunciosPorConjunto, repartoDelCliente } from "./manualCiclo.js";
 import { nivelesParaHuecos, cuentaDeNiveles, esNivelFrio, NIVELES_DE_ETAPA } from "./textosNivel.js";
 import { limpiarQue, limpiarAnunciosPlan, idDeHueco, huecoDeId, PARA_QUE_CAMPANA, faltanTextos, textosATexto } from "./anunciosPlan.js";
-import { limpiarPauta, limpiarAnuncio, problemasDePauta, deLaOferta, etapaSugerida, NIVEL_POR_ETAPA, nombreDeBoton, botonPorDefecto, primeraLinea } from "./pauta.js";
+import { limpiarPauta, limpiarAnuncio, problemasDePauta, deLaOferta, NIVEL_POR_ETAPA, nombreDeBoton, botonPorDefecto, primeraLinea } from "./pauta.js";
 import { nombreDeNivel } from "./consciencia.js";
 import { fechasDelMes } from "./fechasEspeciales.js";
 import { sumarDias, diasEntre } from "./agenda.js";
-import { limpiarEstudio, productosActivos } from "./estudioMercado.js";
+import { limpiarEstudio, productosActivos, angulosDeProducto } from "./estudioMercado.js";
+import { numeroMagicoDelCliente } from "./numerosNegocio.js";
 import { rindesDePropias } from "./loMejor.js";
 
 /** El presupuesto mensual se reparte en 30 días para el diario (como el Excel de la agencia). */
@@ -54,6 +55,14 @@ export const DIAS_ANTES_TEMPORADA = 7;
 export const PCT_TEMPORADA = 20;
 /** De cuántos meses atrás se buscan piezas (además del del plan). */
 export const MESES_DE_PIEZAS = 3;
+/** Sin número mágico, por debajo de esto al día un conjunto rinde muy poco (aviso de presupuesto bajo). */
+export const DIARIO_POCO = 3;
+/** Con número mágico: menos de esto a la semana (uno al día) y Meta casi no aprende. */
+export const RESULTADOS_SEMANA_MIN = 7;
+/** Lo que Meta pide para salir de la fase de aprendizaje: unos 50 resultados a la semana en cada conjunto. */
+export const RESULTADOS_SEMANA_APRENDER = 50;
+/** El público del ángulo de venta que pide cada etapa: frío en presentación; tibio en las demás. */
+export const PUBLICO_DE_ETAPA = Object.freeze({ presentacion: "frio", evaluacion: "tibio", conversion: "tibio", ascension: "tibio", temporada: "tibio" });
 
 const MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
 const MESES_CORTOS = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
@@ -61,6 +70,115 @@ const r2 = (n) => Math.round(n * 100) / 100;
 const corto = (t, n) => String(t ?? "").replace(/\s+/g, " ").trim().slice(0, n);
 const esObjeto = (x) => Boolean(x) && typeof x === "object" && !Array.isArray(x);
 const lista = (xs) => (xs.length <= 1 ? xs.join("") : `${xs.slice(0, -1).join(", ")} y ${xs[xs.length - 1]}`);
+/** «3,5» o «12» (las cifras de los avisos). */
+const redondo = (x) => (x >= 10 ? String(Math.round(x)) : String(Math.round(x * 10) / 10).replace(".", ","));
+/** Una de cada lista antes que la segunda de ninguna. */
+const intercalar = (listas) => {
+  const salida = [];
+  for (let i = 0; listas.some((l) => i < l.length); i++) for (const l of listas) if (i < l.length) salida.push(l[i]);
+  return salida;
+};
+const sinTildes = (t) => String(t ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+
+/**
+ * Un texto cortado en una PALABRA, con «…» si se cortó (nunca «busca información antes .» ni «Velvée — t»). Lo de
+ * los nombres del Ads Manager y los textos del público pasa por aquí: `nombreConPlantilla` corta cada dato a 60
+ * caracteres a media palabra, así que se le da ya cortado. Pura.
+ */
+export function enPalabra(t, n) {
+  const s = String(t ?? "").replace(/\s+/g, " ").trim();
+  if (s.length <= n) return s;
+  const c = s.slice(0, Math.max(1, n - 1));
+  const i = c.lastIndexOf(" ");
+  const base = (i > n * 0.5 ? c.slice(0, i) : c).replace(/[\s,;:.·—–-]+$/u, "");
+  return `${base}…`;
+}
+
+/** Lo que va detrás de una edad y NO es una edad («de 30 a 45 minutos», «de 20 a 30 kg»). */
+const NO_ES_EDAD = /^\s*(?:min|minutos|h|horas|dias|semanas|meses|kg|kilos|g|gramos|cm|m|metros|m2|%|personas|unidades|piezas|libras|lb|dolares|usd|productos|pedidos|veces|cuotas)\b/;
+
+/**
+ * La EDAD que dice un texto del público («Mamás de 30 a 45», «entre 25 y 38 años», «25-38 años», «mayores de 40»):
+ * { min, max } (de 18 a 65; 65 es «65+» en el Ads Manager) o null si no dice ninguna. Lo que va detrás no puede ser
+ * otra unidad («de 30 a 45 minutos» no es una edad). Pura.
+ */
+export function edadDeTexto(texto) {
+  const t = sinTildes(texto);
+  const valida = (a, b) => {
+    const min = Math.max(18, a);
+    const max = Math.min(65, b);
+    return a >= 13 && b <= 99 && min < max ? { min, max } : null;
+  };
+  for (const re of [/\b(?:de|entre)\s+(\d{2})\s*(?:anos\s*)?(?:a|y|-|–|hasta)\s*(\d{2})\b(.{0,12})/g, /\b(\d{2})\s*(?:-|–|a)\s*(\d{2})\s*anos\b()/g]) {
+    for (const m of t.matchAll(re)) {
+      if (m[3] && NO_ES_EDAD.test(m[3]) && !/^\s*anos/.test(m[3])) continue;
+      const e = valida(Number(m[1]), Number(m[2]));
+      if (e) return e;
+    }
+  }
+  const mayor = /\b(?:mayores de|mas de|desde los)\s+(\d{2})\s*(?:anos)?\b(.{0,10})/.exec(t);
+  if (mayor && !(mayor[2] && NO_ES_EDAD.test(mayor[2]) && !/^\s*anos/.test(mayor[2]))) return valida(Number(mayor[1]), 65);
+  return null;
+}
+
+/** «30-45» o «40-65+» (el hueco `{edad}` del nombre del conjunto). Pura. */
+export const textoEdad = (e) => (e ? `${e.min}-${e.max >= 65 ? "65+" : e.max}` : "");
+/** «de 30 a 45 años» o «de 40 años en adelante». Pura. */
+const edadDicha = (e) => (e ? (e.max >= 65 ? `de ${e.min} años en adelante` : `de ${e.min} a ${e.max} años`) : "");
+
+/** La clave de un ángulo de venta: «producto:ángulo». Pura. */
+export const claveAngulo = (a) => (a?.productoId && a?.id ? `${a.productoId}:${a.id}` : "");
+const refAngulo = (a, extra = {}) => ({ productoId: a.productoId, id: a.id, nombre: a.nombre, ...(a.publico ? { publico: a.publico } : {}), ...extra });
+
+/**
+ * El ÁNGULO DE VENTA de cada hueco de una campaña: de los del estudio aprobado (`pool`), los que le hablan al público de
+ * su etapa (frío en presentación, tibio en las demás) y los que no dicen a quién; los menos usados por las otras
+ * campañas primero (`uso`: clave → veces), así cada campaña prueba ángulos distintos. Sin ángulos, null en cada hueco.
+ * Pura.
+ */
+export function angulosParaCampana(pool = [], etapa = "", n = 0, uso = new Map()) {
+  const quiere = PUBLICO_DE_ETAPA[etapa] ?? "";
+  const aptos = [...pool.filter((a) => a.publico === quiere), ...pool.filter((a) => !a.publico)];
+  if (!aptos.length) return Array(n).fill(null);
+  const orden = aptos.map((a, i) => ({ a, i, u: uso.get(claveAngulo(a)) ?? 0 })).sort((x, y) => x.u - y.u || x.i - y.i).map((x) => x.a);
+  return Array.from({ length: n }, (_, i) => {
+    const a = orden[i % orden.length];
+    uso.set(claveAngulo(a), (uso.get(claveAngulo(a)) ?? 0) + 1);
+    return refAngulo(a);
+  });
+}
+
+/**
+ * Lo que se propone cuando el presupuesto no da (`bajas`: las campañas con el aviso de presupuesto bajo): menos
+ * conjuntos en presentación, evaluación en uno solo, este mes sólo presentación y evaluación, o cuánto subir. Con los
+ * números de su plan. Pura.
+ */
+function propuestaDePresupuesto(bajas, { inversion, delCliente, magico, moneda, escogidas = [] }) {
+  const partes = [];
+  // Lo mínimo al día por conjunto: el número mágico de cada día (siete a la semana) o, sin él, DIARIO_POCO.
+  const umbral = magico ? (magico * RESULTADOS_SEMANA_MIN) / 7 : DIARIO_POCO;
+  const pre = bajas.find((c) => c.id === "presentacion");
+  if (pre && pre.conjuntos.length > 1 && pre.presupuesto.diario) {
+    const k = Math.max(1, Math.min(pre.conjuntos.length - 1, Math.floor(pre.presupuesto.diario / umbral)));
+    partes.push(`presentación con ${k === 1 ? "un solo conjunto" : `${k} conjuntos`} en vez de ${pre.conjuntos.length}: cada uno tendría ${dinero(r2(pre.presupuesto.diario / k), moneda)} al día`);
+  }
+  if (bajas.some((c) => c.id === "evaluacion" && c.conjuntos.length > 1)) {
+    partes.push("evaluación con un solo conjunto, «Interactuaron · 90 días» (ya incluye a los de 30), sin excluir a los de 30");
+  }
+  const otras = bajas.filter((c) => c.id === "conversion" || c.id === "ascension");
+  if (otras.length && inversion && !escogidas.length) {
+    const r = repartoDelPlan(delCliente.reparto, "nueva");
+    const diaDe = (id) => dinero(r2((inversion * (r.find((x) => x.etapa === id)?.pct ?? 0)) / 100 / DIAS_DEL_MES), moneda);
+    partes.push(`este mes, sólo presentación y evaluación (en «¿Qué vas a hacer?», escoge esas dos): con la misma inversión, presentación tendría ${diaDe("presentacion")} al día y evaluación ${diaDe("evaluacion")}; ${lista(otras.map((c) => c.nombreEtapa.toLowerCase()))}, cuando haya más presupuesto`);
+  }
+  const falta = bajas.reduce((s, c) => {
+    const unidades = c.presupuesto.en === "conjunto" ? c.conjuntos.length : 1;
+    return s + Math.max(0, umbral * unidades * c.presupuesto.dias - (c.presupuesto.mensual ?? 0));
+  }, 0);
+  const subir = falta > 0 ? `O sube la inversión unos ${dinero(Math.ceil(falta), moneda)} al mes para que ${bajas.length === 1 ? "esa campaña llegue" : "esas campañas lleguen"} a ${dinero(r2(umbral), moneda)} al día por conjunto.` : "";
+  const dicho = partes.length ? `${partes.map((p, i) => `${i + 1}) ${p}`).join("; ")}.` : "junta conjuntos o etapas.";
+  return { codigo: "presupuesto-juntar", grave: false, texto: `Para que el dinero rinda: ${dicho}${subir ? ` ${subir}` : ""}` };
+}
 
 /** «2026-11» → { year, month (0-11) } o null. Pura. */
 export function mesDelPlan(mes) {
@@ -122,19 +240,23 @@ export const anunciosDeEtapa = (etapa, delManual) => Math.min(limpiarAnunciosPor
 /**
  * Los conjuntos de una etapa. Presentación: 3 públicos (con historial, intereses + similares + Advantage+; en una
  * cuenta nueva, dos de intereses —uno por perfil del estudio— y Advantage+ sólo de prueba). Evaluación: quien
- * interactuó en 30 y en 90 días, sin Advantage+. Conversión: quien escribió (o dejó el carrito). Ascensión: la lista
- * de clientes. Temporada: quien ya conoce la marca y la lista. Pura.
+ * interactuó en 30 y en 90 días (el de 90 sin los de 30: si no, compiten), sin Advantage+. Conversión: quien escribió (o
+ * dejó el carrito). Ascensión: la lista de clientes. Temporada: quien ya conoce la marca y la lista.
+ *
+ * La EDAD (`edad`: { min, max } o null) sólo la llevan los de intereses: la del perfil del estudio («Mamás de 30 a 45»)
+ * o, si no la dice, la del público del producto (`edadPublico`). Los demás van con la edad abierta (un público de quien
+ * ya interactuó no se recorta) y su nombre no lleva edad: decir «18-65+» de todos no decía nada. Pura.
  */
-export function conjuntosDeEtapa(etapa, { nueva = false, web = false, perfiles = [], rubro = "", objetivo = "" } = {}) {
+export function conjuntosDeEtapa(etapa, { nueva = false, web = false, perfiles = [], rubro = "", objetivo = "", edadPublico = null } = {}) {
   // La tienda en línea (objetivo de ventas) tiene carrito; un servicio que capta con un formulario, no.
   const tienda = web && objetivo !== "clientes";
   const sobre = rubro ? ` relacionados con ${rubro.toLowerCase()}` : " relacionados con lo que se vende";
-  const fria = { publicos: web ? ["interaccion-90", "visitas-30", "clientes"] : ["interaccion-90", "clientes"],
-    nota: "Si los anuncios de presentación y de evaluación se parecen mucho, se pueden quitar estas exclusiones." };
-  const c = (id, tipo, nombre, publico, excluye, nota = "") => ({ id, tipo, nombre, publico, excluye, ...(nota ? { nota } : {}) });
+  const fria = { publicos: web ? ["interaccion-90", "visitas-30", "clientes"] : ["interaccion-90", "clientes"], nota: NOTA_EXCLUSIONES };
+  const c = (id, tipo, nombre, publico, excluye, nota = "", edad = null) => ({ id, tipo, nombre, publico, excluye, edad, ...(nota ? { nota } : {}) });
   if (etapa === "presentacion") {
-    const intereses = (n, perfil) => c(`c${n}`, "intereses", perfil ? `Intereses · ${corto(perfil.nombre, 40)}` : nueva ? `Intereses · grupo ${n}` : "Intereses",
-      { texto: `Segmentación detallada con intereses amplios${sobre}${perfil?.quien ? `, pensados para ${corto(perfil.quien, 120).replace(/\.$/, "")}` : ""}.`, publicos: [], advantage: false }, fria);
+    const intereses = (n, perfil) => c(`c${n}`, "intereses", perfil ? `Intereses · ${enPalabra(perfil.nombre, 40)}` : nueva ? `Intereses · grupo ${n}` : "Intereses",
+      { texto: `Segmentación detallada con intereses amplios${sobre}${perfil?.quien ? `, pensados para ${enPalabra(perfil.quien, 160).replace(/\.$/, "")}` : ""}.`, publicos: [], advantage: false }, fria,
+      "", edadDeTexto(perfil?.quien) ?? edadPublico);
     if (nueva) {
       return [
         intereses(1, perfiles[0]),
@@ -155,10 +277,12 @@ export function conjuntosDeEtapa(etapa, { nueva = false, web = false, perfiles =
   if (etapa === "evaluacion") {
     // En la web, quien visitó la web ya es de conversión: evaluación le habla a quien interactuó o vio videos, y lo
     // excluye. «Escribieron» no existe en la web.
-    const excluye = { publicos: web ? ["visitas-30", "clientes"] : ["mensajes-30", "clientes"] };
+    const base = web ? ["visitas-30", "clientes"] : ["mensajes-30", "clientes"];
+    // El de 90 días CONTIENE al de 30: sin excluirlos, los dos conjuntos pujan por la misma persona y se encarecen.
     return [
-      c("c1", "interaccion", "Interactuaron · 30 días", { texto: `Quien interactuó con la página o la cuenta, o vio tus videos, en los últimos 30 días. ${sinAdvantage}`, publicos: ["interaccion-30"], advantage: false }, excluye),
-      c("c2", "interaccion", "Interactuaron · 90 días", { texto: `Quien interactuó en los últimos 90 días. ${sinAdvantage}`, publicos: ["interaccion-90"], advantage: false }, excluye),
+      c("c1", "interaccion", "Interactuaron · 30 días", { texto: `Quien interactuó con la página o la cuenta, o vio tus videos, en los últimos 30 días. ${sinAdvantage}`, publicos: ["interaccion-30"], advantage: false }, { publicos: base }),
+      c("c2", "interaccion", "Interactuaron · 90 días", { texto: `Quien interactuó en los últimos 90 días, sin los de los últimos 30 (esos ya están en el conjunto 1). ${sinAdvantage}`, publicos: ["interaccion-90"], advantage: false },
+        { publicos: ["interaccion-30", ...base], nota: "Quien interactuó en los últimos 30 días se excluye aquí porque ya lo ve el conjunto 1: así los dos conjuntos no compiten por la misma persona." }),
     ];
   }
   if (etapa === "conversion") {
@@ -175,8 +299,16 @@ export function conjuntosDeEtapa(etapa, { nueva = false, web = false, perfiles =
   }
   // La temporada: una oferta con fecha cierra mejor con quien ya conoce la marca.
   return [c("c1", "temporada", "Ya te conocen · 90 días", { texto: "Quien interactuó en los últimos 90 días y la lista de clientes: la oferta con fecha cierra mejor con quien ya conoce la marca.", publicos: ["interaccion-90", "clientes"], advantage: false },
-    { publicos: [] }, "Si el presupuesto lo aguanta, un segundo conjunto con intereses amplios lleva la oferta a gente nueva.")];
+    { publicos: [], nota: "Sin exclusiones: es la misma gente de evaluación (y de ascensión). Mientras dure la oferta, esas personas pueden ver anuncios de las dos campañas; no subas el presupuesto de evaluación esos días." },
+    "Si el presupuesto lo aguanta, un segundo conjunto con intereses amplios lleva la oferta a gente nueva.")];
 }
+
+/**
+ * Por qué presentación excluye a quien ya conoce la marca, dicho para quien empieza: así no se paga dos veces por la
+ * misma persona (de ella se encarga evaluación). Si los anuncios de las dos campañas son casi iguales, da lo mismo
+ * quién vea cuál y se pueden quitar (el público queda más grande).
+ */
+export const NOTA_EXCLUSIONES = "Se excluye a quien ya te conoce (interactuó, escribió o compró) para no pagar dos veces por la misma persona: de ellos se encarga la campaña de evaluación. Si los anuncios de presentación y de evaluación son casi iguales, no importa que alguien que ya te conoce los vea: entonces puedes quitar estas exclusiones y el público queda más grande.";
 
 // ------------------------------------------------------------
 // La temporada
@@ -208,7 +340,7 @@ export function temporadaDelMes({ mes, calendario = null, fechasEspeciales = nul
   if (fin < inicio) return null;
   const nombreFechas = lista([...new Set(fechas.map((f) => f.nombre))]);
   return {
-    nombre: corto(nombreFechas || campana || "La oferta del mes", 80),
+    nombre: enPalabra(nombreFechas || campana || "La oferta del mes", 80),
     motivo: [nombreFechas && `Fechas del mes: ${nombreFechas}`, ofertas && `la oferta: ${ofertas}`, codigo && `código ${codigo}`].filter(Boolean).join(" · "),
     fechas: fechas.map((f) => ({ fecha: f.fecha, nombre: f.nombre })),
     inicio, fin, dias: diasEntre(inicio, fin) + 1, ofertas, codigo,
@@ -255,11 +387,12 @@ export function repartoDelPlan(reparto, cuenta, soloIds = null) {
  * `kit`: el de la marca (sus tipos de arte); `estudio`: el estudio de mercado (aprobado o borrador); `catalogo`;
  * `temporada`: la de `temporadaDelMes` (o null) y `ajustes.temporada` ({ incluir, diario }) lo que decidió la agencia de
  * ella; `ajustes.que`: «¿Qué vas a hacer?» (lib/anunciosPlan.js: qué campañas, qué productos y lo que quiere lograr);
- * `cliente`: { nombre, rubro }. Pura.
+ * `cliente`: { nombre, rubro }; `estudioAprobado`: el estudio APROBADO (sólo de él salen los ÁNGULOS DE VENTA de cada
+ * hueco; sin pasarlo, el `estudio` si está aprobado). Pura.
  */
 export function planDelCiclo({
   negocio = null, numeros = {}, manual = null, reparto: repartoPropio = null, mes = "", hoy = "", calendario = null, kit = null, estudio = null,
-  catalogo = null, temporada = null, ajustes = {}, cliente = {}, moneda = "USD",
+  estudioAprobado, catalogo = null, temporada = null, ajustes = {}, cliente = {}, moneda = "USD",
 } = {}) {
   const n = limpiarNegocio(negocio);
   const m = limpiarManual(manual ?? {});
@@ -314,18 +447,28 @@ export function planDelCiclo({
     avisos.push({ codigo: "sin-productos", grave: false, texto: "Escogiste «Varios productos» sin marcar ninguno: el plan va con todo el catálogo hasta que los marques." });
   }
   const nombreProductos = delPlan.length === 1 ? delPlan[0].nombre : delPlan.length === 2 ? `${delPlan[0].nombre} + ${delPlan[1].nombre}` : delPlan.length > 2 ? `${delPlan[0].nombre} + ${delPlan.length - 1} más` : "";
+  // Cada dato del nombre va ya cortado en una palabra: `nombreConPlantilla` lo cortaría a media palabra.
   const datosNombre = (nombreEtapa) => ({
-    cliente: corto(cliente?.nombre, 60), etapa: nombreEtapa, objetivo: `${ciclo.nombreObjetivo}${web ? "" : " WhatsApp"}`,
-    producto: corto(nombreProductos, 60), mes: nombreDelMes(mes),
+    cliente: enPalabra(cliente?.nombre, 60), etapa: nombreEtapa, objetivo: `${ciclo.nombreObjetivo}${web ? "" : " WhatsApp"}`,
+    producto: enPalabra(nombreProductos, 60), mes: nombreDelMes(mes),
   });
+  // La edad del público del producto (la maleta «Público» del estudio): la de los conjuntos de intereses cuyo perfil no
+  // la dice. Sin edad en ningún sitio, el conjunto va sin edad en su nombre (y abierta en el Ads Manager).
+  const edadPublico = (delPlan.length ? delPlan : productos.slice(0, 3)).map((p) => edadDeTexto(e?.productos?.[p.id]?.elementos?.publico)).find(Boolean) ?? null;
   const nombreCampana = (datos) => nombreConPlantilla(plantillaConEtapa(m.nomenclatura.campana), datos);
+  // Los ÁNGULOS DE VENTA (sólo del estudio APROBADO): los de los productos del plan, o los de los primeros del catálogo
+  // que los tengan; intercalados (uno de cada producto antes que el segundo de ninguno).
+  const aprobado = estudioAprobado !== undefined ? limpiarEstudio(estudioAprobado) : e?.aprobadoAt ? e : null;
+  const conAngulos = (delPlan.length ? delPlan : productos.filter((p) => angulosDeProducto(aprobado, p.id).length)).slice(0, 3);
+  const angulos = intercalar(conAngulos.map((p) => angulosDeProducto(aprobado, p.id).map((a) => ({ ...a, productoId: p.id, producto: p.nombre }))));
+  const usoAngulos = new Map();
   const mm = mesDelPlan(mes);
   const primerDia = mm ? `${mm.texto}-01` : "";
   // Un plan del mes en curso arranca HOY (las campañas no se montan con fecha pasada).
   const desde = mm && /^\d{4}-\d{2}-\d{2}$/.test(hoy) && hoy > primerDia && hoy <= ultimoDia(mm) ? hoy : primerDia;
 
   const campana = ({ id, etapa, nombreEtapa, pct, mensual, inicio, fin = "", contenido = "", lleva = "", artes, niveles, extra = {} }) => {
-    const conjuntos = conjuntosDeEtapa(etapa === "temporada" ? "temporada" : etapa, { nueva: cuenta === "nueva", web, perfiles, rubro: cliente?.rubro ?? "", objetivo: ciclo.objetivo });
+    const conjuntos = conjuntosDeEtapa(etapa === "temporada" ? "temporada" : etapa, { nueva: cuenta === "nueva", web, perfiles, rubro: cliente?.rubro ?? "", objetivo: ciclo.objetivo, edadPublico });
     const en = PRESUPUESTO_EN[etapa] ?? "conjunto";
     const dias = fin ? diasEntre(inicio, fin) + 1 : DIAS_DEL_MES;
     const diario = mensual > 0 ? r2(mensual / dias) : null;
@@ -333,7 +476,7 @@ export function planDelCiclo({
     const nombre = nombreCampana(datosNombre(nombreEtapa));
     const conNombres = conjuntos.map((x) => ({
       ...x,
-      nombre: nombreConPlantilla(m.nomenclatura.conjunto, { tipo: x.nombre, edad: "18-65+", lugar: "", etapa: nombreEtapa }) || x.nombre,
+      nombre: nombreConPlantilla(m.nomenclatura.conjunto, { tipo: x.nombre, edad: textoEdad(x.edad), lugar: "", etapa: nombreEtapa }) || x.nombre,
       nombreCorto: x.nombre,
       presupuestoDiario: porConjunto,
       publico: { ...x.publico, nombres: nombresDe(x.publico.publicos) },
@@ -354,6 +497,8 @@ export function planDelCiclo({
       contenido, lleva, artes: ordenados, niveles,
       // En qué nivel de consciencia se escribe cada anuncio (la regla de 100 dentro de su etapa: lib/textosNivel.js).
       nivelesAnuncios: nivelesParaHuecos(etapa, porConjuntoAnuncios),
+      // El ÁNGULO DE VENTA que prueba cada anuncio (los del estudio aprobado; vacío sin ángulos).
+      angulosHuecos: angulosParaCampana(angulos, etapa, porConjuntoAnuncios, usoAngulos),
       conjuntos: conNombres, anunciosPorConjunto: porConjuntoAnuncios,
       anuncios: [], faltan: null,
       ...extra,
@@ -397,17 +542,35 @@ export function planDelCiclo({
     avisos.push({ codigo: "algunas", grave: false, texto: `Este mes van sólo ${lista(campanas.map((c) => c.nombreEtapa.toLowerCase()))}: la inversión del ciclo (${dinero(inversion, moneda)}) se reparte entre ${campanas.filter((c) => c.id !== "temporada").length === 1 ? "esa campaña" : "esas campañas"}. Si quieres gastar menos, escribe la inversión a mano.` });
   }
 
-  // Presupuestos que casi no salen.
-  for (const c of campanas) {
-    const d = c.presupuesto.en === "conjunto" ? c.presupuesto.porConjunto : c.presupuesto.diario;
-    if (d !== null && d < MIN_DIARIO) {
-      avisos.push({ codigo: "presupuesto-bajo", grave: false, campana: c.id, texto: `${c.nombreEtapa}: ${c.presupuesto.en === "conjunto" ? "cada conjunto" : "la campaña"} queda con ${dinero(d, moneda)} al día, por debajo de ${dinero(MIN_DIARIO, moneda)}: Meta casi no la va a mostrar. Junta conjuntos o sube el presupuesto.` });
+  // La temporada comparte gente con evaluación (y ascensión): se dice, y cómo no pagar de más.
+  if (campanas.some((c) => c.id === "temporada")) {
+    const comparten = campanas.filter((c) => c.id === "evaluacion" || c.id === "ascension").map((c) => c.nombreEtapa.toLowerCase());
+    if (comparten.length) {
+      avisos.push({ codigo: "temporada-compite", grave: false, campana: "temporada", texto: `La campaña de temporada le habla a la misma gente que ${lista(comparten)} (quien ya te conoce y tus clientes). Mientras dure, esas personas pueden ver anuncios de las dos campañas y Meta reparte entre ellas: no subas el presupuesto de ${comparten[0]} esos días. Si prefieres no duplicar, pon los anuncios de la oferta dentro de ${comparten[0]} en lugar de una campaña aparte.` });
     }
   }
-  const conv = campanas.find((c) => c.id === "conversion");
-  if (conv && conv.presupuesto.mensual !== null && conv.presupuesto.mensual < 60) {
-    avisos.push({ codigo: "conversion-chica", grave: false, campana: "conversion", texto: "Conversión con poco presupuesto: si los públicos de quien escribió son pequeños, todavía no conviene hacerla (su parte puede ir a presentación)." });
+
+  // Presupuestos que casi no salen: con poco al día, Meta casi no muestra el conjunto y no sale de la fase de
+  // aprendizaje. Con el número mágico se dice cuántos resultados daría a la semana.
+  const nm = numeroMagicoDelCliente(n, { tasaDefecto: numeros?.tasaDefecto, moneda });
+  const magico = nm?.valor > 0 ? nm.valor : null;
+  const nombreResultado = nm?.nombreMetrica || "resultado";
+  const bajas = [];
+  for (const c of campanas) {
+    const enConjunto = c.presupuesto.en === "conjunto";
+    const d = enConjunto ? c.presupuesto.porConjunto : c.presupuesto.diario;
+    if (d === null) continue;
+    const unidades = enConjunto ? c.conjuntos.length : 1;
+    // La semana, de lo que de verdad hay (sin el redondeo del diario).
+    const semana = c.presupuesto.mensual > 0 ? (c.presupuesto.mensual / c.presupuesto.dias / unidades) * 7 : d * 7;
+    const porSemana = magico ? semana / magico : null;
+    const baja = d < MIN_DIARIO || (porSemana !== null ? porSemana < RESULTADOS_SEMANA_MIN : d < DIARIO_POCO);
+    if (!baja) continue;
+    bajas.push(c);
+    const quien = enConjunto ? `cada conjunto (${c.conjuntos.length})` : "la campaña";
+    avisos.push({ codigo: "presupuesto-bajo", grave: false, campana: c.id, texto: `${c.nombreEtapa}: ${quien} queda con ${dinero(d, moneda)} al día (${dinero(r2(semana), moneda)} a la semana)${porSemana !== null ? `: con tu número mágico (${dinero(magico, moneda)} por ${nombreResultado}) son unos ${redondo(porSemana)} a la semana` : ""}. Con tan poco, Meta casi no lo muestra y no sale de la fase de aprendizaje (necesita alrededor de ${RESULTADOS_SEMANA_APRENDER} resultados a la semana en cada conjunto).` });
   }
+  if (bajas.length) avisos.push(propuestaDePresupuesto(bajas, { inversion, delCliente, magico, moneda, escogidas }));
 
   // Las 7 maletas de los productos del plan (o de los activos, si es de todo el catálogo): si falta una, no se lanza.
   const aMirar = delPlan.length ? delPlan.slice(0, 3) : productos.slice(0, 3);
@@ -442,8 +605,25 @@ export function planDelCiclo({
     productos: delPlan.map((p) => ({ id: p.id, nombre: p.nombre, precio: p.precio ?? "" })),
     // El catálogo activo (lo que ofrece «¿Qué vas a hacer?» para escoger).
     catalogo: productos.slice(0, 40).map((p) => ({ id: p.id, nombre: p.nombre, precio: p.precio ?? "" })),
+    // Los ángulos de venta que se pueden escoger en cada hueco (los del estudio aprobado), con todo lo que lee la IA.
+    angulos,
     campanas, publicos, maletas, avisos,
   };
+}
+
+/** El id del plan de un cliente y un mes en `planes_campana` («ciclo-<cliente>-AAAA-MM»). Pura. */
+export const idDelPlanDelMes = (clientId, mes) => `ciclo-${clientId}-${mes}`;
+
+/**
+ * El PRESUPUESTO del mes para las campañas, el MISMO que pone el plan (la inversión de los números del negocio —o la
+ * escrita a mano en el plan— y la temporada): con él se mide el ritmo de gasto de la revisión 3Q. Recibe lo mismo que
+ * `planDelCiclo` (sin catálogo ni estudio: no cambian el dinero). → { total, ciclo, temporada, de } o null sin
+ * números. Pura.
+ */
+export function presupuestoDelMes(entrada = {}) {
+  const p = planDelCiclo({ ...entrada, catalogo: null, estudio: null, estudioAprobado: null, kit: null });
+  if (!(p.total?.mes > 0)) return null;
+  return { total: p.total.mes, ciclo: p.total.ciclo, temporada: p.total.temporada, de: p.inversionDe ?? "" };
 }
 
 /** El total del mes dicho en una línea: «$1053 en total: $1000 del ciclo y $53 de la temporada» (`formato`: el de la pantalla). Pura. */
@@ -518,7 +698,7 @@ export function candidatasDelCalendario({ calendarios = [], cola = [], metricas 
         const medios = (Array.isArray(post.medios) ? post.medios : []).map((x) => x?.src).filter(Boolean);
         if (!medios.length && post.image) medios.push(post.image);
         salida.push({
-          calendarId: cal.id, postId: post.id, fecha: d.date ?? "", titulo: corto(post.title || primeraLinea(post.idea) || primeraLinea(post.descripcion), 80) || "(sin título)",
+          calendarId: cal.id, postId: post.id, fecha: d.date ?? "", titulo: enPalabra(post.title || primeraLinea(post.idea) || primeraLinea(post.descripcion), 80) || "(sin título)",
           formato: post.format ?? "post", publicada, enlaces, rinde, senal, pauta,
           tipoArte: tipoArteDePost(post, artesMarca), composicion: post.composicion ?? "", nivel: post.nivel ?? "", productoId: post.productoId ?? "",
           medios, textos: limpiarAnuncio(post.anuncio, { destino }), sirve: !impiden.length, motivo: impiden[0]?.texto ?? "",
@@ -636,18 +816,25 @@ export function conPiezas(plan, candidatas = [], { ofertas = "", codigo = "", ho
     const etapa = huecos.has(f.etapa) ? f.etapa : null;
     if (etapa) poner(etapa, p, "funciono", { funciono: f });
   }
-  // 2. Lo publicado que mejor funcionó en orgánico.
+  // 2. Lo publicado que mejor funcionó en orgánico: cada pieza, a la etapa donde mejor ENCAJA (su tipo de arte, su nivel,
+  // si habla de precio u oferta); primero cada una a su mejor etapa y después, lo que sobre, a la siguiente que le
+  // sirva. Antes iban todas a presentación y conversión, ascensión y la temporada quedaban vacías.
   const ids = new Set(plan.campanas.map((c) => c.id));
   const buenas = conOferta.filter((p) => p.publicada && p.sirve && p.rinde !== null && p.rinde >= RINDE_PARA_PAUTA && p.formato !== "historia" && delPlan(p))
     .sort((a, b) => (b.senal ?? 0) - (a.senal ?? 0));
+  const temporadaPlan = plan.campanas.find((c) => c.id === "temporada");
+  const enTemporada = (p) => Boolean(temporadaPlan) && p.deOferta && (p.fecha.startsWith(mes) || (p.fecha >= temporadaPlan.calendario.inicio && p.fecha <= temporadaPlan.calendario.fin));
+  const encajes = (p) => plan.campanas.map((c) => ({ id: c.id, s: encajeEnEtapa(p, c, { temporada: enTemporada(p) }) })).filter((x) => x.s > 0).sort((a, b) => b.s - a.s);
+  const sobran = [];
   for (const p of buenas) {
-    // A su etapa si va a pauta; si no, la que pide su nivel (lo del producto, a evaluación) y, por defecto,
-    // presentación: lo que mejor funcionó en orgánico es lo primero que ve quien no conoce la marca.
     const suya = p.pauta?.etapa && ids.has(p.pauta.etapa) ? p.pauta.etapa : null;
     if (suya) { poner(suya, p, "publicada"); continue; }
-    const sugerida = etapaSugerida(p.post ?? {});
-    if (sugerida !== "presentacion" && ids.has(sugerida) && poner(sugerida, p, "publicada")) continue;
-    if (!poner("presentacion", p, "publicada")) poner("evaluacion", p, "publicada");
+    const mejor = encajes(p)[0];
+    if (!mejor || !poner(mejor.id, p, "publicada")) sobran.push(p);
+  }
+  for (const p of sobran) {
+    if (usadas.has(claveDe(p))) continue;
+    for (const x of encajes(p).slice(1)) if (poner(x.id, p, "publicada")) break;
   }
   // 3. Lo marcado «Va a pauta»: las del mes del plan primero, en el orden del calendario.
   const marcadas = conOferta.filter((p) => p.pauta && !usadas.has(claveDe(p)) && delPlan(p))
@@ -668,13 +855,16 @@ export function conPiezas(plan, candidatas = [], { ofertas = "", codigo = "", ho
   }
 
   let faltanTextosTotal = 0;
+  const pool = Array.isArray(plan.angulos) ? plan.angulos : [];
   const campanas = plan.campanas.map((c) => {
     const lista = huecos.get(c.id);
     const anuncios = [];
     const vacios = [];
+    const entradaDe = (x, i) => x?.entrada ?? sueltos.get(idDeHueco(c.id, i + 1)) ?? null;
+    const angulosHuecos = lista.map((x, i) => anguloDelHueco(c, i, x, entradaDe(x, i), pool));
     lista.forEach((x, i) => {
       if (!x) { vacios.push(i); return; }
-      const a = anuncioDe(x, c, plan, i, { hoy, entrada: x.entrada ?? sueltos.get(idDeHueco(c.id, i + 1)) ?? null });
+      const a = anuncioDe(x, c, plan, i, { hoy, entrada: entradaDe(x, i), angulo: angulosHuecos[i] });
       if (faltanTextos(a)) faltanTextosTotal += 1;
       anuncios.push(a);
     });
@@ -684,15 +874,21 @@ export function conPiezas(plan, candidatas = [], { ofertas = "", codigo = "", ho
     const conNivel = artesParaNiveles(c.artes, nivelesVacios);
     const artes = [...porPeso(conNivel.filter((a) => !cubiertos.has(a))), ...porPeso(conNivel.filter((a) => cubiertos.has(a)))];
     const etapaLote = c.etapa === "temporada" ? "conversion" : c.etapa;
+    const angulosVacios = vacios.map((i) => angulosHuecos[i]).filter(Boolean);
     return {
-      ...c, anuncios, faltanTextos: anuncios.filter(faltanTextos).length,
+      ...c, anuncios, angulosHuecos, faltanTextos: anuncios.filter(faltanTextos).length,
       faltan: vacios.length ? {
         n: vacios.length, etapa: etapaLote, nivel: nivelesVacios[0] ?? NIVEL_POR_ETAPA[etapaLote] ?? "",
         niveles: cuentaDeNiveles(nivelesVacios), artes, productoId: plan.foco?.id ?? plan.productos?.[0]?.id ?? "",
+        ...(angulosVacios.length ? { angulos: [...new Map(angulosVacios.map((a) => [claveAngulo(a), a])).values()] } : {}),
       } : null,
     };
   });
+  // Una pieza que se dejó por parecida y después entró en otra campaña no es un aviso.
+  const avisadas = new Set();
   for (const x of parecidas) {
+    if (usadas.has(claveDe(x.pieza)) || avisadas.has(claveDe(x.pieza))) continue;
+    avisadas.add(claveDe(x.pieza));
     avisos.push({ codigo: "diversidad", grave: false, campana: x.campana.id,
       texto: `${x.campana.nombreEtapa}: «${x.pieza.titulo}» (${diaCorto(x.pieza.fecha)}) tiene el mismo tipo de arte y la misma composición que «${x.igual.titulo}» (${diaCorto(x.igual.fecha)}). Para Meta serían UN solo anuncio: se dejó una y la otra se pide nueva.` });
   }
@@ -715,14 +911,17 @@ export function conPiezas(plan, candidatas = [], { ofertas = "", codigo = "", ho
 const CODIGOS_DE_PIEZAS = new Set(["diversidad", "faltan-piezas", "aprendido", "escogida-perdida", "faltan-textos", "pauta-sin-campana"]);
 
 /** El anuncio de un hueco: en qué hueco y en qué nivel, la pieza (o «anuncio nuevo»), cómo se monta, su nombre y sus textos. */
-function anuncioDe(x, c, plan, i, { hoy = "", entrada = null } = {}) {
+function anuncioDe(x, c, plan, i, { hoy = "", entrada = null, angulo = null } = {}) {
   const n = i + 1;
   const slot = idDeHueco(c.id, n);
   const nivelHueco = c.nivelesAnuncios?.[i] ?? NIVEL_POR_ETAPA[c.etapa] ?? "";
   const textosGuardados = entrada?.textos ?? null;
-  const base = { n, slot, origen: x.origen, sugerido: x.origen !== "elegido" && x.origen !== "nuevo", ...(entrada?.editado ? { editado: true } : {}), ...(entrada?.ia ? { ia: true } : {}) };
+  const base = { n, slot, origen: x.origen, sugerido: x.origen !== "elegido" && x.origen !== "nuevo", angulo, ...(entrada?.editado ? { editado: true } : {}), ...(entrada?.ia ? { ia: true } : {}) };
+  // El nombre del anuncio, UNA regla: el ángulo de venta que prueba si lo tiene; si no, el título de su pieza (cortado en
+  // una palabra); un anuncio nuevo sin ángulo, el nivel. Antes unos iban por el tipo de arte y otros por el título.
+  const plantilla = plan.nomenclaturaAnuncio || limpiarManual({}).nomenclatura.anuncio;
   if (x.nuevo) {
-    const nombre = nombreConPlantilla(plan.nomenclaturaAnuncio || limpiarManual({}).nomenclatura.anuncio, { numero: String(n), formato: "Pieza", angulo: nombreNivelCorto(nivelHueco) || "Nuevo", etapa: c.nombreEtapa });
+    const nombre = nombreConPlantilla(plantilla, { numero: String(n), formato: "Pieza", angulo: angulo ? enPalabra(angulo.nombre, 40) : nombreNivelCorto(nivelHueco) || "Nuevo", etapa: c.nombreEtapa });
     return { ...base, nombre, nivel: nivelHueco, como: "subir", puedePublicacion: false, pieza: null, nuevo: true, textos: textosGuardados, textosDe: textosGuardados ? "plan" : "", caption: "", problemas: [] };
   }
   const p = x.pieza;
@@ -732,8 +931,7 @@ function anuncioDe(x, c, plan, i, { hoy = "", entrada = null } = {}) {
   const porDefecto = p.publicada && enlace && p.sirve && (p.pauta?.como ?? "") !== "anuncio" ? "publicacion" : "subir";
   const como = entrada?.como === "publicacion" && puedePublicacion ? "publicacion" : entrada?.como === "subir" ? "subir" : porDefecto;
   const formato = p.formato === "carrusel" ? "Carrusel" : p.formato === "reel" ? "Reel" : p.formato === "historia" ? "Historia" : "Pieza";
-  const tipoArte = tipoArteDe(p.tipoArte)?.nombre ?? "";
-  const nombre = nombreConPlantilla(plan.nomenclaturaAnuncio || limpiarManual({}).nomenclatura.anuncio, { numero: String(n), formato, angulo: tipoArte || corto(p.titulo, 30), etapa: c.nombreEtapa });
+  const nombre = nombreConPlantilla(plantilla, { numero: String(n), formato, angulo: angulo ? enPalabra(angulo.nombre, 40) : enPalabra(p.titulo, 30), etapa: c.nombreEtapa });
   const etapaPost = c.etapa === "temporada" ? "conversion" : c.etapa;
   const nivelPieza = p.pauta?.nivel || p.nivel;
   const nivel = (NIVELES_DE_ETAPA[c.etapa] ?? []).includes(nivelPieza) ? nivelPieza : nivelHueco;
@@ -758,6 +956,55 @@ function anuncioDe(x, c, plan, i, { hoy = "", entrada = null } = {}) {
 }
 const nombreNivelCorto = (nivel) => ({ inconsciente: "Inconsciente", problema: "Problema", solucion: "Solución", producto: "Producto", decision: "Decisión" }[nivel] ?? "");
 
+/**
+ * El ángulo de venta de un hueco: el que escogió una persona (`entrada.angulo`; `false` = «sin ángulo») o el sugerido de
+ * la campaña (`c.angulosHuecos[i]`). El sugerido se cambia por uno del producto de su pieza si la pieza es de otro
+ * producto con ángulos (el ángulo de la mesa no sirve para el anuncio del sofá). → { productoId, id, nombre, publico?,
+ * sugerido? } o null. Pura.
+ */
+function anguloDelHueco(c, i, x, entrada, pool) {
+  if (entrada?.angulo === false) return null;
+  if (entrada?.angulo) {
+    const del = pool.find((a) => claveAngulo(a) === claveAngulo(entrada.angulo));
+    return del ? refAngulo(del) : { ...entrada.angulo };
+  }
+  const sug = c.angulosHuecos?.[i] ?? null;
+  const prod = x?.pieza?.productoId;
+  if (sug && prod && sug.productoId !== prod) {
+    const quiere = PUBLICO_DE_ETAPA[c.etapa] ?? "";
+    const usados = new Set((c.angulosHuecos ?? []).map(claveAngulo));
+    const delProducto = pool.filter((a) => a.productoId === prod && (!a.publico || a.publico === quiere));
+    const otro = delProducto.find((a) => !usados.has(claveAngulo(a))) ?? delProducto[0];
+    if (otro) return refAngulo(otro, { sugerido: true });
+  }
+  return sug ? { ...sug, sugerido: true } : null;
+}
+
+/** ¿Habla de precio u oferta? (un precio, un descuento, un 2x1, «gratis», una promoción, un código). */
+const HABLA_DE_PRECIO = /(?:[$€]\s?\d|\d\s?(?:usd|dolares|%)|\b\d+\s?x\s?\d+\b|\bdescuento|\boferta|\bpromo|\bgratis\b|\bprecio|\bcupon|\bcodigo\b|\bultimas? (?:unidades|horas|dias)|\bsolo hoy\b|\bhasta el \d)/;
+
+/**
+ * Cuánto ENCAJA una pieza en la campaña de una etapa (más es mejor; 0 o menos, no va): lo que habla de precio u oferta,
+ * a conversión (y a la temporada si es de su oferta); su tipo de arte, a las campañas que lo piden; su nivel de
+ * consciencia, a la etapa de ese nivel (un nivel frío fuera de presentación resta). Sin nada que diga otra cosa,
+ * presentación: lo que mejor funcionó es lo primero que ve quien no conoce la marca. Pura.
+ */
+export function encajeEnEtapa(p, c, { temporada = false } = {}) {
+  const etapa = c?.etapa ?? "";
+  let s = { presentacion: 6, evaluacion: 2, conversion: 0, ascension: -2, temporada: -5 }[etapa] ?? 0;
+  const precio = p.deOferta || p.tipoArte === "promocion" || HABLA_DE_PRECIO.test(sinTildes([p.titulo, p.caption, p.post?.idea, p.post?.textoPieza].filter(Boolean).join(" ")));
+  if (precio) s += ({ conversion: 40, ascension: 15, temporada: temporada ? 45 : -10, evaluacion: 5, presentacion: -40 })[etapa] ?? 0;
+  else if (etapa === "temporada") s -= 20;
+  const i = (c?.artes ?? []).indexOf(p.tipoArte);
+  if (i >= 0) s += 20 - i;
+  else if (p.tipoArte && tipoArteDe(p.tipoArte)?.etapas?.includes(etapa === "temporada" ? "conversion" : etapa)) s += 3;
+  if (p.nivel) {
+    if ((NIVELES_DE_ETAPA[etapa] ?? []).includes(p.nivel)) s += 25;
+    else if (esNivelFrio(p.nivel) && etapa !== "presentacion") s -= 20;
+  }
+  return s;
+}
+
 /** El anuncio de un hueco de una campaña del plan (o null si está por producir). Pura. */
 export const anuncioEn = (c, n) => c?.anuncios?.find((a) => a.n === n) ?? null;
 
@@ -772,7 +1019,11 @@ export function textoCalendario(c) {
   if (fin) return `Del ${diaCorto(inicio)} al ${diaCorto(fin)} (termina con la fecha)`;
   return inicio ? `Desde el ${diaCorto(inicio)} · sin fecha de fin` : "Sin fecha de fin";
 }
-const textoPublico = (x) => [x.publico.texto, x.publico.nombres.length ? `Públicos: ${x.publico.nombres.join(", ")}.` : ""].filter(Boolean).join(" ");
+const textoPublico = (x) => [x.publico.texto, x.edad ? `Edad: ${edadDicha(x.edad)}.` : "", x.publico.nombres.length ? `Públicos: ${x.publico.nombres.join(", ")}.` : ""].filter(Boolean).join(" ");
+/** La edad de un conjunto para la guía: la del perfil o del público del producto, o abierta. Pura. */
+export const textoEdadConjunto = (x) => (x?.edad ? `${edadDicha(x.edad)} (la del público del estudio de mercado)` : "Abierta: de 18 a 65 o más (no se recorta)");
+/** «Ángulo «Sin plancha» (Sofá cama)»: el ángulo de venta de un anuncio en una línea. Pura. */
+export const textoAngulo = (a) => (a?.nombre ? `«${a.nombre}»${a.producto ? ` (${a.producto})` : ""}` : "");
 const textoExcluye = (x) => (x.excluye.nombres.length ? `${x.excluye.nombres.join(", ")}.${x.excluye.nota ? ` ${x.excluye.nota}` : ""}` : x.excluye.nota || "Ninguna.");
 
 /** Cómo se monta una pieza, en una línea (también para el Excel). Pura. */
@@ -871,6 +1122,7 @@ export function guiaDeMontaje(plan) {
       { etiqueta: "Objetivo de rendimiento", valor: c.rendimiento },
       { etiqueta: "Puja", valor: "Automática (control de puja en blanco)" },
       { etiqueta: "Calendario", valor: textoCalendario(c) },
+      { etiqueta: "Edad", valor: textoEdadConjunto(x) },
       { etiqueta: "Público", valor: textoPublico(x) },
       ...(x.tipo === "intereses" ? [{ etiqueta: "Segmentación detallada Advantage", valor: "Desactivada si Meta deja (así se prueban esos intereses tal cual); en algunos objetivos va siempre activada." }] : []),
       { etiqueta: "Excluir", valor: textoExcluye(x) },
@@ -898,6 +1150,7 @@ export function guiaDeMontaje(plan) {
         campos.push({ etiqueta: "Pieza", valor: textoDeLaPieza(a) });
         campos.push(...camposDeTextos(a, plan.destino));
       }
+      if (a?.angulo) campos.splice(1, 0, { etiqueta: "Ángulo de venta que prueba", valor: textoAngulo(conProducto(a.angulo, plan)) });
       if (a) campos.push({ etiqueta: "Multianunciante", valor: "Activado" });
       pasos.push({
         id: `${c.id}:a${i + 1}`, nivel: "anuncio", grupo: c.id,
@@ -946,9 +1199,14 @@ const col = (i) => {
 /** Una celda de anuncio del Excel: el nombre, la pieza y cómo se monta (los textos van en su hoja). */
 function celdaDeAnuncio(c, n) {
   const a = anuncioEn(c, n);
-  if (!a) return "Falta: producirla o escoger una publicación";
-  return `${a.nombre}\n${textoDeLaPieza(a)}${faltanTextos(a) ? "\n(faltan sus textos)" : "\n(textos en la hoja «Textos de los anuncios»)"}`;
+  const ang = c.angulosHuecos?.[n - 1];
+  const lineaAngulo = ang ? `\nÁngulo: «${ang.nombre}»` : "";
+  if (!a) return `Falta: producirla o escoger una publicación${lineaAngulo}`;
+  return `${a.nombre}\n${textoDeLaPieza(a)}${lineaAngulo}${faltanTextos(a) ? "\n(faltan sus textos)" : "\n(textos en la hoja «Textos de los anuncios»)"}`;
 }
+
+/** El ángulo con el nombre de su producto (el del plan). Pura. */
+const conProducto = (a, plan) => (a ? { ...a, producto: a.producto || (plan?.angulos ?? []).find((x) => claveAngulo(x) === claveAngulo(a))?.producto || "" } : a);
 
 /**
  * Las hojas del Excel de estrategia de la agencia, hoja por hoja como la suya (`estrategia.txt`): arriba el
@@ -1023,7 +1281,7 @@ export function hojasDelPlan(plan) {
 
 /** La hoja «Textos de los anuncios»: una fila por anuncio del plan con todo lo que se copia en el Ads Manager. Pura. */
 export function hojaDeTextos(plan) {
-  const cabecera = ["Campaña", "Conjuntos", "Anuncio", "Publicación", "Cómo se monta", "Nivel", "Texto principal", "Títulos", "Descripción", "Botón"];
+  const cabecera = ["Campaña", "Conjuntos", "Anuncio", "Publicación", "Cómo se monta", "Nivel", "Ángulo de venta", "Texto principal", "Títulos", "Descripción", "Botón"];
   const filas = [[`Textos de los anuncios · ${plan?.cliente ?? ""} · ${plan?.nombreMes ?? ""}`], [], cabecera];
   for (const c of plan?.campanas ?? []) {
     for (const a of c.anuncios) {
@@ -1035,6 +1293,7 @@ export function hojaDeTextos(plan) {
         a.nuevo ? "Anuncio nuevo (sin publicación)" : `«${a.pieza.titulo}»${a.pieza.fecha ? ` (${diaCorto(a.pieza.fecha)})` : ""}${a.pieza.enlaces?.instagram || a.pieza.enlaces?.facebook ? `\n${a.pieza.enlaces.instagram || a.pieza.enlaces.facebook}` : ""}`,
         a.como === "publicacion" ? "Usar la publicación existente" : "Subir la pieza",
         nombreDeNivel(a.nivel),
+        textoAngulo(conProducto(a.angulo, plan)) || "—",
         a.como === "publicacion" ? `(El de la publicación, no se cambia)\n${a.caption ?? ""}`.trim() : (t?.textos ?? []).map((x, i) => `${i + 1}) ${x}`).join("\n\n") || "Falta",
         (t?.titulos ?? []).join("\n") || "Falta",
         t?.descripcion || "Falta",
@@ -1043,7 +1302,7 @@ export function hojaDeTextos(plan) {
     }
   }
   if (filas.length === 3) filas.push(["Todavía no hay anuncios con su pieza: escógelos en el plan."]);
-  return { nombre: HOJA_TEXTOS, filas, combinadas: [], anchos: [30, 30, 28, 34, 20, 16, 60, 32, 24, 22], cabeceras: [3] };
+  return { nombre: HOJA_TEXTOS, filas, combinadas: [], anchos: [30, 30, 28, 34, 20, 16, 30, 60, 32, 24, 22], cabeceras: [3] };
 }
 
 // ------------------------------------------------------------
@@ -1061,6 +1320,7 @@ export function planATextoCiclo(plan) {
   if (textoDelTotal(plan)) l.push(`Total del mes: ${textoDelTotal(plan)}.`);
   if (plan.productos?.length) l.push(`Productos: ${plan.productos.map((p) => `${p.nombre}${p.precio ? ` (${p.precio})` : ""}`).join(", ")}`);
   if (plan.que?.logro) l.push(`Lo que se quiere lograr: ${plan.que.logro}`);
+  if (plan.angulos?.length) l.push(`Ángulos de venta que se prueban: ${plan.angulos.map((a) => textoAngulo(a)).join(", ")}`);
   if (plan.avisos.length) l.push("", "AVISOS", ...plan.avisos.map((a) => `- ${a.grave ? "[!] " : ""}${a.texto}`));
   if (plan.publicos.length) l.push("", "PÚBLICOS PERSONALIZADOS A CREAR", ...plan.publicos.map((p) => `- ${p.nombre}: ${p.que}`));
   for (const c of plan.campanas) {
@@ -1074,7 +1334,8 @@ export function planATextoCiclo(plan) {
     l.push(`  Anuncios (${c.anunciosPorConjunto} por conjunto, los mismos en todos):`);
     for (let i = 0; i < c.anunciosPorConjunto; i++) {
       const a = anuncioEn(c, i + 1);
-      l.push(`    ${i + 1}. ${a ? `${a.nombre} — ${textoDeLaPieza(a)} · nivel ${nombreDeNivel(a.nivel).toLowerCase()}` : "por producir"}`);
+      const ang = a?.angulo ?? c.angulosHuecos?.[i];
+      l.push(`    ${i + 1}. ${a ? `${a.nombre} — ${textoDeLaPieza(a)} · nivel ${nombreDeNivel(a.nivel).toLowerCase()}` : "por producir"}${ang ? ` · ángulo ${textoAngulo(conProducto(ang, plan))}` : ""}`);
       if (a) {
         const t = textosATexto(a.textos, { conCaption: a.como === "publicacion" ? a.caption || "(el de la publicación)" : "" });
         if (t) l.push(t.split("\n").map((x) => `       ${x}`).join("\n"));

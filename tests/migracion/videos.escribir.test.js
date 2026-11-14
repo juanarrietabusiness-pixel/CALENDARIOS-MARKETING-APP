@@ -98,6 +98,26 @@ describe("POST /api/videos/<c>/escribir", () => {
     expect(db.sqlite.prepare("select count(*) n from videos_proyectos").get().n).toBe(0);
   });
 
+  it("con un video de referencia DESGLOSADO, cada toma es una escena: el pedido lleva su forma resumida", async () => {
+    const tomas = [
+      { n: 1, desde: 0, hasta: 3, dura: 3, plano: "primer plano", movimiento: "cámara en mano", contenido: "Una persona mira a cámara." },
+      { n: 2, desde: 3, hasta: 6, dura: 3, plano: "plano detalle", movimiento: "fijo", contenido: "Las manos abren una caja." },
+    ];
+    db.sqlite.prepare("insert into estudio_archivos (id, owner_id, client_id, clave, tipo, mime, ajustes) values (?,?,?,?,?,?,?)")
+      .run("vid1", JEFE, "bc", "clientes/bc/estudio/ref.mp4", "video", "video/mp4", JSON.stringify({ deconstruccion: { tomas, montaje: { musica: "" } } }));
+    anthropic([JSON.stringify(EJEMPLO_GUION)]);
+    const j = await (await pedir("/videos/bc/escribir", { idea: "Toallitas", segundos: 30, formato: "9:16", videoReferenciaId: "vid1" })).json();
+    expect(j.sigueVideo).toEqual({ archivoId: "vid1", tomas: 2 });
+    const t = textoPedido(peticiones[0]);
+    expect(t).toMatch(/LA FORMA DE UN VIDEO DE REFERENCIA, TOMA POR TOMA/);
+    expect(t).toMatch(/cada toma es una ESCENA/);
+    // Sin desglose (o de otro cliente), como siempre.
+    anthropic([JSON.stringify(EJEMPLO_GUION)]);
+    const sin = await (await pedir("/videos/bc/escribir", { idea: "Toallitas", segundos: 30, formato: "9:16", videoReferenciaId: "no-existe" })).json();
+    expect(sin.sigueVideo).toBeUndefined();
+    expect(textoPedido(peticiones[0])).not.toMatch(/LA FORMA DE UN VIDEO DE REFERENCIA/);
+  });
+
   it("si sale con errores, UNA vuelta con ellos; si tampoco valida, 502", async () => {
     const malo = { ...EJEMPLO_GUION, escenas: [{ id: "e1", tipo: "inventado", habla: "x", capas: [] }] };
     anthropic([JSON.stringify(malo), JSON.stringify(EJEMPLO_GUION)]);

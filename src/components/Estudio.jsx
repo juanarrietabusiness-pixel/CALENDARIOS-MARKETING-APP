@@ -613,12 +613,12 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
     if (versionando || !motores) return;
     const p = que === "edicion" ? null : pedidoDe(a, extra.otro ?? "");
     setVersionando(true);
-    if (que === "versiones") avisar(true, "El director está diseñando la versión con la misma información…");
+    if (que === "versiones") avisar(true, "El director está mirando la pieza y diseñando…");
     try {
       if (p?.error) throw new Error(p.error);
       const v = await import("../lib/visorEstudio");
       const comun = { clienteId: client.id, a, p, kit, uso, seguir: () => montado.current, alFallo: (t) => montado.current && avisar(false, t) };
-      const r = await (que === "igual" ? v.pedirOtraIgual(comun) : que === "versiones" ? v.pedirVersiones({ ...comun, n: extra.n })
+      const r = await (que === "igual" ? v.pedirOtraIgual(comun) : que === "versiones" ? v.pedirVersiones({ ...comun, n: extra.n, para: extra.para })
         : v.pedirEdicion({ ...comun, instruccion: extra.instruccion, ejemplos: extra.ejemplos, escogido: extra.otro, activos }));
       for (const t of r.trabajos ?? []) { setDatos((d) => (d ? { ...d, trabajos: reemplazar(d.trabajos, t) } : d)); seguir(t.id); }
       setEnPapelera(false);
@@ -1305,7 +1305,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
           onRecrear={dialogo && !inicial?.abrir ? null : () => { const a = visor; setVisor(null); setRecrear({ archivo: a }); }}
           costoOtra={costoDeOtra(visor)}
           onOtraIgual={(otro) => delVisor("igual", visor, { otro })}
-          onOtrasVersiones={(n, otro) => delVisor("versiones", visor, { n, otro })}
+          onOtrasVersiones={(n, otro, para) => delVisor("versiones", visor, { n, otro, para })}
           versionando={versionando}
           onReferencia={() => { const a = visor; setVisor(null); usarComoMedio(a); }}
           onAnimar={() => animar(visor)}

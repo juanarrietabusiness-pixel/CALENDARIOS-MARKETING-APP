@@ -215,8 +215,8 @@ describe("qué publicación es cada anuncio (la revisión 3Q)", () => {
     const r = await revision();
     expect(r.status).toBe(200);
     const d = await r.json();
-    // Las mismas 12 llamadas de siempre: el creativo va en la lista de anuncios.
-    expect(llamadas).toHaveLength(12);
+    // Las mismas 14 llamadas de la revisión (12 y las dos series diarias): el creativo va en la lista de anuncios.
+    expect(llamadas).toHaveLength(14);
     const ads = llamadas.find((l) => l.ruta === "/act_111/ads");
     expect(ads.params.fields).toMatch(/creative\{id,thumbnail_url,title,effective_object_story_id,object_story_id,effective_instagram_media_id,source_instagram_media_id,instagram_permalink_url\}/);
     expect(d.leidoCreativo).toBe("completo");
@@ -303,7 +303,8 @@ describe("GET …/en-pauta (lo que lee el panel de cada publicación)", () => {
 describe("el cron también lo pone al día", () => {
   it("con lo de cada anuncio en 7 y 30 días (dos llamadas más), en la misma sentencia que lo grave", async () => {
     expect(await revision3qPendiente(env, new Date("2026-11-06T14:00:00.000Z"))).toBe(1);
-    expect(llamadas).toHaveLength(5);
+    // Las cinco de lo grave y «En pauta», y la serie diaria por campaña (src/lib/alertas3q.js).
+    expect(llamadas).toHaveLength(6);
     expect(llamadas.filter((l) => l.ruta === "/act_111/insights" && l.params.level === "ad").map((l) => l.params.date_preset).sort()).toEqual(["last_30d", "last_7d"]);
     const g = guardado();
     expect(g.publicaciones["cal1|p1"]).toMatchObject({ activo: true, etapa: "presentacion", d7: { gasto: 12, resultados: 15 }, d30: { gasto: 50, resultados: 60 } });

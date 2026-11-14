@@ -157,6 +157,64 @@ describe("el reel por planos sigue en el servidor", () => {
     expect(r.encargo.pasos.every((p) => r.archivos.some((a) => a.id === p.clip.archivoId))).toBe(true);
   });
 
+  it("«¿Listo para animar?»: al pararse a revisar, UNA mirada de la IA al storyboard; el aviso va en cada fotograma y no bloquea", async () => {
+    // Un Container de mentira que hace las copias pequeñas, y un Anthropic de mentira que contesta la revisión.
+    const JPEG = "/9j/4AAQSkZJRgABAQ";
+    env.VIDEO = { idFromName: () => "x", get: () => ({ fetch: async (req) => (new URL(req.url).pathname === "/miniatura" ? Response.json({ datos: JPEG, mime: "image/jpeg" }) : new Response("{}", { status: 503 })) }) };
+    env.ANTHROPIC_API_KEY = "k";
+    const pedidosIA = [];
+    const ev = (t, d) => `event: ${t}\ndata: ${JSON.stringify(d)}\n\n`;
+    const respuesta = JSON.stringify({ fotogramas: [
+      { n: 1, separado: true, luz: true, espacio: true, limpio: true },
+      { n: 2, separado: true, luz: true, espacio: false, limpio: true, porque: "La caja ya toca el borde de abajo." },
+      { n: 3, separado: true, luz: true, espacio: true, limpio: true },
+    ] });
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (url, op = {}) => {
+      const u = String(url);
+      if (u.startsWith("https://api.anthropic.com/v1/models")) return Response.json({ data: [{ id: "claude-sonnet-5" }] });
+      if (u.startsWith("https://api.anthropic.com/v1/messages")) {
+        pedidosIA.push(JSON.parse(op.body));
+        return new Response([
+          ev("message_start", { message: { model: "x", usage: { input_tokens: 10 } } }),
+          ev("content_block_start", { index: 0, content_block: { type: "text", text: "" } }),
+          ev("content_block_delta", { index: 0, delta: { type: "text_delta", text: respuesta } }),
+          ev("content_block_stop", { index: 0 }),
+          ev("message_delta", { delta: { stop_reason: "end_turn" }, usage: { output_tokens: 20 } }),
+        ].join(""), { headers: { "content-type": "text/event-stream" } });
+      }
+      throw new Error(`fetch inesperado a ${u}`);
+    });
+    const { encargo: e } = await (await lanzar({ revisar: true })).json();
+    await bombearHastaElFinal();
+    const r = await encargo(e.id);
+    expect(r.encargo.estado).toBe("hecho");
+    expect(r.encargo.reel.video.fase).toBe("espera");
+    // UNA llamada, con las tres copias numeradas delante del pedido.
+    expect(pedidosIA).toHaveLength(1);
+    const contenido = pedidosIA[0].messages[0].content;
+    expect(contenido.filter((b) => b.type === "image")).toHaveLength(3);
+    expect(contenido.find((b) => b.type === "text" && /Fotograma del plano 2/.test(b.text))).toBeTruthy();
+    // El aviso, en el paso y en la ficha del fotograma (lo que lee la pantalla).
+    const [p1, p2] = r.encargo.pasos;
+    expect(p1.animable).toMatchObject({ ok: true, archivoId: p1.finales[0] });
+    expect(p2.animable).toMatchObject({ ok: false, motivos: ["espacio"], nota: "La caja ya toca el borde de abajo." });
+    expect(r.archivos.find((a) => a.id === p2.finales[0]).ajustes.animable).toMatchObject({ ok: false, motivos: ["espacio"] });
+    expect(r.encargo.nota).toMatch(/1 con un aviso antes de animar/);
+    expect(db.sqlite.prepare("select count(*) n from consumo_ia where funcion = ?").get("fotograma listo para animar").n).toBe(1);
+    // No bloquea: se sigue con el video igual.
+    const sigue = await pedir(`/estudio/c1/encargos/${e.id}/continuar`, { method: "POST", body: { salida: "uno", video: { modelo: "prueba-video" } } });
+    expect(sigue.status).toBe(200);
+  });
+
+  it("sin IA (o sin copias que mirar) el storyboard se para igual: la revisión se apunta como no hecha", async () => {
+    const { encargo: e } = await (await lanzar({ revisar: true })).json();
+    await bombearHastaElFinal();
+    const r = await encargo(e.id);
+    expect(r.encargo.estado).toBe("hecho");
+    expect(r.encargo.pasos.some((p) => p.animable)).toBe(false);
+    expect(r.encargo.nota).toMatch(/Storyboard listo/);
+  });
+
   it("«Montarlo aquí»: un video animado válido, una escena por plano con su clip a sangre, el gancho, el logo y el llamado", async () => {
     const { encargo: e } = await (await lanzar({ salida: "clips", video: { modelo: "prueba-video" } })).json();
     await bombearHastaElFinal();

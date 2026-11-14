@@ -23,6 +23,7 @@ import { validarGuion } from "../../../src/lib/videoEscenas.js";
 import { pedidoDeGuionAnimado, leerGuionAnimado, textoDePublicacion, duracionAnimado, MAX_IDEA_ANIMADO, pedidoDeGuionCancion } from "../../../src/lib/guionAnimadoIA.js";
 import { conLaCancion, comprobarLetra } from "../../../src/lib/videoCancion.js";
 import { estructuraDeVoz, usadaEn, ErrorEstructura } from "../estructurasGuion.js";
+import { secuenciaDeVideo } from "./deconstructor.js";
 import { lineaDeLexico } from "../../../src/lib/lexico.js";
 import { preciosPermitidos, erroresDePrecio } from "../../../src/lib/fidelidad.js";
 
@@ -137,10 +138,11 @@ function sinEstructura(g) {
 }
 
 /**
- * Escribe el guion. `datos`: { idea, segundos, formato, postId?, estructuraId? }. → { guion, avisos, corregido, modelo,
+ * Escribe el guion. `datos`: { idea, segundos, formato, postId?, estructuraId?, videoReferenciaId? }. → { guion, avisos, corregido, modelo,
  * aviso, estructura: { id, nombre } | null }. `estructuraId`: la ESTRUCTURA de guion de la agencia que sigue la voz
  * (sin ella, la IA escoge entre las de voz en off y dice cuál). Lanza ErrorGuion (400 sin idea ni publicación, o con una
- * estructura que ya no está; 502 si la IA no da un guion válido ni al segundo intento).
+ * estructura que ya no está; 502 si la IA no da un guion válido ni al segundo intento). `videoReferenciaId`: un video
+ * de la galería; si está DESGLOSADO toma por toma, el guion sigue su forma (y vuelve `sigueVideo`).
  */
 export async function escribirGuion(env, acceso, cliente, datos = {}) {
   const idea = String(datos.idea ?? "").trim().slice(0, MAX_IDEA_ANIMADO);
@@ -171,10 +173,14 @@ export async function escribirGuion(env, acceso, cliente, datos = {}) {
   const maxFondos = estilo ? TOPE_FONDOS_ESTILO : undefined;
   const { kit, marcaVideo, imagenes, galeria } = await marcaDelGuion(env, acceso, cliente, { conFondos });
   const personaje = kit.personajeVideo ?? null;
+  // Un video de referencia DESGLOSADO toma por toma (lib/deconstructor.js): cada toma, una escena. Sin desglose, nada.
+  const secuencia = datos.videoReferenciaId
+    ? await secuenciaDeVideo(acceso, cliente.id, datos.videoReferenciaId, { unidad: "escenas", cuantos: Math.max(3, Math.round(segundos / 4)) }).catch(() => null)
+    : null;
 
   const base = {
     marca: cliente.name, idea, publicacion: delPost, segundos, formato: datos.formato, contexto, productos, personaje, criterio: ctx.criterio,
-    estructura: eleccion.texto, marcaVideo: conLexico(marcaVideo, kit), conFondos, galeria, maxFondos,
+    estructura: eleccion.texto, marcaVideo: conLexico(marcaVideo, kit), conFondos, galeria, maxFondos, secuencia: secuencia?.texto ?? "",
     estiloGuardado: estilo ? lineaDeEstilo(estilo, { escenas: Math.round(segundos / 4) }) : "",
   };
   // Impone el estilo (si lo hay), valida y, con fondos, que no pida más imágenes de la cuenta (eso también se corrige
@@ -215,6 +221,7 @@ export async function escribirGuion(env, acceso, cliente, datos = {}) {
   return {
     guion: v.guion, avisos: v.avisos, corregido, modelo: r.modelo, aviso: juntar(r.aviso, avisoRefs), postId: post ? String(datos.postId) : null,
     estructura: usadaEn(eleccion, nombre), referencias: refs, fondos: fondosPendientes(v.guion).length,
+    ...(secuencia ? { sigueVideo: { archivoId: secuencia.archivoId, tomas: secuencia.tomas } } : {}),
   };
 }
 

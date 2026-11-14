@@ -101,3 +101,8 @@
 .r3q-tecnico[open] { display: flex; flex-direction: column; gap: var(--sp-2); }
 .r3q-q2-frases { list-style: none; margin: 0; padding: 0; font-size: var(--fs-xs); color: var(--text-dim); display: flex; flex-direction: column; gap: 2px; }
 .r3q-q2-frases li[data-mal="true"] { color: var(--danger); }
+
+/* Lo que se ve día a día (src/lib/alertas3q.js) y el aviso de «pocos datos». */
+.r3q-alerta-titulo { flex: 1 1 200px; min-width: 0; margin: 0; font-size: var(--fs-sm); line-height: 1.35; overflow-wrap: anywhere; }
+.r3q-ojo { display: flex; align-items: flex-start; gap: var(--sp-1); }
+.r3q-ojo svg { flex: none; margin-top: 2px; }

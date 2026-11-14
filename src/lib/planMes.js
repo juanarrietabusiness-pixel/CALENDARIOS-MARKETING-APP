@@ -97,7 +97,7 @@ export function borrarBorrador(storage, clave) {
  * viaja.
  */
 const QUE_VIAJA = Object.freeze([
-  "title", "escena", "composicion", "tactica", "textoPieza", "hashtagsFinales", "estructuraRef", "formulaUgc",
+  "title", "escena", "composicion", "tactica", "formaGancho", "angulo", "textoPieza", "hashtagsFinales", "estructuraRef", "formulaUgc",
   "promptImagen", "promptImagenDe", "promptImagenPor",
 ]);
 

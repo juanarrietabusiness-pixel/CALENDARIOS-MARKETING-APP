@@ -119,10 +119,11 @@ export function plantillaParaTipo(plantillas = [], tipo = "", formato = "post") 
 /** Cómo se escribe una ficha: la misma para el asistente, el director de arte y el motor de ideas. */
 export const FORMATO_FICHA = [
   "Pieza: <formato y proporción> — <para qué es, en una frase>.",
+  "Emoción: <qué tiene que sentir quien la ve en dos segundos (calma, antojo, confianza, alivio, orgullo, ganas de escribir…) y dónde se usa (feed, historia o anuncio), en una frase>.",
   "Composición: <dónde va cada cosa CON MEDIDAS en % de la pieza: «titular entre el 8 y el 22 % de la altura, 80 % del ancho, centrado; producto del 30 al 85 %; logo abajo a la derecha, 10 % del ancho»>.",
   "Fondo: <color con su código #HEX, foto a sangre, degradado, textura>.",
   "Imagen principal: <qué se ve: sujeto o producto, acción, lugar y encuadre>.",
-  "Fotografía: <como la haría un fotógrafo: de dónde viene la luz y cómo es («ventana grande a la izquierda, luz suave»; «contraluz cálido»), su temperatura en K, el lente en mm y la apertura (qué queda nítido y qué desenfocado), la superficie y cómo cae la sombra; en una pieza ilustrada o tipográfica, la técnica y el acabado>.",
+  "Fotografía: <como la haría un fotógrafo: de dónde viene la luz y cómo es («ventana grande a la izquierda, luz suave»; «contraluz cálido»), su temperatura en K, el lente en mm y la apertura (qué queda nítido y qué desenfocado), la superficie y cómo cae la sombra; si la marca tiene referencias de estilo, se notan aquí (el revelado, el grano, el color, la época), con palabras genéricas; en una pieza ilustrada o tipográfica, la técnica y el acabado>.",
   "Texto (exacto, sin cambiar una letra): titular «…» (<alto de letra en % de la altura de la pieza, peso, color, zona>); apoyo «…» (…); botón «…» (<forma, color y zona>).",
   "Marca: <dónde va el logo y de qué tamaño; qué colores de la paleta mandan>.",
   "Evitar: <lo propio de ESTA pieza: con personas, manos y caras raras; con producto, la etiqueta deformada o traducida; con texto, letras de más>.",
@@ -183,9 +184,10 @@ export function textoDeLaFicha(ficha = "") {
 
 /**
  * Lo que se quita primero de una ficha que no cabe: «Marca» (la paleta la dice el kit y el sitio del logo, la
- * composición), «Evitar» (lo general lo dice el acabado) y, al final, «Fondo».
+ * composición), «Evitar» (lo general lo dice el acabado), «Emoción» (ya la cuentan la escena y la luz) y, al final,
+ * «Fondo». Una ficha de antes, sin «Emoción», se acorta igual que siempre.
  */
-const PRESCINDIBLES = ["Marca", "Evitar", "Fondo"];
+const PRESCINDIBLES = ["Marca", "Evitar", "Emoción", "Fondo"];
 /** Lo que no se toca nunca al acortar: de qué es la pieza y su texto exacto. */
 const INTOCABLES = /^(Pieza|Texto)/;
 
@@ -365,7 +367,7 @@ export function limpiarPiezaEncargo(p = {}, i = 0) {
 export const RAZONA_COMO_DIRECTOR = [
   "Piensa cada pieza como lo harías sentado con la agencia, ANTES de escribir su ficha:",
   "1) para qué es y a quién le habla (lo que vende la marca, el producto, el tipo de contenido);",
-  "2) qué tiene que sentir o entender quien la ve en dos segundos, y cuál es la UNA idea visual que lo consigue (no la primera que se le ocurre a cualquiera: la que sólo funciona para esta marca);",
+  "2) qué tiene que sentir o entender quien la ve en dos segundos (va en la línea «Emoción», con dónde se usa: feed, historia o anuncio), y cuál es la UNA idea visual que lo consigue (no la primera que se le ocurre a cualquiera: la que sólo funciona para esta marca);",
   "3) la composición con medidas, la jerarquía del texto y dónde respira la pieza;",
   "4) qué podría salir mal al generarla (texto muy pequeño, producto deformado, algo inventado) y cómo lo evita la ficha.",
   "Después escribe la ficha completa: quien genera la imagen no sabe nada más que lo que dice la ficha.",
@@ -379,6 +381,7 @@ export const MAX_SOBRE_LA_MARCA = 2_500;
 /** Lo que es cada imagen ESPECIAL que va delante del pedido (la original de «Otra versión», la referencia de otra marca). */
 const PAPELES = Object.freeze({
   original: (n) => `LA IMAGEN ${n} ES LA PIEZA ORIGINAL de la que se pide OTRA VERSIÓN: mírala bien. La versión nueva conserva su mensaje, su texto exacto, su producto, su paleta y su nivel de acabado, y se tiene que reconocer como de la misma campaña; lo que cambia es la composición, de forma moderada (otro encuadre, otra distribución, otro fondo o escenario), para que sea una alternativa real y no la misma imagen ni algo ajeno.`,
+  maestra: (n) => `LA IMAGEN ${n} ES LA PIEZA MAESTRA de un conjunto de anuncios: mírala bien. Cada variación conserva su ADN —la paleta, la luz, la tipografía y la jerarquía del texto, el acabado, el producto y la familia de composición— para que todas se reconozcan como la misma campaña, y cambia SÓLO lo que pide su encargo: ni una copia de la maestra, ni algo ajeno a ella.`,
   inspiracion: (n, cliente) => `LA IMAGEN ${n} ES UNA PIEZA DE OTRA MARCA que a la agencia le gustó como inspiración. Toma de ella la IDEA —el gancho, el ángulo, cómo cuenta el mensaje, el tipo de composición— y diseña una versión PROPIA de ${cliente}, ligeramente distinta: cambia la distribución, el encuadre, el fondo y el estilo de la foto lo suficiente para que nadie la reconozca como una copia. Nada de su producto, su texto, su marca, su empaque ni su logo: el producto es del catálogo de ${cliente} y los colores, los de su marca.`,
 });
 

@@ -32,6 +32,9 @@
 //   POST   /<cliente>/video-producto/guion         { productoId, segundos?, idea?, post? }: la receta «Video del producto» (texto)
 //   PUT    /<cliente>/kit                          { kit }: guarda el kit de marca (paleta, presets, logo…)
 //   POST   /<cliente>/kit/preparar                 La IA PROPONE el kit desde el cerebro (no guarda)
+//   POST   /<cliente>/kit/moodboard                { archivoIds: 3–10 }: la IA MIRA esas imágenes de la galería de ESTE
+//                                                   cliente y PROPONE lo visual del kit (estilo, luz, paleta, referencias
+//                                                   de estilo, «nunca»); no guarda
 //   POST   /<cliente>/kit/aprender                 La IA MIRA los «Me gusta» y la papelera y PROPONE reglas visuales (no guarda)
 //   POST   /<cliente>/revisar                      { archivoId } o { clave }: la IA mira la imagen contra el kit
 //   POST   /<cliente>/revisar-video                { archivoId } o { clave }, idea?, productoId?, formato?, otraVez?, fotogramas?:
@@ -48,6 +51,8 @@
 //   POST   /<cliente>/papelera/vaciar           Todo lo que no se usa de verdad; dice qué se queda y por qué
 //   POST   /<cliente>/kit/perdidas              Quita del kit y del catálogo lo de la marca que ya no existe
 //   POST   /<cliente>/archivos/<id>/control         { texto? }: el control de calidad (la IA mira la pieza; queda en la ficha)
+//   POST   /<cliente>/archivos/<id>/deconstruir     { otraVez?, fotogramas? }: «Desglosar toma por toma» un video (la IA
+//                                                   lo describe sin opinar; queda en la ficha: la segunda vez no se paga)
 //   POST   /<cliente>/director                     { idea, formato, segundos, productoId }: la idea mejorada como director
 //                                                   comercial, con qué cambió y por qué (no guarda)
 //   GET    /<cliente>/voz/<voz>                    la muestra de una voz de Google (audio/wav; se pide una vez y queda en R2)
@@ -77,9 +82,10 @@ import { estadoMotores } from "../lib/estudio/motores.js";
 import { mejorarIdea, versionesDeIdea } from "../lib/estudio/prompt.js";
 import { fichasDeDiseno } from "../lib/estudio/fichas.js";
 import { guionCorto, guionDeVideoProducto } from "../lib/estudio/guionCorto.js";
-import { kitDe, guardarKit, guardarLexico, prepararKit, revisarPieza, subirFuente } from "../lib/estudio/kit.js";
+import { kitDe, guardarKit, guardarLexico, prepararKit, prepararKitDesdeImagenes, revisarPieza, subirFuente } from "../lib/estudio/kit.js";
 import { guardarPlantilla, quitarPlantilla } from "../lib/estudio/plantillas.js";
 import { revisarVideo } from "../lib/estudio/revisionVideo.js";
+import { deconstruirVideo } from "../lib/estudio/deconstructor.js";
 import { revisarSerie } from "../lib/estudio/serie.js";
 import { sistemaDePortada, controlarPieza } from "../lib/estudio/control.js";
 import { aprenderDeLoVisual } from "../lib/estudio/aprender.js";
@@ -241,6 +247,10 @@ export async function rutasEstudio(req, env, { acceso, usuario, partes, metodo }
         return json(r);
       }
       if (c === "preparar" && metodo === "POST") return json(await prepararKit(env, acceso, cliente));
+      if (c === "moodboard" && !d && metodo === "POST") {
+        const datos = (await cuerpo(req)) ?? {};
+        return json(await prepararKitDesdeImagenes(env, acceso, cliente, datos.archivoIds));
+      }
       if (c === "aprender" && metodo === "POST") return json(await aprenderDeLoVisual(env, acceso, cliente));
     }
     if (b === "revisar-video" && !c && metodo === "POST") {
@@ -559,6 +569,16 @@ export async function rutasEstudio(req, env, { acceso, usuario, partes, metodo }
           // La ficha de la pieza ORIGINAL al controlar su versión corregida (la edición no la lleva en su pedido).
           ficha: typeof datos.ficha === "string" ? datos.ficha.slice(0, 2500) : null,
         }));
+      }
+      // «Desglosar toma por toma» un video: la IA lo describe sin opinar (queda en la ficha: la segunda vez no se paga).
+      if (d === "deconstruir" && metodo === "POST") {
+        const datos = (await cuerpo(req)) ?? {};
+        try {
+          return json(await deconstruirVideo(env, acceso, cliente, { archivoId: c, otraVez: datos.otraVez === true, fotogramas: datos.fotogramas }));
+        } catch (e) {
+          if (e?.estado) return fallo(e);
+          throw e;
+        }
       }
       // El sistema de diseño de la portada de un carrusel (la IA la mira; se apunta en la ficha).
       if (d === "sistema" && metodo === "POST") {
