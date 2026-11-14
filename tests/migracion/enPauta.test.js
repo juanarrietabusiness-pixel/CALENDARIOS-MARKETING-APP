@@ -381,7 +381,7 @@ describe("lo que se aprende, en el motor de ideas y en el director (sólo para l
     respuestaIA = JSON.stringify({ textos: [{ n: 1, descripcion: "Escríbenos por WhatsApp" }] });
     const r = await pedir(JEFE, "/estudio/c1/lote/ideas", { method: "POST", body: { modo: "campos", publicaciones: [{ clave: "p1", formato: "post", pauta: { etapa: "presentacion" }, campos: ["descripcion"] }] } });
     expect(r.status).toBe(200);
-    expect(textoDe(peticionesIA[0])).toMatch(/Lo que ya se probó en pauta con esta marca \(costo por conversación, últimos 30 días, 6 piezas con gasto suficiente\): sale más barato .*la composición «En uso»/);
+    expect(textoDe(peticionesIA[0])).toMatch(/Lo que ya se probó en pauta con esta marca \(costo por conversación, últimos 30 días, 6 piezas con gasto suficiente\): (?:en [^,]+, )?sale más barato .*la composición «En uso»/);
     peticionesIA.length = 0;
     await pedir(JEFE, "/estudio/c1/lote/ideas", { method: "POST", body: { modo: "campos", publicaciones: [{ clave: "p2", formato: "post", campos: ["descripcion"] }] } });
     expect(textoDe(peticionesIA[0])).not.toMatch(/Lo que ya se probó en pauta/);

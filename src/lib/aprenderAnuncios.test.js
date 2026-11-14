@@ -51,8 +51,8 @@ describe("qué sale más barato para este cliente", () => {
     expect(p.peores).toEqual(expect.arrayContaining([expect.objectContaining({ rasgo: "composicion", id: "heroe", costo: 3 })]));
     // Todas con el mismo nivel y la misma etapa: ahí no hay nada que comparar.
     expect(p.mejores.some((m) => m.rasgo === "nivel" || m.rasgo === "etapa")).toBe(false);
-    expect(p.linea).toMatch(/^Lo que ya se probó en pauta con esta marca \(costo por conversación, últimos 30 días, 6 piezas con gasto suficiente\): sale más barato /);
-    expect(p.linea).toMatch(/la composición «En uso» \(1,00\sUS\$ frente a 1,50\sUS\$ del total\)/);
+    expect(p.linea).toMatch(/^Lo que ya se probó en pauta con esta marca \(costo por conversación, últimos 30 días, 6 piezas con gasto suficiente\): en Presentación, sale más barato /);
+    expect(p.linea).toMatch(/la composición «En uso» \(1,00\sUS\$ frente a 1,50\sUS\$ de su etapa\)/);
     expect(p.linea).toMatch(/sale más caro .*la composición «Producto héroe» \(3,00\sUS\$\)/);
     expect(p.linea).toMatch(/una pieza de cada cuatro para probar algo distinto/);
     expect(p.motivo).toBe("");

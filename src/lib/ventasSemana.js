@@ -223,8 +223,10 @@ const conDatos = (semanas) => (Array.isArray(semanas) ? semanas : [])
  * Las últimas `n` semanas con ventas que se pueden cruzar con Meta (la semana ANTERIOR a cada una está en
  * `meta`), y lo que suman de cada lado. Pura.
  */
-function cruce(semanas, meta, n) {
-  const usadas = conDatos(semanas).filter((s) => meta && meta[sumarDias(s.semana, -7)] != null).slice(0, n);
+function cruce(semanas, meta, n, hoy = null) {
+  // Sólo semanas CERRADAS: la de hoy va a medias (sus ventas siguen entrando) y bajaría la tasa sin razón.
+  const lunesHoy = esFecha(hoy) ? lunesDe(hoy) : null;
+  const usadas = conDatos(semanas).filter((s) => (!lunesHoy || s.semana < lunesHoy) && meta && meta[sumarDias(s.semana, -7)] != null).slice(0, n);
   const suma = (f) => usadas.reduce((t, s) => t + f(s), 0);
   return {
     usadas,
@@ -243,11 +245,11 @@ function cruce(semanas, meta, n) {
  * Devuelve `{ tasa, ventas, conversaciones, semanas, suficiente, aviso, motivo }`: `tasa` es null sin conversaciones;
  * `suficiente` dice si ya puede sustituir a la de por defecto (2 semanas y 20 conversaciones como mínimo). Pura.
  */
-export function tasaDeCierreMedida(semanas, meta, { n = SEMANAS_TASA } = {}) {
+export function tasaDeCierreMedida(semanas, meta, { n = SEMANAS_TASA, hoy = null, porDefecto = TASA_POR_DEFECTO } = {}) {
   if (!meta || typeof meta !== "object") {
     return { tasa: null, ventas: 0, conversaciones: 0, semanas: [], suficiente: false, aviso: "", motivo: "Sin la cuenta publicitaria no se sabe cuántas conversaciones empezaron los anuncios." };
   }
-  const c = cruce(semanas, meta, n);
+  const c = cruce(semanas, meta, n, hoy);
   const base = { ventas: c.ventas, conversaciones: c.conversaciones, semanas: c.usadas.map((s) => s.semana) };
   if (!c.usadas.length) return { ...base, tasa: null, suficiente: false, aviso: "", motivo: "El cliente todavía no ha apuntado ninguna semana." };
   if (c.conversaciones <= 0) return { ...base, tasa: null, suficiente: false, aviso: "", motivo: "Los anuncios no empezaron conversaciones en esas semanas." };
@@ -261,7 +263,7 @@ export function tasaDeCierreMedida(semanas, meta, { n = SEMANAS_TASA } = {}) {
     aviso: bruta > TASA_SOSPECHOSA
       ? "Cierran más de la mitad de las conversaciones: puede que se estén contando ventas que no vinieron de los anuncios. Pídele al cliente que apunte cuántas vinieron de ellos."
       : "",
-    motivo: suficiente ? "" : `Con pocos datos todavía (${c.usadas.length} ${c.usadas.length === 1 ? "semana" : "semanas"}, ${c.conversaciones} conversaciones): se sigue usando el ${pct(TASA_POR_DEFECTO)}.`,
+    motivo: suficiente ? "" : `Con pocos datos todavía (${c.usadas.length} ${c.usadas.length === 1 ? "semana" : "semanas"} cerradas, ${c.conversaciones} conversaciones): se sigue usando el ${pct(porDefecto)}.`,
   };
 }
 
@@ -274,9 +276,9 @@ export const tasaParaUsar = (medida, porDefecto = TASA_POR_DEFECTO) =>
  * semanas que la tasa y con la pauta de la semana anterior a cada una. La pauta es la de toda la cuenta (lo que el
  * cliente paga en anuncios). null donde falta con qué dividir. Pura.
  */
-export function roasReal(semanas, meta, { n = SEMANAS_TASA } = {}) {
+export function roasReal(semanas, meta, { n = SEMANAS_TASA, hoy = null } = {}) {
   if (!meta || typeof meta !== "object") return { roas: null, costoPorVenta: null, gasto: 0, monto: 0, ventas: 0, otrosCanales: 0, semanas: [] };
-  const c = cruce(semanas, meta, n);
+  const c = cruce(semanas, meta, n, hoy);
   return {
     roas: c.gasto > 0 && c.usadas.length ? c.monto / c.gasto : null,
     costoPorVenta: c.ventas > 0 && c.gasto > 0 ? c.gasto / c.ventas : null,
@@ -307,11 +309,29 @@ export function textoSinMedir(s) {
   return `Sin medir desde el ${dia(s.desde)} de ${mes(s.desde)}${anio(s.desde) !== anio(s.ultima) ? ` de ${anio(s.desde)}` : ""} (${s.semanas === 1 ? "falta 1 semana" : `faltan ${s.semanas} semanas`}).`;
 }
 
-/** Todo junto, para la pantalla de la agencia y el informe: tasa, ROAS, costo por venta y si está al día. Pura. */
-export function resumenVentas(semanas, meta, { hoy } = {}) {
-  const tasa = tasaDeCierreMedida(semanas, meta);
-  const r = roasReal(semanas, meta);
-  return { tasa, tasaUsada: tasaParaUsar(tasa), ...r, sinMedir: sinMedirDesde(semanas, hoy) };
+/**
+ * El ROAS real de WhatsApp FRENTE al ROAS de equilibrio del cliente (decisión 13: compararlos, no sólo enseñar el
+ * real). `roasEquilibrio`: el de `numeroMagicoDelCliente`. → { gana, texto } o null si falta uno de los dos. Pura.
+ */
+export function roasFrenteAlEquilibrio(roas, roasEquilibrio) {
+  const r = Number(roas);
+  const e = Number(roasEquilibrio);
+  if (!(r > 0) || !(e > 0)) return null;
+  const v = (x) => `${(Math.round(x * 10) / 10).toFixed(1).replace(".", ",")}×`;
+  return r >= e
+    ? { gana: true, texto: `Por cada 1 $ en anuncios se vendieron ${v(r)}: por encima del equilibrio (${v(e)}), así que la pauta deja dinero.` }
+    : { gana: false, texto: `Por cada 1 $ en anuncios se vendieron ${v(r)}: por debajo del equilibrio (${v(e)}), así que la pauta pierde dinero. Hay que bajar el costo por conversación o cerrar más ventas.` };
+}
+
+/**
+ * Todo junto, para la pantalla de la agencia y el informe: tasa (sólo semanas cerradas), ROAS, costo por venta, si está
+ * al día y el ROAS frente al de equilibrio. `porDefecto`: la tasa del cliente mientras no se mida (la de sus números
+ * del negocio o la del Manual), en fracción; `roasEquilibrio`: el del número mágico del cliente. Pura.
+ */
+export function resumenVentas(semanas, meta, { hoy, porDefecto = TASA_POR_DEFECTO, roasEquilibrio = null } = {}) {
+  const tasa = tasaDeCierreMedida(semanas, meta, { hoy, porDefecto });
+  const r = roasReal(semanas, meta, { hoy });
+  return { tasa, tasaUsada: tasaParaUsar(tasa, porDefecto), porDefecto, ...r, frenteAlEquilibrio: roasFrenteAlEquilibrio(r.roas, roasEquilibrio), sinMedir: sinMedirDesde(semanas, hoy) };
 }
 
 // ------------------------------------------------------------
