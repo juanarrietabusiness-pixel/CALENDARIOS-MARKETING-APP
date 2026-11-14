@@ -13,13 +13,18 @@ export const DESEOS_REISS = Object.freeze([
   "Actividad física", "Poder", "Romance", "Ahorro", "Contacto social", "Estatus social", "Tranquilidad", "Competencia",
 ]);
 
-/** Los cinco niveles de consciencia (Eugene Schwartz). Los dos primeros se tocan por el dolor; los demás, por la ganancia. */
+/**
+ * Los cinco niveles de consciencia (Eugene Schwartz). Los dos primeros se tocan por el dolor; los demás, por la ganancia.
+ * «Decisión» es quien ya lo sabe todo y YA COMPRÓ (curso de campañas, decisión de la agencia del 14-nov): se le habla
+ * con productos nuevos o reactivándolo con servicios o promociones especiales. El empujón final de quien aún no compró
+ * es la etapa Conversión, escrita en el nivel «producto» (por qué comprarme a mí).
+ */
 export const NIVELES_CONSCIENCIA = Object.freeze([
   { clave: "inconsciente", nombre: "Inconsciente", ayuda: "No sabe que tiene el problema", angulo: "dolor" },
   { clave: "problema", nombre: "Consciente del problema", ayuda: "Sabe que algo va mal, no conoce soluciones", angulo: "dolor" },
   { clave: "solucion", nombre: "Consciente de la solución", ayuda: "Busca soluciones, no conoce tu producto", angulo: "ganancia" },
   { clave: "producto", nombre: "Consciente del producto", ayuda: "Conoce tu producto, no está convencido", angulo: "ganancia" },
-  { clave: "decision", nombre: "Listo para comprar", ayuda: "Sólo necesita el empujón final", angulo: "ganancia" },
+  { clave: "decision", nombre: "Decisión (ya compró)", ayuda: "Ya te compró y lo sabe todo: productos nuevos, servicios o promociones especiales para que vuelva", angulo: "ganancia" },
 ]);
 
 export const CLAVES_NIVEL = NIVELES_CONSCIENCIA.map((n) => n.clave);

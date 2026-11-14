@@ -183,7 +183,8 @@ export const EDAD_MIN = 18;
 export const EDAD_MAX = 65;
 /** Con categoría especial, Meta no deja radios de ciudad por debajo de 15 millas. */
 export const RADIO_MIN_ESPECIAL_KM = 25;
-export const MAX_TEXTO = 2000;
+/** El tope del texto principal: el MISMO de LIMITES_ANUNCIO (lib/estudioMercado.js) y de lib/pauta.js (un test lo vigila). */
+export const MAX_TEXTO = 600;
 export const MAX_TITULO = 255;
 
 /** Días entre dos fechas YYYY-MM-DD, contando las dos. */

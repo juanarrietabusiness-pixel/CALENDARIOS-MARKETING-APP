@@ -26,7 +26,20 @@ import { semanaDelMes } from "../../lib/semanas";
 import { mediosDe } from "../../lib/publicacion";
 import { costoDeReels, lanzarReelDelMes, reelsLanzados, apuntarReels } from "../../lib/asistenteMesApi";
 import { TimePicker } from "./primitivas";
-import { sugerirPauta, conPautas, vaAPauta, describirPauta } from "../../lib/pauta";
+import { sugerirPauta, conPautas, vaAPauta, describirPauta, avisoCuentaNueva } from "../../lib/pauta";
+import { leerNegocio } from "../../lib/negocioApi";
+
+/** Si la cuenta publicitaria del cliente es NUEVA (números del negocio): sólo corre Presentación y Evaluación. */
+function useCuentaDelCliente(clientId) {
+  const [cuenta, setCuenta] = useState("");
+  useEffect(() => {
+    let vivo = true;
+    if (!clientId) return undefined;
+    leerNegocio(clientId, { meta: false }).then((r) => { if (vivo) setCuenta(r?.negocio?.cuenta ?? ""); }).catch(() => {});
+    return () => { vivo = false; };
+  }, [clientId]);
+  return cuenta;
+}
 import { nombreEtapaCiclo } from "../../lib/cicloVentas";
 import "./RevisionMes.css";
 import "./AsistenteMes.css";
@@ -256,6 +269,7 @@ function PasoEstrategiaMes({ client, cal, onGuardar }) {
 const ORDEN_DIAS = [1, 2, 3, 4, 5, 6, 0];
 
 function PasoPlan({ client, cal, onGuardarPlan, onPoner, onPlanificarAMano, onProducirEnLote, onSeguir }) {
+  const cuenta = useCuentaDelCliente(client.dbId || client.id);
   const ids = useId();
   const [lista, setLista] = useState(null);
   const [editando, setEditando] = useState(false);
@@ -302,11 +316,14 @@ function PasoPlan({ client, cal, onGuardarPlan, onPoner, onPlanificarAMano, onPr
       .map(({ clave, ...m }) => [clave, Object.fromEntries(CAMPOS_MATRIZ.map((k) => [k, m[k] ?? ""]))]));
   };
   const matriz = mercado === undefined ? new Map() : calcularMatriz();
-  // Las que van a pauta solas (decisión 9): las del tipo «Anuncio» del plan y las de la oferta del mes, con su etapa.
-  const enPauta = new Map(sugerirPauta(
+  // Las que van a pauta solas (decisión 9): las del tipo «Anuncio» del plan, las de la oferta del mes y algunas frías
+  // para Presentación, con su etapa (en una cuenta nueva, lo de conversión va a evaluación y se avisa).
+  const sugeridas = sugerirPauta(
     casillas.map((c) => ({ id: c.clave, post: { format: c.format, pilar: c.pilar, nivel: matriz.get(c.clave)?.nivel ?? "" } })),
-    { ofertas: cal.offers, codigo: cal.promoCode },
-  ).map((x) => [x.id, x]));
+    { ofertas: cal.offers, codigo: cal.promoCode, cuenta },
+  );
+  const enPauta = new Map(sugeridas.map((x) => [x.id, x]));
+  const avisoNueva = avisoCuentaNueva(sugeridas);
   const vanAPauta = [...enPauta.keys()].filter((k) => !sinPauta.has(k)).length;
   const poner = () => {
     onPoner(
@@ -399,9 +416,11 @@ function PasoPlan({ client, cal, onGuardarPlan, onPoner, onPlanificarAMano, onPr
             <strong>{vanAPauta} {vanAPauta === 1 ? "publicación va" : "publicaciones van"} a pauta: se escribirán como anuncio.</strong>
           </p>
           <p className="hint" style={{ margin: 0 }}>
-            Las del tipo «Anuncio» y las de la oferta del mes. En el Ads Manager el texto de una publicación ya no se cambia: su caption
-            nace escrito como anuncio y lleva, aparte, sus textos para subir la pieza. Quita las que no se van a pautar.
+            Las del tipo «Anuncio», las de la oferta del mes y algunas para quien aún no conoce la marca (Presentación). En el Ads
+            Manager el texto de una publicación ya no se cambia: su caption nace escrito como anuncio y lleva, aparte, sus textos para
+            subir la pieza. Quita las que no se van a pautar.
           </p>
+          {avisoNueva && <p className="hint" role="status" style={{ margin: 0 }}>{avisoNueva}</p>}
           {casillas.filter((c) => enPauta.has(c.clave)).map((c) => {
             const x = enPauta.get(c.clave);
             return (
@@ -510,7 +529,7 @@ function PasoIdeas({ client, cal, escribir, onCompletarTextos, completando, esta
   return (
     <div className="asistente-mes-paso">
       {/* Lo que va a pauta, ANTES de escribir las ideas: así salen escritas como anuncio. */}
-      <BloquePauta cal={cal} escribir={escribir} />
+      <BloquePauta cal={cal} escribir={escribir} clientId={clienteId} />
       {sinIdea.length > 0 && (
         <section className="notice asistente-mes-bloque" style={{ display: "block" }}>
           <p style={{ margin: 0 }}><strong>{sinIdea.length} {sinIdea.length === 1 ? "publicación del plan sin idea" : "publicaciones del plan sin idea"}.</strong></p>
@@ -549,11 +568,13 @@ function PasoIdeas({ client, cal, escribir, onCompletarTextos, completando, esta
  * y las de la oferta del mes) con su casilla: NUNCA se marcan solas sin que se vean. Escribe por `escribir`, sobre el
  * calendario más nuevo.
  */
-function BloquePauta({ cal, escribir }) {
+function BloquePauta({ cal, escribir, clientId }) {
   const ids = useId();
+  const cuenta = useCuentaDelCliente(clientId);
   const todas = (cal.days ?? []).flatMap((d) => (d.posts ?? []).map((post) => ({ date: d.date, post })));
   const marcadas = todas.filter(({ post }) => vaAPauta(post));
-  const propuestas = sugerirPauta(todas.map(({ post }) => ({ id: post.id, post })), { ofertas: cal.offers, codigo: cal.promoCode });
+  const propuestas = sugerirPauta(todas.map(({ post }) => ({ id: post.id, post })), { ofertas: cal.offers, codigo: cal.promoCode, cuenta });
+  const avisoNueva = avisoCuentaNueva(propuestas);
   const [fuera, setFuera] = useState(() => new Set());
   const fecha = (id) => todas.find((x) => x.post.id === id)?.date ?? "";
   const titulo = (post) => String(post.title || post.idea || nombreDePilar(post.pilar) || "").slice(0, 60);
@@ -586,7 +607,8 @@ function BloquePauta({ cal, escribir }) {
       {propuestas.length > 0 && (
         <fieldset className="asistente-mes-bloque" style={{ border: "none", padding: 0 }}>
           <legend className="label">Podrían ir a pauta ({propuestas.length})</legend>
-          <p className="hint" style={{ margin: 0 }}>Las del tipo «Anuncio» y las de la oferta del mes que aún no están marcadas. Nada se marca sin que lo confirmes.</p>
+          <p className="hint" style={{ margin: 0 }}>Las del tipo «Anuncio», las de la oferta del mes y algunas frías para Presentación que aún no están marcadas. Nada se marca sin que lo confirmes.</p>
+          {avisoNueva && <p className="hint" role="status" style={{ margin: 0 }}>{avisoNueva}</p>}
           {propuestas.map((x) => {
             const post = todas.find((t) => t.post.id === x.id)?.post ?? {};
             return (

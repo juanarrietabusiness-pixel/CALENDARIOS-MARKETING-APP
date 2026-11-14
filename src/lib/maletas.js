@@ -48,10 +48,36 @@ const RELLENO = [
 const VACIAS = new Set(["para", "como", "pero", "porque", "sobre", "entre", "desde", "hasta", "este", "esta", "estos", "estas", "todo", "toda",
   "todos", "todas", "cada", "otro", "otra", "más", "mas", "muy", "también", "tambien", "nuestro", "nuestra", "nuestros", "nuestras", "ofrecemos",
   "tenemos", "brindamos", "contamos", "siempre", "donde", "cuando", "producto", "productos", "servicio", "servicios", "cliente", "clientes", "marca"]);
-// Lo que dice, con todas sus letras, que la maleta no está. Sólo en un texto corto: «No hay quien lave muebles a
-// domicilio en la ciudad…» es un problema bien escrito, no una maleta vacía.
-const DICE_QUE_NO = /^\s*(no (hay|tiene|tenemos|ofrece|ofrecen|existe|se sabe)\b|sin (testimonios|garant[ií]as?|datos|informaci[oó]n)\b|ningun[oa]?\s*[.!]?\s*$|pendiente\b|por (definir|confirmar)\b|faltan? (confirmar|definir|pedir|el dato|datos|informaci)|n\/?a\s*$|[-—…?.]+\s*$)/i;
-const CORTO_PARA_NEGAR = 12;
+// Lo que dice, con todas sus letras, que la maleta no está. Antes sólo al PRINCIPIO de un texto de menos de 12
+// palabras: «En lo que sabemos no aparecen testimonios; hay que pedírselos al cliente» salía en VERDE (hallazgo 3 del
+// 14-nov). Ahora en cualquier parte de un texto de hasta `LARGO_PARA_NEGAR` palabras, sin lo que sólo lo parece:
+// «No hay quien lave muebles a domicilio» es un problema bien escrito y «no hay otro igual», un diferencial.
+const DICE_QUE_NO = new RegExp([
+  // «no tenemos garantía», «no hay testimonios»: la negación con LO QUE FALTA (no «el cliente no tiene tiempo», que es
+  // un problema bien escrito, ni «no hay otro igual», que es un diferencial).
+  "(?:^|[^a-z])(?:no|todavia no|aun no|tampoco) (?:hay|tiene|tienen|tenemos|contamos con|cuenta con|cuentan con|ofrece|ofrecen|existe|existen|dio|dieron|ha dado|han dado|aparece|aparecen|se mencionan?|figuran?)(?: (?:ningun[oa]?|un[oa]?s?|el|la|los|las|sus|nuestros?|nuestras?|tal|tales))? (?:testimonios?|garantias?|datos|informacion|casos|resenas|respuestas?|politicas?|comentarios|opiniones|pruebas)\\b",
+  // «no aparecen», «no se sabe», «no se menciona»: falta de información, diga lo que diga después.
+  "(?:^|[^a-z])no (?:aparecen?|se sabe|sabemos|se mencionan?|figuran?|se encontr[oa]|encontramos|lo sabemos|esta claro)\\b",
+  // «No hay.», «No tenemos.» sueltos.
+  "^\\s*(?:no|todavia no|aun no) (?:hay|tiene|tienen|tenemos|existe|existen)\\s*[.!]?\\s*$",
+  "\\bsin (?:testimonios?|garantias?|datos|informacion|casos|resenas|respuesta|confirmar|definir)\\b",
+  "\\bhay que (?:pedir|pedirse|pedirsel|pedirle|preguntar|confirmar|conseguir|averiguar|definir)",
+  "\\bpedirsel[oa]s?\\b",
+  "\\bfaltan? (?:el |la |los |las )?(?:dato|datos|informacion|confirmar|definir|pedir|pedirlos|testimonios?|garantias?|casos|respuestas?)\\b",
+  "\\[\\s*completar",
+  "\\bpendientes? (?:de|por)\\b",
+  "^\\s*pendiente\\b",
+  "\\bpor (?:definir|confirmar|completar|pedir)\\b",
+  "\\b(?:no especificad[oa]s?|sin especificar|no disponibles?|desconocid[oa]s?)\\b",
+  "^\\s*(?:ningun[oa]?|nada|n\\/?a)\\s*[.!]?\\s*$",
+  "^\\s*[-—…?.]+\\s*$",
+].join("|"));
+const LARGO_PARA_NEGAR = 60;
+/** ¿El texto dice que la maleta todavía no está? (sin tildes, en minúsculas). Pura. */
+export function diceQueNo(texto) {
+  const t = String(texto ?? "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  return DICE_QUE_NO.test(t);
+}
 
 const palabras = (t) => String(t ?? "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").match(/[a-zñ0-9]+/g) ?? [];
 
@@ -70,11 +96,17 @@ export function estadoDeMaleta(clave, texto, { objeciones = [] } = {}) {
   const el = ELEMENTOS_MERCADO.find((e) => e.clave === clave);
   const base = { clave, titulo: el?.titulo ?? clave, arreglo: ARREGLO[clave] ?? "", delCliente: Boolean(el?.delCliente) };
   const t = String(texto ?? "").trim();
-  const respondidas = (Array.isArray(objeciones) ? objeciones : []).filter((o) => o?.objecion && o?.respuesta).length;
+  const lista = (Array.isArray(objeciones) ? objeciones : []).filter((o) => o?.objecion);
+  const respondidas = lista.filter((o) => String(o?.respuesta ?? "").trim() && !diceQueNo(o.respuesta)).length;
+  const sinRespuesta = lista.length - respondidas;
+  // Una objeción sin su respuesta no sirve para el anuncio: ámbar, aunque haya otras respondidas.
+  if (clave === "objeciones" && sinRespuesta > 0 && (respondidas > 0 || !t)) {
+    return { ...base, estado: "ambar", motivo: `${sinRespuesta === 1 ? "Una objeción no tiene" : `${sinRespuesta} objeciones no tienen`} su respuesta.`, arreglo: "Escribe cómo se responde cada objeción: una objeción sin respuesta no sirve para el anuncio." };
+  }
   if (clave === "objeciones" && respondidas >= 2) return { ...base, estado: "verde", motivo: `${respondidas} objeciones con su respuesta.`, arreglo: "" };
   if (!t) return { ...base, estado: "rojo", motivo: "Vacía." };
   const n = palabras(t).length;
-  if (n < CORTO_PARA_NEGAR && DICE_QUE_NO.test(t)) return { ...base, estado: "rojo", motivo: "Dice que todavía no hay." };
+  if (n <= LARGO_PARA_NEGAR && diceQueNo(t)) return { ...base, estado: "rojo", motivo: "Dice que todavía no hay." };
   if (n < MIN_PALABRAS_MALETA) return { ...base, estado: "ambar", motivo: "Muy corta." };
   if (esGenerico(t)) return { ...base, estado: "ambar", motivo: "Muy general: no dice nada que la distinga." };
   return { ...base, estado: "verde", motivo: "Escrita y concreta.", arreglo: "" };
