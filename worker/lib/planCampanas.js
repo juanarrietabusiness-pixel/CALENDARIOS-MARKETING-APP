@@ -52,6 +52,7 @@ import { limpiarAnuncio, limpiarPauta, vaAPauta, bloqueDeAnuncio } from "../../s
 import { productosActivos, lineaDeProducto } from "../../src/lib/estudioMercado.js";
 import { textoDelCliente } from "../../src/lib/loteAnuncios.js";
 import { tipoArteDe, limpiarTiposArte } from "../../src/lib/tiposArte.js";
+import { numeroMagicoDelCliente } from "../../src/lib/numerosNegocio.js";
 
 const leerJSON = (t, d) => {
   if (t && typeof t === "object") return t;
@@ -159,13 +160,16 @@ async function armarCiclo(env, acceso, cliente, mes, { cuenta = null } = {}) {
   const plan = conPiezas(base, candidatas, { ofertas: delMes?.offers ?? "", codigo: delMes?.promoCode ?? "", hoy, aprendido, funcionaron, elegidos: guardado.anuncios });
   const guia = guiaDeMontaje(plan);
   const progreso = limpiarProgreso(guardado.progreso, guia);
-  return { plan, guardado: { ...guardado, progreso }, avance: avanceDeGuia(guia, progreso), candidatas, mercado };
+  // EL número mágico del cliente (lib/numerosNegocio.js): la MISMA cifra de la ficha, la revisión, el aviso diario y el
+  // estratega, para todas las etapas del plan (decisión del 14-nov).
+  const numeroMagico = numeroMagicoDelCliente(negocio, { tasaDefecto: manual.tasaCierre, nombre: cliente.name ?? "", moneda: cuenta?.moneda || "USD" });
+  return { plan, guardado: { ...guardado, progreso }, avance: avanceDeGuia(guia, progreso), candidatas, mercado, numeroMagico };
 }
 
-/** El plan del cliente para un mes, con sus piezas y lo guardado. → { plan, guardado, avance } */
+/** El plan del cliente para un mes, con sus piezas y lo guardado. → { plan, guardado, avance, numeroMagico } */
 export async function cicloDelCliente(env, acceso, cliente, mes, opciones = {}) {
-  const { plan, guardado, avance } = await armarCiclo(env, acceso, cliente, mes, opciones);
-  return { plan, guardado, avance };
+  const { plan, guardado, avance, numeroMagico } = await armarCiclo(env, acceso, cliente, mes, opciones);
+  return { plan, guardado, avance, numeroMagico };
 }
 
 /**

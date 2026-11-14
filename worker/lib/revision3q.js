@@ -45,7 +45,7 @@ import { creativoDe } from "../../src/lib/enPauta.js";
 import { fechaEnZona, sumarDias, diasEntre } from "../../src/lib/agenda.js";
 import { deMenores } from "../../src/lib/anuncios.js";
 import { limpiarManual } from "../../src/lib/estratega.js";
-import { limpiarNegocio, numeroMagico, costoAceptable, conLecturaMeta } from "../../src/lib/numerosNegocio.js";
+import { limpiarNegocio, numeroMagicoDelCliente } from "../../src/lib/numerosNegocio.js";
 import {
   revisar, q1DeCuenta, alertasGraves, comoDiagnostico, pedidoRevisionIA, limpiarEtapas, etapaDeNombre, rankingsDe,
   sumarFilas, cifras3q, agenciaDelInforme, VENTANAS, PRESET_VENTANA, ETAPAS_REVISION, DIAS_PARA_REVISAR,
@@ -76,33 +76,32 @@ async function manualDe(acceso) {
   return limpiarManual(leerJSON(fila?.manual_campanas, {}));
 }
 
+/** Lo que la revisión necesita de UN número mágico (`numeroMagicoDelCliente`), sin las frases. */
+const corto = (m) => ({ valor: m.valor, objetivo: m.objetivo, equilibrio: m.equilibrio, roasObjetivo: m.roasObjetivo, roasEquilibrio: m.roasEquilibrio, falta: m.falta });
+
 /**
- * El número mágico del cliente como lo usa la revisión: el de conversación y el de compra, cada uno con su objetivo y
- * su equilibrio (los mismos de Marca → Números del negocio). `gasto`: lo gastado en 30 días, que hace de presupuesto
- * del mes si nadie lo escribió (como la ficha). Pura salvo la lectura.
+ * El número mágico del cliente como lo usa la revisión: el de cada TIPO de campaña (conversación, cliente potencial,
+ * compra, clic único), todos de `numeroMagicoDelCliente` (lib/numerosNegocio.js), la MISMA función de la ficha, el
+ * plan, el estratega y el aviso diario. `gasto`: lo gastado en 30 días, que sólo se ENSEÑA de referencia (decisión del
+ * 14-nov: el presupuesto es el escrito o la inversión de la meta). `lectura`: el % de mensajes de la cuenta, para el
+ * número de tráfico. `nombre` y `moneda`, para las frases. Pura.
  */
-export function numerosDe(negocioGuardado, { tasaDefecto, gasto = 0 } = {}) {
-  const negocio = conLecturaMeta(limpiarNegocio(negocioGuardado), gasto > 0 ? { gasto } : null);
-  const m = numeroMagico(negocio, { objetivoCampana: "mensajes", tasaDefecto });
-  const v = numeroMagico(negocio, { objetivoCampana: "ventas", tasaDefecto });
-  const aceptable = costoAceptable(negocio, { tasaDefecto });
-  const web = negocio.destino === "web";
+export function numerosDe(negocioGuardado, { tasaDefecto, gasto = 0, lectura = null, nombre = "", moneda = "USD" } = {}) {
+  const negocio = limpiarNegocio(negocioGuardado);
+  const op = { tasaDefecto, gastoMeta30: gasto > 0 ? gasto : null, nombre, moneda, lectura };
+  const principal = numeroMagicoDelCliente(negocio, op);
+  const conversacion = numeroMagicoDelCliente(negocio, { ...op, objetivoCampana: "mensajes" });
+  const cliente = numeroMagicoDelCliente(negocio, { ...op, objetivoCampana: "clientes" });
+  const compra = numeroMagicoDelCliente(negocio, { ...op, objetivoCampana: "ventas" });
+  const clic = numeroMagicoDelCliente(negocio, { ...op, objetivoCampana: "trafico" });
   return {
     destino: negocio.destino,
-    numeros: {
-      conversacion: { objetivo: m.objetivo, equilibrio: m.equilibrio },
-      compra: { objetivo: v.alterna?.objetivo ?? null, equilibrio: v.alterna?.equilibrio ?? null, roasObjetivo: v.objetivo, roasEquilibrio: v.equilibrio },
-    },
+    numeros: { conversacion: corto(conversacion), cliente: corto(cliente), compra: corto(compra), clic: corto(clic) },
+    // EL número del cliente (el de su destino), con todo lo que la pantalla explica.
     numero: {
-      destino: negocio.destino,
-      metrica: web ? "Costo por compra" : "Costo por conversación",
-      objetivo: web ? v.alterna?.objetivo ?? null : m.objetivo,
-      equilibrio: web ? v.alterna?.equilibrio ?? null : m.equilibrio,
-      tasaCierre: m.tasaCierre,
-      faltan: m.faltan,
-      alarma: web ? v.alarma : m.alarma,
-      textoAlarma: web ? v.textoAlarma : m.textoAlarma,
-      aceptable,
+      ...principal,
+      metrica: principal.nombreMetrica,
+      aceptable: principal.valor > 0 ? { valor: principal.valor, metrica: principal.nombreMetrica, de: principal.limitadoPor } : null,
     },
   };
 }
@@ -123,7 +122,8 @@ export const CAMPOS_NUEVOS_3Q = Object.freeze([
   "video_avg_time_watched_actions", "video_thruplay_watched_actions",
 ]);
 const RANKINGS = ["quality_ranking", "engagement_rate_ranking", "conversion_rate_ranking"];
-const IDS = { campaign: ["campaign_id"], adset: ["campaign_id", "adset_id"], ad: ["campaign_id", "adset_id", "ad_id"] };
+// La campaña con su objetivo: el costo «real» de la cuenta sale sólo de las que buscan conversaciones (o compras).
+const IDS = { campaign: ["campaign_id", "objective"], adset: ["campaign_id", "adset_id"], ad: ["campaign_id", "adset_id", "ad_id"] };
 const ESCALERA = { campaign: [CAMPOS_NUEVOS_3Q, []], adset: [CAMPOS_NUEVOS_3Q, []], ad: [[...CAMPOS_NUEVOS_3Q, ...RANKINGS], CAMPOS_NUEVOS_3Q, []] };
 
 const rechazoDeCampo = (e) => e instanceof ErrorMeta && e.codigo === 100;
@@ -257,8 +257,10 @@ export async function revisionDelCliente(env, acceso, clientId, { marcar = false
     filaDelCliente(acceso, cliente.id), manualDe(acceso), cambiosDesdeLaApp(acceso, cliente.id, hoy), leerCuenta(env, token, cuenta),
   ]);
   const etapas = limpiarEtapas(leerJSON(fila?.etapas, {}));
-  const gasto30 = cifras3q(sumarFilas(meta.filas.campaign[30]))?.gasto ?? 0;
-  const { destino, numeros, numero } = numerosDe(leerJSON(fila?.negocio, {}), { tasaDefecto: manual.tasaCierre, gasto: gasto30 });
+  const total30 = cifras3q(sumarFilas(meta.filas.campaign[30]));
+  const { destino, numeros, numero } = numerosDe(leerJSON(fila?.negocio, {}), {
+    tasaDefecto: manual.tasaCierre, gasto: total30?.gasto ?? 0, lectura: { pctMensajes: total30?.pctMensajes ?? null }, nombre: cliente.name ?? "", moneda: cuenta.moneda,
+  });
   const escrito = Number(costoMax) > 0 ? Number(costoMax) : 0;
   const r = revisar(campanasParaRevisar(meta, cuenta, etapas), {
     numeros, umbrales: manual.umbrales3q, moneda: cuenta.moneda, hoy, cambios, cuenta: cuenta.externo_id, destino, costoMax: escrito,
@@ -282,7 +284,8 @@ export async function revisionDelCliente(env, acceso, clientId, { marcar = false
     avisoCreativo: meta.creativo === "sin-dato" ? "Meta no dijo qué publicación usa cada anuncio: «En pauta» sigue con lo de la última lectura." : "",
     // Lo de antes (el diagnóstico): lo aceptable y de dónde salió.
     costoMax: escrito || numero.aceptable?.valor || 0,
-    origenCosto: escrito ? "escrito" : numero.aceptable ? "numero-magico" : "promedio",
+    // Sin número mágico ya no se compara con el promedio del mes («promedio» queda por las pantallas de antes).
+    origenCosto: escrito ? "escrito" : numero.aceptable ? "numero-magico" : "sin-numero",
     explicacion: "",
     avisoIA: null,
   };
@@ -300,7 +303,7 @@ export async function revisionDelCliente(env, acceso, clientId, { marcar = false
   try {
     pauta = await ponerAlDia(acceso, cliente.id, {
       anuncios: anunciosDeRevision(salida), previo: fila?.en_pauta, creativo: meta.creativo, cuenta: cuenta.externo_id, moneda: cuenta.moneda,
-      referencia: numero.objetivo ?? numero.equilibrio ?? null, hoy,
+      referencia: numero.valor ?? null, hoy,
     });
     conPublicaciones(salida, pauta.porAnuncio);
   } catch (e) {
@@ -330,11 +333,12 @@ export async function pendientesDeRevisar(acceso, { hoy = fechaEnZona(new Date()
  * Lo que ve SÓLO la agencia en el informe de anuncios de un mes: el % de mensajes, el CTR único y el número mágico
  * frente al costo real (src/lib/tresQ.js, `agenciaDelInforme`). `total`: la fila del mes de la cuenta. null sin ella.
  */
-export async function agenciaDelMes(acceso, clientId, total) {
+export async function agenciaDelMes(acceso, clientId, total, { campanas = null } = {}) {
   if (!total) return null;
   const [fila, manual] = await Promise.all([filaDelCliente(acceso, clientId), manualDe(acceso)]);
   const { destino, numeros } = numerosDe(leerJSON(fila?.negocio, {}), { tasaDefecto: manual.tasaCierre, gasto: Number(total.spend) || 0 });
-  return agenciaDelInforme(total, { numeros, destino, umbrales: manual.umbrales3q });
+  // El costo real sólo de las campañas de mensajes (o de ventas en la web), si llegan las del mes.
+  return agenciaDelInforme(total, { numeros, destino, umbrales: manual.umbrales3q, campanas });
 }
 
 // ------------------------------------------------------------
@@ -426,7 +430,8 @@ export async function alertasDelCliente(env, acceso, clientId, { hoy = fechaEnZo
       manualDe(acceso),
       Promise.allSettled([deAnuncios("last_7d"), deAnuncios("last_30d")]),
     ]);
-    const { destino, numero } = numerosDe(leerJSON(fila?.negocio, {}), { tasaDefecto: manual.tasaCierre });
+    // El MISMO número mágico de la revisión y la ficha (sin ajuste por etapa: decisión del 14-nov).
+    const { destino, numero, numeros } = numerosDe(leerJSON(fila?.negocio, {}), { tasaDefecto: manual.tasaCierre, nombre: cliente.name ?? "", moneda: cuenta.moneda });
     let pauta = null;
     if (de7.status === "fulfilled" && de30.status === "fulfilled") {
       try {
@@ -434,7 +439,7 @@ export async function alertasDelCliente(env, acceso, clientId, { hoy = fechaEnZo
           campanas: campanas?.data ?? [], anuncios, filas7: de7.value?.data ?? [], filas30: de30.value?.data ?? [],
           etapas: limpiarEtapas(leerJSON(fila?.etapas, {})), destino, cuenta: act,
         });
-        pauta = await ponerAlDia(acceso, clientId, { anuncios: lista, previo: fila?.en_pauta, creativo, cuenta: act, moneda: cuenta.moneda, referencia: numero.objetivo ?? numero.equilibrio ?? null, hoy });
+        pauta = await ponerAlDia(acceso, clientId, { anuncios: lista, previo: fila?.en_pauta, creativo, cuenta: act, moneda: cuenta.moneda, referencia: numero.valor ?? null, hoy });
       } catch (e) {
         console.error("revisión 3Q, cron: qué publicación es cada anuncio", clientId, e);
       }
@@ -443,7 +448,7 @@ export async function alertasDelCliente(env, acceso, clientId, { hoy = fechaEnZo
       campanas: (campanas?.data ?? []).map((c) => ({ ...c, ayer: c.insights?.data?.[0]?.spend ?? 0 })),
       anuncios,
       semana: semana?.data ?? [],
-      numero: numero.objetivo ?? numero.equilibrio ?? 0,
+      numero: numero.valor ?? 0, numeros,
       destino, hoy, nombre: cliente.name ?? "", moneda: cuenta.moneda, umbrales: manual.umbrales3q,
     });
     // Lo que ya se avisó la última vez no se repite cada día: sigue en la revisión.

@@ -10,7 +10,7 @@ import {
 } from "../../lib/estratega";
 import { fechaEnZona } from "../../lib/agenda";
 import { leerNegocio } from "../../lib/negocioApi";
-import { equilibrio } from "../../lib/numerosNegocio";
+import { equilibrio, numeroMagicoDelCliente } from "../../lib/numerosNegocio";
 import "./Estratega.css";
 
 // ============================================================
@@ -183,6 +183,9 @@ export default function Estratega({ clients = [], clienteId = "", moneda = "USD"
       const nuevos = {
         margen: r.negocio.costos.length && e.margenEfectivo > 0 ? String(Math.round(e.margenEfectivo * 10) / 10) : "",
         tasaCierre: r.negocio.tasaCierre?.valor > 0 ? String(r.negocio.tasaCierre.valor) : "",
+        // EL número mágico del cliente (el mismo de la ficha y la revisión), por conversación y por compra.
+        magico: numeroMagicoDelCliente(r.negocio, { tasaDefecto: r.tasaDefecto, objetivoCampana: "mensajes" }),
+        magicoWeb: numeroMagicoDelCliente(r.negocio, { tasaDefecto: r.tasaDefecto, objetivoCampana: "ventas" }),
       };
       const antes = numerosAntes.current;
       numerosAntes.current = nuevos;
@@ -213,7 +216,10 @@ export default function Estratega({ clients = [], clienteId = "", moneda = "USD"
   const elegido = activos.find((p) => p.id === productoId) ?? null;
   const productoNombre = para === "cliente" && elegido ? elegido.nombre : otro.nombre;
   const precio = para === "cliente" && elegido ? elegido.precio : otro.precio;
-  const eco = economia({ precio, margen: cifras.margen, margenTipo: cifras.margenTipo, tasaCierre: cifras.tasaCierre || undefined });
+  // Con los números del negocio sin tocar, EL número mágico del cliente; lo tecleado encima manda.
+  const sinTocar = numeros && cifras.margen === numeros.margen && (cifras.tasaCierre || "") === (numeros.tasaCierre || "");
+  const magico = sinTocar ? (destino === "web" ? numeros.magicoWeb : numeros.magico) : null;
+  const eco = economia({ precio, margen: cifras.margen, margenTipo: cifras.margenTipo, tasaCierre: cifras.tasaCierre || undefined, magico: magico?.valor > 0 ? magico : null });
   const ocupado = Boolean(trabajando);
 
   const armar = async ({ conCambio = false } = {}) => {
@@ -374,7 +380,7 @@ export default function Estratega({ clients = [], clienteId = "", moneda = "USD"
           {para === "cliente" && (numeros?.margen || numeros?.tasaCierre) && (
             <p className="hint">{numeros.margen && numeros.tasaCierre ? "El margen (efectivo) y la tasa de cierre salen" : numeros.margen ? "El margen (efectivo) sale" : "La tasa de cierre sale"} de Marca → Números del negocio.</p>
           )}
-          {eco && <p className="hint" role="status">Con esto, cada resultado puede costar como mucho <strong>{DINERO(eco.costoMaxResultado, moneda)}</strong> (para ganar, {DINERO(eco.costoObjetivo, moneda)}).</p>}
+          {eco && <p className="hint" role="status">Con esto, cada resultado puede costar como mucho <strong>{DINERO(eco.costoMaxResultado, moneda)}</strong> (para ganar, {DINERO(eco.costoObjetivo, moneda)}){eco.de ? `, ${eco.de}: el mismo número mágico de la ficha y la revisión` : ""}.</p>}
 
           <div className="est-fila">
             <div className="field">

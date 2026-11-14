@@ -141,10 +141,10 @@ async function sembrar() {
     .run(`${JEFE}:act_111`, JEFE, "act_111", "Café Ads", "USD", "c1");
 }
 
-/** El número mágico de Café Luna: 20 × 25 % × 10 % = 0,50 $ por conversación (objetivo). */
+/** El número mágico de Café Luna: 20 × 35 % × 10 % = 0,70 $ por conversación (objetivo; el equilibrio, 20 × 60 % × 10 % = 1,20). */
 const NUMEROS = {
   tipo: "productos", destino: "whatsapp", cuenta: "historial",
-  ticket: { valor: 20, origen: "cliente" }, invertir: { valor: 25, origen: "agencia" }, metaVentas: { valor: 2000, origen: "agencia" },
+  ticket: { valor: 20, origen: "cliente" }, invertir: { valor: 35, origen: "agencia" }, metaVentas: { valor: 2000, origen: "agencia" },
   tasaCierre: { valor: 10, origen: "cliente" }, itbms: { valor: 0, origen: "cliente" },
   costos: [{ nombre: "Producto", pct: 40, origen: "cliente" }],
 };
@@ -190,15 +190,17 @@ describe("la revisión de un cliente", () => {
     expect(porNivel).toEqual(["ad:last_14d", "ad:last_30d", "ad:last_7d", "adset:last_14d", "adset:last_30d", "adset:last_7d", "campaign:last_14d", "campaign:last_30d", "campaign:last_7d"]);
     expect(llamadas.find((l) => l.params.level === "ad").params.fields).toMatch(/unique_inline_link_clicks.*quality_ranking/);
     expect(d.leidoCon).toBe("completo");
-    // La Q1: el número mágico (objetivo 0,50) frente a lo real de toda la cuenta (también la campaña sin etapa).
-    expect(d.numero).toMatchObject({ metrica: "Costo por conversación", objetivo: 0.5 });
+    // La Q1: el número mágico (0,70: el MISMO de la ficha) frente a lo real de toda la cuenta (también la campaña sin etapa).
+    expect(d.numero).toMatchObject({ metrica: "Costo por conversación", objetivo: 0.7, valor: 0.7, equilibrio: 1.2 });
+    expect(d.numero.explicacion.join(" ")).toMatch(/Si cierras 10 de cada 100 conversaciones/);
     expect(d.q1Cuenta.ventanas[30]).toMatchObject({ gasto: 170, conversaciones: 110 });
-    // Lo encendido: la pausada no entra. La etapa sale del nombre y cambia lo que aguanta (presentación: 0,65).
+    // Lo encendido: la pausada no entra. La etapa sale del nombre y NO cambia el número mágico (decisión del 14-nov).
     expect(d.campanas.map((c) => c.id).sort()).toEqual(["700", "800"]);
     const c = d.campanas.find((x) => x.id === "800");
-    expect(c).toMatchObject({ etapa: "presentacion", etapaDe: "nombre", referencia: { ref: 0.65, de: "numero-magico" } });
+    expect(c).toMatchObject({ etapa: "presentacion", etapaDe: "nombre", referencia: { ref: 0.7, de: "numero-magico" } });
     expect(c.enlace).toBe("https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=111&selected_campaign_ids=800");
-    // El conjunto que va bien (0,80 → no: 20 ÷ 25 = 0,80 > 0,65)… el de 902 sí está fuera: 10 $ por conversación.
+    // El conjunto 901 (0,89 en el mes, 0,80 la semana) está por encima de 0,70: mejorar. El de 902 pierde dinero: 7 $ por
+    // conversación en el mes y 10 la semana, por encima del equilibrio (1,20).
     const [s1, s2] = c.conjuntos;
     expect(s2.veredicto.id).toBe("apagar");
     expect(s2.q2.metricas.find((m) => m.id === "pctMensajes")).toMatchObject({ valor: 3.3, mal: true });
@@ -219,7 +221,8 @@ describe("la revisión de un cliente", () => {
     const c = d.campanas.find((x) => x.id === "800");
     expect(c.conjuntos[1].ventanas[7].pctMensajes).toBeNull();
     // Las reproducciones de 3 s van en `actions`: llegan igual.
-    expect(c.conjuntos[1].ventanas[7].tasa3s).toBe(10);
+    // Contada sólo sobre las impresiones de sus anuncios de VIDEO: el 9021 (300 de 6.000).
+    expect(c.conjuntos[1].ventanas[7].tasa3s).toBe(5);
     // Cada nivel probó UNA vez lo nuevo (el de anuncios, dos escalones: con rankings y sin ellos) y siguió sin ello en
     // las otras ventanas: 9 + 1 + 1 + 2.
     const ins = llamadas.filter((l) => l.ruta === "/act_111/insights");
@@ -349,7 +352,7 @@ describe("el cron: lo grave de cada día", () => {
     await revision3qPendiente(env, a("2026-11-06T14:00:00.000Z"));
     const textos = avisos().map((x) => x.texto);
     // (Intl separa la cifra de «US$» con un espacio duro: \s lo admite.)
-    expect(textos.some((t) => /^«Sofás sin etapa» de Café Luna gastó 4,00\sUS\$ en 7 días sin una conversación \(el número mágico es 0,50\sUS\$\)\.$/.test(t))).toBe(true);
+    expect(textos.some((t) => /^«Sofás sin etapa» de Café Luna gastó 4,00\sUS\$ en 7 días sin una conversación \(el número mágico es 0,70\sUS\$\)\.$/.test(t))).toBe(true);
     expect(alertas().claves).toEqual(["sin-resultado:700"]);
   });
 
@@ -378,7 +381,7 @@ describe("el asistente y Claude (MCP)", () => {
     const r = await mcp.llamar("revisar_campanas", { cliente: "Café" });
     expect(r.isError).toBeUndefined();
     expect(r.content[0].text).toMatch(/Revisión 3Q de las campañas de Café Luna/);
-    expect(r.content[0].text).toMatch(/Número mágico: costo por conversación/);
+    expect(r.content[0].text).toMatch(/Número mágico \(el mismo para todas las etapas\): costo por conversación/);
     expect(r.content[0].text).toMatch(/«Café · Presentación · Octubre» · Presentación/);
     expect(db.sqlite.prepare("select revisada_at from anuncios_clientes where client_id = 'c1'").get().revisada_at).toBeNull();
     // El asistente de la aplicación, igual; sin cuenta publicitaria, el motivo vuelve como error de la herramienta.
@@ -396,7 +399,7 @@ describe("el informe de anuncios: lo que ve sólo la agencia", () => {
   it("el % de mensajes, el CTR único y el número mágico frente al real, del total del mes", async () => {
     await conNumeros();
     const a = await agenciaDelMes(crearAcceso(db, JEFE), "c1", fila(100, 40, { unicos: 160 }));
-    expect(a).toMatchObject({ pctMensajes: 25, ctrUnico: 3.3, real: 2.5, objetivo: 0.5, metrica: "Costo por conversación" });
+    expect(a).toMatchObject({ pctMensajes: 25, ctrUnico: 3.3, real: 2.5, objetivo: 0.7, valor: 0.7, metrica: "Costo por conversación" });
     expect(await agenciaDelMes(crearAcceso(db, JEFE), "c1", null)).toBeNull();
   });
 

@@ -38,7 +38,7 @@ export default function RevisarCampanasDia({ clients = [], pulso = 0, yo = null 
           <Icon name="megaphone" size={16} /> {lista.length === 1 ? "Toca revisar unas campañas" : `Toca revisar las campañas de ${lista.length} clientes`}
         </p>
         <p style={{ fontSize: "var(--fs-2xs)", color: "var(--text-dim)", margin: "var(--sp-1) 0" }}>
-          Lo que corre en su Ads Manager, con el número mágico y las 3 Q. Se cambia cada 5 a 7 días; abrir la revisión la da por hecha.
+          Te dice si cada campaña está sana, a vigilar o mala, por qué y qué hacer en el Ads Manager. Conviene cada 5 a 7 días; abrirla la da por hecha.
         </p>
         <ul style={{ margin: "var(--sp-1) 0 0 var(--sp-4)", fontSize: "var(--fs-2xs)" }}>
           {lista.map((p) => (

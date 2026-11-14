@@ -10,6 +10,7 @@ import { TEXTOS_POR_NIVEL } from "../lib/textosNivel";
 import { REPARTO_POR_DEFECTO, sumaDelReparto, errorDelCiclo } from "../lib/manualCiclo";
 
 import AnunciosDeCampana from "../components/anuncios/AnunciosDelPlan";
+import { GLOSARIO } from "../lib/glosarioAnuncios";
 import { crearXlsx, MIME_XLSX } from "../lib/xlsx";
 import { direccionDelLote } from "../lib/lotePauta";
 import { tipoArteDe } from "../lib/tiposArte";
@@ -184,7 +185,7 @@ export default function PlanCampanas({ clients = [], pulso = 0, yo = {}, onClien
         r = await escribirTextosCiclo(clienteId, mes, slots.slice(i, i + 8), { reescribir });
         escritos += r.escritos ?? 0;
       }
-      if (r) setDatos({ plan: r.plan, guardado: r.guardado, avance: r.avance });
+      if (r) setDatos({ plan: r.plan, guardado: r.guardado, avance: r.avance, numeroMagico: r.numeroMagico ?? null });
       setAviso({ ok: true, texto: `${escritos === 1 ? "Escrito el texto de 1 anuncio" : `Escritos los textos de ${escritos} anuncios`}: revísalos antes de montarlos.${r?.aviso ? ` ${r.aviso}` : ""}` });
     } catch (e) {
       setAviso({ ok: false, texto: e.message });
@@ -297,6 +298,10 @@ export default function PlanCampanas({ clients = [], pulso = 0, yo = {}, onClien
               <div><dt>Negocio</dt><dd>{tipoNegocioDe(plan.tipo)?.nombre ?? "Productos"} {DESTINO[plan.destino] ?? ""}</dd></div>
               <div><dt>Cuenta</dt><dd>{CUENTA[plan.cuenta] ?? plan.cuenta}</dd></div>
               <div><dt>Objetivo</dt><dd>{plan.nombreObjetivo}</dd></div>
+              <div><dt>Número mágico</dt><dd>{datos?.numeroMagico?.valor != null
+                ? <>{dinero(datos.numeroMagico.valor)} por {datos.numeroMagico.resultado || "resultado"} <span className="hint">· lo máximo a pagar sin perder, el mismo para todas las campañas</span></>
+                : <span className="hint">{datos?.numeroMagico?.falta?.[0]?.texto || "Completa los números del negocio del cliente para saberlo."}</span>}
+                <QueEs titulo="¿Qué es el número mágico?">{GLOSARIO.numeroMagico}</QueEs></dd></div>
               <div><dt>Inversión del ciclo</dt><dd>{dinero(plan.inversion)}{plan.inversionDe ? <span className="hint"> · {ORIGEN_INVERSION[plan.inversionDe]}</span> : null}</dd></div>
               {textoDelTotal(plan) && <div><dt>Total del mes</dt><dd>{textoDelTotal(plan, dinero)}</dd></div>}
               <div><dt>Reparto{plan.repartoAMano ? " (a mano)" : ""}</dt><dd>{plan.reparto.map((r) => `${r.nombre} ${String(r.pct).replace(".", ",")} %`).join(" · ") || "—"}</dd></div>

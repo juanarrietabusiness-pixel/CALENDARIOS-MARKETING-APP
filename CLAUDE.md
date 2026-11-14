@@ -715,7 +715,8 @@ src/
                           partir de un plan de la agencia); el diálogo de la barra, el asistente del mes y la ficha lo usan (lazy)
     calendario/fechasEspeciales.jsx  Escoger las fechas de un cliente (importante, ocultar, propias, IA)
     CalendarView.jsx      Vista de lista y de rejilla, filtros, generación, envío
-    anuncios/AsistenteCampana.jsx  «Nueva campaña»: objetivo y destino (web o WhatsApp), públicos (1–3), anuncios (1–6, carrusel), revisar
+    anuncios/AsistenteCampana.jsx  «Nueva campaña» por API (objetivo, públicos, anuncios): YA NO SE ABRE desde ningún sitio (decisión del 14-nov:
+                          las campañas se montan en el Ads Manager); se conserva por si vuelve
     anuncios/DialogoActivar.jsx    Activar: el presupuesto y las fechas, y escribir ACTIVAR
     anuncios/Estratega.jsx         El estratega: para un cliente o alguien de fuera, el plan, ajustarlo, guardarlo y llevarlo
                           a «Nueva campaña» (lazy)
@@ -6049,6 +6050,15 @@ son del servidor.
 - **`wrangler d1 migrations apply` pinta la tabla ENTERA de migraciones tras cada una**: su salida crece con el cuadrado de
   cuántas hay, y con la 0076 (72 migraciones) pasó del 1 MB que `execFile` admite por defecto. `npm run test:vivo` moría con
   «stdout maxBuffer length exceeded» antes de arrancar el Worker, con el SQL perfecto. `tests/vivo/espacio.js` le da 64 MB.
+
+- **UN solo número mágico y nada de crear campañas desde la app** (decisiones del 14-nov). `numeroMagicoDelCliente`
+  (src/lib/numerosNegocio.js) es LA cifra de la ficha, la revisión 3Q (también el cron), el informe de anuncios, el plan de
+  campañas y el estratega: el menor entre el objetivo y el equilibrio, con el presupuesto escrito (o el que pide la meta;
+  lo gastado en Meta sólo se enseña) y SIN ajuste por etapa (`EXIGENCIA_ETAPA` se quitó). Sin costos no hay número: se dice
+  qué falta y no se juzga contra una cifra inventada. «Decisión» es, como en el curso, quien YA COMPRÓ (va en Ascensión);
+  el empujón es la etapa Conversión con textos de nivel Producto. «Nueva campaña» (crear por la API) ya no se abre: la
+  página de Anuncios lleva a «Plan de campañas», que da campañas, conjuntos, anuncios (cualquier publicación, o una nueva)
+  y sus textos según el nivel de consciencia de su etapa; el estratega de un cliente lleva a su plan.
 
 ## Documentos relacionados
 

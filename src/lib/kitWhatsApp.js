@@ -8,8 +8,10 @@
 //   · el mensaje de BIENVENIDA (quien escribe por primera vez, casi siempre por un anuncio) y el de AUSENCIA;
 //   · de 6 a 12 RESPUESTAS RÁPIDAS con su atajo («/precio», «/envio»…): las de siempre (precio, envío, horario,
 //     ubicación, formas de pago) y una por cada objeción del estudio de mercado con su respuesta;
-//   · las ETIQUETAS, cada una enlazada a su etapa del ciclo de ventas (cicloVentas.js): quien escribe por primera vez
-//     está en presentación; quien cotizó, en conversión; quien compró, en ascensión;
+//   · las ETIQUETAS, cada una enlazada a su etapa del ciclo de ventas (cicloVentas.js): quien YA ESCRIBIÓ por WhatsApp
+//     está en CONVERSIÓN (el público de esa etapa es justamente quien escribió), escriba por primera vez, pregunte o
+//     cotice; quien compró, en ascensión. Presentación y evaluación son de quien todavía no escribe: no llevan
+//     etiqueta de WhatsApp (antes «Nuevo» e «Interesado» iban a presentación y evaluación: corrección del 14-nov);
 //   · un GUION DE VENTAS por producto: saludo, preguntas para calificar, la presentación con su diferencial, las
 //     objeciones respondidas, el cierre con la oferta y el precio del catálogo, y el seguimiento si no contesta.
 //
@@ -48,10 +50,19 @@ export const RESPUESTAS_BASE = Object.freeze([
   { atajo: "pago", titulo: "Formas de pago", ayuda: "Cómo se paga: efectivo, transferencia, Yappy, tarjeta, cuotas." },
 ]);
 
+/**
+ * La etapa de una etiqueta de WhatsApp: quien tiene una conversación ya escribió, así que está en conversión (o en
+ * ascensión si compró). Una etiqueta guardada o propuesta con presentación o evaluación se lee como conversión. Pura.
+ */
+export function etapaDeEtiqueta(x) {
+  const e = idEtapaCiclo(x);
+  return e === "presentacion" || e === "evaluacion" ? "conversion" : e;
+}
+
 /** Las etiquetas de partida, cada una con su etapa del ciclo (lo que la IA adapta al negocio). */
 export const ETIQUETAS_BASE = Object.freeze([
-  { nombre: "Nuevo", etapa: "presentacion", cuando: "Escribió por primera vez (casi siempre por un anuncio)." },
-  { nombre: "Interesado", etapa: "evaluacion", cuando: "Preguntó por un producto, cómo funciona o el precio." },
+  { nombre: "Nuevo", etapa: "conversion", cuando: "Escribió por primera vez (casi siempre por un anuncio)." },
+  { nombre: "Interesado", etapa: "conversion", cuando: "Preguntó por un producto, cómo funciona o el precio." },
   { nombre: "Cotizó", etapa: "conversion", cuando: "Ya tiene el precio o la cotización y no ha comprado." },
   { nombre: "Pago pendiente", etapa: "conversion", cuando: "Dijo que compra y falta que pague." },
   { nombre: "Compró", etapa: "ascension", cuando: "Pagó: ya es cliente. Se le ofrece lo siguiente." },
@@ -109,7 +120,7 @@ export function limpiarKitWhatsApp(entrada) {
     const k = sinTildes(nombre);
     if (!nombre || nombres.has(k)) continue;
     nombres.add(k);
-    etiquetas.push({ nombre, etapa: idEtapaCiclo(t?.etapa), cuando: corto(t?.cuando, LIMITES_KIT.cuando), ...(t?.editado === true ? { editado: true } : {}) });
+    etiquetas.push({ nombre, etapa: etapaDeEtiqueta(t?.etapa), cuando: corto(t?.cuando, LIMITES_KIT.cuando), ...(t?.editado === true ? { editado: true } : {}) });
     if (etiquetas.length >= MAX_ETIQUETAS) break;
   }
   const productos = new Set();
@@ -258,7 +269,7 @@ export function pedidoKitWhatsApp({ marca = "la marca", rubro = "", productos = 
     "- «bienvenida»: para quien escribe por primera vez. Saluda, di quién atiende y pregunta qué busca. Como mucho 3 frases.",
     "- «ausencia»: fuera del horario. Cuándo se responde y qué puede ir mandando mientras (qué producto le interesa, su zona…).",
     `- «respuestas»: de ${MIN_RESPUESTAS} a ${MAX_RESPUESTAS} respuestas rápidas. Primero estas: ${RESPUESTAS_BASE.map((r) => `${r.atajo} (${r.ayuda.replace(/\.$/, "").toLowerCase()})`).join("; ")}. Después, una por cada objeción del estudio de mercado (sin repetir el mismo tema), con «objecion»: true. «atajo»: una palabra corta en minúsculas, sin tildes ni espacios (garantia, cuotas, tallas…). Cada una lista para pegar y terminada en una pregunta o un siguiente paso.`,
-    `- «etiquetas»: de ${MIN_ETIQUETAS} a 8 etiquetas para ordenar las conversaciones, cada una con su «etapa» del ciclo de ventas (una de: ${etapas}) y «cuando» se pone. Parte de estas y adáptalas al negocio: ${ETIQUETAS_BASE.map((t) => `${t.nombre} (${t.etapa})`).join(", ")}.`,
+    `- «etiquetas»: de ${MIN_ETIQUETAS} a 8 etiquetas para ordenar las conversaciones, cada una con su «etapa» del ciclo de ventas (una de: ${etapas}) y «cuando» se pone. Quien ya escribió por WhatsApp está en «conversion» (aunque sea la primera vez); quien compró, en «ascension»: «presentacion» y «evaluacion» son de quien todavía no escribe y no llevan etiqueta. Parte de estas y adáptalas al negocio: ${ETIQUETAS_BASE.map((t) => `${t.nombre} (${t.etapa})`).join(", ")}.`,
     `- «guiones»: uno por cada producto de la lista (su «productoId» es el que va entre corchetes), con «saludo», de 2 a ${MAX_PREGUNTAS_GUION} «preguntas» para calificar (qué necesita, para cuándo, para quién: lo que separa a quien compra de quien curiosea), «presentacion» con su diferencial (una frase de beneficio, no una lista), «objeciones» (las del estudio de ese producto, con su respuesta), «cierre» con {oferta} y {precio} y un llamado concreto (apartarlo, agendar, pagar), y de 1 a ${MAX_SEGUIMIENTO} mensajes de «seguimiento» por si no contesta (el primero al día siguiente, el último a los 3 o 4 días, sin presionar).`,
     "",
     "Responde SOLO con JSON, sin texto alrededor:",
