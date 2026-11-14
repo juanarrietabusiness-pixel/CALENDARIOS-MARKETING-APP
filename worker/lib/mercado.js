@@ -48,9 +48,10 @@ import {
   limpiarCatalogo, catalogoATexto, pedidoDeCatalogo, leerCatalogo, fundirCatalogo, productosActivos,
   pedidoGeneral, leerGeneral, pedidoDeProducto, leerDeProducto, limpiarEstudio, notasDelEstudio,
   estudioADocumento, limpiarReferencias, pedidoDeReferencia, pedidoDeReferenciaVideo, leerReferencia, notaDeReferencia,
-  pedidoDeAdaptacion, leerAdaptacion, lineaDeProducto,
+  pedidoDeAdaptacion, leerAdaptacion, lineaDeProducto, pedidoDeAngulos, leerAngulos, estudioConAngulos,
   MAX_MATERIAL, MAX_REFERENCIAS, slugProducto,
 } from "../../src/lib/estudioMercado.js";
+import { RUTA_LENGUAJE, lenguajeParaPedido } from "../../src/lib/lenguajeCliente.js";
 
 const leerJSON = (t, d) => { try { return JSON.parse(t) ?? d; } catch { return d; } };
 const RUTA_CATALOGO = "productos-y-servicios";
@@ -163,6 +164,15 @@ async function contextoDeMarca(env, acceso, cliente, consulta = CONSULTA_MERCADO
 
 const materialDe = (m) => String(m ?? "").slice(0, MAX_MATERIAL);
 
+/**
+ * Lo que dicen sus clientes con sus palabras (la nota «Lenguaje del cliente», si la hay y no es interna), corto: lo
+ * leen el estudio y los ángulos para escribir los ganchos como hablaría el cliente. Vacío si no hay o si falla.
+ */
+async function lenguajeDe(acceso, clienteId) {
+  const n = await acceso.leerUno("cerebro_notas", { client_id: clienteId, ruta: RUTA_LENGUAJE }).catch(() => null);
+  return n?.texto && !n.interna ? lenguajeParaPedido(n.texto) : "";
+}
+
 // ------------------------------------------------------------
 // El catálogo
 // ------------------------------------------------------------
@@ -205,14 +215,17 @@ export async function proponerCatalogo(env, acceso, cliente) {
  * productos ya estudiados no se pierden si sólo se rehace lo general (la pantalla los rehace todos al «Rehacer»).
  */
 export async function estudiarGeneral(env, acceso, cliente, { material = "" } = {}) {
-  const { catalogo, borrador: enCurso, estudio } = await leerMercado(acceso, cliente.id);
+  const { catalogo, borrador: enCurso, estudio, referencias } = await leerMercado(acceso, cliente.id);
   const borrador = enCurso ?? (estudio ? { productos: estudio.productos, conWeb: estudio.conWeb } : null);
   const r = await llamarIA(env, acceso, cliente, {
+    // Las referencias de la competencia ya analizadas (sin el nombre del competidor) y lo que dicen sus clientes con
+    // sus palabras: de ahí salen lo que se repite en el rubro, lo que nadie hace y el problema como lo cuenta el cliente.
     prompt: pedidoGeneral({
       marca: cliente.name, rubro: cliente.industry ?? "", contexto: await contextoDeMarca(env, acceso, cliente),
-      catalogo, material: materialDe(material), conWeb: true,
+      catalogo, material: materialDe(material), conWeb: true, referencias, lenguaje: await lenguajeDe(acceso, cliente.id),
     }),
-    salida: 7000,
+    // Lo general creció con la investigación del curso (problemas, transformación, anuncios del rubro…).
+    salida: 9000,
     funcion: "estudio de mercado",
     herramientas: HERRAMIENTAS_WEB,
   });
@@ -236,9 +249,10 @@ export async function estudiarProducto(env, acceso, cliente, { productoId, mater
     prompt: pedidoDeProducto({
       marca: cliente.name, producto, general,
       contexto: await contextoDeMarca(env, acceso, cliente, `${producto.nombre} ${producto.beneficios} garantía testimonios objeciones precio`),
-      material: materialDe(material), conWeb: true,
+      material: materialDe(material), conWeb: true, lenguaje: await lenguajeDe(acceso, cliente.id),
     }),
-    salida: 6000,
+    // Con los ángulos de venta (de 3 a 5, con sus campos y sus ganchos) el estudio de un producto es más largo.
+    salida: 9000,
     funcion: "estudio de mercado",
     herramientas: HERRAMIENTAS_WEB.map((h) => ({ ...h, max_uses: 3 })),
   });
@@ -255,6 +269,38 @@ export async function estudiarProducto(env, acceso, cliente, { productoId, mater
   });
   await escribir(acceso, cliente.id, { borrador: JSON.stringify(nuevo) });
   return { borrador: nuevo, modelo: r.modelo, aviso: r.aviso, busquedas: r.busquedas, conWeb: r.conWeb, segundos: r.segundos };
+}
+
+/**
+ * «Proponer ángulos»: los ángulos de venta de UN producto que ya tiene su estudio (el aprobado de antes de que
+ * existieran, o el del borrador), en una llamada BARATA —sin búsqueda web, con lo que ya dice su estudio delante—. La
+ * propuesta va al BORRADOR (se crea desde el aprobado si no había) y se revisa y aprueba como siempre: nada pasa a
+ * vigente sin «Aprobar». → { borrador, angulos, modelo, aviso }.
+ */
+export async function proponerAngulos(env, acceso, cliente, { productoId } = {}) {
+  const { catalogo, borrador, estudio } = await leerMercado(acceso, cliente.id);
+  const producto = productosActivos(catalogo).find((p) => p.id === productoId);
+  if (!producto) throw new ErrorMercado("Ese producto no está en el catálogo (o no está activo).", 404);
+  const base = borrador ?? estudio;
+  const deProducto = base?.productos?.[producto.id];
+  if (!deProducto) throw new ErrorMercado(`Primero hace falta el estudio de «${producto.nombre}».`, 409);
+  const r = await llamarIA(env, acceso, cliente, {
+    prompt: pedidoDeAngulos({
+      marca: cliente.name, producto, general: base.general, estudioProducto: deProducto,
+      contexto: await contextoDeMarca(env, acceso, cliente, `${producto.nombre} ${producto.beneficios} garantía testimonios objeciones mitos`),
+      lenguaje: await lenguajeDe(acceso, cliente.id),
+    }),
+    salida: 4000,
+    funcion: "estudio de mercado",
+  });
+  const propuesta = leerAngulos(r.texto, { estudioProducto: deProducto });
+  if (!propuesta) throw new ErrorMercado(`La IA no devolvió ángulos para «${producto.nombre}» que se puedan leer. Inténtalo otra vez.`, 502);
+  // Se relee justo antes de escribir: otra pestaña pudo cambiar el borrador entretanto.
+  const actual = await leerMercado(acceso, cliente.id);
+  const nuevo = estudioConAngulos(actual.borrador ?? actual.estudio, producto.id, propuesta);
+  if (!nuevo) throw new ErrorMercado(`El estudio de «${producto.nombre}» ya no está.`, 409);
+  await escribir(acceso, cliente.id, { borrador: JSON.stringify(nuevo) });
+  return { borrador: nuevo, angulos: propuesta.angulos, modelo: r.modelo, aviso: r.aviso };
 }
 
 /** Guarda lo corregido a mano en el borrador (o lo descarta con `null`). */

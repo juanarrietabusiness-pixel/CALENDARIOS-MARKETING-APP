@@ -166,6 +166,18 @@ export async function proponerRubro(clienteId) {
   }
 }
 
+/**
+ * «Lenguaje del cliente»: la IA agrupa las frases EXACTAS de sus clientes (lo pegado, la Bandeja y la encuesta) y el
+ * servidor comprueba cada una → { titulo, texto, existente: { id } | null, fuentes, frases, descartadas, aviso }. No guarda.
+ */
+export async function proponerLenguaje(clienteId, { texto = "", competencia = "", marcas = "" } = {}) {
+  try {
+    return await llamar(`${base(clienteId)}/lenguaje`, { metodo: "POST", cuerpo: { texto, competencia, marcas } });
+  } finally {
+    window.dispatchEvent(new Event("ia:gasto"));
+  }
+}
+
 /** La nota «Voz UGC» del cliente → { id, texto } (texto vacío si no hay). */
 export const leerVozUgc = (clienteId) => llamar(`${base(clienteId)}/voz-ugc`);
 

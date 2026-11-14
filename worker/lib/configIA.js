@@ -84,7 +84,7 @@ export const FUNCIONES_IA = Object.freeze({
   // el director del chat: con modelos distintos el chat daba un 8 y el lote menos.
   asistente: ["asistente", "resumen del chat", "título de conversación", "director de arte"],
   prompts: ["prompt de imagen"],
-  analisis: ["informe", "auditoria", "cerebro", "ADN de marca", "kit de marca", "revisión de marca", "control de calidad", "sistema de diseño", "aprendizaje visual", "estudio de mercado", "catálogo", "referencia de competencia", "revisión de textos", "estratega de campañas", "diagnóstico de campañas", "informe de anuncios", "saber del rubro", "lo que funciona en la competencia", "revisión de video", "piezas juntas", "clasificar lo mejor", "vigencia de historias", "números del negocio", "voz del cliente"],
+  analisis: ["informe", "auditoria", "cerebro", "ADN de marca", "kit de marca", "revisión de marca", "control de calidad", "sistema de diseño", "aprendizaje visual", "estudio de mercado", "catálogo", "referencia de competencia", "revisión de textos", "estratega de campañas", "diagnóstico de campañas", "informe de anuncios", "saber del rubro", "lo que funciona en la competencia", "revisión de video", "piezas juntas", "clasificar lo mejor", "vigencia de historias", "números del negocio", "voz del cliente", "lenguaje del cliente"],
 });
 /** Lo que escribe Muse Spark Contributor por defecto en cuanto hay llave de Meta (decisión de la agencia). */
 export const MUSE_POR_DEFECTO_EN = Object.freeze(["redaccion", "guiones"]);

@@ -34,6 +34,7 @@ import { MONTHS } from "../constants";
 import { DESEOS_REISS, NIVELES_CONSCIENCIA, nombreDeNivel } from "./consciencia";
 import { separarHashtags, juntarHashtags } from "./reglasFormato.js";
 import { SESGOS, TIPOS_ARTE, limpiarSesgos, nombresDeSesgos, tipoArteDe, idSesgo, sesgoDe } from "./tiposArte.js";
+import { quitarMarcas } from "./lenguajeCliente.js";
 
 /**
  * Las 7 maletas del curso de campañas, por producto o servicio: lo que tiene que estar respondido antes de anunciar
@@ -354,9 +355,47 @@ const REGLAS_COMUNES = [
   "- Nada interno de la agencia ni de la marca (costos, márgenes, proveedores).",
 ];
 
+/** Cuánto de la nota «Lenguaje del cliente» viaja a un pedido del estudio (lo demás lo lee quien escribe). */
+export const MAX_LENGUAJE_ESTUDIO = 2500;
+/** Las intensidades del dolor de un perfil (cuánto le pesa el problema: lo que más empuja a comprar). */
+export const INTENSIDADES = Object.freeze([
+  { id: "alta", nombre: "Alta" },
+  { id: "media", nombre: "Media" },
+  { id: "baja", nombre: "Baja" },
+]);
+const IDS_INTENSIDAD = INTENSIDADES.map((x) => x.id);
+
+/**
+ * Las referencias de la competencia YA analizadas, en pocas líneas y SIN el nombre del competidor: de ahí salen lo que
+ * se repite en los anuncios del rubro y lo que nadie hace. Vacío si no hay ninguna analizada. Pura.
+ */
+export function resumenDeReferencias(referencias, max = 2500) {
+  const lineas = limpiarReferencias(referencias).filter((r) => r.analisis).slice(0, 12).map((r) => {
+    const a = r.analisis;
+    const partes = [
+      a.gancho && `gancho: ${a.gancho}`,
+      a.angulo && `ángulo: ${a.angulo}`,
+      a.formato && `formato: ${a.formato}`,
+      a.tipoArte && `tipo de arte: ${tipoArteDe(a.tipoArte)?.nombre ?? a.tipoArte}`,
+      a.nivel && `nivel: ${nombreDeNivel(a.nivel)}`,
+      r.desde && fraseActivo(r.desde).replace(/\.$/, "").toLowerCase(),
+    ].filter(Boolean);
+    return `- ${r.medio === "video" ? "Video" : "Imagen"} (${r.origen === "organico" ? "orgánico" : "anuncio"}): ${partes.join("; ")}`;
+  });
+  const salida = [];
+  let largoTotal = 0;
+  for (const l of lineas) {
+    if (largoTotal + l.length > max) break;
+    salida.push(l);
+    largoTotal += l.length + 1;
+  }
+  return salida.join("\n");
+}
+
 /** Lo que se le pide a la IA para el estudio general del mercado. Pura. */
-export function pedidoGeneral({ marca, rubro = "", contexto = "", catalogo = [], material = "", conWeb = false, pais = "Panamá" }) {
+export function pedidoGeneral({ marca, rubro = "", contexto = "", catalogo = [], material = "", conWeb = false, pais = "Panamá", referencias = [], lenguaje = "" }) {
   const activos = productosActivos(catalogo);
+  const deLaCompetencia = resumenDeReferencias(referencias);
   return [
     `Eres estratega de marketing de una agencia en ${pais}. Haz el estudio de mercado de ${marca}${rubro ? ` (${rubro})` : ""}: su rubro, su competencia y a quién le vende, para escribir sus campañas, anuncios y posts.`,
     conWeb
@@ -368,18 +407,78 @@ export function pedidoGeneral({ marca, rubro = "", contexto = "", catalogo = [],
     "",
     activos.length ? `SUS PRODUCTOS Y SERVICIOS:\n${activos.map(lineaDeProducto).join("\n")}` : "SUS PRODUCTOS Y SERVICIOS: (sin catálogo todavía)",
     ...(material ? ["", "MATERIAL QUE APORTA LA AGENCIA (reseñas, conversaciones, comentarios; es voz real del cliente, úsala):", largo(material, MAX_MATERIAL)] : []),
+    ...(lenguaje ? ["", "LO QUE DICEN SUS CLIENTES (frases exactas de la nota «Lenguaje del cliente»; úsalas para pensar como ellos):", largo(lenguaje, MAX_LENGUAJE_ESTUDIO)] : []),
+    ...(deLaCompetencia ? ["", "ANUNCIOS Y VIDEOS DE LA COMPETENCIA YA ANALIZADOS (de aquí sale lo que se repite en el rubro):", deLaCompetencia] : []),
     "",
     "Reglas:",
     ...REGLAS_COMUNES,
-    "- «perfiles»: exactamente DOS perfiles de comprador distintos (motivaciones o situaciones diferentes aunque compren lo mismo).",
+    "- Piensa como el cliente, no como un vendedor: lo que le pasa, lo que siente y cómo lo diría él.",
+    "- «perfiles»: exactamente DOS perfiles de comprador distintos (motivaciones o situaciones diferentes aunque compren lo mismo). De cada uno, además, «trabajo»: el trabajo que le encarga al producto, como lo diría él («quiero… para…»), y la «intensidad» de su dolor: alta, media o baja.",
     `- «sesgos» de cada perfil: de 3 a 5 de estos, los que más lo mueven a decidir (escritos con su id): ${SESGOS.map((x) => `${x.id} (${x.ayuda.split(":")[0].toLowerCase()})`).join("; ")}.`,
     `- «deseos»: los TRES deseos que más mueven la compra, elegidos de esta lista (escritos igual): ${DESEOS_REISS.join(", ")}. Con el porqué en una frase.`,
     `- «nivel»: el nivel de consciencia dominante del mercado, uno de: ${CLAVES_NIVEL.join(", ")}.`,
     "- «competidores»: de 3 a 6, con lo que hacen bien y su punto débil.",
+    "- «problemas»: «externos», hasta 3 situaciones que SE VEN (lo que le pasa); «internos», hasta 3 cosas que SIENTE (frustración, miedo, vergüenza, cansancio); «principal», EL problema que más empuja a comprar, en una frase.",
+    "- «necesidad»: «cree», lo que el cliente cree que necesita (como lo pediría él); «real», lo que de verdad necesita para resolverlo.",
+    "- «transformacion»: cómo está «antes» y cómo queda «despues», concreto y sin exagerar.",
+    "- «justificacion»: cómo justifica la compra ante sí mismo o ante otros (pareja, socio, familia), en una frase.",
+    "- «cansados»: hasta 4 mensajes gastados del rubro que el cliente ya no se cree o está cansado de ver.",
+    "- «competenciaIndirecta»: hasta 4 OTRAS FORMAS de resolver el mismo problema (hacerlo uno mismo, otro tipo de producto o servicio), cada una con por qué la escogen. Formas, no marcas.",
+    "- «anunciosDelRubro»: lo que se repite en los anuncios del rubro (hasta 4 «angulos», 4 «formatos» y 4 «mensajes») y lo que casi nadie hace («nadie»: ángulos o formatos libres, la oportunidad). Sin nombrar marcas. Sácalo de los anuncios ya analizados de arriba y de lo que encuentres buscando; si no tienes de dónde, déjalo vacío y dilo en «faltan».",
     "",
     "Responde SOLO con JSON, sin texto alrededor:",
-    '{"rubro":"…","resumen":"el panorama del mercado en 4 a 6 frases","competidores":[{"nombre":"…","queHacen":"…","fuerte":"…","debil":"…","enlace":"…"}],"perfiles":[{"nombre":"…","quien":"…","dolor":"…","aspiracion":"…","sesgos":["…"]}],"deseos":[{"deseo":"…","porque":"…"}],"nivel":{"dominante":"…","porque":"…"},"propuestaValor":"…","diferenciadores":["…"],"tendencias":["…"],"oportunidades":["…"],"faltan":["…"],"fuentes":["https://…"]}',
+    '{"rubro":"…","resumen":"el panorama del mercado en 4 a 6 frases","competidores":[{"nombre":"…","queHacen":"…","fuerte":"…","debil":"…","enlace":"…"}],"perfiles":[{"nombre":"…","quien":"…","dolor":"…","aspiracion":"…","trabajo":"…","intensidad":"alta|media|baja","sesgos":["…"]}],"deseos":[{"deseo":"…","porque":"…"}],"nivel":{"dominante":"…","porque":"…"},"problemas":{"externos":["…"],"internos":["…"],"principal":"…"},"necesidad":{"cree":"…","real":"…"},"transformacion":{"antes":"…","despues":"…"},"justificacion":"…","cansados":["…"],"competenciaIndirecta":[{"alternativa":"…","porque":"…"}],"anunciosDelRubro":{"angulos":["…"],"formatos":["…"],"mensajes":["…"],"nadie":["…"]},"propuestaValor":"…","diferenciadores":["…"],"tendencias":["…"],"oportunidades":["…"],"faltan":["…"],"fuentes":["https://…"]}',
   ].join("\n");
+}
+
+/** Los campos de `anunciosDelRubro`, en orden (la nota, el documento y la pantalla). */
+export const PARTES_ANUNCIOS_RUBRO = Object.freeze([
+  { clave: "angulos", titulo: "Ángulos que se repiten" },
+  { clave: "formatos", titulo: "Formatos que más se usan" },
+  { clave: "mensajes", titulo: "Mensajes que se repiten" },
+  { clave: "nadie", titulo: "Lo que casi nadie hace (la oportunidad)" },
+]);
+
+/**
+ * Lo general que llegó con la investigación del curso (problemas por fuera y por dentro, lo que cree que necesita, la
+ * transformación, cómo justifica la compra, lo que está cansado de ver, la competencia indirecta y los anuncios del
+ * rubro). Todo OPCIONAL: sólo vuelve lo que trae algo, así un estudio de antes sale igual que entraba. Pura.
+ */
+function profundoDeGeneral(d) {
+  const salida = {};
+  const externos = lista(d.problemas?.externos, 3, 200);
+  const internos = lista(d.problemas?.internos, 3, 200);
+  const principal = corto(d.problemas?.principal, 240);
+  if (externos.length || internos.length || principal) salida.problemas = { externos, internos, principal };
+  const cree = corto(d.necesidad?.cree, 300);
+  const real = corto(d.necesidad?.real, 300);
+  if (cree || real) salida.necesidad = { cree, real };
+  const antes = corto(d.transformacion?.antes, 300);
+  const despues = corto(d.transformacion?.despues, 300);
+  if (antes || despues) salida.transformacion = { antes, despues };
+  const justificacion = corto(d.justificacion, 300);
+  if (justificacion) salida.justificacion = justificacion;
+  const cansados = lista(d.cansados, 4, 200);
+  if (cansados.length) salida.cansados = cansados;
+  const indirecta = (Array.isArray(d.competenciaIndirecta) ? d.competenciaIndirecta : [])
+    .map((x) => ({ alternativa: corto(x?.alternativa, 100), porque: corto(x?.porque, 240) })).filter((x) => x.alternativa).slice(0, 4);
+  if (indirecta.length) salida.competenciaIndirecta = indirecta;
+  const rubro = Object.fromEntries(PARTES_ANUNCIOS_RUBRO.map((x) => [x.clave, lista(d.anunciosDelRubro?.[x.clave], 4, 200)]));
+  if (Object.values(rubro).some((x) => x.length)) salida.anunciosDelRubro = rubro;
+  return salida;
+}
+
+/** Un perfil de comprador, limpio. `trabajo` e `intensidad` sólo si vienen (uno de antes no los trae). */
+function limpiarPerfil(p) {
+  const perfil = {
+    nombre: corto(p?.nombre, 60), quien: corto(p?.quien, 300), dolor: corto(p?.dolor, 300), aspiracion: corto(p?.aspiracion, 300),
+    // Los sesgos que más lo mueven (tiposArte.js): un estudio de antes no los trae y queda vacío.
+    sesgos: limpiarSesgos(p?.sesgos),
+  };
+  const trabajo = corto(p?.trabajo, 240);
+  if (trabajo) perfil.trabajo = trabajo;
+  if (IDS_INTENSIDAD.includes(p?.intensidad)) perfil.intensidad = p.intensidad;
+  return perfil;
 }
 
 const enlaceValido = (u) => (/^https?:\/\/[^\s"<>]+$/i.test(String(u ?? "").trim()) ? String(u).trim().slice(0, 300) : "");
@@ -393,11 +492,7 @@ export function limpiarGeneral(d) {
     competidores: (Array.isArray(d.competidores) ? d.competidores : []).map((c) => ({
       nombre: corto(c?.nombre, 80), queHacen: corto(c?.queHacen, 300), fuerte: corto(c?.fuerte, 240), debil: corto(c?.debil, 240), enlace: enlaceValido(c?.enlace),
     })).filter((c) => c.nombre).slice(0, 8),
-    perfiles: (Array.isArray(d.perfiles) ? d.perfiles : []).map((p) => ({
-      nombre: corto(p?.nombre, 60), quien: corto(p?.quien, 300), dolor: corto(p?.dolor, 300), aspiracion: corto(p?.aspiracion, 300),
-      // Los sesgos que más lo mueven (tiposArte.js): un estudio de antes no los trae y queda vacío.
-      sesgos: limpiarSesgos(p?.sesgos),
-    })).filter((p) => p.nombre).slice(0, 2),
+    perfiles: (Array.isArray(d.perfiles) ? d.perfiles : []).map(limpiarPerfil).filter((p) => p.nombre).slice(0, 2),
     deseos: (Array.isArray(d.deseos) ? d.deseos : []).map((x) => ({
       deseo: DESEOS_REISS.find((r) => r.toLowerCase() === String(x?.deseo ?? "").trim().toLowerCase()) ?? "", porque: corto(x?.porque, 300),
     })).filter((x) => x.deseo).filter((x, i, a) => a.findIndex((y) => y.deseo === x.deseo) === i).slice(0, 3),
@@ -411,12 +506,46 @@ export function limpiarGeneral(d) {
     oportunidades: lista(d.oportunidades, 6),
     faltan: lista(d.faltan, 8),
     fuentes: (Array.isArray(d.fuentes) ? d.fuentes : []).map(enlaceValido).filter(Boolean).filter((u, i, a) => a.indexOf(u) === i).slice(0, 15),
+    ...profundoDeGeneral(d),
   };
   return general.resumen || general.perfiles.length ? general : null;
 }
 
 /** La respuesta de la IA → lo general. Null si no se puede leer. Pura. */
 export const leerGeneral = (texto) => limpiarGeneral(jsonDe(texto));
+
+/** Un texto cortado a `n` caracteres en una palabra, con «…» (lo que viaja en el resumen no crece sin control). */
+function breve(t, n) {
+  const s = String(t ?? "").replace(/\s+/g, " ").trim();
+  if (s.length <= n) return s;
+  const c = s.slice(0, n - 1);
+  const e = c.lastIndexOf(" ");
+  return `${(e > n * 0.6 ? c.slice(0, e) : c).replace(/[\s,;:.]+$/, "")}…`;
+}
+
+/**
+ * Lo profundo del estudio general en líneas CORTAS (cada una con su tope), para el resumen que leen cada producto, el
+ * kit y las demás llamadas: el problema principal, lo que cree que necesita frente a lo que necesita, la
+ * transformación, cómo justifica la compra, lo gastado y lo que nadie hace. Sin nombres de la competencia. Pura.
+ */
+function resumenProfundo(g) {
+  const marcas = g.competidores.map((c) => c.nombre);
+  const p = g.problemas;
+  const lineas = [
+    p && (p.principal || p.externos.length || p.internos.length) && `Problema principal: ${breve([
+      p.principal,
+      p.externos.length && `por fuera: ${p.externos.join("; ")}`,
+      p.internos.length && `por dentro: ${p.internos.join("; ")}`,
+    ].filter(Boolean).join(" · "), 280)}`,
+    g.necesidad && `Cree que necesita: ${breve(g.necesidad.cree || "—", 110)} · necesita de verdad: ${breve(g.necesidad.real || "—", 110)}`,
+    g.transformacion && `Transformación: ${breve(g.transformacion.antes || "—", 110)} → ${breve(g.transformacion.despues || "—", 110)}`,
+    g.justificacion && `Cómo justifica la compra: ${breve(g.justificacion, 160)}`,
+    g.cansados?.length && `Está cansado de ver: ${breve(g.cansados.join("; "), 200)}`,
+    g.competenciaIndirecta?.length && `Otras formas de resolverlo: ${breve(g.competenciaIndirecta.map((x) => x.alternativa).join("; "), 160)}`,
+    g.anunciosDelRubro?.nadie?.length && `En los anuncios del rubro casi nadie: ${breve(g.anunciosDelRubro.nadie.join("; "), 200)}`,
+  ];
+  return lineas.filter(Boolean).map((l) => quitarMarcas(l, marcas));
+}
 
 /** Lo general en pocas líneas, para lo que se le pide después (cada producto, el kit, la referencia). Pura. */
 export function resumenGeneral(general) {
@@ -425,9 +554,10 @@ export function resumenGeneral(general) {
   return [
     g.rubro && `Rubro: ${g.rubro}`,
     g.propuestaValor && `Propuesta de valor: ${g.propuestaValor}`,
-    g.perfiles.length && `Perfiles de comprador: ${g.perfiles.map((p) => `${p.nombre} (${p.quien}; le duele: ${p.dolor}; quiere: ${p.aspiracion}${p.sesgos.length ? `; lo mueve: ${nombresDeSesgos(p.sesgos).toLowerCase()}` : ""})`).join(" | ")}`,
+    g.perfiles.length && `Perfiles de comprador: ${g.perfiles.map((p) => `${p.nombre} (${p.quien}; le duele: ${p.dolor}${p.intensidad ? ` [${p.intensidad}]` : ""}; quiere: ${p.aspiracion}${p.trabajo ? `; lo contrata para: ${breve(p.trabajo, 120)}` : ""}${p.sesgos.length ? `; lo mueve: ${nombresDeSesgos(p.sesgos).toLowerCase()}` : ""})`).join(" | ")}`,
     g.deseos.length && `Deseos que mueven la compra: ${g.deseos.map((d) => `${d.deseo} (${d.porque})`).join("; ")}`,
     g.nivel.dominante && `Nivel de consciencia dominante: ${nombreDeNivel(g.nivel.dominante)}`,
+    ...resumenProfundo(g),
     g.diferenciadores.length && `Diferenciadores: ${g.diferenciadores.join("; ")}`,
     g.competidores.length && `Competencia: ${g.competidores.map((c) => c.nombre).join(", ")}`,
   ].filter(Boolean).join("\n");
@@ -437,8 +567,24 @@ export function resumenGeneral(general) {
 // El estudio: cada producto o servicio
 // ------------------------------------------------------------
 
+/**
+ * La regla de los ÁNGULOS DE VENTA, la misma en el estudio de un producto y en «Proponer ángulos». Con palabras
+ * propias (investigación del curso). En anuncios no se afirma nada personal de quien lee (decisión de la agencia).
+ * (Una función y no una constante: `MAX_ANGULOS` y `CAMPOS_ANGULO` se definen más abajo.)
+ */
+export function reglaAngulos() {
+  return [
+    `- «angulos»: de 3 a ${MAX_ANGULOS} ÁNGULOS DE VENTA distintos y complementarios: cada uno, una razón DIFERENTE para comprar (un beneficio, una objeción que se desarma, una aspiración, un mito que se cae), que se pueda probar en anuncios por separado. Nada de dos ángulos que digan lo mismo con otras palabras.`,
+    "- De cada ángulo: «nombre» (corto, como titular interno), «problemaExterno» (lo que se ve), «dolor» (lo que siente), «solucion» (cómo lo resuelve ESTE producto), «diferencial» (lo que lo distingue en ese ángulo), «garantia» (SÓLO una garantía o prueba real de lo que sabemos; si no hay, vacío y pídela en «faltan»), «objecion» (la que responde y cómo), «falsaCreencia» (el mito que desarma) y «publico»: «frio» si sirve a quien aún no conoce la marca, «tibio» si es para quien ya interactuó.",
+    "- «ganchos» de cada ángulo: de 2 a 5, como hablaría el cliente (sus palabras, no las de un vendedor), que se entiendan en 3 segundos. Sin cifras ni resultados inventados, sin miedo ni sensacionalismo, y nada que afirme algo personal de quien lee («¿Sufres de…?», «tu piel…»): se cuenta como una situación o como lo dicen otros clientes.",
+  ].join("\n");
+}
+
+/** El molde JSON de los ángulos (para los pedidos). */
+const moldeAngulos = () => `"angulos":[{"nombre":"…",${CAMPOS_ANGULO.map((c) => `"${c.clave}":"…"`).join(",")},"ganchos":["…"],"publico":"frio|tibio"}]`;
+
 /** Lo que se le pide a la IA para un producto o servicio. Pura. */
-export function pedidoDeProducto({ marca, producto, general = null, contexto = "", material = "", conWeb = false }) {
+export function pedidoDeProducto({ marca, producto, general = null, contexto = "", material = "", conWeb = false, lenguaje = "" }) {
   const p = limpiarProducto(producto);
   const resumen = resumenGeneral(general);
   return [
@@ -454,6 +600,7 @@ export function pedidoDeProducto({ marca, producto, general = null, contexto = "
     "LO QUE SABEMOS DE LA MARCA:",
     contexto || "(Casi nada guardado todavía.)",
     ...(material ? ["", "MATERIAL QUE APORTA LA AGENCIA (voz real del cliente):", largo(material, MAX_MATERIAL)] : []),
+    ...(lenguaje ? ["", "LO QUE DICEN SUS CLIENTES (frases exactas de la nota «Lenguaje del cliente»: úsalas en los ganchos):", largo(lenguaje, MAX_LENGUAJE_ESTUDIO)] : []),
     "",
     "Reglas:",
     ...REGLAS_COMUNES,
@@ -462,10 +609,73 @@ export function pedidoDeProducto({ marca, producto, general = null, contexto = "
     "- «pruebas»: SOLO garantías, testimonios o datos que estén en lo que sabemos o en el material. Si no hay, vacío y dilo en «faltan».",
     "- «ganchos»: una frase de gancho para un anuncio por nivel de consciencia. Inconsciente y problema, por el DOLOR (lo que quiere evitar); solución, producto y decisión, por la GANANCIA (lo que logra). Empieza con un verbo o una pregunta, nunca con el nombre de la marca. Concretos.",
     `- «anuncio»: los textos de un anuncio de Meta: título (hasta ${LIMITES_ANUNCIO.titulo} caracteres), texto principal (hasta ${LIMITES_ANUNCIO.textoPrincipal}, que enganche en la primera línea) y descripción (hasta ${LIMITES_ANUNCIO.descripcion}). Con el precio sólo si está en el catálogo.`,
+    reglaAngulos(),
     "",
     "Responde SOLO con JSON, sin texto alrededor:",
-    `{"elementos":{${ELEMENTOS_MERCADO.map((e) => `"${e.clave}":"…"`).join(",")}},"objeciones":[{"objecion":"…","respuesta":"…"}],"pruebas":["…"],"ganchos":{${CLAVES_NIVEL.map((c) => `"${c}":"…"`).join(",")}},"anuncio":{"titulo":"…","textoPrincipal":"…","descripcion":"…"},"faltan":["…"],"fuentes":["https://…"]}`,
+    `{"elementos":{${ELEMENTOS_MERCADO.map((e) => `"${e.clave}":"…"`).join(",")}},"objeciones":[{"objecion":"…","respuesta":"…"}],"pruebas":["…"],"ganchos":{${CLAVES_NIVEL.map((c) => `"${c}":"…"`).join(",")}},"anuncio":{"titulo":"…","textoPrincipal":"…","descripcion":"…"},${moldeAngulos()},"faltan":["…"],"fuentes":["https://…"]}`,
   ].join("\n");
+}
+
+/**
+ * «Proponer ángulos» para un producto que YA tiene su estudio (aprobado sin ángulos, de antes de que existieran): una
+ * llamada barata, sin búsqueda web, con lo que ya dice el estudio delante. Pura.
+ * @param estudioProducto  el estudio del producto (sus maletas, objeciones, pruebas y ganchos)
+ */
+export function pedidoDeAngulos({ marca, producto, general = null, estudioProducto = null, contexto = "", lenguaje = "" }) {
+  const p = limpiarProducto(producto);
+  const resumen = resumenGeneral(general);
+  const suyo = notaDeProducto(estudioProducto, p, { angulos: false });
+  return [
+    `Eres estratega de respuesta directa. Propón los ángulos de venta de ${p.tipo === "servicio" ? "el servicio" : "el producto"} «${p.nombre}» de ${marca} a partir de su estudio de mercado, que ya está hecho y revisado.`,
+    "",
+    `EL ${p.tipo === "servicio" ? "SERVICIO" : "PRODUCTO"}:`,
+    lineaDeProducto(p),
+    ...(resumen ? ["", "EL ESTUDIO GENERAL DEL MERCADO:", resumen] : []),
+    ...(suyo ? ["", "SU ESTUDIO (las 7 maletas, las objeciones y las pruebas reales):", largo(suyo, 6000)] : []),
+    ...(lenguaje ? ["", "LO QUE DICEN SUS CLIENTES (frases exactas: úsalas en los ganchos):", largo(lenguaje, MAX_LENGUAJE_ESTUDIO)] : []),
+    ...(contexto ? ["", "LO QUE SABEMOS DE LA MARCA:", largo(contexto, 6000)] : []),
+    "",
+    "Reglas:",
+    ...REGLAS_COMUNES,
+    "- Las garantías y las pruebas, SÓLO las que dice su estudio o lo que sabemos. Lo que haga falta y no esté, en «faltan».",
+    reglaAngulos(),
+    "",
+    "Responde SOLO con JSON, sin texto alrededor:",
+    `{${moldeAngulos()},"faltan":["…"]}`,
+  ].join("\n");
+}
+
+/** ¿El estudio del producto tiene alguna garantía o prueba real? (si no, un ángulo no puede traer una). Pura. */
+const tienePrueba = (e) => Boolean(e?.elementos?.garantia || e?.elementos?.testimonios || (Array.isArray(e?.pruebas) && e.pruebas.length));
+
+/**
+ * Lo que propone la IA, con una guarda que pone el CÓDIGO: si el estudio del producto no tiene ni garantía, ni
+ * testimonios, ni pruebas, la «garantía» de cada ángulo es inventada y se quita (y se pide en «faltan»). Sólo en lo que
+ * llega de la IA: lo que escribe una persona en el borrador no se toca. Pura.
+ */
+export function sinGarantiaInventada(angulos, estudioProducto) {
+  const lista = limpiarAngulos(angulos);
+  if (tienePrueba(estudioProducto)) return { angulos: lista, quitadas: 0 };
+  let quitadas = 0;
+  const limpios = lista.map((a) => {
+    if (!a.garantia) return a;
+    quitadas++;
+    const { garantia: _g, ...resto } = a;
+    return resto;
+  });
+  return { angulos: limpios, quitadas };
+}
+
+const FALTA_PRUEBA = "Una garantía o una prueba real (testimonios, reseñas) para los ángulos";
+
+/** La respuesta de «Proponer ángulos» → { angulos, faltan } (con la guarda de la garantía). Null si no trae ninguno. Pura. */
+export function leerAngulos(texto, { estudioProducto = null } = {}) {
+  const d = jsonDe(texto);
+  if (!d || typeof d !== "object") return null;
+  const { angulos, quitadas } = sinGarantiaInventada(d.angulos, estudioProducto);
+  if (!angulos.length) return null;
+  const faltan = lista(d.faltan, 8);
+  return { angulos, faltan: quitadas && !faltan.includes(FALTA_PRUEBA) ? [...faltan.slice(0, 7), FALTA_PRUEBA] : faltan };
 }
 
 /** El estudio de un producto, limpio. Null si no trae los elementos. Pura. */
@@ -563,6 +773,20 @@ export const angulosDeProducto = (estudio, productoId) =>
 export const anguloDe = (estudio, productoId, anguloId) =>
   angulosDeProducto(estudio, productoId).find((a) => a.id === anguloId) ?? null;
 
+/**
+ * El estudio con los ángulos de UN producto puestos (y lo que falta sumado sin repetir), como BORRADOR: sin
+ * `aprobadoAt`, para revisarlo y aprobarlo como siempre. Null si ese producto no tiene estudio. Pura.
+ */
+export function estudioConAngulos(estudio, productoId, { angulos = [], faltan = [] } = {}) {
+  const e = limpiarEstudio(estudio);
+  const p = e?.productos?.[productoId];
+  if (!p) return null;
+  const { aprobadoAt: _aprobado, ...borrador } = e;
+  const ya = new Set(p.faltan.map((x) => x.toLowerCase()));
+  const juntas = [...p.faltan, ...lista(faltan, 8).filter((x) => !ya.has(x.toLowerCase()))].slice(0, 8);
+  return limpiarEstudio({ ...borrador, productos: { ...e.productos, [productoId]: { ...p, angulos, faltan: juntas } } });
+}
+
 /** Un ángulo en una línea (lo que lee la IA que escribe con él). Pura. */
 export function lineaDeAngulo(angulo) {
   const a = limpiarAngulos([angulo])[0];
@@ -571,8 +795,17 @@ export function lineaDeAngulo(angulo) {
   return `«${a.nombre}»${partes.length ? ` — ${partes.join("; ")}` : ""}`;
 }
 
-/** La respuesta de la IA → el estudio de un producto. Null si no se puede leer. Pura. */
-export const leerDeProducto = (texto, opciones) => limpiarDeProducto(jsonDe(texto), opciones);
+/**
+ * La respuesta de la IA → el estudio de un producto. Null si no se puede leer. Los ángulos pasan por la guarda de la
+ * garantía (`sinGarantiaInventada`): sin ninguna prueba real en el estudio, la de un ángulo es inventada. Pura.
+ */
+export function leerDeProducto(texto, opciones) {
+  const e = limpiarDeProducto(jsonDe(texto), opciones);
+  if (!e?.angulos) return e;
+  const { angulos, quitadas } = sinGarantiaInventada(e.angulos, e);
+  const faltan = quitadas && !e.faltan.includes(FALTA_PRUEBA) ? [...e.faltan.slice(0, 7), FALTA_PRUEBA] : e.faltan;
+  return { ...e, angulos, faltan };
+}
 
 // ------------------------------------------------------------
 // El estudio entero: guardar, revisar, convertirlo en notas y en documento
@@ -618,14 +851,53 @@ export function notaGeneral(general, { marca = "" } = {}) {
     ...(g.rubro ? [`Rubro: ${g.rubro}`, ""] : []),
     ...(g.resumen ? ["## Panorama", g.resumen, ""] : []),
     ...(g.propuestaValor ? ["## Propuesta de valor", g.propuestaValor, ""] : []),
-    ...(g.perfiles.length ? ["## Perfiles de comprador", ...g.perfiles.map((p) => `- **${p.nombre}**: ${p.quien}. Le duele: ${p.dolor}. Quiere: ${p.aspiracion}.${p.sesgos.length ? ` Lo mueve: ${nombresDeSesgos(p.sesgos).toLowerCase()}.` : ""}`), ""] : []),
+    ...(g.perfiles.length ? ["## Perfiles de comprador", ...g.perfiles.map((p) => `- **${p.nombre}**: ${p.quien}. Le duele: ${p.dolor}${p.intensidad ? ` (intensidad ${p.intensidad})` : ""}. Quiere: ${p.aspiracion}.${p.trabajo ? ` Lo contrata para: ${p.trabajo}.` : ""}${p.sesgos.length ? ` Lo mueve: ${nombresDeSesgos(p.sesgos).toLowerCase()}.` : ""}`), ""] : []),
     ...(g.deseos.length ? ["## Deseos que mueven la compra", ...g.deseos.map((d) => `- **${d.deseo}**: ${d.porque}`), ""] : []),
     ...(g.nivel.dominante ? ["## Nivel de consciencia dominante", `${nombreDeNivel(g.nivel.dominante)}${g.nivel.porque ? `: ${g.nivel.porque}` : ""}`, ""] : []),
+    ...notaProfunda(g),
     ...parrafos("Diferenciadores", g.diferenciadores),
     ...parrafos("Tendencias", g.tendencias),
     ...parrafos("Oportunidades", g.oportunidades),
     ...parrafos("Falta por confirmar", g.faltan),
   ].join("\n").trim();
+}
+
+/**
+ * Lo profundo del estudio general en la nota del cerebro. La nota NO es interna (la leen los textos que se publican):
+ * los nombres de la competencia se cambian por «otra marca» aunque la IA los haya escrito. Pura.
+ */
+function notaProfunda(g) {
+  const sinMarcas = (lineas) => lineas.map((l) => quitarMarcas(l, g.competidores.map((c) => c.nombre)));
+  const p = g.problemas;
+  return sinMarcas([
+    ...(p ? [
+      "## El problema",
+      ...(p.principal ? [`El principal: ${p.principal}`] : []),
+      ...p.externos.map((x) => `- Lo que se ve: ${x}`),
+      ...p.internos.map((x) => `- Lo que siente: ${x}`),
+      "",
+    ] : []),
+    ...(g.necesidad ? [
+      "## Lo que cree que necesita y lo que necesita de verdad",
+      ...(g.necesidad.cree ? [`- Cree que necesita: ${g.necesidad.cree}`] : []),
+      ...(g.necesidad.real ? [`- Necesita de verdad: ${g.necesidad.real}`] : []),
+      "",
+    ] : []),
+    ...(g.transformacion ? [
+      "## La transformación",
+      ...(g.transformacion.antes ? [`- Antes: ${g.transformacion.antes}`] : []),
+      ...(g.transformacion.despues ? [`- Después: ${g.transformacion.despues}`] : []),
+      "",
+    ] : []),
+    ...(g.justificacion ? ["## Cómo justifica la compra", g.justificacion, ""] : []),
+    ...parrafos("Lo que está cansado de ver", g.cansados),
+    ...(g.competenciaIndirecta?.length ? ["## Otras formas de resolverlo (competencia indirecta)", ...g.competenciaIndirecta.map((x) => `- **${x.alternativa}**${x.porque ? `: ${x.porque}` : ""}`), ""] : []),
+    ...(g.anunciosDelRubro ? [
+      "## Los anuncios del rubro",
+      ...PARTES_ANUNCIOS_RUBRO.filter((x) => g.anunciosDelRubro[x.clave].length).map((x) => `- ${x.titulo}: ${g.anunciosDelRubro[x.clave].join("; ")}`),
+      "",
+    ] : []),
+  ]);
 }
 
 /**
@@ -642,8 +914,29 @@ export function notaCompetencia(general) {
   ].join("\n").trim();
 }
 
-/** El estudio de un producto como nota del cerebro (markdown). Pura. */
-export function notaDeProducto(estudioProducto, producto) {
+const NOMBRE_PUBLICO = { frio: "para quien no conoce la marca", tibio: "para quien ya interactuó" };
+
+/** Los ángulos de un producto en Markdown (la nota del cerebro y el documento de Drive). Vacío si no hay. Pura. */
+export function angulosATexto(angulos) {
+  const lista = limpiarAngulos(angulos);
+  if (!lista.length) return [];
+  return [
+    "## Ángulos de venta",
+    "",
+    ...lista.flatMap((a) => [
+      `### ${a.nombre}${a.publico ? ` (${NOMBRE_PUBLICO[a.publico]})` : ""}`,
+      ...CAMPOS_ANGULO.filter((c) => a[c.clave]).map((c) => `- ${c.nombre}: ${a[c.clave]}`),
+      ...(a.ganchos.length ? [`- Ganchos: ${a.ganchos.map((g) => `«${g}»`).join(" · ")}`] : []),
+      "",
+    ]),
+  ];
+}
+
+/**
+ * El estudio de un producto como nota del cerebro (markdown). `angulos: false` la deja sin los ángulos (lo que se le da
+ * a «Proponer ángulos», y quien ya los pone aparte, como el motor de ideas). Pura.
+ */
+export function notaDeProducto(estudioProducto, producto, { angulos = true } = {}) {
   const e = limpiarDeProducto(estudioProducto, { nombre: producto?.nombre });
   if (!e) return "";
   const p = limpiarProducto(producto) ?? { nombre: e.nombre, tipo: "producto" };
@@ -663,6 +956,7 @@ export function notaDeProducto(estudioProducto, producto) {
         .filter(([, v]) => v).map(([k, v]) => `- ${k}: ${v}`),
       "",
     ] : []),
+    ...(angulos ? angulosATexto(e.angulos) : []),
     ...parrafos("Falta por confirmar", e.faltan),
   ].join("\n").trim();
 }
@@ -699,6 +993,7 @@ function markdownAHtml(md) {
   for (const linea of String(md ?? "").split("\n")) {
     if (/^# /.test(linea)) { cerrar(); salida.push(`<h1>${enLinea(linea.slice(2))}</h1>`); }
     else if (/^## /.test(linea)) { cerrar(); salida.push(`<h2>${enLinea(linea.slice(3))}</h2>`); }
+    else if (/^### /.test(linea)) { cerrar(); salida.push(`<h3>${enLinea(linea.slice(4))}</h3>`); }
     else if (/^- /.test(linea)) { if (!enLista) { salida.push("<ul>"); enLista = true; } salida.push(`<li>${enLinea(linea.slice(2))}</li>`); }
     else if (linea.trim()) { cerrar(); salida.push(`<p>${enLinea(linea)}</p>`); }
     else cerrar();
