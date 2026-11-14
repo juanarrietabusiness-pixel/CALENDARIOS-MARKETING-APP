@@ -631,8 +631,9 @@ export default function CalendarView({
     });
 
   // Lo que le falta a una publicación por su formato (lib/reglasFormato.js); el texto en la pieza, sólo si aún no tiene
-  // su archivo (con la pieza hecha ya no sirve: el texto está dentro).
-  const textosQueFaltan = (textos, p) => textos.camposQueFaltan(p).filter((c) => c !== "textoPieza" || !tieneContenido(p));
+  // su archivo (con la pieza hecha ya no sirve: el texto está dentro). La regla vive en lib/camposTexto.js: la lee
+  // también el conector de Claude (escribir_textos).
+  const textosQueFaltan = (textos, p) => textos.textosQueFaltan(p);
 
   // «Generar con IA» de la vista Lista: lo que le falta a ESA publicación, por el motor de ideas (modo «campos», en
   // diferido). Con un archivo subido, primero la IA lo MIRA («Escribir a partir del contenido»: el motor no ve

@@ -6,20 +6,18 @@ import { uid } from "../../utils";
 import { fechaEnZona } from "../../lib/agenda";
 import { yoActual } from "../../lib/sesionActual";
 import {
-  PASOS_MES, PASO_MES, pasoQueToca, estadoDelMes, avanceDelMes, casillasDelMes, publicacionDeCasilla, conCasillas, conAsistente,
-  limpiarAsistente, horasEnBloque, paraDisenar,
+  PASOS_MES, PASO_MES, pasoQueToca, estadoDelMes, avanceDelMes, conCasillas, conAsistente, limpiarAsistente, horasEnBloque, paraDisenar,
+  planDelAsistente, matrizDelPlan, pautaDelPlan, publicacionesDelPlan,
 } from "../../lib/asistenteMes";
 import { semanasDelPlan, unoPorSemana } from "../../lib/planMes";
 import { limpiarEstrategia, estrategiaDelCalendario } from "../../lib/estrategiaMes";
 import { PasoEstrategia, EtapaSemana, BalanceDelMes, AyudaEtapas } from "../EstrategiaMes";
 import { leerPlantillas } from "../../lib/plantillasApi";
-import { semanaDelCliente, lineasDeLaSemana, ritmoDelCliente, notasDelCliente, horaCorta } from "../../lib/planSemanal";
-import { sugerenciasDeTemporada, ritmoDelMes, asignarMatriz, fechaCorta, nombreDePilar, CAMPOS_MATRIZ } from "../../lib/pilares";
-import { fechasDelMes } from "../../lib/fechasEspeciales";
+import { semanaDelCliente, lineasDeLaSemana, horaCorta } from "../../lib/planSemanal";
+import { fechaCorta, nombreDePilar } from "../../lib/pilares";
 import { leerMercado } from "../../lib/mercado";
-import { productosParaPlan, limpiarEstudio } from "../../lib/estudioMercado";
-import { conNotasDelDia } from "../../lib/notasSemana";
-import { casillasSinIdea, ideasDelPlan, rellenarConIdea } from "../../lib/ideaPublicacion";
+import { productosParaPlan } from "../../lib/estudioMercado";
+import { casillasSinIdea, ideasDelPlan, conIdea } from "../../lib/ideaPublicacion";
 import { avisoDeLoQueFalta } from "../../lib/materialTipo";
 import { ideasDeRevision } from "../../lib/revisionIdeas";
 import { semanaDelMes } from "../../lib/semanas";
@@ -81,7 +79,6 @@ const PlanSemanal = lazy(() => import("./PlanSemanal"));
 const GuionesParaGrabar = lazy(() => import("./GuionesParaGrabar"));
 
 const cargando = (texto = "Cargando…") => <p className="hint" role="status">{texto}</p>;
-const dos = (n) => String(n).padStart(2, "0");
 const nada = () => {};
 
 export default function AsistenteMes({
@@ -286,52 +283,30 @@ function PasoPlan({ client, cal, onGuardarPlan, onPoner, onPlanificarAMano, onPr
     return () => { vivo = false; };
   }, [client.dbId, client.id]);
 
-  const { year, month } = cal;
-  const mes = `${year}-${dos(month + 1)}`;
   const hoy = fechaEnZona();
-  const pasado = mes < hoy.slice(0, 7);
-  const semana = useMemo(() => (lista ? semanaDelCliente(client, lista) : null), [client, lista]);
+  // El paso entero sale de lib/asistenteMes.js (`planDelAsistente`): lo mismo pone el conector de Claude con preparar_mes.
+  const plan = useMemo(
+    () => planDelAsistente({ cliente: client, cal, lista: lista ?? [], aceptadas, llenarOcupados: llenar, hoy }),
+    [client, cal, lista, aceptadas, llenar, hoy],
+  );
+  const { month } = cal;
+  const { notas, fechas, sugerencias, ocupados, pasado } = plan;
+  const casillas = lista ? plan.casillas : [];
   const lineas = lista ? lineasDeLaSemana(client, lista) : {};
-  const notas = notasDelCliente(client) ?? {};
-  const todasLasFechas = useMemo(() => fechasDelMes(year, month, client.fechasEspeciales), [year, month, client.fechasEspeciales]);
-  const fechas = todasLasFechas.filter((f) => f.destacada || f.tipo !== "internacional");
-  const ritmo = ritmoDelCliente(client);
-  const sugerencias = useMemo(() => sugerenciasDeTemporada({ year, month, ritmo, fechas: todasLasFechas }), [year, month, ritmo, todasLasFechas]);
-  const ocupados = useMemo(() => new Set((cal.days ?? []).filter((d) => (d.posts ?? []).length).map((d) => d.date)), [cal.days]);
-  const casillas = semana ? casillasDelMes({
-    year, month, semana, ritmoMes: ritmoDelMes(year, month, ritmo, aceptadas), ocupados, llenarOcupados: llenar,
-    desde: mes === hoy.slice(0, 7) ? hoy : "", fechas: fechas.map((f) => ({ fecha: f.fecha, nombre: f.delicada ? `${f.nombre} (fecha delicada: sin promociones)` : f.nombre })),
-  }) : [];
   const porSemana = casillas.reduce((m, c) => { const n = semanaDelMes(c.fecha); (m[n] = m[n] ?? []).push(c); return m; }, {});
   const aceptada = (s) => aceptadas.some((x) => x.fecha === s.fecha);
 
   /** La matriz (producto, nivel, deseo, perfil) sobre el plan ENTERO, como «Planificar mes»; la nota del día manda su producto. */
-  const calcularMatriz = () => {
-    const general = limpiarEstudio(mercado?.estudio)?.general;
-    const productos = productosParaPlan(mercado?.catalogo ?? [], mercado?.inventario);
-    const conNotas = conNotasDelDia(casillas.map((c) => ({ clave: c.clave, fecha: c.fecha, pilar: c.pilar })), notas, productos)
-      .map(({ notaDia: _n, fecha: _f, ...c }) => c);
-    const foco = limpiarEstrategia(cal.opciones?.estrategia)?.focoId ?? "";
-    return new Map(asignarMatriz(conNotas, { productos, deseos: general?.deseos ?? [], perfiles: general?.perfiles ?? [], foco })
-      .map(({ clave, ...m }) => [clave, Object.fromEntries(CAMPOS_MATRIZ.map((k) => [k, m[k] ?? ""]))]));
-  };
-  const matriz = mercado === undefined ? new Map() : calcularMatriz();
+  const matriz = mercado === undefined ? new Map() : matrizDelPlan(casillas, { mercado, notas, foco: limpiarEstrategia(cal.opciones?.estrategia)?.focoId ?? "" });
   // Las que van a pauta solas (decisión 9): las del tipo «Anuncio» del plan, las de la oferta del mes y algunas frías
   // para Presentación, con su etapa (en una cuenta nueva, lo de conversión va a evaluación y se avisa).
-  const sugeridas = sugerirPauta(
-    casillas.map((c) => ({ id: c.clave, post: { format: c.format, pilar: c.pilar, nivel: matriz.get(c.clave)?.nivel ?? "" } })),
-    { ofertas: cal.offers, codigo: cal.promoCode, cuenta },
-  );
+  const sugeridas = pautaDelPlan(casillas, matriz, { ofertas: cal.offers, codigo: cal.promoCode, cuenta });
   const enPauta = new Map(sugeridas.map((x) => [x.id, x]));
   const avisoNueva = avisoCuentaNueva(sugeridas);
   const vanAPauta = [...enPauta.keys()].filter((k) => !sinPauta.has(k)).length;
   const poner = () => {
     onPoner(
-      casillas.map((c) => {
-        const post = publicacionDeCasilla(c, { id: uid(), matriz: matriz.get(c.clave) ?? {} });
-        const s = enPauta.get(c.clave);
-        return { fecha: c.fecha, especial: c.especial ?? "", post: s ? { ...post, pauta: sinPauta.has(c.clave) ? false : s.pauta } : post };
-      }),
+      publicacionesDelPlan(casillas, { matriz, sugeridas, sinPauta, nuevoId: uid }),
       { aceptadas: aceptadas.map((s) => ({ id: s.id, fecha: s.fecha, de: s.de, a: s.a, motivo: s.motivo })), llenarOcupados: llenar },
     );
   };
@@ -467,11 +442,8 @@ function PasoPlan({ client, cal, onGuardarPlan, onPoner, onPlanificarAMano, onPr
 // 3. Ideas: el motor del servidor y la aprobación interna en la misma lista
 // ------------------------------------------------------------
 
-/** Lo que trae una idea del motor, puesto en su publicación (sólo rellena; la matriz, si la publicación no la tenía). */
-function conIdea(p, idea) {
-  const extra = Object.fromEntries(["productoId", "producto", "nivel", "deseo", "perfil", "pilarSub"].filter((k) => idea[k] && !p[k]).map((k) => [k, idea[k]]));
-  return { ...p, ...rellenarConIdea(p, idea).cambios, ...extra };
-}
+// Lo que trae una idea del motor, puesto en su publicación (sólo rellena; la matriz, si la publicación no la tenía), es
+// `conIdea` de lib/ideaPublicacionPura.js: el conector de Claude (escribir_textos) lo pone igual.
 
 function PasoIdeas({ client, cal, escribir, onCompletarTextos, completando, estadoCompletar }) {
   const clienteId = client.dbId || client.id;

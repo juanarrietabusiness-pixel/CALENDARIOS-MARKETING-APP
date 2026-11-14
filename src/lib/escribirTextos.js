@@ -10,34 +10,17 @@
 // ============================================================
 
 import { pedir } from "./db";
-import { casillaDeCampos, aplicarCampos } from "./camposTexto.js";
-import { camposQueFaltan as camposQueFaltanDelFormato, llevaHashtags, tieneHashtags } from "./reglasFormato.js";
+import { casillaDeCampos, aplicarCampos, camposQueFaltan, textosQueFaltan, camposConSuBoton, conceptoDelDia } from "./camposTexto.js";
 import { estrategiaDelCalendario } from "./estrategiaMes.js";
-import { semanaDelMes } from "./semanas.js";
 import { usadosDelMes } from "./ideaPublicacion.js";
-import { vaAPauta, tieneTextosAnuncio } from "./pauta.js";
 
-export { aplicarCampos };
-
-/**
- * Lo que le falta a una publicación por su formato (lib/reglasFormato.js) y, si va a PAUTA y aún no los tiene, sus
- * textos de anuncio aparte (lib/pauta.js: toda publicación que va a pauta los lleva). Pura.
- */
-export const camposQueFaltan = (post = {}) => [
-  ...camposQueFaltanDelFormato(post),
-  ...(vaAPauta(post) && post.format !== "live" && !tieneTextosAnuncio(post) ? ["anuncio"] : []),
-];
+// Lo puro (lo que también lee el Worker: el conector de Claude, worker/lib/herramientasTextos.js) vive en
+// camposTexto.js: se reexporta aquí, donde lo buscan las pantallas.
+export { aplicarCampos, camposQueFaltan, textosQueFaltan, conceptoDelDia };
 
 /** Lo que escribe el motor en una tanda (modo «campos») → { textos: [{ clave, campos, ganchos?, formulaUgc? }], aviso }. */
 export const escribirCampos = (clienteId, cuerpo) =>
   pedir(`/estudio/${encodeURIComponent(clienteId)}/lote/ideas`, { method: "POST", body: JSON.stringify({ ...cuerpo, modo: "campos" }) });
-
-/** El concepto de la semana de un día: el de su FILA de la rejilla (lunes a domingo) o, si no, el que lleve el día. Pura. */
-export function conceptoDelDia(cal, day) {
-  const fecha = String(day?.date ?? "");
-  const n = /^\d{4}-\d{2}-\d{2}$/.test(fecha) ? semanaDelMes(fecha) : 0;
-  return String((n && (cal?.weekConcepts ?? [])[n - 1]) || day?.concept || "").trim();
-}
 
 /** La estrategia que viaja con el pedido (la del calendario en pantalla; sin calendario, nada: la lee el servidor). */
 const estrategiaDe = (cal) => (cal && (cal.campaign || cal.weekConcepts?.length || cal.offers || cal.opciones?.estrategia) ? estrategiaDelCalendario(cal) : undefined);
@@ -49,11 +32,8 @@ const estrategiaDe = (cal) => (cal && (cal.campaign || cal.weekConcepts?.length 
  */
 export async function textoDeUnCampo(clienteId, { post, day = {}, cal = null, campo }) {
   if (!clienteId) throw new Error("Escoge el cliente: la IA escribe con su marca.");
-  // El caption de antes traía sus hashtags dentro; ahora van aparte: si la publicación no tiene, se piden con él.
-  const extra = campo === "descripcion" && llevaHashtags(post?.format) && !tieneHashtags(post) ? ["hashtags"] : [];
-  // Lo que va a pauta lleva además sus textos de anuncio aparte: si aún no los tiene, salen con el caption.
-  if (campo === "descripcion" && vaAPauta(post) && !tieneTextosAnuncio(post)) extra.push("anuncio");
-  const casilla = casillaDeCampos(post, day, { campos: [campo, ...extra], semana: conceptoDelDia(cal, day) });
+  // Con el caption, también los hashtags si no tiene (ahora van aparte) y, si va a pauta, sus textos de anuncio aparte.
+  const casilla = casillaDeCampos(post, day, { campos: camposConSuBoton(post, [campo]), semana: conceptoDelDia(cal, day) });
   if (!casilla) throw new Error("Este formato no lleva ese texto.");
   const r = await escribirCampos(clienteId, { publicaciones: [casilla], estrategia: estrategiaDe(cal), usados: usadosDelMes(cal, post?.id), semilla: Date.now() % 997 });
   const t = (r?.textos ?? [])[0];

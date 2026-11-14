@@ -34,9 +34,11 @@ import {
   lineaDePieza, REGLA_FORMATO, GUION_DE_FORMATO, textoEstrategiaDelMes, captionYHashtags, bloqueDeLenguaje, MAX_TITULO, MAX_GUION, MAX_BRIEF,
 } from "./loteAnuncios.js";
 import { formaDe, REGLA_GANCHO } from "./formasGancho.js";
-import { CAMPOS_TEXTO, llevaCampo } from "./reglasFormato.js";
+import { CAMPOS_TEXTO, llevaCampo, camposQueFaltan as camposQueFaltanDelFormato, llevaHashtags, tieneHashtags } from "./reglasFormato.js";
+import { semanaDelMes } from "./semanas.js";
+import { tieneContenido } from "./subir.js";
 import { reglaUgc, duracionUgc, palabrasQueCaben, leerGuionConGanchos, limpiarGanchos } from "./ugc.js";
-import { limpiarPauta, lineaDePauta, bloqueDeAnuncio, limpiarAnuncio, recortarHashtags, tieneTextosAnuncio, CAMPO_ANUNCIO, MAX_HASHTAGS_PAUTA } from "./pauta.js";
+import { limpiarPauta, lineaDePauta, bloqueDeAnuncio, limpiarAnuncio, recortarHashtags, tieneTextosAnuncio, vaAPauta, CAMPO_ANUNCIO, MAX_HASHTAGS_PAUTA } from "./pauta.js";
 
 /** Los campos que el motor sabe escribir, en el orden en que se piden. «anuncio» sólo en lo que va a pauta. */
 export const ORDEN_CAMPOS = Object.freeze(["titulo", "idea", "textoPieza", "guion", "descripcion", "hashtags", "anuncio"]);
@@ -68,6 +70,42 @@ const valorEnPost = (post, campo) => (campo === "descripcion" ? post?.descripcio
  * campo «anuncio» (los textos aparte), sólo si va a PAUTA y no es un directo. Pura.
  */
 export const pideCampo = (formato, campo, pauta = null) => (campo === "anuncio" ? Boolean(limpiarPauta(pauta)) && formato !== "live" : llevaCampo(formato, campo));
+
+/**
+ * Lo que le falta a una publicación por su formato (lib/reglasFormato.js) y, si va a PAUTA y aún no los tiene, sus
+ * textos de anuncio aparte (lib/pauta.js: toda publicación que va a pauta los lleva). Pura.
+ */
+export const camposQueFaltan = (post = {}) => [
+  ...camposQueFaltanDelFormato(post),
+  ...(vaAPauta(post) && post.format !== "live" && !tieneTextosAnuncio(post) ? ["anuncio"] : []),
+];
+
+/**
+ * Lo que «Completar los textos que faltan» le pide a una publicación: lo que le falta (`camposQueFaltan`) y el texto de
+ * la pieza sólo si aún no tiene su archivo (con la pieza hecha ya no sirve: el texto está dentro). Pura.
+ */
+export const textosQueFaltan = (post = {}) => camposQueFaltan(post).filter((c) => c !== "textoPieza" || !tieneContenido(post));
+
+/**
+ * Los campos que se piden con el botón «IA» de uno o varios campos: esos (se REESCRIBEN) y, con el caption, también los
+ * hashtags si no tiene (el caption de antes los traía dentro; ahora van aparte) y, si va a pauta y aún no los tiene, sus
+ * textos de anuncio aparte (sólo rellenan). Pura.
+ */
+export function camposConSuBoton(post = {}, campos = []) {
+  const extra = [];
+  if (campos.includes("descripcion")) {
+    if (llevaHashtags(post?.format) && !tieneHashtags(post)) extra.push("hashtags");
+    if (vaAPauta(post) && !tieneTextosAnuncio(post)) extra.push("anuncio");
+  }
+  return [...new Set([...campos, ...extra])];
+}
+
+/** El concepto de la semana de un día: el de su FILA de la rejilla (lunes a domingo) o, si no, el que lleve el día. Pura. */
+export function conceptoDelDia(cal, day) {
+  const fecha = String(day?.date ?? "");
+  const n = /^\d{4}-\d{2}-\d{2}$/.test(fecha) ? semanaDelMes(fecha) : 0;
+  return String((n && (cal?.weekConcepts ?? [])[n - 1]) || day?.concept || "").trim();
+}
 
 /**
  * Una publicación del calendario → su casilla del modo «campos»: su formato, su tipo y su matriz, su semana y su
@@ -143,7 +181,9 @@ export function pedidoDeCampos({
     const escrito = Object.entries(r.escrito ?? {}).map(([k, v]) => `     ${NOMBRE[k] ?? k}: «${conLineas(v, MAX_ESCRITO)}»`);
     const antes = Object.entries(r.antes ?? {}).map(([k, v]) => `   lo que tiene ahora en «${NOMBRE[k] ?? k}» (escribe una versión mejor que conserve su intención; lo que va entre comillas se dice TAL CUAL): «${conLineas(v, MAX_ESCRITO)}»`);
     return [
-      lineaDePieza({ ...r, rostro: false, lineaPauta: r.pauta ? lineaDePauta(r.pauta, r) : "" }, productos),
+      // `antes` aquí es lo que tiene cada campo (va en su línea de abajo), no «la que había y no sirvió» de «Otra»:
+      // con el objeto, lineaDePieza escribía «la que había y NO sirvió: «[object Object]»» en cada pedido.
+      lineaDePieza({ ...r, rostro: false, antes: "", lineaPauta: r.pauta ? lineaDePauta(r.pauta, r) : "" }, productos),
       r.rostro ? `   UGC: lo GRABA una persona de la marca hablando a cámara (no se hace con IA); guion para grabar de ${r.duracionUgc} s, unas ${palabrasQueCaben(r.duracionUgc)} palabras de voz en total.` : "",
       r.formulaLinea ? `   ${r.formulaLinea}` : "",
       escrito.length ? `   YA ESCRITO (manda: lo que escribas encaja con esto, no lo repite ni lo contradice):\n${escrito.join("\n")}` : "",

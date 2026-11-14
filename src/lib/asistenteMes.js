@@ -29,9 +29,13 @@
 import { mediosDe } from "./publicacion.js";
 import { porRevisar, aprobadaPorDentro } from "./revisionIdeas.js";
 import { limpiarEstrategia } from "./embudo.js";
-import { nombreDePilar } from "./pilares.js";
+import { nombreDePilar, sugerenciasDeTemporada, ritmoDelMes, asignarMatriz, CAMPOS_MATRIZ } from "./pilares.js";
 import { ponerEnDia } from "./subir.js";
-import { horaDelPlan, limpiarHoraPlan } from "./planSemanal.js";
+import { horaDelPlan, limpiarHoraPlan, semanaDelCliente, ritmoDelCliente, notasDelCliente } from "./planSemanal.js";
+import { fechasDelMes } from "./fechasEspeciales.js";
+import { conNotasDelDia } from "./notasSemana.js";
+import { productosParaPlan, limpiarEstudio } from "./estudioMercado.js";
+import { sugerirPauta } from "./pauta.js";
 
 export const PASOS_MES = Object.freeze([
   { id: "estrategia", nombre: "Estrategia" },
@@ -142,6 +146,67 @@ export function casillasDelMes({ year, month, semana, ritmoMes = {}, ocupados = 
     });
   }
   return salida;
+}
+
+/**
+ * EL PASO DEL PLAN entero, sin pantalla: lo que pone el plan semanal de la empresa en el mes (lo mismo que enseña el
+ * paso «Plan» y lo que pone el conector de Claude con preparar_mes). `cliente`: el de la aplicación (camelCase, con su
+ * plan semanal y sus fechas especiales); `lista`: las plantillas de la agencia; `aceptadas`: los ajustes de temporada
+ * que se aceptaron; `hoy`: AAAA-MM-DD (en el mes en curso, sólo desde hoy). → { semana, ritmo, notas, todasLasFechas,
+ * fechas (las que se enseñan), sugerencias (de temporada), ocupados, casillas, pasado }. Pura.
+ */
+export function planDelAsistente({ cliente, cal, lista = [], aceptadas = [], llenarOcupados = false, hoy = "" }) {
+  const { year, month } = cal;
+  const mes = `${year}-${dos(month + 1)}`;
+  const semana = semanaDelCliente(cliente, lista);
+  const todasLasFechas = fechasDelMes(year, month, cliente?.fechasEspeciales);
+  const fechas = todasLasFechas.filter((f) => f.destacada || f.tipo !== "internacional");
+  const ritmo = ritmoDelCliente(cliente);
+  const sugerencias = sugerenciasDeTemporada({ year, month, ritmo, fechas: todasLasFechas });
+  const ocupados = new Set((cal?.days ?? []).filter((d) => (d.posts ?? []).length).map((d) => d.date));
+  const casillas = casillasDelMes({
+    year, month, semana, ritmoMes: ritmoDelMes(year, month, ritmo, aceptadas), ocupados, llenarOcupados,
+    desde: hoy && mes === hoy.slice(0, 7) ? hoy : "", fechas: fechas.map((f) => ({ fecha: f.fecha, nombre: f.delicada ? `${f.nombre} (fecha delicada: sin promociones)` : f.nombre })),
+  });
+  return { semana, ritmo, notas: notasDelCliente(cliente) ?? {}, todasLasFechas, fechas, sugerencias, ocupados, casillas, pasado: Boolean(hoy) && mes < hoy.slice(0, 7) };
+}
+
+/**
+ * La matriz (producto, nivel, deseo, perfil) de las casillas del plan sobre el plan ENTERO, como «Planificar mes»: la
+ * nota fija del día manda su producto y el foco de la estrategia pesa la mitad de la rotación. `mercado`: { catalogo,
+ * estudio, inventario }. → Map clave → { campos de la matriz }. Pura.
+ */
+export function matrizDelPlan(casillas = [], { mercado = null, notas = {}, foco = "" } = {}) {
+  const general = limpiarEstudio(mercado?.estudio)?.general;
+  const productos = productosParaPlan(mercado?.catalogo ?? [], mercado?.inventario);
+  const conNotas = conNotasDelDia(casillas.map((c) => ({ clave: c.clave, fecha: c.fecha, pilar: c.pilar })), notas, productos)
+    .map(({ notaDia: _n, fecha: _f, ...c }) => c);
+  return new Map(asignarMatriz(conNotas, { productos, deseos: general?.deseos ?? [], perfiles: general?.perfiles ?? [], foco })
+    .map(({ clave, ...m }) => [clave, Object.fromEntries(CAMPOS_MATRIZ.map((k) => [k, m[k] ?? ""]))]));
+}
+
+/**
+ * Las que van a pauta solas al poner el plan (decisión 9): las del tipo «Anuncio», las de la oferta del mes y algunas
+ * frías para Presentación, con su etapa (en una cuenta nueva, lo de conversión va a evaluación). `cuenta`: la de los
+ * números del negocio. → lo de `sugerirPauta` ([{ id: clave, pauta, motivo, cuentaNueva? }]). Pura.
+ */
+export const pautaDelPlan = (casillas = [], matriz = new Map(), { ofertas = "", codigo = "", cuenta = "" } = {}) => sugerirPauta(
+  casillas.map((c) => ({ id: c.clave, post: { format: c.format, pilar: c.pilar, nivel: matriz.get(c.clave)?.nivel ?? "" } })),
+  { ofertas, codigo, cuenta },
+);
+
+/**
+ * Las publicaciones que pone el plan, listas para `conCasillas`: cada casilla con su matriz y, si va a pauta sola, su
+ * pauta (o `false` si alguien la quitó: `sinPauta`, por clave, así no se vuelve a proponer). `nuevoId()`: el id de cada
+ * una. → [{ fecha, especial, post }]. Pura salvo por `nuevoId`.
+ */
+export function publicacionesDelPlan(casillas = [], { matriz = new Map(), sugeridas = [], sinPauta = new Set(), nuevoId } = {}) {
+  const enPauta = new Map(sugeridas.map((x) => [x.id, x]));
+  return casillas.map((c) => {
+    const post = publicacionDeCasilla(c, { id: nuevoId(), matriz: matriz.get(c.clave) ?? {} });
+    const s = enPauta.get(c.clave);
+    return { fecha: c.fecha, especial: c.especial ?? "", post: s ? { ...post, pauta: sinPauta.has(c.clave) ? false : s.pauta } : post };
+  });
 }
 
 /**
