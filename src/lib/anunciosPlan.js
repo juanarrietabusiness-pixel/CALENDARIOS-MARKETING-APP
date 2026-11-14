@@ -86,9 +86,23 @@ export function limpiarTextosPlan(x, { destino = "" } = {}) {
 const pieza = (p) => (esObjeto(p) && corto(p.calendarId, 80) && corto(p.postId, 80) ? { calendarId: corto(p.calendarId, 80), postId: corto(p.postId, 80) } : null);
 
 /**
+ * El ÁNGULO DE VENTA escogido para un hueco, limpio: { productoId, id, nombre } (el ángulo del estudio aprobado; el
+ * nombre se guarda para enseñarlo aunque el estudio cambie), `false` («sin ángulo», escogido a propósito) o undefined
+ * (nada escogido: vale el que sugiere el plan). Pura.
+ */
+export function limpiarAnguloHueco(a) {
+  if (a === false) return false;
+  if (!esObjeto(a)) return undefined;
+  const productoId = corto(a.productoId, 80);
+  const id = /^[\w-]{1,60}$/.test(String(a.id ?? "")) ? String(a.id) : "";
+  return productoId && id ? { productoId, id, nombre: corto(a.nombre, 80) || id } : undefined;
+}
+
+/**
  * Lo decidido de cada hueco de anuncio, limpio: { "<campaña>:a<n>": { pieza?: { calendarId, postId }, nuevo?: true,
- * como?: "publicacion" | "subir", textos?, editado?: true (lo escribió una persona), ia?: true, por?, at? } }. Un hueco
- * sin nada que decir no se guarda. Pura.
+ * como?: "publicacion" | "subir", textos?, angulo? ({ productoId, id, nombre } o false), editado?: true (lo escribió
+ * una persona), ia?: true, por?, at? } }. Un hueco sin nada que decir no se guarda. Lo guardado antes de los ángulos
+ * (sin `angulo`) vale igual. Pura.
  */
 export function limpiarAnunciosPlan(x, { destino = "" } = {}) {
   const salida = {};
@@ -97,23 +111,26 @@ export function limpiarAnunciosPlan(x, { destino = "" } = {}) {
     const p = pieza(v.pieza);
     const textos = limpiarTextosPlan(v.textos, { destino });
     const como = v.como === "publicacion" || v.como === "subir" ? v.como : "";
+    const angulo = limpiarAnguloHueco(v.angulo);
     const e = {
       ...(p ? { pieza: p } : v.nuevo === true ? { nuevo: true } : {}),
       ...(como ? { como } : {}),
       ...(textos ? { textos } : {}),
+      ...(angulo !== undefined ? { angulo } : {}),
       ...(textos && v.editado === true ? { editado: true } : {}),
       ...(textos && v.ia === true && v.editado !== true ? { ia: true } : {}),
       ...(corto(v.por, 80) ? { por: corto(v.por, 80) } : {}),
       ...(/^\d{4}-\d{2}-\d{2}T/.test(String(v.at ?? "")) ? { at: String(v.at).slice(0, 30) } : {}),
     };
-    if (e.pieza || e.nuevo || e.como || e.textos) salida[id] = e;
+    if (e.pieza || e.nuevo || e.como || e.textos || e.angulo !== undefined) salida[id] = e;
   }
   return salida;
 }
 
 /**
  * Funde lo que llega (`cambios`: { hueco → entrada | null }) con lo guardado: null vuelve el hueco a lo que sugiere el
- * plan; una entrada reemplaza la del hueco (lo que no trae, se conserva: cambiar sólo el modo no borra los textos). Pura.
+ * plan; una entrada reemplaza la del hueco (lo que no trae, se conserva: cambiar sólo el modo no borra los textos).
+ * `angulo: null` vuelve el ángulo al que sugiere el plan (y cambiar de publicación no lo toca). Pura.
  */
 export function fundirAnunciosPlan(guardado, cambios, { por = "", at = "", destino = "" } = {}) {
   const base = limpiarAnunciosPlan(guardado, { destino });
@@ -129,6 +146,7 @@ export function fundirAnunciosPlan(guardado, cambios, { por = "", at = "", desti
     if (v.pieza !== undefined && pieza(v.pieza)) delete junto.nuevo;
     if (v.nuevo === true) delete junto.pieza;
     if (v.textos !== undefined) { junto.editado = v.editado === true; junto.ia = v.ia === true; }
+    if (v.angulo === null) delete junto.angulo;
     const limpio = limpiarAnunciosPlan({ [id]: junto }, { destino })[id];
     if (limpio) base[id] = limpio;
     else delete base[id];
@@ -151,15 +169,17 @@ export function faltanTextos(anuncio) {
 /**
  * Lo que la IA necesita de un anuncio del plan → la casilla del pedido. `anuncio`: el del plan (planCiclo.js:
  * { slot, nivel, como, pieza, caption }); `campana`: la suya ({ id, etapa, nombreEtapa }); `post`: la publicación
- * escogida (el contenido que se lee), si la hay. Pura.
+ * escogida (el contenido que se lee), si la hay; `angulo`: el ángulo de venta del hueco ya dicho en una línea
+ * ({ linea, ganchos }: `lineaDeAngulo` del estudio de mercado, que no se importa aquí porque arrastra el estudio). Pura.
  */
-export function casillaDeTextos(anuncio, campana, post = null, { artes = [] } = {}) {
+export function casillaDeTextos(anuncio, campana, post = null, { artes = [], angulo = null } = {}) {
   const conPost = Boolean(post);
   const como = anuncio.como === "publicacion" && conPost ? "publicacion" : "subir";
   return {
     slot: anuncio.slot, campana: campana.id, etapa: campana.etapa === "temporada" ? "conversion" : campana.etapa, nombreEtapa: campana.nombreEtapa,
     para: PARA_QUE_CAMPANA[campana.id] ?? "",
     nivel: anuncio.nivel || "", como,
+    ...(angulo?.linea ? { angulo: { linea: conLineas(angulo.linea, 1200), ganchos: (Array.isArray(angulo.ganchos) ? angulo.ganchos : []).map((g) => corto(g, 220)).filter(Boolean).slice(0, 5) } } : {}),
     ...(conPost ? {
       pieza: {
         titulo: corto(post.title || anuncio.pieza?.titulo, 120),
@@ -177,7 +197,10 @@ export function casillaDeTextos(anuncio, campana, post = null, { artes = [] } = 
 /** La línea de cada anuncio en el pedido. */
 function lineaDeAnuncio(c, i) {
   const nivel = nombreNivelTexto(c.nivel);
-  const cabeza = `${i + 1}. Campaña de ${c.nombreEtapa.toLowerCase()} (${c.para.replace(/\.$/, "")}) · nivel ${nivel || "el de su etapa"}.`;
+  const angulo = c.angulo?.linea
+    ? `\n   Ángulo de venta que prueba este anuncio (todo lo que escribas lo cuenta, cada texto de otra forma): ${c.angulo.linea}${c.angulo.ganchos?.length ? `\n   Ganchos de ese ángulo (inspiración, no se copian): ${c.angulo.ganchos.map((g) => `«${g}»`).join(" · ")}` : ""}`
+    : "";
+  const cabeza = `${i + 1}. Campaña de ${c.nombreEtapa.toLowerCase()} (${c.para.replace(/\.$/, "")}) · nivel ${nivel || "el de su etapa"}.${angulo}`;
   if (c.como === "publicacion") {
     return [
       cabeza,
@@ -226,7 +249,7 @@ export function pedidoDeTextosPlan({ marca = "la marca", casillas = [], producto
     ...casillas.map(lineaDeAnuncio),
     "",
     "Cada campo:",
-    `- "textos": de ${MIN_TEXTOS} a ${MAX_TEXTOS} textos principales, cada uno por un ángulo DISTINTO dentro del nivel de su anuncio (no la misma frase con otras palabras). El primero se entiende solo en su primera línea. Terminan con un llamado concreto ${destino === "web" ? "a entrar a la web" : "a escribir por WhatsApp"}.`,
+    `- "textos": de ${MIN_TEXTOS} a ${MAX_TEXTOS} textos principales, distintos entre sí dentro del nivel de su anuncio (no la misma frase con otras palabras): con un ángulo de venta dado, todos lo cuentan, cada uno de otra forma; sin él, cada uno por un ángulo distinto. El primero se entiende solo en su primera línea. Terminan con un llamado concreto ${destino === "web" ? "a entrar a la web" : "a escribir por WhatsApp"}.`,
     `- "titulos": de 3 a ${MAX_TITULOS}, de ${MAX_TITULO_ANUNCIO} caracteres como mucho, directos sobre el producto o el beneficio.`,
     `- "descripcion": ${MAX_DESCRIPCION_ANUNCIO} caracteres como mucho, lo importante (el precio, el envío, la garantía o la oferta, si existen).`,
     `- "boton": uno de ${BOTONES_PAUTA.map((b) => b.id).join(", ")}.`,

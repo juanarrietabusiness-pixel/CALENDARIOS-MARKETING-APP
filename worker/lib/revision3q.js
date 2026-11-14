@@ -20,14 +20,20 @@
 // piden y, si Meta rechaza alguno (#100), se repite sin ellos y se dice (`leidoCon`); las reproducciones de 3 s van en
 // `actions` (`video_view`) y llegan siempre.
 //
-// EL CRON (una vez al día por cliente, al final de la cadena y sólo si la vuelta no hizo otra cosa): cinco llamadas
+// EL CRON (una vez al día por cliente, al final de la cadena y sólo si la vuelta no hizo otra cosa): seis llamadas
 // (las campañas con lo de ayer, los anuncios encendidos con su creativo, lo de 7 días por campaña y lo de cada anuncio
-// en 7 y 30 días, para «En pauta») y a la campana sólo lo GRAVE que no se avisó ayer. Se apunta en `anuncios_clientes.alertas` también si falló: si no, el cron lo miraría cada minuto.
+// en 7 y 30 días, para «En pauta», y la serie diaria por campaña) y a la campana sólo lo GRAVE que no se avisó ayer. Se apunta en `anuncios_clientes.alertas` también si falló: si no, el cron lo miraría cada minuto.
 //
 // QUÉ PUBLICACIÓN ES CADA ANUNCIO (entrega 7, worker/lib/enPauta.js): la lista de anuncios encendidos trae en la MISMA
 // llamada el creativo con los ids de la publicación que usa, y cada lectura (también la del cron, con dos llamadas más:
 // lo de cada anuncio en 7 y 30 días) pone al día `anuncios_clientes.en_pauta` en la misma sentencia que `revisada_at`
 // o `alertas`. Si Meta no deja leer el creativo, lo guardado no se toca.
+//
+// LO QUE SE VE DÍA A DÍA (src/lib/alertas3q.js): dos llamadas más en la revisión —la serie diaria por campaña desde el
+// 1 del mes (o 14 días atrás) y la de cada anuncio en 14 días, con `time_increment=1`— y una más en el cron (la serie
+// por campaña): 14 y 6 en total. El ritmo de gasto se mide contra el presupuesto del PLAN del mes (lib/planCiclo.js
+// `presupuestoDelMes`, con lo guardado del plan y el calendario del mes: dos lecturas de D1). Si la serie falla, la
+// revisión sigue sin estas alertas.
 //
 // Nada de esto se ha probado contra Meta: los tests (tests/migracion/revision3q.test.js) usan un `fetch` de mentira.
 // ============================================================
@@ -50,6 +56,8 @@ import {
   revisar, q1DeCuenta, alertasGraves, comoDiagnostico, pedidoRevisionIA, limpiarEtapas, etapaDeNombre, rankingsDe,
   sumarFilas, cifras3q, agenciaDelInforme, VENTANAS, PRESET_VENTANA, ETAPAS_REVISION, DIAS_PARA_REVISAR,
 } from "../../src/lib/tresQ.js";
+import { alertasDelDia, alertasGravesDiarias, desdeDeLaSerie, DIAS_SERIE } from "../../src/lib/alertas3q.js";
+import { presupuestoDelMes, temporadaDelMes, idDelPlanDelMes } from "../../src/lib/planCiclo.js";
 
 const leerJSON = (t, d) => { try { return JSON.parse(t) ?? d; } catch { return d; } };
 const FIRMA = { userId: "sistema", nombre: "Revisión de campañas", color: "#1E90FF" };
@@ -128,6 +136,57 @@ const ESCALERA = { campaign: [CAMPOS_NUEVOS_3Q, []], adset: [CAMPOS_NUEVOS_3Q, [
 
 const rechazoDeCampo = (e) => e instanceof ErrorMeta && e.codigo === 100;
 
+/** La serie diaria (src/lib/alertas3q.js): sin los campos nuevos, que no hacen falta y podrían rechazarse. */
+const SERIE = {
+  campaign: "campaign_id,campaign_name,objective,spend,impressions,clicks,inline_link_clicks,actions",
+  ad: "ad_id,ad_name,adset_id,campaign_id,spend,impressions,clicks,inline_link_clicks,actions",
+};
+
+/**
+ * La serie DIARIA de la cuenta a un nivel (`time_increment=1`) de `desde` a `hasta` (AAAA-MM-DD): una llamada. Es un
+ * extra de la revisión: si Meta la rechaza o falla, null (y la revisión sigue sin las alertas del día a día).
+ */
+async function serieDiaria(env, token, act, nivel, desde, hasta) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(desde) || !(hasta >= desde)) return null;
+  try {
+    const r = await graph(env, token, `/${act}/insights`, {
+      params: { level: nivel, time_increment: 1, time_range: JSON.stringify({ since: desde, until: hasta }), fields: SERIE[nivel], limit: 1000 },
+    });
+    return r?.data ?? [];
+  } catch (e) {
+    if (!(e instanceof ErrorMeta)) console.error("revisión 3Q: la serie diaria", nivel, e);
+    return null;
+  }
+}
+
+/**
+ * El presupuesto del mes del PLAN de campañas del cliente (el que mide el ritmo de gasto): la inversión de los números
+ * del negocio (o la escrita en el plan del mes) y la temporada (con las fechas especiales del cliente y el calendario
+ * del mes). Dos lecturas de D1. null sin números o si algo falla.
+ */
+async function presupuestoDelCliente(acceso, cliente, fila, manual, hoy) {
+  try {
+    const mes = hoy.slice(0, 7);
+    const [plan, cals] = await Promise.all([
+      acceso.leerUno("planes_campana", { id: idDelPlanDelMes(cliente.id, mes) }),
+      acceso.leerColumnas("calendars", ["offers", "promo_code", "campaign"], { client_id: cliente.id, year: Number(mes.slice(0, 4)), month: Number(mes.slice(5, 7)) - 1 }, "created_at asc", 1),
+    ]);
+    const ajustes = leerJSON(plan?.datos ?? "", {})?.ajustes ?? {};
+    const calendario = cals[0] ? { offers: cals[0].offers ?? "", promoCode: cals[0].promo_code ?? "", campaign: cals[0].campaign ?? "" } : null;
+    const temporada = temporadaDelMes({ mes, calendario, fechasEspeciales: leerJSON(cliente.fechas_especiales ?? "", null), hoy });
+    return presupuestoDelMes({
+      negocio: leerJSON(fila?.negocio ?? "", {}), numeros: { tasaDefecto: manual.tasaCierre, inversion: ajustes.inversion }, manual,
+      reparto: leerJSON(fila?.reparto ?? "", null), mes, hoy, calendario, temporada, ajustes,
+    });
+  } catch (e) {
+    console.error("revisión 3Q: el presupuesto del mes", cliente?.id, e);
+    return null;
+  }
+}
+
+/** Qué cuenta como resultado de la cuenta para las alertas del día a día: la compra en la web, la conversación si no. */
+const resultadoDeLaCuenta = (destino) => (destino === "web" ? { tipo: "compra", nombreResultado: "compras" } : { tipo: "conversacion", nombreResultado: "conversaciones" });
+
 /** Una lista de lo encendido de la cuenta. Si Meta rechaza algo (#100), otra vez sin el filtro y sin `extra`. */
 async function listaEncendida(env, token, ruta, campos, extra = "") {
   const params = { fields: extra ? `${campos},${extra}` : campos, limit: 200, effective_status: ENCENDIDO };
@@ -161,11 +220,13 @@ async function insightsDe(env, token, act, nivel, ventana, estado) {
 }
 
 /**
- * Lo que necesita la revisión de una cuenta: lo encendido (campañas, conjuntos y anuncios, éstos con su creativo) y sus
- * cifras por nivel en 30, 14 y 7 días. 12 llamadas (más una por escalón si Meta rechaza un campo). → { campanas,
- * conjuntos, anuncios, filas: { campaign: { 30, 14, 7 }, adset, ad }, leidoCon, creativo, recortado }
+ * Lo que necesita la revisión de una cuenta: lo encendido (campañas, conjuntos y anuncios, éstos con su creativo), sus
+ * cifras por nivel en 30, 14 y 7 días y, con `hoy`, la serie DIARIA por campaña (desde el 1 del mes o 14 días atrás) y
+ * por anuncio (14 días). 14 llamadas (más una por escalón si Meta rechaza un campo). → { campanas, conjuntos, anuncios,
+ * filas: { campaign: { 30, 14, 7 }, adset, ad }, diario: { campanas, anuncios } (null lo que no se pudo leer),
+ * leidoCon, creativo, recortado }
  */
-export async function leerCuenta(env, token, cuenta) {
+export async function leerCuenta(env, token, cuenta, { hoy = "" } = {}) {
   const act = cuenta.externo_id;
   const estado = {};
   const porNivel = async (nivel) => {
@@ -173,15 +234,21 @@ export async function leerCuenta(env, token, cuenta) {
     const [de14, de7] = await Promise.all([14, 7].map((w) => insightsDe(env, token, act, nivel, w, estado)));
     return { 30: de30, 14: de14, 7: de7 };
   };
-  const [campanas, conjuntos, { anuncios, creativo }, fc, fs, fa] = await Promise.all([
+  const ayer = /^\d{4}-\d{2}-\d{2}$/.test(hoy) ? sumarDias(hoy, -1) : "";
+  const [campanas, conjuntos, { anuncios, creativo }, fc, fs, fa, diaCampanas, diaAnuncios] = await Promise.all([
     listaEncendida(env, token, `/${act}/campaigns`, CAMPOS_CAMPANA),
     listaEncendida(env, token, `/${act}/adsets`, CAMPOS_CONJUNTO, "learning_stage_info"),
     // Con el creativo: qué publicación usa cada anuncio (worker/lib/enPauta.js), en la misma llamada.
     anunciosEncendidos(env, token, act, { filtro: ENCENDIDO }),
     porNivel("campaign"), porNivel("adset"), porNivel("ad"),
+    ayer ? serieDiaria(env, token, act, "campaign", desdeDeLaSerie(hoy), ayer) : null,
+    ayer ? serieDiaria(env, token, act, "ad", sumarDias(hoy, -DIAS_SERIE), ayer) : null,
   ]);
   const leidoCon = estado.campaign === 1 || estado.adset === 1 || estado.ad === 2 ? "basico" : estado.ad === 1 ? "sin-rankings" : "completo";
-  return { campanas, conjuntos, anuncios, filas: { campaign: fc, adset: fs, ad: fa }, leidoCon, creativo, recortado: Boolean(estado.recortado) };
+  return {
+    campanas, conjuntos, anuncios, filas: { campaign: fc, adset: fs, ad: fa }, diario: { campanas: diaCampanas, anuncios: diaAnuncios },
+    leidoCon, creativo, recortado: Boolean(estado.recortado),
+  };
 }
 
 const encendido = (x) => String(x?.status ?? "").toUpperCase() === "ACTIVE";
@@ -254,8 +321,9 @@ export async function revisionDelCliente(env, acceso, clientId, { marcar = false
   }
   const token = await conexion.token();
   const [fila, manual, cambios, meta] = await Promise.all([
-    filaDelCliente(acceso, cliente.id), manualDe(acceso), cambiosDesdeLaApp(acceso, cliente.id, hoy), leerCuenta(env, token, cuenta),
+    filaDelCliente(acceso, cliente.id), manualDe(acceso), cambiosDesdeLaApp(acceso, cliente.id, hoy), leerCuenta(env, token, cuenta, { hoy }),
   ]);
+  const presupuesto = await presupuestoDelCliente(acceso, cliente, fila, manual, hoy);
   const etapas = limpiarEtapas(leerJSON(fila?.etapas, {}));
   const total30 = cifras3q(sumarFilas(meta.filas.campaign[30]));
   const { destino, numeros, numero } = numerosDe(leerJSON(fila?.negocio, {}), {
@@ -289,6 +357,13 @@ export async function revisionDelCliente(env, acceso, clientId, { marcar = false
     explicacion: "",
     avisoIA: null,
   };
+  // Lo que se ve DÍA A DÍA (src/lib/alertas3q.js): el ritmo de gasto frente al plan, el destino, el CPM, los anuncios que
+  // se cansan y el formato que se lleva casi todo.
+  salida.presupuestoMes = presupuesto;
+  salida.alertasDia = alertasDelDia({
+    campanasDia: meta.diario.campanas, anunciosDia: meta.diario.anuncios, revision: salida, presupuesto, hoy, moneda: cuenta.moneda, ...resultadoDeLaCuenta(destino),
+  });
+  salida.avisoDia = meta.diario.campanas === null ? "Meta no dio la serie de cada día: sin las alertas del día a día (el ritmo de gasto, el destino, el CPM)." : "";
   if (conIA) {
     try {
       const ia = await llamarIA(env, acceso, cliente, { prompt: pedidoRevisionIA({ marca: cliente.name, revision: salida }), salida: 1500, funcion: "diagnóstico de campañas" });
@@ -401,8 +476,8 @@ async function destinatarios(acceso, clientId) {
 }
 
 /**
- * Lo grave de UN cliente: cinco lecturas de Meta (las campañas con lo de ayer, los anuncios encendidos con su creativo,
- * lo de 7 días por campaña y lo de cada anuncio en 7 y 30 días), lo nuevo a la campana y el apunte en `alertas` (y,
+ * Lo grave de UN cliente: seis lecturas de Meta (las campañas con lo de ayer, los anuncios encendidos con su creativo,
+ * lo de 7 días por campaña, lo de cada anuncio en 7 y 30 días y la serie diaria por campaña), lo nuevo a la campana y el apunte en `alertas` (y,
  * en la misma sentencia, «En pauta»: worker/lib/enPauta.js). → cuántos avisos.
  */
 export async function alertasDelCliente(env, acceso, clientId, { hoy = fechaEnZona(new Date()) } = {}) {
@@ -422,13 +497,16 @@ export async function alertasDelCliente(env, acceso, clientId, { hoy = fechaEnZo
     const deAnuncios = (preset) => graph(env, token, `/${act}/insights`, {
       params: { level: "ad", date_preset: preset, fields: "ad_id,adset_id,campaign_id,spend,impressions,reach,clicks,actions,action_values", limit: 500 },
     });
-    const [campanas, { anuncios, creativo }, semana, manual, [de7, de30]] = await Promise.all([
+    const ayer = sumarDias(hoy, -1);
+    const [campanas, { anuncios, creativo }, semana, manual, [de7, de30], diaCampanas] = await Promise.all([
       graph(env, token, `/${act}/campaigns`, { params: { fields: "id,name,status,effective_status,objective,created_time,insights.date_preset(yesterday){spend}", limit: 200, effective_status: ENCENDIDO } }),
       // Todos los encendidos con su creativo (los rechazados los escoge `alertasGraves`): la misma lista que la revisión.
       anunciosEncendidos(env, token, act, { filtro: ENCENDIDO }),
       graph(env, token, `/${act}/insights`, { params: { level: "campaign", date_preset: "last_7d", fields: "campaign_id,campaign_name,spend,actions", limit: 500 } }),
       manualDe(acceso),
       Promise.allSettled([deAnuncios("last_7d"), deAnuncios("last_30d")]),
+      // La serie diaria por campaña (una llamada): el destino roto y el gasto muy adelantado al plan.
+      serieDiaria(env, token, act, "campaign", desdeDeLaSerie(hoy, 4), ayer),
     ]);
     // El MISMO número mágico de la revisión y la ficha (sin ajuste por etapa: decisión del 14-nov).
     const { destino, numero, numeros } = numerosDe(leerJSON(fila?.negocio, {}), { tasaDefecto: manual.tasaCierre, nombre: cliente.name ?? "", moneda: cuenta.moneda });
@@ -451,6 +529,11 @@ export async function alertasDelCliente(env, acceso, clientId, { hoy = fechaEnZo
       numero: numero.valor ?? 0, numeros,
       destino, hoy, nombre: cliente.name ?? "", moneda: cuenta.moneda, umbrales: manual.umbrales3q,
     });
+    // Lo grave del día a día (src/lib/alertas3q.js): el destino roto y el gasto más de un 30 % adelantado al plan.
+    if (Array.isArray(diaCampanas) && diaCampanas.length) {
+      const presupuesto = await presupuestoDelCliente(acceso, cliente, fila, manual, hoy);
+      graves.push(...alertasGravesDiarias({ filas: diaCampanas, presupuesto, hoy, moneda: cuenta.moneda, nombre: cliente.name ?? "", ...resultadoDeLaCuenta(destino) }));
+    }
     // Lo que ya se avisó la última vez no se repite cada día: sigue en la revisión.
     const yaAvisadas = new Set(Array.isArray(previas.claves) ? previas.claves : []);
     const nuevas = graves.filter((g) => !yaAvisadas.has(g.clave));

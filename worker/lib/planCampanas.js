@@ -41,7 +41,7 @@ import { preferenciasDelCliente } from "./enPauta.js";
 import { fechaEnZona } from "../../src/lib/agenda.js";
 import {
   planDelCiclo, conPiezas, candidatasDelCalendario, temporadaDelMes, guiaDeMontaje, limpiarProgreso, avanceDeGuia, planATextoCiclo,
-  mesDelPlan, anunciosQueFuncionaron, MESES_DE_PIEZAS,
+  mesDelPlan, anunciosQueFuncionaron, MESES_DE_PIEZAS, idDelPlanDelMes, claveAngulo,
 } from "../../src/lib/planCiclo.js";
 import {
   limpiarQue, limpiarAnunciosPlan, fundirAnunciosPlan, casillaDeTextos, pedidoDeTextosPlan, leerTextosPlan, rellenarAnuncioDelPost,
@@ -49,7 +49,7 @@ import {
 } from "../../src/lib/anunciosPlan.js";
 import { limpiarReparto, sumaDelReparto, errorDelCiclo } from "../../src/lib/manualCiclo.js";
 import { limpiarAnuncio, limpiarPauta, vaAPauta, bloqueDeAnuncio } from "../../src/lib/pauta.js";
-import { productosActivos, lineaDeProducto } from "../../src/lib/estudioMercado.js";
+import { productosActivos, lineaDeProducto, lineaDeAngulo } from "../../src/lib/estudioMercado.js";
 import { textoDelCliente } from "../../src/lib/loteAnuncios.js";
 import { tipoArteDe, limpiarTiposArte } from "../../src/lib/tiposArte.js";
 import { numeroMagicoDelCliente } from "../../src/lib/numerosNegocio.js";
@@ -62,7 +62,7 @@ const MAX_PASOS = 400;
 const MAX_MARCAR = 60;
 
 /** El id de la fila guardada del plan de un cliente y un mes. */
-export const idDelCiclo = (clientId, mes) => `ciclo-${clientId}-${mes}`;
+export const idDelCiclo = idDelPlanDelMes;
 
 /** «2026-11» del texto o, si no vale, el mes de hoy en Panamá. */
 const mesPedido = (texto) => mesDelPlan(texto)?.texto ?? fechaEnZona().slice(0, 7);
@@ -153,7 +153,9 @@ async function armarCiclo(env, acceso, cliente, mes, { cuenta = null } = {}) {
   const temporada = temporadaDelMes({ mes, calendario: delMes, fechasEspeciales: leerJSON(cliente.fechas_especiales, null), hoy });
   const base = planDelCiclo({
     negocio, numeros: { tasaDefecto: manual.tasaCierre, inversion: guardado.ajustes.inversion }, manual, reparto: filaAnuncios?.reparto ?? null, mes, hoy,
-    calendario: delMes, kit: { tiposArte: limpiarTiposArte(kit?.tiposArte) }, estudio, catalogo: mercado.catalogo, temporada, ajustes: guardado.ajustes,
+    // Los ángulos de venta de cada hueco salen SÓLO del estudio aprobado (un borrador no se prueba con dinero).
+    calendario: delMes, kit: { tiposArte: limpiarTiposArte(kit?.tiposArte) }, estudio, estudioAprobado: mercado.estudio ?? null,
+    catalogo: mercado.catalogo, temporada, ajustes: guardado.ajustes,
     cliente: { nombre: cliente.name, rubro: cliente.industry ?? "" }, moneda: cuenta?.moneda || "USD",
   });
   const candidatas = candidatasDelCalendario({ calendarios, cola, metricas, destino: base.destino, artesMarca: kit?.tiposArte, incluir });
@@ -291,12 +293,18 @@ export async function escribirTextosDelPlan(env, acceso, cliente, mes, slots = [
       : "Esos anuncios ya tienen textos escritos por una persona."), { estado: 400 });
   }
   const porClave = new Map(candidatas.map((p) => [`${p.calendarId}|${p.postId}`, p.post]));
-  const casillas = elegidos.map(({ a, c }) => casillaDeTextos(a, c, a.pieza ? porClave.get(`${a.pieza.calendarId}|${a.pieza.postId}`) ?? null : null,
-    { artes: c.artes.map((x) => tipoArteDe(x)?.nombre).filter(Boolean) }));
+  // El ángulo de venta de cada hueco, entero (del estudio aprobado): lo que la IA cuenta en sus textos.
+  const anguloEntero = (a) => (a?.angulo ? (plan.angulos ?? []).find((x) => claveAngulo(x) === claveAngulo(a.angulo)) ?? null : null);
+  const casillas = elegidos.map(({ a, c }) => {
+    const ang = anguloEntero(a);
+    return casillaDeTextos(a, c, a.pieza ? porClave.get(`${a.pieza.calendarId}|${a.pieza.postId}`) ?? null : null,
+      { artes: c.artes.map((x) => tipoArteDe(x)?.nombre).filter(Boolean), angulo: ang ? { linea: lineaDeAngulo(ang), ganchos: ang.ganchos } : null });
+  });
 
-  // Los productos: los del plan (o todo el catálogo activo, hasta 8) y los de las piezas, con su precio EXACTO.
+  // Los productos: los del plan (o todo el catálogo activo, hasta 8), los de las piezas y los de sus ángulos, con su
+  // precio EXACTO.
   const activos = productosActivos(mercado.catalogo);
-  const ids = new Set([...(plan.productos ?? []).map((p) => p.id), ...elegidos.map(({ a }) => a.pieza?.productoId).filter(Boolean)]);
+  const ids = new Set([...(plan.productos ?? []).map((p) => p.id), ...elegidos.flatMap(({ a }) => [a.pieza?.productoId, a.angulo?.productoId]).filter(Boolean)]);
   const productos = (ids.size ? activos.filter((p) => ids.has(p.id)) : activos.slice(0, 8)).map((p) => lineaDeProducto(p, { inventario: mercado.inventario }));
   let contexto = "";
   try {
@@ -320,7 +328,9 @@ export async function escribirTextosDelPlan(env, acceso, cliente, mes, slots = [
   for (const { a } of elegidos) {
     const t = leidos.get(a.slot);
     if (!t) continue;
-    cambios[a.slot] = { ...(a.pieza ? { pieza: { calendarId: a.pieza.calendarId, postId: a.pieza.postId } } : { nuevo: true }), como: a.como, textos: t, ia: true };
+    // El ángulo con el que se escribieron se queda fijo en el hueco (si el plan sugiere otro mañana, los textos no cuadrarían).
+    const angulo = a.angulo ? { productoId: a.angulo.productoId, id: a.angulo.id, nombre: a.angulo.nombre } : undefined;
+    cambios[a.slot] = { ...(a.pieza ? { pieza: { calendarId: a.pieza.calendarId, postId: a.pieza.postId } } : { nuevo: true }), como: a.como, textos: t, ia: true, ...(angulo ? { angulo } : {}) };
   }
   await guardarCiclo(acceso, cliente, mes, { anuncios: cambios }, usuario);
   // Y en la publicación, sin pisar lo que ya tenía.

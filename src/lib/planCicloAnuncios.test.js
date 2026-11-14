@@ -183,11 +183,11 @@ describe("los anuncios: lo que ya funcionó, lo escogido a mano y sus textos", (
     expect(paso.campos.find((f) => f.etiqueta === "Descripción")).toMatchObject({ valor: "Envío gratis", copiar: true });
     const textos = hojasDelPlan(p).at(-1);
     expect(textos.nombre).toBe("Textos de los anuncios");
-    expect(textos.filas[2]).toEqual(["Campaña", "Conjuntos", "Anuncio", "Publicación", "Cómo se monta", "Nivel", "Texto principal", "Títulos", "Descripción", "Botón"]);
+    expect(textos.filas[2]).toEqual(["Campaña", "Conjuntos", "Anuncio", "Publicación", "Cómo se monta", "Nivel", "Ángulo de venta", "Texto principal", "Títulos", "Descripción", "Botón"]);
     const fila = textos.filas.find((f) => f[2] === p.campanas[0].anuncios[0].nombre);
     expect(fila[4]).toBe("Usar la publicación existente");
-    expect(fila[6]).toMatch(/^\(El de la publicación, no se cambia\)\n¿Tu sofá/);
-    expect(fila.slice(7, 10)).toEqual(["El sofá que se abre en 10 s", "Envío gratis", "Enviar mensaje de WhatsApp"]);
+    expect(fila[7]).toMatch(/^\(El de la publicación, no se cambia\)\n¿Tu sofá/);
+    expect(fila.slice(8, 11)).toEqual(["El sofá que se abre en 10 s", "Envío gratis", "Enviar mensaje de WhatsApp"]);
     expect(hojasDelPlan(p)[0].filas[4][9]).toMatch(/textos en la hoja «Textos de los anuncios»/);
     const texto = planATextoCiclo(p);
     expect(texto).toMatch(/Texto principal \(el de la publicación, no se cambia\)/);

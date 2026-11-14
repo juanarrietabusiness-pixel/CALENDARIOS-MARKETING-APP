@@ -15,12 +15,14 @@ import { ACCION_MENSAJE } from "../../src/lib/anuncios.js";
 // La revisión 3Q contra una D1 de verdad, una Meta y una IA de mentira
 //
 // Lo que importa:
-//   1. Sólo LEE de Meta, por nivel y no campaña a campaña: 12 llamadas (tres listas y 30, 14 y 7 días de campañas,
-//      conjuntos y anuncios), con los campos nuevos y, si Meta rechaza alguno (#100), sin ellos y diciéndolo.
+//   1. Sólo LEE de Meta, por nivel y no campaña a campaña: 14 llamadas (tres listas, 30, 14 y 7 días de campañas,
+//      conjuntos y anuncios, y la serie diaria por campaña y por anuncio), con los campos nuevos y, si Meta rechaza
+//      alguno (#100), sin ellos y diciéndolo. Con la serie, las alertas del día a día (src/lib/alertas3q.js).
 //   2. Abrirla la marca como revisada (quien sólo mira, no) y Mi día deja de pedirla; la etapa escogida a mano se
 //      guarda sin pisar los números del negocio.
 //   3. El cron: un cliente por vuelta, desde las 7:00, una vez al día; a la campana sólo lo grave y sólo lo nuevo; si
-//      falla, se apunta igual (si no, lo miraría cada minuto). Cinco llamadas a Meta (dos son de «En pauta»).
+//      falla, se apunta igual (si no, lo miraría cada minuto). Seis llamadas a Meta (dos son de «En pauta» y una, la
+//      serie diaria por campaña: el destino roto y el gasto muy adelantado al plan).
 //   4. El asistente y Claude (MCP) leen lo mismo, sin gastar.
 //
 // Ninguna petición sale a Internet: el `fetch` falso revienta con cualquier host que no sea Meta o Anthropic.
@@ -40,6 +42,7 @@ let rechazar; // qué campos rechaza Meta con un #100
 let estadoAnuncio;
 let gastoAyer;
 let peticionesIA;
+let diario; // la serie diaria (`time_increment=1`) por nivel
 
 const respuesta = (datos, estado = 200) => new Response(JSON.stringify(datos), { status: estado, headers: { "content-type": "application/json" } });
 const sse = (tipo, datos) => `event: ${tipo}\ndata: ${JSON.stringify(datos)}\n\n`;
@@ -113,6 +116,7 @@ async function falso(entrada, init = {}) {
     return respuesta({ data: filtro ? todos.filter((a) => filtro.includes(a.effective_status)) : todos });
   }
   // Como Meta: sólo los campos que se piden (y los ids del nivel).
+  if (ruta === "/act_111/insights" && params.time_increment) return respuesta({ data: diario[params.level] ?? [] });
   if (ruta === "/act_111/insights") {
     const pedidos = new Set(campos.split(","));
     return respuesta({ data: insightsDe(params.level, params.date_preset).map((f) => Object.fromEntries(Object.entries(f).filter(([k]) => pedidos.has(k)))) });
@@ -171,6 +175,7 @@ beforeEach(async () => {
   estadoAnuncio = "ACTIVE";
   gastoAyer = 5;
   peticionesIA = [];
+  diario = { campaign: [], ad: [] };
   vi.stubGlobal("fetch", vi.fn(falso));
   await sembrar();
 });
@@ -183,10 +188,15 @@ describe("la revisión de un cliente", () => {
     const r = await revision(EDITOR);
     expect(r.status).toBe(200);
     const d = await r.json();
-    // Sólo lecturas: tres listas y nueve de /insights (campaña, conjunto y anuncio × 30, 14 y 7 días).
+    // Sólo lecturas: tres listas, nueve de /insights (campaña, conjunto y anuncio × 30, 14 y 7 días) y la serie diaria
+    // por campaña (desde 14 días atrás: es día 6) y por anuncio (14 días).
     expect(llamadas.every((l) => l.metodo === "GET")).toBe(true);
-    expect(llamadas).toHaveLength(12);
-    const porNivel = llamadas.filter((l) => l.ruta === "/act_111/insights").map((l) => `${l.params.level}:${l.params.date_preset}`).sort();
+    expect(llamadas).toHaveLength(14);
+    const series = llamadas.filter((l) => l.params.time_increment);
+    expect(series.map((l) => `${l.params.level}:${l.params.time_range}`).sort()).toEqual([
+      'ad:{"since":"2026-10-23","until":"2026-11-05"}', 'campaign:{"since":"2026-10-23","until":"2026-11-05"}',
+    ]);
+    const porNivel = llamadas.filter((l) => l.ruta === "/act_111/insights" && !l.params.time_increment).map((l) => `${l.params.level}:${l.params.date_preset}`).sort();
     expect(porNivel).toEqual(["ad:last_14d", "ad:last_30d", "ad:last_7d", "adset:last_14d", "adset:last_30d", "adset:last_7d", "campaign:last_14d", "campaign:last_30d", "campaign:last_7d"]);
     expect(llamadas.find((l) => l.params.level === "ad").params.fields).toMatch(/unique_inline_link_clicks.*quality_ranking/);
     expect(d.leidoCon).toBe("completo");
@@ -224,9 +234,10 @@ describe("la revisión de un cliente", () => {
     // Contada sólo sobre las impresiones de sus anuncios de VIDEO: el 9021 (300 de 6.000).
     expect(c.conjuntos[1].ventanas[7].tasa3s).toBe(5);
     // Cada nivel probó UNA vez lo nuevo (el de anuncios, dos escalones: con rankings y sin ellos) y siguió sin ello en
-    // las otras ventanas: 9 + 1 + 1 + 2.
-    const ins = llamadas.filter((l) => l.ruta === "/act_111/insights");
+    // las otras ventanas: 9 + 1 + 1 + 2 (y las dos series diarias, que no piden los campos nuevos).
+    const ins = llamadas.filter((l) => l.ruta === "/act_111/insights" && !l.params.time_increment);
     expect(ins).toHaveLength(13);
+    expect(llamadas.filter((l) => l.params.time_increment)).toHaveLength(2);
   });
 
   it("sólo los rankings rechazados: el resto de lo nuevo llega", async () => {
@@ -299,7 +310,7 @@ describe("el cron: lo grave de cada día", () => {
   const alertas = () => JSON.parse(db.sqlite.prepare("select alertas from anuncios_clientes where client_id = 'c1'").get().alertas);
   const a = (iso) => new Date(iso);
 
-  it("antes de las 7:00 de Panamá no mira nada; después, un cliente, con cinco llamadas, y avisa lo grave", async () => {
+  it("antes de las 7:00 de Panamá no mira nada; después, un cliente, con seis llamadas, y avisa lo grave", async () => {
     await conNumeros();
     llamadas.length = 0;
     expect(await revision3qPendiente(env, a("2026-11-06T11:00:00.000Z"))).toBe(0); // 6:00 en Panamá
@@ -308,8 +319,9 @@ describe("el cron: lo grave de cada día", () => {
     estadoAnuncio = "DISAPPROVED";
     expect(await revision3qPendiente(env, a("2026-11-06T14:00:00.000Z"))).toBe(1); // 9:00
     // Las campañas, los anuncios encendidos (con su creativo), lo de 7 días por campaña y, para «En pauta» (entrega 7),
-    // lo de cada anuncio en 7 y 30 días.
-    expect(llamadas).toHaveLength(5);
+    // lo de cada anuncio en 7 y 30 días, y la serie diaria por campaña (desde 4 días atrás o el 1 del mes).
+    expect(llamadas).toHaveLength(6);
+    expect(llamadas.find((l) => l.params.time_increment).params.time_range).toBe('{"since":"2026-11-01","until":"2026-11-05"}');
     const lista = avisos();
     // No gastó ayer y un anuncio rechazado (la campaña 700 gasta y tiene conversaciones; nadie con el doble sin una).
     expect([...new Set(lista.map((x) => x.texto))]).toEqual([
@@ -410,5 +422,60 @@ describe("el informe de anuncios: lo que ve sólo la agencia", () => {
     expect(r.status).toBe(200);
     const texto = await r.text();
     expect(texto).not.toMatch(/pctMensajes|agencia/);
+  });
+});
+
+describe("lo que se ve día a día (la serie diaria: src/lib/alertas3q.js)", () => {
+  // Del 23 de octubre al 5 de noviembre (hoy es el 6): la campaña 800 gasta 40 $ al día; hasta el 2 llegan
+  // conversaciones y del 3 al 5 hay clics y ninguna. El anuncio 9031 se cansa: CTR del 3 % sus tres primeros días y del
+  // 1,5 % los últimos siete.
+  const dias = [];
+  for (let d = new Date("2026-10-23T12:00:00Z"); d <= new Date("2026-11-05T12:00:00Z"); d.setUTCDate(d.getUTCDate() + 1)) dias.push(d.toISOString().slice(0, 10));
+  const deCampana = (f) => ({
+    date_start: f, date_stop: f, campaign_id: "800", campaign_name: "Café · Presentación · Octubre", objective: "OUTCOME_ENGAGEMENT",
+    spend: "40", impressions: "4000", clicks: "40", inline_link_clicks: "20", actions: [{ action_type: ACCION_MENSAJE, value: f < "2026-11-03" ? "4" : "0" }],
+  });
+  const deAnuncio = (f, i) => ({
+    date_start: f, date_stop: f, ad_id: "9031", ad_name: "Reel viejo", adset_id: "901", campaign_id: "800",
+    spend: "5", impressions: i < 3 ? "1000" : "400", clicks: "0", inline_link_clicks: i < 3 ? "30" : f >= "2026-10-30" ? "6" : "12", actions: [],
+  });
+
+  it("la revisión dice el ritmo de gasto frente al plan del mes, el destino roto y el anuncio que se cansa", async () => {
+    await conNumeros();
+    diario = { campaign: dias.map(deCampana), ad: dias.map(deAnuncio) };
+    const d = await (await revision()).json();
+    // El plan del mes: la inversión de los números (2.000 × 35 % = 700 $) más la temporada de Black Friday.
+    expect(d.presupuestoMes.total).toBeGreaterThan(700);
+    const tipos = d.alertasDia.map((a) => a.tipo);
+    expect(tipos).toEqual(expect.arrayContaining(["ritmo", "destino-roto", "cansado"]));
+    const ritmo = d.alertasDia.find((a) => a.tipo === "ritmo");
+    // Del 1 al 5: 200 $ gastados cuando tocaban unos 123.
+    expect(ritmo).toMatchObject({ semaforo: { id: "mala", texto: "Mala" }, cifras: { gastado: 200, pasados: 5 } });
+    expect(d.alertasDia.find((a) => a.tipo === "destino-roto").porque).toMatch(/60 clics y 0 conversaciones/);
+    expect(d.alertasDia.every((a) => a.semaforo.texto && a.porque && a.pasos.length)).toBe(true);
+    expect(d.avisoDia).toBe("");
+  });
+
+  it("si la serie falla, la revisión sale igual y lo dice", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (e, init) => {
+      const u = new URL(String(e));
+      if (u.searchParams.get("time_increment")) return respuesta({ error: { message: "(#100) time_increment", code: 100 } }, 400);
+      return falso(e, init);
+    }));
+    const d = await (await revision()).json();
+    expect(d.campanas.length).toBe(2);
+    expect(d.alertasDia.filter((a) => a.tipo !== "formato")).toEqual([]);
+    expect(d.avisoDia).toMatch(/serie de cada día/);
+  });
+
+  it("el cron avisa el destino roto y el gasto muy adelantado, una vez", async () => {
+    await conNumeros();
+    diario = { campaign: dias.map(deCampana), ad: [] };
+    await revision3qPendiente(env, new Date("2026-11-06T14:00:00.000Z"));
+    const textos = db.sqlite.prepare("select distinct texto from avisos").all().map((x) => x.texto);
+    expect(textos.some((t) => /^«Café · Presentación · Octubre» de Café Luna: 60 clics y ninguna conversación en 3 días/.test(t))).toBe(true);
+    expect(textos.some((t) => /van [\d,]+ % por encima del plan del mes: 200,00/.test(t))).toBe(true);
+    const claves = JSON.parse(db.sqlite.prepare("select alertas from anuncios_clientes where client_id = 'c1'").get().alertas).claves;
+    expect(claves).toEqual(expect.arrayContaining(["destino-roto:800", "ritmo:2026-11"]));
   });
 });

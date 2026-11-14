@@ -314,3 +314,57 @@ describe("el asistente y Claude", () => {
     expect(m.content[0].text).toContain("PRESENTACIÓN · Dcasa · Presentación");
   });
 });
+
+describe("los ángulos de venta del estudio aprobado en el plan", () => {
+  const sse = (tipo, datos) => `event: ${tipo}\ndata: ${JSON.stringify(datos)}\n\n`;
+  const flujo = (texto) => new Response([
+    sse("message_start", { message: { model: "x", usage: { input_tokens: 2000 } } }),
+    sse("content_block_start", { index: 0, content_block: { type: "text", text: "" } }),
+    sse("content_block_delta", { index: 0, delta: { type: "text_delta", text: texto } }),
+    sse("content_block_stop", { index: 0 }),
+    sse("message_delta", { delta: { stop_reason: "end_turn" }, usage: { output_tokens: 400 } }),
+  ].join(""), { headers: { "content-type": "text/event-stream" } });
+
+  it("cada hueco lleva su ángulo; se cambia y se guarda; la IA escribe con él y queda fijo en el hueco", async () => {
+    db.sqlite.prepare("update mercado_clientes set estudio = ? where id = 'm1'").run(JSON.stringify({
+      aprobadoAt: "2026-10-01T00:00:00.000Z",
+      general: { resumen: "Muebles en Panamá.", perfiles: [{ nombre: "Mamá práctica", quien: "Mamás de 30 a 45" }], deseos: [] },
+      productos: { sofa: { elementos: MALETAS, angulos: [
+        { id: "visitas", nombre: "Las visitas que se quedan", publico: "frio", problemaExterno: "No hay dónde dormir a las visitas.", ganchos: ["¿Y si se quedan a dormir?"] },
+        { id: "garantia", nombre: "Dos años sin preocuparte", publico: "tibio" },
+      ] } },
+    }));
+    const d = await (await ciclo(JEFE)).json();
+    expect(d.plan.angulos.map((a) => a.id)).toEqual(["visitas", "garantia"]);
+    expect(d.plan.campanas[0].angulosHuecos[0]).toMatchObject({ id: "visitas", sugerido: true });
+    expect(d.plan.campanas[1].angulosHuecos[0]).toMatchObject({ id: "garantia" });
+    // «Sin ángulo» en el 2 de presentación: se guarda y el plan lo respeta.
+    const r = await (await ciclo(JEFE, "c1", "", { method: "PUT", body: { mes: "2026-11", anuncios: { "presentacion:a2": { angulo: false } } } })).json();
+    expect(r.guardado.anuncios["presentacion:a2"]).toMatchObject({ angulo: false });
+    expect(r.plan.campanas[0].angulosHuecos[1]).toBeNull();
+
+    env.ANTHROPIC_API_KEY = "k";
+    const pedidos = [];
+    vi.stubGlobal("fetch", async (url, opciones = {}) => {
+      const u = String(url);
+      if (u.startsWith("https://api.anthropic.com/v1/models")) return Response.json({ data: [{ id: "claude-sonnet-5" }] });
+      if (u.startsWith("https://api.anthropic.com/v1/messages")) {
+        pedidos.push(JSON.parse(opciones.body));
+        return flujo(JSON.stringify({ anuncios: [{ n: 1, titulos: ["¿Y si se quedan?"], descripcion: "Sofá cama $450", boton: "WHATSAPP_MESSAGE" }] }));
+      }
+      throw new Error(`fetch inesperado a ${u}`);
+    });
+    const e = await ciclo(JEFE, "c1", "", { method: "POST", body: { mes: "2026-11", escribir: ["presentacion:a1"] } });
+    expect(e.status).toBe(200);
+    const prompt = pedidos[0].messages[0].content;
+    expect(prompt).toMatch(/Ángulo de venta que prueba este anuncio[^\n]*«Las visitas que se quedan»/);
+    expect(prompt).toMatch(/Ganchos de ese ángulo \(inspiración, no se copian\): «¿Y si se quedan a dormir\?»/);
+    const guardado = await (await ciclo(JEFE)).json();
+    expect(guardado.guardado.anuncios["presentacion:a1"].angulo).toEqual({ productoId: "sofa", id: "visitas", nombre: "Las visitas que se quedan" });
+  });
+
+  it("sin ángulos en el estudio aprobado, el plan va como antes", async () => {
+    const d = await (await ciclo(JEFE)).json();
+    expect(d.plan.angulos).toEqual([]);
+  });
+});

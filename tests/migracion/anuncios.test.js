@@ -617,9 +617,10 @@ describe("el diagnóstico de las campañas activas", () => {
     expect(d.hallazgos.find((h) => h.accion === "escalar").sugerencia).toEqual({ diarioActual: 10, diarioNuevo: 12 });
     expect(d.revision.campanas[0].anuncios[0].veredicto).toMatchObject({ id: "sano", desglose: true });
     expect(d.moneda).toBe("USD");
-    // Sólo lecturas: las tres listas y nueve de /insights (tres niveles × 30, 14 y 7 días), las tenga la cuenta que tenga.
+    // Sólo lecturas: las tres listas, nueve de /insights (tres niveles × 30, 14 y 7 días) y las dos series diarias (por
+    // campaña y por anuncio: src/lib/alertas3q.js), las tenga la cuenta que tenga.
     expect(llamadas.filter((l) => l.metodo !== "GET")).toHaveLength(0);
-    expect(llamadas).toHaveLength(12);
+    expect(llamadas).toHaveLength(14);
   });
 
   it("pausar un conjunto de la cuenta, sí; uno de otra cuenta, no existe", async () => {

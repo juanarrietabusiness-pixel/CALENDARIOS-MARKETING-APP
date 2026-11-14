@@ -32,6 +32,7 @@ import {
   paraPautar, fraseParaPautar, textoDePublicacionDeAnuncio,
 } from "../../src/lib/enPauta.js";
 import { preferenciasDeAnuncios } from "../../src/lib/aprenderAnuncios.js";
+import { limpiarAnunciosPlan } from "../../src/lib/anunciosPlan.js";
 import { composicionDe } from "../../src/lib/loteAnuncios.js";
 import { limpiarPauta, vaAPauta, etapaSugerida, deLaOferta, problemasDePauta, tieneTextosAnuncio } from "../../src/lib/pauta.js";
 import { idEtapaCiclo, nombreEtapaCiclo } from "../../src/lib/cicloVentas.js";
@@ -194,17 +195,37 @@ export async function enPautaDelCliente(acceso, clientId) {
  */
 export async function preferenciasDelCliente(acceso, clientId) {
   try {
-    const p = preferenciasDeAnuncios(await enPautaDelCliente(acceso, clientId), null, { nombres: { composicion: nombreComposicion } });
+    const [guardado, angulos] = await Promise.all([enPautaDelCliente(acceso, clientId), angulosDeLosPlanes(acceso, clientId)]);
+    const p = preferenciasDeAnuncios(guardado, null, { nombres: { composicion: nombreComposicion }, angulos });
     return p.linea ? p : null;
   } catch {
     return null;
   }
 }
 
+/**
+ * El ÁNGULO DE VENTA con el que corrió cada publicación, según los planes de campañas guardados del cliente (los
+ * huecos con su publicación y su ángulo: el escogido o con el que se escribieron sus textos): clave de la publicación
+ * → { clave, nombre }. El más reciente gana. Una lectura (los últimos 12 planes); si falla, vacío.
+ */
+export async function angulosDeLosPlanes(acceso, clientId) {
+  const m = new Map();
+  const filas = await acceso.leerColumnas("planes_campana", ["id", "datos"], { client_id: clientId }, "updated_at desc", 12).catch(() => []);
+  for (const f of filas) {
+    if (!String(f.id).startsWith(`ciclo-${clientId}-`)) continue;
+    for (const e of Object.values(limpiarAnunciosPlan(leerJSON(f.datos, {})?.anuncios))) {
+      if (!e.pieza || !e.angulo) continue;
+      const k = clavePublicacion(e.pieza.calendarId, e.pieza.postId);
+      if (!m.has(k)) m.set(k, { clave: `${e.angulo.productoId}:${e.angulo.id}`, nombre: e.angulo.nombre });
+    }
+  }
+  return m;
+}
+
 /** Lo que va a la pantalla (y al asistente) de lo guardado: sin lo interno. */
-export function enPautaPublico(guardado) {
+export function enPautaPublico(guardado, { angulos = null } = {}) {
   const g = limpiarEnPauta(guardado);
-  const pref = preferenciasDeAnuncios(g, null, { nombres: { composicion: nombreComposicion } });
+  const pref = preferenciasDeAnuncios(g, null, { nombres: { composicion: nombreComposicion }, angulos });
   return {
     leidoAt: g.leidoAt, cuenta: g.cuenta, moneda: g.moneda, creativo: g.creativo,
     publicaciones: Object.values(g.publicaciones).map((e) => ({
@@ -290,9 +311,9 @@ export async function rutasEnPauta(req, env, { acceso, usuario, clientId, sub, m
   if (!cliente) return noEncontrado("Cliente");
   if (sub === "en-pauta" && metodo === "GET") return json(enPautaPublico(await enPautaDelCliente(acceso, cliente.id)));
   if (sub === "para-pautar" && metodo === "GET") {
-    const fila = await acceso.leerUno("anuncios_clientes", { client_id: cliente.id });
+    const [fila, angulos] = await Promise.all([acceso.leerUno("anuncios_clientes", { client_id: cliente.id }), angulosDeLosPlanes(acceso, cliente.id)]);
     const r = await paraPautarDelCliente(acceso, cliente, fila);
-    return json({ ...r, preferencias: enPautaPublico(fila?.en_pauta).preferencias });
+    return json({ ...r, preferencias: enPautaPublico(fila?.en_pauta, { angulos }).preferencias });
   }
   if (sub === "para-pautar" && metodo === "POST") return await marcarParaPautar(req, env, { acceso, usuario, cliente });
   return noEncontrado("Ruta");
