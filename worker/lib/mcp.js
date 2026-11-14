@@ -136,6 +136,7 @@ export const HERRAMIENTAS_MCP = Object.freeze([
   ...DEFINICIONES_SUBIDA,
   // Todo lo de la marca en un ZIP (worker/lib/kitDescargable.js), con el mismo enlace de 15 minutos que exportar_piezas.
   DEFINICION_KIT,
+  // El cerebro y el estudio de mercado (worker/lib/cerebro/herramientasCerebro.js): guardar con confirmación, proponer notas y ángulos, ver el estudio.
   ...DEFINICIONES_CEREBRO,
   // Campañas y números (worker/lib/herramientasCampanas.js): los números del negocio, el plan de campañas y sus textos.
   ...DEFINICIONES_CAMPANAS,
