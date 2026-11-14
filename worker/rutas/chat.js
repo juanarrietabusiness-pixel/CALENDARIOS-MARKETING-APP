@@ -121,6 +121,8 @@ OTRAS HERRAMIENTAS QUE TIENES ADEMÁS DE LAS DEL CALENDARIO:
 · plan_de_campanas: el plan de campañas de un cliente y un mes (las campañas del ciclo de ventas, su presupuesto,
   públicos, exclusiones y qué pieza va en cada anuncio). Sólo lectura: las campañas se montan en el Ads Manager.
 · video_listo («¿Está listo este video?») y extraer_guion_ugc (el guion de un video, adaptado como UGC para grabar).
+· deconstruir_video: el desglose objetivo de un video de la galería, toma por toma; crear_reel con video_referencia
+  sigue su forma (nunca su marca, sus personas ni su texto).
 Antes de decir que no tienes un dato, mira si alguna de estas herramientas lo trae.`;
 
 const NOMBRES_WEB = new Set(HERRAMIENTAS_WEB.map((h) => h.name));

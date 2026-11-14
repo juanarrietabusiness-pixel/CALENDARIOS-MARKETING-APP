@@ -481,6 +481,7 @@ export function describirUso(nombre, entrada = {}) {
     case "montar_reel": return "Montó un reel con la voz, el texto, los subtítulos y el logo";
     case "video_listo": return "Revisó si un video está listo para publicar";
     case "extraer_guion_ugc": return "Extrajo el guion de un video y lo adaptó como UGC";
+    case "deconstruir_video": return "Desglosó un video toma por toma";
     case "crear_video": return "Creó un video animado (borrador)";
     case "guardar_video": return "Guardó el guion de un video animado";
     case "editar_escena": return entrada.quitar ? `Quitó la escena «${entrada.quitar}» de un video animado` : "Editó una escena de un video animado";

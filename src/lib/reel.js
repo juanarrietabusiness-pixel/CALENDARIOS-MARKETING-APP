@@ -82,7 +82,7 @@ export const sinVozPropia = (modelo) => /^(seedance|wan)/.test(String(modelo?.id
 const corto = (t, n) => String(t ?? "").replace(/\s+/g, " ").trim().slice(0, n);
 
 /** Lo que se le pide a la IA para el guion por planos. Pura. */
-export function pedidoDeReel({ marca = "la marca", rubro = "", idea = "", segundos = 10, tipo = "", estilo = "", producto = "", personajes = [], identidad = "", contexto = "", musica = "", locucion = "", estructura = "", criterio = "", guionPost = "", montaje = false, estructuraGuion = "", campoEstructura = false, planos: pedidos = 0, lexico = "" }) {
+export function pedidoDeReel({ marca = "la marca", rubro = "", idea = "", segundos = 10, tipo = "", estilo = "", producto = "", personajes = [], identidad = "", contexto = "", musica = "", locucion = "", estructura = "", criterio = "", guionPost = "", montaje = false, estructuraGuion = "", campoEstructura = false, planos: pedidos = 0, lexico = "", secuencia = "" }) {
   const clips = Math.ceil(segundos / SEGUNDOS_POR_CLIP);
   const nPlanos = planosPedidos(segundos, pedidos);
   return [
@@ -99,6 +99,8 @@ export function pedidoDeReel({ marca = "la marca", rubro = "", idea = "", segund
     locucion ? `Locución que se quiere (respétala si cabe): ${corto(locucion, 500)}` : "",
     // Un anuncio que ya funciona: su forma, no su marca ni sus palabras.
     estructura ? `ESTRUCTURA A SEGUIR (es la de un anuncio que ya funciona, de otra marca): copia su forma —el orden de los momentos, el ritmo, el tipo de gancho y de cierre— con el producto y la marca de ${marca}; nunca su marca, sus personajes ni su texto.\n${corto(estructura, 1500)}` : "",
+    // Un video DESGLOSADO toma por toma (lib/deconstructor.js): su mapa de secuencia resumido, para seguir su forma.
+    secuencia ? `${String(secuencia).trim().slice(0, 2000)}\nLos planos de este reel siguen esa secuencia: el mismo orden de momentos, el mismo ritmo de cortes y los mismos tamaños de plano y movimientos de cámara, con lo que se ve de ${marca}.` : "",
     // La ESTRUCTURA de guion de la agencia para la voz en off (lib/formulasUgc.js): la escogida, en esta duración, o la
     // lista para que la IA escoja y diga cuál en el campo «estructura» del JSON. Es la forma; la voz de la marca, aparte.
     estructuraGuion ? `ESTRUCTURA DEL GUION (la voz en off y los planos siguen sus tramos):\n${String(estructuraGuion).trim().slice(0, 3000)}` : "",
