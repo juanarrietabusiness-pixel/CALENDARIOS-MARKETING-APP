@@ -177,6 +177,8 @@ export function encargoPublico(f, { conPedidos = false } = {}) {
     // Un fotograma del reel: su plano y, si ya va, su clip limpio.
     ...(p.plano ? { plano: p.plano } : {}),
     ...(p.clip ? { clip: { fase: p.clip.fase, archivoId: p.clip.archivoId ?? null, error: p.clip.error ?? "", segundos: p.clip.segundos ?? null } } : {}),
+    // «¿Listo para animar?» de su fotograma (con el id del que se miró).
+    ...(p.animable ? { animable: p.animable } : {}),
   }));
   return {
     id: f.id, clientId: f.client_id, tipo: f.tipo, titulo: f.titulo, estado: f.estado, pasos, nota: f.nota, error: f.error,

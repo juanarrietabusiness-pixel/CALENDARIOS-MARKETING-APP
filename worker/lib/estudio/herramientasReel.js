@@ -5,7 +5,8 @@
 //                         storyboard en orden, el video o los clips y, si se pide, el montaje con la voz de la marca, el
 //                         texto, los subtítulos y el logo. Lo que sale se pone SOLO en su publicación. Primero el plan con
 //                         su costo (NO SE CREÓ NADA); sólo con el «sí» de la persona, confirmado=true
-//   · estado_reel         cómo va (fotogramas, video o clips, montaje) y, de lo listo, las IMÁGENES del storyboard
+//   · estado_reel         cómo va (fotogramas, video o clips, montaje) y, de lo listo, las IMÁGENES del storyboard y si
+//                         cada fotograma está «listo para animar» (el aviso de listoAnimar.js)
 //   · continuar_reel      tras revisar el storyboard: el video o los clips (con su costo y confirmación)
 //   · montar_reel         «Montarlo aquí»: el proyecto de video animado; en automático, además la voz (SIEMPRE se
 //                         confirma: confirmado_voz) y el render
@@ -45,6 +46,8 @@ import { fotosDelCatalogo } from "../../../src/lib/estudioMercado.js";
 import { textoDelGuionReel, ganchoDe, llamadoDe } from "../../../src/lib/montajeReel.js";
 import { FRASE_VEREDICTO } from "../../../src/lib/revisionVideo.js";
 import { textoDeDeconstruccion } from "../../../src/lib/deconstructor.js";
+import { resumenDeAnimar } from "../../../src/lib/listoAnimar.js";
+import { finalDePaso } from "../../../src/lib/encargoReelPuro.js";
 
 /** Un error de lo pedido: vuelve a Claude con `isError` (el mismo que el director: mcp.js ya lo conoce). */
 export const ErrorReel = ErrorDiseno;
@@ -165,7 +168,7 @@ export const DEFINICIONES_REEL_MCP = Object.freeze([
   },
   {
     name: "estado_reel",
-    description: "Cómo va un reel de crear_reel: los fotogramas (con sus IMÁGENES, para que las mires), el video o los clips, el montaje (si espera que se confirme la voz, su costo) y si ya está en su publicación. No gasta.",
+    description: "Cómo va un reel de crear_reel: los fotogramas (con sus IMÁGENES, para que las mires, y si están listos para animar: un aviso con su porqué que no bloquea), el video o los clips, el montaje (si espera que se confirme la voz, su costo) y si ya está en su publicación. No gasta.",
     inputSchema: { type: "object", properties: { encargo_id: { type: "string" } }, required: ["encargo_id"] },
     annotations: soloLectura,
   },
@@ -282,6 +285,8 @@ export function crearHerramientasReel({ env, acceso, resolverCliente, usuario, b
       `Reel «${e.titulo}» (encargo ${e.id}): ${e.estado === "en_marcha" ? "en marcha" : e.estado}. ${e.nota ?? ""}`.trim(),
       e.error ? `Motivo: ${e.error}` : "",
       `Storyboard: ${hechos} de ${e.pasos.length} fotogramas.`,
+      // «¿Listo para animar?»: un aviso con su porqué por fotograma (sólo el del fotograma que se miró).
+      resumenDeAnimar(e.pasos.filter((p) => p.fase === "hecho").map((p) => ({ n: p.plano?.n, animable: p.animable?.archivoId === finalDePaso(p) ? p.animable : null }))),
       r.salida === "uno" ? `Video: ${{ espera: "espera la revisión (continuar_reel)", nuevo: "en cola", generando: "creándose", hecho: `listo (archivo ${v.archivoId})`, fallido: `no salió: ${v.error}` }[v.fase] ?? v.fase}.` : "",
       r.salida === "clips" && clips.length ? lineaDeClips(e.pasos, Boolean(m)) : "",
       m ? `Montaje: ${m.fase}${m.videoId ? ` (video animado ${m.videoId}: míralo con ver_video y ver_escenas)` : ""}${m.fase === "confirmar" ? ` · la voz cuesta ${m.costoTexto || "unos céntimos"}: pregúntale a la persona y, con su sí, montar_reel con confirmado_voz=true` : ""}${m.error ? ` · ${m.error}` : ""}${m.nota ? ` · ${m.nota}` : ""}.` : "",

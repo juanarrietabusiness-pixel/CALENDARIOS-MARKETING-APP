@@ -10,6 +10,8 @@
 //      con el MISMO pedido que a mano (`pedidoDeFotogramaReel`). Se usan los pasos de siempre del encargo: el trabajo,
 //      la proporción (se recompone si no casa) y `finales` (lo que la pantalla corrigió a mano manda).
 //   2. Con `revisar`, se para aquí: la persona mira el storyboard, corrige lo que quiera y CONTINÚA (`continuarReel`).
+//      Antes de pararse, UNA mirada de la IA a todo el storyboard: «¿listo para animar?» (listoAnimar.js), un aviso
+//      con su porqué en la ficha de cada fotograma que no bloquea nada.
 //   3. EL VIDEO: «uno» (un solo video con los fotogramas como storyboard) o «clips» (un clip limpio por fotograma,
 //      todos a la vez). Por la cola de video de siempre (lo avanza la bomba).
 //   4. EL MONTAJE (si se pidió, o con «Montarlo aquí» después): el proyecto de video animado con la voz, el texto, los
@@ -29,6 +31,7 @@ import { crearMontaje, fuenteDelEncargo } from "./montaje.js";
 import { aprobarProyecto, guardarProyecto, ErrorVideo } from "../videosProyectos.js";
 import { pedirLocucion, ErrorVoz } from "./locucion.js";
 import { pedirRender, renderAlDia } from "./render.js";
+import { revisarParaAnimar } from "./listoAnimar.js";
 import { modeloPorId, estaVivo, textoCosto } from "../../../src/lib/estudioCatalogo.js";
 import { pedidoDeFotogramaReel, pedidoDeVideo, pedidoDeClip } from "../../../src/lib/reelPedidos.js";
 import { repartirTiempos, sinVozPropia, TOMAS_PLANO, esTomaFija } from "../../../src/lib/reel.js";
@@ -268,10 +271,19 @@ function videoTerminado(datos, pasos) {
 const hayMaterial = (datos, pasos) => (datos.salida === "uno" ? datos.video?.fase === "hecho"
   : pasos.some((p) => p.clip?.fase === "hecho") || (Boolean(datos.montaje) && pasos.some((p) => p.fase === "hecho")));
 
+/**
+ * ¿Toca la revisión «¿listo para animar?»? Cuando el storyboard terminó, con algo hecho, y el reel se para a revisarlo
+ * (o sólo eran los fotogramas), UNA vez: con `datos.animable` ya está hecha (o se intentó). Pura.
+ */
+export const porRevisarAnimar = (datos = {}, pasos = []) => (datos.salida === "fotogramas" || datos.video?.fase === "espera")
+  && !datos.animable && pasos.length > 0 && pasos.every(terminado) && pasos.some((p) => p.fase === "hecho");
+
 /** ¿Ya no queda nada que hacer en el reel? (lo que llama encargos.js para cerrarlo). Pura. */
 export function reelTerminado(datos = {}, pasos = []) {
   if (!pasos.length || !pasos.every(terminado)) return false;
   if (!pasos.some((p) => p.fase === "hecho")) return true;
+  // La mirada «¿listo para animar?» va antes de pararse a revisar.
+  if (porRevisarAnimar(datos, pasos)) return false;
   if (!videoTerminado(datos, pasos)) return false;
   const m = datos.montaje;
   if (!m || datos.video?.fase === "espera") return true;
@@ -296,7 +308,13 @@ export function notaDelReel(datos = {}, pasos = []) {
   const hechos = pasos.filter((p) => p.fase === "hecho").length;
   if (!pasos.every(terminado)) return `Fotogramas: ${hechos} de ${total}.`;
   const v = datos.video ?? {};
-  if (datos.salida === "fotogramas" || v.fase === "espera") return `Storyboard listo (${hechos} de ${total}): revísalo y sigue con el video.`;
+  if (datos.salida === "fotogramas" || v.fase === "espera") {
+    if (porRevisarAnimar(datos, pasos)) return `Storyboard listo (${hechos} de ${total}): mirando si se puede animar bien…`;
+    const a = datos.animable ?? {};
+    const avisos = a.revisados ? a.revisados - (a.listos ?? 0) : 0;
+    const sobre = a.revisados ? (avisos ? ` ${avisos} con un aviso antes de animar.` : " Todos listos para animar.") : "";
+    return `Storyboard listo (${hechos} de ${total}): revísalo y sigue con el video.${sobre}`;
+  }
   if (datos.salida === "uno" && v.fase === "generando") return "Creando el video: tarda unos minutos.";
   if (datos.salida === "uno" && v.fase === "fallido") return `El video no salió: ${v.error ?? ""}`.trim();
   if (datos.salida === "clips") {
@@ -331,7 +349,12 @@ export async function pasoReel(ctx, fila) {
   const { acceso, cliente, datos, pasos } = ctx;
   if (!pasos.every(terminado) || !pasos.some((p) => p.fase === "hecho")) return null;
   const v = (datos.video ??= { fase: "espera" });
-  if (datos.salida === "fotogramas" || v.fase === "espera") return null;
+  if (datos.salida === "fotogramas" || v.fase === "espera") {
+    // Se para a revisar: antes, UNA mirada a todo el storyboard (un aviso por fotograma; no bloquea nada).
+    if (!porRevisarAnimar(datos, pasos)) return null;
+    await revisarStoryboard(ctx);
+    return { hizo: true };
+  }
   const hechos = pasos.filter((p) => p.fase === "hecho");
   const finales = await filasDe(acceso, cliente.id, hechos.map(finalDe));
   const portadaClave = finales.get(finalDe(hechos[0]))?.clave ?? "";
@@ -383,6 +406,36 @@ export async function pasoReel(ctx, fila) {
 
   if (videoTerminado(datos, pasos) && datos.montaje) return pasoMontaje(ctx, fila);
   return null;
+}
+
+/**
+ * «¿Listo para animar?»: la IA mira los fotogramas finales en una llamada; el resultado va en cada paso (`animable`, con
+ * el id del fotograma que se miró: uno corregido después ya no lo lleva) y en la ficha de la galería de cada fotograma
+ * (`ajustes.animable`). Sin IA, sin copias o con un fallo, se apunta y se sigue: es un aviso, no una puerta.
+ */
+async function revisarStoryboard(ctx) {
+  const { env, acceso, cliente, datos, pasos } = ctx;
+  const at = new Date().toISOString();
+  const hechos = pasos.filter((p) => p.fase === "hecho");
+  const filas = await filasDe(acceso, cliente.id, hechos.map(finalDe));
+  const fotogramas = hechos.map((p) => ({ n: p.plano?.n, plano: p.plano, fila: filas.get(finalDe(p)), paso: p })).filter((f) => f.fila && f.n);
+  try {
+    const r = await revisarParaAnimar(env, acceso, cliente, fotogramas);
+    if (r.sinImagenes) { datos.animable = { at, omitido: "No había copias de los fotogramas que mirar." }; return; }
+    let listos = 0;
+    for (const f of fotogramas) {
+      const a = r.porN.get(f.n);
+      if (!a) continue;
+      if (a.ok) listos++;
+      const animable = { ok: a.ok, motivos: a.motivos, nota: a.nota, at };
+      f.paso.animable = { archivoId: f.fila.id, ...animable };
+      const ajustes = leerJSON(f.fila.ajustes, {});
+      await acceso.actualizar("estudio_archivos", { id: f.fila.id, client_id: cliente.id }, { ajustes: JSON.stringify({ ...ajustes, animable }) }).catch(() => null);
+    }
+    datos.animable = { at, revisados: r.porN.size, listos };
+  } catch (e) {
+    datos.animable = { at, error: texto(e?.message || "No se pudo revisar.", 200) };
+  }
 }
 
 /** La etapa del montaje: crear el proyecto, y en automático aprobarlo, pedir la voz y renderizarlo. */
@@ -496,6 +549,8 @@ async function tieneVoz(acceso, clienteId, id) {
 /** Lo que queda a medias al cerrarse por plazo: no se queda colgado. */
 export function cerrarReelPorPlazo(datos = {}, pasos = []) {
   const v = datos.video;
+  // La mirada «¿listo para animar?» no se queda pendiente: sin tiempo, no se hace.
+  if (!datos.animable && (datos.salida === "fotogramas" || v?.fase === "espera")) datos.animable = { at: new Date().toISOString(), omitido: "No dio tiempo a revisarlo." };
   if (v && ["nuevo", "generando"].includes(v.fase)) Object.assign(v, { fase: "fallido", error: "No terminó a tiempo." });
   for (const p of pasos) if (p.clip && !["hecho", "fallido"].includes(p.clip.fase)) p.clip = { ...p.clip, fase: "fallido", error: "No terminó a tiempo." };
   if (datos.montaje && !FIN_MONTAJE.includes(datos.montaje.fase)) Object.assign(datos.montaje, { fase: "fallido", error: "No terminó a tiempo." });

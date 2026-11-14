@@ -8,6 +8,7 @@ import { modelosParaCarrusel, modeloParaCarrusel } from "../lib/carruselEstudio"
 import { modelosParaReel, modeloRecomendadoParaReel, modeloParaTramo, crearFotograma, editarImagen, pedidoDeVideo, corregirTramo, modelosParaClips, modeloParaClips, pedidoDeClip } from "../lib/reelEstudio";
 import { duracionesDeReel, haceDuracion, duracionDeClip, DURACION_REEL_POR_DEFECTO } from "../lib/duracionesVideo";
 import { resultadoDeReel, finalDePaso } from "../lib/encargoReelPuro";
+import { fraseDeAnimar } from "../lib/listoAnimar";
 import { lanzarReel, continuarReel, montarReel, fotogramaFinal, listarEncargos, leerEncargo, seguirEncargo } from "../lib/encargosApi";
 import { textoDelGuionReel } from "../lib/montajeReel";
 import { crearZip } from "../lib/zip";
@@ -808,6 +809,12 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
                   <strong>{tramo(p)}</strong>
                   <p className="hint" style={{ margin: 0 }}>{p.escena}</p>
                   {f?.error && <p className="revision-problema">{f.error}</p>}
+                  {/* «¿Listo para animar?»: un aviso con su porqué; no bloquea nada. */}
+                  {f?.animable && !tocando[i] && (
+                    <p className={f.animable.ok ? "hint" : "revision-problema"} style={{ margin: 0 }}>
+                      <Icon name={f.animable.ok ? "check" : "alert"} size={14} /> {fraseDeAnimar(f.animable)}
+                    </p>
+                  )}
                   {paso === "fotogramas" && !ocupado && res?.storyboardListo && !enMarcha && !tocando[i] && (
                     <div className="carrusel-lamina-acciones">
                       {f?.archivo && (
