@@ -6,6 +6,7 @@ import {
   listarCerebro, leerNota, guardarNota, borrarNota, buscarEnCerebro, importarAlCerebro, prepararFicha, proponerRubro, proponerVozUgc,
   leerDatosQueNoCuadran,
 } from "../lib/cerebro";
+import { describirLenguaje } from "../lib/lenguajeCliente";
 import {
   TIPOS_VISTA, FILTROS_TIPO, nombreDeTipo, ordenarNotas, filtrarNotas, contarPorTipo, agruparNotas,
   formatoCaracteres, describirImportacion, describirFicha, avisoSinFicha, leerDocumento,
@@ -19,6 +20,8 @@ import "./Cerebro.css";
 const CerebroGrafo = lazy(() => import("./CerebroGrafo"));
 // El estudio de mercado va aparte: su diálogo pesa y no todos los que miran el cerebro lo abren.
 const EstudioMercado = lazy(() => import("./EstudioMercado"));
+// «Lenguaje del cliente»: el diálogo para pegar reseñas y proponer la nota (sólo se descarga al abrirlo).
+const LenguajeCliente = lazy(() => import("./LenguajeCliente"));
 
 const CLAVE_VISTA = "cerebro.vista";
 const leerVista = () => { try { return localStorage.getItem(CLAVE_VISTA) === "mapa" ? "mapa" : "lista"; } catch { return "lista"; } };
@@ -57,6 +60,7 @@ export default function Cerebro({ client, abrirMercado = null }) {
   const [sinActualizar, setSinActualizar] = useState([]); // notas corregidas aquí que GitHub traía cambiadas
   const [fichaTuya, setFichaTuya] = useState(false);  // la última renovación conservó la ficha editada a mano
   const [mas, setMas] = useState(false);              // el menú «Más»
+  const [lenguaje, setLenguaje] = useState(false);    // el diálogo «Lenguaje del cliente»
   const entrada = useRef(null);
   const cambiarVista = (v) => { setVista(v); guardarVista(v); };
 
@@ -187,6 +191,14 @@ export default function Cerebro({ client, abrirMercado = null }) {
     } finally {
       setTrabajando("");
     }
+  };
+
+  // «Lenguaje del cliente»: la IA agrupa las frases EXACTAS de sus clientes y el servidor comprueba cada una; la
+  // propuesta se abre en el editor de siempre y nada se guarda hasta «Guardar». La lee el motor de ideas.
+  const lenguajePropuesto = (r) => {
+    setLenguaje(false);
+    setEditor({ ...(r.existente ? { id: r.existente.id } : {}), titulo: r.titulo, texto: r.texto, tipo: "nota", interna: false, editar: true });
+    avisar(true, [describirLenguaje(r), r.aviso ?? ""].filter(Boolean).join(" "));
   };
 
   // ---------- Notas ----------
@@ -349,6 +361,10 @@ export default function Cerebro({ client, abrirMercado = null }) {
                 title="La IA propone lo que un experto del rubro sabe (consejos, errores, mitos, preguntas): de ahí sale el contenido educativo">
                 <Icon name="bulb" size={16} /> {trabajando === "rubro" ? "Escribiendo…" : "Saber del rubro"}
               </button>
+              <button type="button" className="btn btn-secondary btn-sm" disabled={trabajo} onClick={() => setLenguaje(true)}
+                title="Las frases exactas con las que hablan sus clientes (reseñas, comentarios y la encuesta), comprobadas una a una: para escribir ganchos y textos con sus palabras">
+                <Icon name="messageCircle" size={16} /> Lenguaje del cliente
+              </button>
               <button type="button" className="btn btn-secondary btn-sm" disabled={trabajo} onClick={vozUgc}
                 title="La IA propone cómo habla esta marca en sus videos UGC (quién habla, tono, cómo empieza y cierra), leyendo sus guiones">
                 <Icon name="user" size={16} /> {trabajando === "voz" ? "Escribiendo…" : "Voz UGC"}
@@ -445,6 +461,11 @@ export default function Cerebro({ client, abrirMercado = null }) {
       <Suspense fallback={null}>
         <EstudioMercado client={client} onCambio={cargar} abrir={abrirMercado} />
       </Suspense>
+      {lenguaje && (
+        <Suspense fallback={null}>
+          <LenguajeCliente client={client} onPropuesta={lenguajePropuesto} onCerrar={() => setLenguaje(false)} />
+        </Suspense>
+      )}
 
       {vacio ? (
         <div className="cerebro-vacio card">

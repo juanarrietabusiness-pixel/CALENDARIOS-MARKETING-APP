@@ -6,7 +6,7 @@ import { useDialogA11y } from "../hooks/useDialogA11y";
 import { soloLectura } from "../lib/sesionActual";
 import {
   leerMercado, guardarCatalogo, proponerCatalogo, estudiarGeneral, estudiarProducto, guardarBorrador, aprobarEstudio,
-  agregarReferencia, reanalizarReferencia, borrarReferencia, adaptarReferencia,
+  agregarReferencia, reanalizarReferencia, borrarReferencia, adaptarReferencia, proponerAngulos,
 } from "../lib/mercado";
 import { subirImagen, archivoDeDrive } from "../lib/estudio";
 import BancoSelector from "./BancoSelector";
@@ -14,6 +14,7 @@ import { urlBibliotecaWeb } from "../lib/biblioteca";
 import {
   ELEMENTOS_MERCADO, EXTRAS_MERCADO, DESEOS_REISS, NIVELES_CONSCIENCIA, LIMITES_ANUNCIO, MAX_MATERIAL, MAX_PRODUCTOS, MAX_FOTOS_PRODUCTO, NIVELES_STOCK,
   limpiarCatalogo, productosActivos, pasosDelEstudio, nombreDeNivel, fraseActivo, mensajePedirDatos,
+  CAMPOS_ANGULO, MAX_ANGULOS, INTENSIDADES, PARTES_ANUNCIOS_RUBRO,
 } from "../lib/estudioMercado";
 import { SESGOS, MAX_SESGOS, nombresDeSesgos } from "../lib/tiposArte";
 import { MaletasDeProducto, ResumenMaletas } from "./SemaforoMaletas";
@@ -587,6 +588,33 @@ function PanelEstudio({ client, datos, lectura, onOcupado, onDatos, onCambioCere
     setGuardando("");
   };
 
+  // «Proponer ángulos» de un producto que ya tiene su estudio: lo corregido sin guardar se guarda antes (si no, el
+  // borrador que devuelve el servidor se lo llevaría); la propuesta llega al BORRADOR, que se aprueba como siempre.
+  const proponerAngulosDe = async (productoId) => {
+    setGuardando(`angulos:${productoId}`);
+    setAviso(null);
+    try {
+      if (cambiado && borrador) {
+        const g = await guardarBorrador(client.id, borrador);
+        setBorrador(g.borrador);
+        onDatos({ borrador: g.borrador });
+        setCambiado(false);
+      }
+      const r = await proponerAngulos(client.id, productoId);
+      setBorrador(r.borrador);
+      onDatos({ borrador: r.borrador });
+      setCambiado(false);
+      const nombre = datos.catalogo.find((p) => p.id === productoId)?.nombre ?? "el producto";
+      setAviso({
+        ok: true,
+        texto: `${r.angulos.length} ${r.angulos.length === 1 ? "ángulo propuesto" : "ángulos propuestos"} para «${nombre}». Están en el borrador: revísalos y aprueba el estudio para que los use la IA.${r.aviso ? ` ${r.aviso}` : ""}`,
+      });
+    } catch (e) {
+      setAviso({ ok: false, texto: e.message });
+    }
+    setGuardando("");
+  };
+
   const descartar = async () => {
     setGuardando("descartar");
     try {
@@ -669,7 +697,9 @@ function PanelEstudio({ client, datos, lectura, onOcupado, onDatos, onCambioCere
           {vista.general && <RevisionGeneral general={vista.general} editable={esBorrador && !lectura && !paso} onEditar={editar} />}
           {Object.entries(vista.productos ?? {}).map(([id, est]) => (
             <RevisionProducto key={id} id={id} estudio={est} producto={datos.catalogo.find((p) => p.id === id)} client={client} lectura={lectura}
-              editable={esBorrador && !lectura && !paso} onEditar={editar} />
+              editable={esBorrador && !lectura && !paso} onEditar={editar}
+              onProponerAngulos={!lectura && !paso && (!guardando || guardando === `angulos:${id}`) && datos.catalogo.some((p) => p.id === id) ? proponerAngulosDe : null}
+              proponiendo={guardando === `angulos:${id}`} />
           ))}
         </div>
       ) : (
@@ -739,6 +769,111 @@ function SesgosDelPerfil({ perfil, editable, onCambio }) {
   );
 }
 
+/** Una lista del estudio: en el borrador, un elemento por línea; de lectura, sólo si tiene algo. */
+function CampoLista({ etiqueta, valores, editable, max, onCambio }) {
+  const id = useId();
+  const lista = Array.isArray(valores) ? valores : [];
+  if (!editable) {
+    const llenos = lista.filter((x) => String(x ?? "").trim());
+    return llenos.length ? (
+      <div className="mercado-campo">
+        <p className="mercado-campo-etiqueta">{etiqueta}</p>
+        <ul className="mercado-lista-simple">{llenos.map((x, i) => <li key={i}>{x}</li>)}</ul>
+      </div>
+    ) : null;
+  }
+  return (
+    <div className="field mercado-campo">
+      <label className="label" htmlFor={id}>{etiqueta}</label>
+      <textarea id={id} className="input" rows={Math.min(max, Math.max(2, lista.length))} value={lista.join("\n")} aria-describedby={`${id}-h`}
+        onChange={(e) => onCambio(e.target.value.split("\n").slice(0, max))} />
+      <p id={`${id}-h`} className="hint">Hasta {max}, uno por línea.</p>
+    </div>
+  );
+}
+
+/** Pone en `x[clave]` un objeto con la forma de `base` si no lo había (un estudio de antes no trae lo profundo). */
+const asegurar = (x, clave, base) => (x[clave] = { ...base, ...(x[clave] ?? {}) });
+const MAX_INDIRECTA = 4;
+
+/**
+ * Lo que hay detrás de la compra (investigación del curso): el problema por fuera y por dentro, lo que cree que
+ * necesita frente a lo que necesita, la transformación, cómo la justifica, lo gastado, la competencia indirecta y lo que
+ * se repite (y lo que nadie hace) en los anuncios del rubro. Todo opcional: un estudio de antes no lo trae y, de
+ * lectura, sólo sale lo que tiene algo.
+ */
+function DetrasDeLaCompra({ general: g, editable, set }) {
+  const p = g.problemas ?? { externos: [], internos: [], principal: "" };
+  const indirecta = g.competenciaIndirecta ?? [];
+  const rubro = g.anunciosDelRubro ?? {};
+  const algo = editable || g.problemas || g.necesidad || g.transformacion || g.justificacion || g.cansados?.length || indirecta.length || g.anunciosDelRubro;
+  if (!algo) return null;
+  const BASE_P = { externos: [], internos: [], principal: "" };
+  return (
+    <>
+      <h4 className="mercado-h4">Lo que hay detrás de la compra</h4>
+      <div className="mercado-rejilla">
+        <div className="mercado-ficha">
+          <Campo etiqueta="El problema principal (el que más empuja a comprar)" valor={p.principal} editable={editable} max={240}
+            onCambio={set((x, v) => { asegurar(x, "problemas", BASE_P).principal = v; })} />
+          <CampoLista etiqueta="Lo que se ve (el problema por fuera)" valores={p.externos} editable={editable} max={3}
+            onCambio={set((x, v) => { asegurar(x, "problemas", BASE_P).externos = v; })} />
+          <CampoLista etiqueta="Lo que siente (el problema por dentro)" valores={p.internos} editable={editable} max={3}
+            onCambio={set((x, v) => { asegurar(x, "problemas", BASE_P).internos = v; })} />
+        </div>
+        <div className="mercado-ficha">
+          <Campo etiqueta="Lo que cree que necesita" valor={g.necesidad?.cree} editable={editable} max={300}
+            onCambio={set((x, v) => { asegurar(x, "necesidad", { cree: "", real: "" }).cree = v; })} />
+          <Campo etiqueta="Lo que necesita de verdad" valor={g.necesidad?.real} editable={editable} max={300}
+            onCambio={set((x, v) => { asegurar(x, "necesidad", { cree: "", real: "" }).real = v; })} />
+          <Campo etiqueta="Antes (cómo está)" valor={g.transformacion?.antes} editable={editable} max={300}
+            onCambio={set((x, v) => { asegurar(x, "transformacion", { antes: "", despues: "" }).antes = v; })} />
+          <Campo etiqueta="Después (cómo queda)" valor={g.transformacion?.despues} editable={editable} max={300}
+            onCambio={set((x, v) => { asegurar(x, "transformacion", { antes: "", despues: "" }).despues = v; })} />
+          <Campo etiqueta="Cómo justifica la compra (ante sí o ante otros)" valor={g.justificacion} editable={editable} max={300}
+            onCambio={set((x, v) => { x.justificacion = v; })} />
+        </div>
+      </div>
+      <CampoLista etiqueta="Lo que está cansado de ver en el rubro (mensajes gastados)" valores={g.cansados} editable={editable} max={4}
+        onCambio={set((x, v) => { x.cansados = v; })} />
+
+      {(editable || indirecta.length > 0) && <p className="mercado-campo-etiqueta">Otras formas de resolverlo (competencia indirecta)</p>}
+      {indirecta.map((c, i) => (
+        <div key={i} className="mercado-producto-fila">
+          <div style={{ flex: "0 1 220px" }}>
+            <Campo etiqueta="La alternativa" valor={c.alternativa} editable={editable} filas={1} max={100}
+              onCambio={set((x, v) => { x.competenciaIndirecta[i].alternativa = v; })} />
+          </div>
+          <div style={{ flex: "1 1 240px" }}>
+            <Campo etiqueta="Por qué la escogen" valor={c.porque} editable={editable} max={240}
+              onCambio={set((x, v) => { x.competenciaIndirecta[i].porque = v; })} />
+          </div>
+        </div>
+      ))}
+      {editable && indirecta.length < MAX_INDIRECTA && (
+        <button type="button" className="btn btn-ghost btn-sm"
+          onClick={() => set((x) => { x.competenciaIndirecta = [...(x.competenciaIndirecta ?? []), { alternativa: "", porque: "" }]; })()}>
+          <Icon name="plus" size={14} /> Añadir otra forma de resolverlo
+        </button>
+      )}
+
+      {(editable || g.anunciosDelRubro) && <p className="mercado-campo-etiqueta">Los anuncios del rubro</p>}
+      <div className="mercado-rejilla">
+        {PARTES_ANUNCIOS_RUBRO.map((parte) => (
+          (editable || rubro[parte.clave]?.length > 0) && (
+            <div key={parte.clave} className="mercado-ficha">
+              <CampoLista etiqueta={parte.titulo} valores={rubro[parte.clave]} editable={editable} max={4}
+                onCambio={set((x, v) => {
+                  asegurar(x, "anunciosDelRubro", Object.fromEntries(PARTES_ANUNCIOS_RUBRO.map((y) => [y.clave, []])))[parte.clave] = v;
+                })} />
+            </div>
+          )
+        ))}
+      </div>
+    </>
+  );
+}
+
 function RevisionGeneral({ general: g, editable, onEditar }) {
   const ids = useId();
   const set = (ruta) => (v) => onEditar((b) => { ruta(b.general, v); return b; });
@@ -757,6 +892,16 @@ function RevisionGeneral({ general: g, editable, onEditar }) {
             <Campo etiqueta="Quién es" valor={p.quien} editable={editable} max={300} onCambio={set((x, v) => { x.perfiles[i].quien = v; })} />
             <Campo etiqueta="Qué le duele" valor={p.dolor} editable={editable} max={300} onCambio={set((x, v) => { x.perfiles[i].dolor = v; })} />
             <Campo etiqueta="Qué quiere lograr" valor={p.aspiracion} editable={editable} max={300} onCambio={set((x, v) => { x.perfiles[i].aspiracion = v; })} />
+            <Campo etiqueta="El trabajo que le encarga al producto («quiero… para…»)" valor={p.trabajo} editable={editable} max={240} onCambio={set((x, v) => { x.perfiles[i].trabajo = v; })} />
+            {editable ? (
+              <div className="field mercado-campo">
+                <label className="label" htmlFor={`${ids}-in${i}`}>Cuánto le pesa el problema</label>
+                <select id={`${ids}-in${i}`} className="input" value={p.intensidad ?? ""} onChange={(e) => set((x, v) => { x.perfiles[i].intensidad = v; })(e.target.value)}>
+                  <option value="">Sin definir</option>
+                  {INTENSIDADES.map((n) => <option key={n.id} value={n.id}>{n.nombre}</option>)}
+                </select>
+              </div>
+            ) : p.intensidad ? <Campo etiqueta="Cuánto le pesa el problema" valor={INTENSIDADES.find((n) => n.id === p.intensidad)?.nombre} editable={false} /> : null}
             <SesgosDelPerfil perfil={p} editable={editable} onCambio={set((x, v) => { x.perfiles[i].sesgos = v; })} />
           </div>
         ))}
@@ -794,6 +939,8 @@ function RevisionGeneral({ general: g, editable, onEditar }) {
         </div>
       ) : <p className="mercado-campo-texto"><strong>{nombreDeNivel(g.nivel.dominante) || "Sin definir"}</strong>{g.nivel.porque ? `: ${g.nivel.porque}` : ""}</p>}
 
+      <DetrasDeLaCompra general={g} editable={editable} set={set} />
+
       {g.diferenciadores.length > 0 && <><h4 className="mercado-h4">Diferenciadores</h4><ul className="mercado-lista-simple">{g.diferenciadores.map((x, i) => <li key={i}>{x}</li>)}</ul></>}
       {g.competidores.length > 0 && (
         <>
@@ -815,7 +962,81 @@ function RevisionGeneral({ general: g, editable, onEditar }) {
   );
 }
 
-function RevisionProducto({ id, estudio: e, producto, client, lectura = false, editable, onEditar }) {
+const NOMBRE_PUBLICO = { frio: "Para quien no conoce la marca (frío)", tibio: "Para quien ya interactuó (tibio)" };
+
+/**
+ * Los ÁNGULOS DE VENTA de un producto: cada uno, una razón distinta para comprar, con su problema, lo que siente, la
+ * solución, lo que lo distingue, la garantía o prueba (sólo la real), la objeción, el mito y sus ganchos. Editables en el
+ * borrador. Sin ninguno, «Proponer ángulos» (barato: sin búsqueda web, con lo que ya dice el estudio) los deja en el
+ * borrador para revisarlos y aprobarlos.
+ */
+function AngulosDeProducto({ angulos, editable, onCambio, proponer, proponiendo }) {
+  const ids = useId();
+  const lista = Array.isArray(angulos) ? angulos : [];
+  const cambiar = (i, k, v) => onCambio(lista.map((a, j) => (j === i ? { ...a, [k]: v } : a)));
+  return (
+    <section aria-labelledby={`${ids}-t`}>
+      <h4 id={`${ids}-t`} className="mercado-h4">Ángulos de venta</h4>
+      <p className="hint">Cada uno es una razón distinta para comprar: se prueban por separado en anuncios y contenido para ver cuál vende más.</p>
+      {!lista.length && (
+        <div className="mercado-campo">
+          <p className="mercado-campo-texto">Todavía no tiene ángulos de venta.</p>
+          {proponer && (
+            <>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={proponer} disabled={proponiendo} aria-describedby={`${ids}-p`}>
+                <Icon name="sparkles" size={14} /> {proponiendo ? "Proponiendo…" : "Proponer ángulos"}
+              </button>
+              <p id={`${ids}-p`} className="hint">
+                La IA los propone con lo que ya dice este estudio (sin buscar en internet). Quedan en el borrador: los revisas y apruebas el estudio como siempre.
+              </p>
+            </>
+          )}
+        </div>
+      )}
+      {lista.map((a, i) => (
+        <div key={a.id || i} className="mercado-ficha">
+          {editable ? (
+            <div className="mercado-producto-fila">
+              <div style={{ flex: "1 1 220px" }}>
+                <Campo etiqueta="Nombre del ángulo" valor={a.nombre} editable filas={1} max={80} onCambio={(v) => cambiar(i, "nombre", v)} />
+              </div>
+              <div className="field mercado-campo" style={{ flex: "0 1 260px" }}>
+                <label className="label" htmlFor={`${ids}-pub${i}`}>A quién le habla mejor</label>
+                <select id={`${ids}-pub${i}`} className="input" value={a.publico ?? ""} onChange={(e) => cambiar(i, "publico", e.target.value || undefined)}>
+                  <option value="">Sin definir</option>
+                  {Object.entries(NOMBRE_PUBLICO).map(([k, n]) => <option key={k} value={k}>{n}</option>)}
+                </select>
+              </div>
+            </div>
+          ) : (
+            <p className="mercado-campo-texto"><strong>{a.nombre}</strong>{a.publico ? ` · ${NOMBRE_PUBLICO[a.publico]}` : ""}</p>
+          )}
+          <div className="mercado-rejilla">
+            {CAMPOS_ANGULO.filter((c) => editable || a[c.clave]).map((c) => (
+              <Campo key={c.clave} etiqueta={c.nombre} valor={a[c.clave]} editable={editable} max={c.max} onCambio={(v) => cambiar(i, c.clave, v)} />
+            ))}
+          </div>
+          <CampoLista etiqueta="Ganchos (como lo diría el cliente)" valores={a.ganchos} editable={editable} max={5} onCambio={(v) => cambiar(i, "ganchos", v)} />
+          {editable && (
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => onCambio(lista.filter((_, j) => j !== i))}>
+              <Icon name="trash" size={14} /> Quitar este ángulo
+            </button>
+          )}
+        </div>
+      ))}
+      {editable && lista.length < MAX_ANGULOS && (
+        <>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => onCambio([...lista, { nombre: "", ganchos: [] }])}>
+            <Icon name="plus" size={14} /> Añadir un ángulo
+          </button>
+          <p className="hint">Hasta {MAX_ANGULOS}. Un ángulo sin nombre no se guarda.</p>
+        </>
+      )}
+    </section>
+  );
+}
+
+function RevisionProducto({ id, estudio: e, producto, client, lectura = false, editable, onEditar, onProponerAngulos = null, proponiendo = false }) {
   const set = (ruta) => (v) => onEditar((b) => { ruta(b.productos[id], v); return b; });
   const extras = EXTRAS_MERCADO.filter((x) => e.extra?.[x.clave]);
   return (
@@ -864,6 +1085,9 @@ function RevisionProducto({ id, estudio: e, producto, client, lectura = false, e
       <Campo etiqueta={`Título (hasta ${LIMITES_ANUNCIO.titulo})`} valor={e.anuncio.titulo} editable={editable} filas={1} max={LIMITES_ANUNCIO.titulo} onCambio={set((x, v) => { x.anuncio.titulo = v; })} />
       <Campo etiqueta={`Texto principal (hasta ${LIMITES_ANUNCIO.textoPrincipal})`} valor={e.anuncio.textoPrincipal} editable={editable} filas={3} max={LIMITES_ANUNCIO.textoPrincipal} onCambio={set((x, v) => { x.anuncio.textoPrincipal = v; })} />
       <Campo etiqueta={`Descripción (hasta ${LIMITES_ANUNCIO.descripcion})`} valor={e.anuncio.descripcion} editable={editable} filas={1} max={LIMITES_ANUNCIO.descripcion} onCambio={set((x, v) => { x.anuncio.descripcion = v; })} />
+
+      <AngulosDeProducto angulos={e.angulos} editable={editable} proponer={onProponerAngulos ? () => onProponerAngulos(id) : null}
+        proponiendo={proponiendo} onCambio={set((x, v) => { x.angulos = v; })} />
 
       {e.pruebas.length > 0 && <><h4 className="mercado-h4">Pruebas reales</h4><ul className="mercado-lista-simple">{e.pruebas.map((x, i) => <li key={i}>{x}</li>)}</ul></>}
       {e.faltan.length > 0 && <><h4 className="mercado-h4">Falta por confirmar</h4><ul className="mercado-lista-simple mercado-faltan">{e.faltan.map((x, i) => <li key={i}>{x}</li>)}</ul></>}
