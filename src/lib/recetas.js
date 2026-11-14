@@ -202,7 +202,7 @@ export const RECETAS_CASA = Object.freeze([
   {
     id: "pack-anuncios",
     titulo: "Pack de anuncios por ubicación",
-    descripcion: "El mismo anuncio en feed (4:5), historias y reels (9:16) y cuadrado (1:1), con su texto para Meta: listo para «Nueva campaña».",
+    descripcion: "El mismo anuncio en feed (4:5), historias y reels (9:16) y cuadrado (1:1), con su texto para Meta: listo para montarlo en el Ads Manager.",
     salida: "imagen",
     tipos: ["anuncio", "beneficios"],
     preguntas: ["¿Qué producto y qué oferta o ángulo?", "¿A quién le habla (de los perfiles del estudio de mercado)?"],
@@ -211,7 +211,7 @@ export const RECETAS_CASA = Object.freeze([
       "1. guia_de_diseno; el producto del catálogo con sus fotos; el ángulo, del estudio de mercado del producto si lo hay.",
       "2. Tres fichas del MISMO concepto, una por formato: 4:5 (feed), 9:16 (historias y reels: el texto dentro de la zona segura) y 1:1. Misma oferta, mismo titular, la composición adaptada a cada proporción (no un recorte).",
       "3. disenar_piezas con las tres (formato vertical, story y square): plan, costo, «sí».",
-      "4. Escribe el texto del anuncio para Meta: título (hasta 40 caracteres), texto principal (hasta 125, el gancho en la primera línea) y descripción corta, con el precio exacto si va. Y dile a la persona que lo lleve a Anuncios → «Nueva campaña» con estas piezas.",
+      "4. Escribe el texto del anuncio para Meta: título (hasta 40 caracteres), texto principal (hasta 125, el gancho en la primera línea) y descripción corta, con el precio exacto si va. Y dile a la persona que lo ponga en su plan (Anuncios → Plan de campañas) y lo monte en el Ads Manager con estas piezas.",
       "5. estado_encargo y MIRA las tres juntas: que se vean como el mismo anuncio.",
     ].join("\n"),
   },
