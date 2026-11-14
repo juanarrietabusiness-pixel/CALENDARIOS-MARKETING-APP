@@ -1,0 +1,11 @@
+/* «¿Qué es…?»: va con los chunks de las pantallas de anuncios (lazy), no en el CSS inicial. */
+.que-es { font-size: var(--fs-xs); color: var(--text-dim); }
+.que-es summary { cursor: pointer; display: inline-flex; align-items: center; min-height: var(--tap-sm); color: var(--accent); font-weight: 500; }
+.que-es p { margin: 0 0 var(--sp-1); padding: var(--sp-2); background: var(--surface-2); border-radius: var(--radius-sm); color: var(--text); }
+
+/* El semáforo de una campaña, un conjunto o un anuncio: SIEMPRE con su texto, nunca sólo el color. */
+.semaforo { display: inline-flex; align-items: center; gap: var(--sp-1); font-size: var(--fs-2xs); font-weight: 700; padding: 2px var(--sp-2); border-radius: var(--radius-pill); background: var(--surface-2); color: var(--text-dim); white-space: nowrap; }
+.semaforo::before { content: ""; width: 10px; height: 10px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+.semaforo[data-tono="ok"] { color: var(--success); }
+.semaforo[data-tono="mal"] { background: var(--danger-soft); color: var(--danger); }
+.semaforo[data-tono="espera"] { background: var(--alt-soft); color: var(--accent-alt); }

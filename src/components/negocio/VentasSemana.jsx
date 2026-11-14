@@ -115,7 +115,12 @@ function quien(s) {
   return s.porNombre ? s.porNombre : "La agencia";
 }
 
-export default function VentasSemana({ clientId, cliente = null, lectura = false, onTasaMedida = null }) {
+/**
+ * @param tasaDefecto     la tasa del cliente mientras no se mide (sus números del negocio o la del Manual), en fracción:
+ *                        antes era el 5 % fijo aunque el cliente tuviera la suya
+ * @param roasEquilibrio  el de su número mágico: el ROAS real se compara con él (decisión 13)
+ */
+export default function VentasSemana({ clientId, cliente = null, lectura = false, onTasaMedida = null, tasaDefecto = TASA_POR_DEFECTO, roasEquilibrio = null }) {
   const [datos, setDatos] = useState(null);
   const [cargando, setCargando] = useState(true);
   const [fallo, setFallo] = useState("");
@@ -158,8 +163,8 @@ export default function VentasSemana({ clientId, cliente = null, lectura = false
   const resumen = useMemo(() => {
     if (!datos) return null;
     const apuntadas = datos.semanas.filter((s) => s.apuntada);
-    return resumenVentas(apuntadas, datos.metaPorSemana ?? null, { hoy: datos.hoy });
-  }, [datos]);
+    return resumenVentas(apuntadas, datos.metaPorSemana ?? null, { hoy: datos.hoy, porDefecto: tasaDefecto > 0 ? tasaDefecto : TASA_POR_DEFECTO, roasEquilibrio });
+  }, [datos, tasaDefecto, roasEquilibrio]);
 
   // La tasa medida, para la pantalla de Números del negocio (null = todavía no: se usa la de por defecto).
   // Sólo cuando cambia: releer las ventas por el socket no vuelve a avisar con la misma tasa.
@@ -273,11 +278,11 @@ export default function VentasSemana({ clientId, cliente = null, lectura = false
       <div className="vs-cifras">
         <div className="vs-cifra" data-medida={t.suficiente ? "" : undefined}>
           <span className="vs-cifra-nombre">Tasa de cierre</span>
-          <strong>{t.suficiente ? pct(t.tasa) : `Sin medir: ${pct(TASA_POR_DEFECTO)}`}</strong>
+          <strong>{t.suficiente ? pct(t.tasa) : `Sin medir: ${pct(resumen.porDefecto)}`}</strong>
           <span className="vs-cifra-nota">
             {t.suficiente
               ? `${t.ventas} ${t.ventas === 1 ? "venta" : "ventas"} de ${t.conversaciones} conversaciones, últimas ${t.semanas.length} semanas`
-              : t.tasa != null ? `Medida hasta ahora: ${pct(t.tasa)}. ${t.motivo}` : t.motivo || `Se usa el ${pct(TASA_POR_DEFECTO)} hasta medir la del cliente.`}
+              : t.tasa != null ? `Medida hasta ahora: ${pct(t.tasa)}. ${t.motivo}` : t.motivo || `Se usa el ${pct(resumen.porDefecto)} hasta medir la del cliente (sólo cuentan las semanas ya cerradas).`}
           </span>
         </div>
         <div className="vs-cifra">
@@ -294,6 +299,7 @@ export default function VentasSemana({ clientId, cliente = null, lectura = false
         </div>
       </div>
 
+      {resumen.frenteAlEquilibrio && <p className={`notice ${resumen.frenteAlEquilibrio.gana ? "notice-ok" : "notice-error"}`}>{resumen.frenteAlEquilibrio.texto}</p>}
       {t.aviso && <p className="notice notice-warn">{t.aviso}</p>}
       {sinMedir && <p className="notice notice-warn">{sinMedir} Mándale el mensaje de los lunes.</p>}
       {!metaOk && <p className="notice notice-warn">Sin las cifras de Meta: {datos.meta?.mensaje || "no se pudieron leer."} Las ventas se guardan igual.</p>}

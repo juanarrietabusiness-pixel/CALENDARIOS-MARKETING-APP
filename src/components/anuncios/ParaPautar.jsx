@@ -5,6 +5,7 @@ import { paraPautarDelCliente, marcarParaPautar } from "../../lib/enPautaApi";
 import { ETAPAS_CICLO, nombreEtapaCiclo } from "../../lib/cicloVentas";
 import { fraseParaPautar } from "../../lib/enPauta";
 import { REDES } from "../../lib/publicacion";
+import QueEs from "./QueEs";
 
 // ============================================================
 // «Para pautar» en Resultados → Anuncios (curso de campañas, entrega 7)
@@ -82,7 +83,7 @@ export function Candidata({ x, ctx }) {
             </button>
           </>
         )}
-        {marcada && <span className="hint pp-marcada"><Icon name="check" size={12} /> Va a pauta en {nombreEtapaCiclo(marcada)}: falta montarla en el Ads Manager.</span>}
+        {marcada && <span className="hint pp-marcada"><Icon name="check" size={12} /> Va a pauta en {nombreEtapaCiclo(marcada)}: falta montarla en el Ads Manager (abajo, cómo).</span>}
         {(x.problemas?.length > 0 || !x.conTextosDeAnuncio) && (
           <button type="button" className="btn btn-secondary btn-sm" onClick={() => ctx.onVersion(x)}>
             <Icon name="sparkles" size={14} /> Versión para anuncio
@@ -96,6 +97,15 @@ export function Candidata({ x, ctx }) {
           </a>
         ) : null}
       </div>
+      <details className="r3q-tecnico">
+        <summary>Cómo pautarla en el Ads Manager</summary>
+        <ol className="r3q-pasos">
+          {x.delCalendario && !marcada && <li>Márcala «Va a pauta» aquí y escoge la etapa ({nombreEtapaCiclo(marcada || etapa)} es la que le toca).</li>}
+          <li>En el Ads Manager: Campañas → la campaña de {nombreEtapaCiclo(marcada || etapa)} → su conjunto de anuncios → «Crear anuncio».</li>
+          <li>En «Configuración del anuncio», escoge «Usar publicación existente» y busca esta publicación de {red}.</li>
+          <li>{x.problemas?.length ? "Su texto tiene avisos y ahí ya no se puede cambiar: mejor usa «Versión para anuncio» y súbela como un anuncio nuevo con esos textos." : "Su texto ya sirve como anuncio: no hay que cambiar nada."}</li>
+        </ol>
+      </details>
     </li>
   );
 }
@@ -159,11 +169,13 @@ export default function ParaPautar({ client, soloLectura = false, onAbrir = null
       )}
       {lista.length > 0 && <ul className="pp-lista">{lista.map((x) => <Candidata key={x.clave} x={x} ctx={ctx} />)}</ul>}
 
+      <QueEs termino="etapa" />
+
       <h3 className="pp-subtitulo"><Icon name="bulb" size={16} /> Lo que se aprende de sus anuncios</h3>
       <p className="hint" style={{ margin: 0 }}>
         {pref?.linea || pref?.motivo || "Cuando sus anuncios corran casados con publicaciones del calendario, aquí sale qué tipo de arte, nivel y composición salen más baratos."}
       </p>
-      {pref?.linea && <p className="hint" style={{ margin: 0 }}>Lo leen el motor de ideas y el director cuando escriben y diseñan lo que va a pauta.</p>}
+      {pref?.linea && <p className="hint" style={{ margin: 0 }}>Se compara dentro de cada etapa (todas hacen falta). Lo leen el motor de ideas y el director cuando escriben y diseñan lo que va a pauta.</p>}
 
       {version && (
         <Suspense fallback={null}>

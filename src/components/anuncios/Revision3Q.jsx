@@ -8,16 +8,21 @@ import * as api from "../../lib/anunciosApi";
 import { formatoMoneda } from "../../lib/anuncios";
 import { analizarRuta, construirRuta, navegar } from "../../lib/rutas";
 import { etapaCiclo } from "../../lib/cicloVentas";
-import { VEREDICTOS, ESTADOS_Q1, EXIGENCIA_ETAPA, VENTANAS, valorQ2, METRICAS_Q2 } from "../../lib/tresQ";
+import { ESTADOS_Q1, TEXTO_EXIGENCIA, SEMAFOROS, VENTANAS, valorQ2, METRICAS_Q2 } from "../../lib/tresQ";
 import { CAMPOS_UMBRALES_3Q } from "../../lib/umbrales3q";
-import { pct as pctFraccion, textoSinMedir } from "../../lib/ventasSemana";
+import { pct as pctFraccion, textoSinMedir, roasFrenteAlEquilibrio } from "../../lib/ventasSemana";
+import QueEs from "./QueEs";
+import Semaforo from "./Semaforo";
 
 // ============================================================
 // La REVISIÓN 3Q de lo que corre en el Ads Manager de un cliente (curso de campañas, entrega 5)
 //
-// Resultados → Anuncios (y el «Diagnóstico» de Anuncios → Campañas, en un diálogo: la misma pantalla). Arriba la Q1 de
-// la cuenta —el número mágico frente a lo real en 30, 14 y 7 días— y las ventas de la semana; debajo cada campaña
-// encendida con su etapa, su veredicto, sus métricas secundarias (Q2) y qué hacer (Q3), y sus conjuntos y anuncios.
+// Resultados → Anuncios (y el «Diagnóstico» de Anuncios → Campañas, en un diálogo: la misma pantalla). Para alguien que
+// no hizo el curso (decisión de la agencia, 14-nov): ARRIBA el resumen en una frase («De 5 campañas, 3 están sanas…:
+// empieza por esa»), después el número mágico del cliente con de dónde sale, y cada campaña, conjunto y anuncio con su
+// SEMÁFORO (Sana · A vigilar · Mala · Esperando), por qué en una frase, qué hacer en pasos y dónde en el Ads Manager.
+// Las cifras técnicas (30, 14 y 7 días, las métricas de la Q2) van plegadas en «Ver las cifras», y cada término lleva
+// su «¿Qué es…?» (QueEs.jsx).
 //
 // La aplicación sólo LEE el Ads Manager. Lo que cambia algo es lo de siempre: «Apagar» (quien puede escribir) y
 // «Subir un 20 %» (el administrador, confirmando). Lo creativo lleva a producir: «Mejorar los ganchos» y «Anuncios
@@ -31,30 +36,32 @@ import { pct as pctFraccion, textoSinMedir } from "../../lib/ventasSemana";
 
 const ParaPautar = lazy(() => import("./ParaPautar"));
 
-const NIVEL = { campana: "Campaña", conjunto: "Conjunto", anuncio: "Anuncio" };
+const NIVEL = { campana: "Campaña", conjunto: "Conjunto de anuncios", anuncio: "Anuncio" };
 const coma = (n) => String(n).replace(".", ",");
+/** El término del glosario que explica cada métrica de la Q2. */
+const TERMINO_Q2 = { pctMensajes: "pctMensajes", ctrUnico: "ctrUnico", tasa3s: "tasa3s", tiempoVideo: "tiempoVideo", frecuencia: "frecuencia", cpm: "cpm", aprendizaje: "aprendizaje" };
 
-function Veredicto({ v }) {
-  if (!v) return null;
-  return <span className="r3q-veredicto" data-tono={v.tono}>{v.nombre}</span>;
-}
-
-/** Las métricas de la Q2 como chips: el valor, el umbral y si avisa. */
+/** Las métricas de la Q2 como chips: el valor, el umbral y si avisa, con su frase a la vista (no en un `title`). */
 function MetricasQ2({ q2, moneda }) {
   const lista = q2?.metricas ?? [];
   if (!lista.length) return null;
   return (
-    <ul className="r3q-q2" aria-label={`Por qué: las métricas secundarias (${q2.ventana} días)`}>
-      {lista.map((m) => (
-        <li key={m.id} data-mal={m.mal} title={m.texto}>
-          <span className="r3q-q2-nombre">{m.nombre}</span>
-          {m.valor != null && <strong>{valorQ2(m.unidad, m.valor, moneda)}</strong>}
-          {m.umbral != null && <span className="r3q-q2-umbral">{METRICAS_Q2[m.id]?.mayor ? "máx." : "mín."} {valorQ2(m.unidad, m.umbral, moneda)}</span>}
-          {m.valor == null && m.texto && <span className="r3q-q2-umbral">{m.texto}</span>}
-          <span className="sr-only">{m.mal ? "(avisa)" : "(bien)"}</span>
-        </li>
-      ))}
-    </ul>
+    <>
+      <ul className="r3q-q2" aria-label={`Las métricas que explican el porqué (${q2.ventana} días)`}>
+        {lista.map((m) => (
+          <li key={m.id} data-mal={m.mal}>
+            <span className="r3q-q2-nombre">{m.nombre}</span>
+            {m.valor != null && <strong>{valorQ2(m.unidad, m.valor, moneda)}</strong>}
+            {m.umbral != null && <span className="r3q-q2-umbral">{METRICAS_Q2[m.id]?.mayor ? "máx." : "mín."} {valorQ2(m.unidad, m.umbral, moneda)}</span>}
+            <span className="sr-only">{m.mal ? "(avisa)" : "(bien)"}</span>
+          </li>
+        ))}
+      </ul>
+      <ul className="r3q-q2-frases">
+        {lista.filter((m) => m.texto).map((m) => <li key={m.id} data-mal={m.mal}>{m.mal ? "✗" : "✓"} {m.texto}</li>)}
+      </ul>
+      {[...new Set(lista.map((m) => TERMINO_Q2[m.id]).filter(Boolean))].map((t) => <QueEs key={t} termino={t} />)}
+    </>
   );
 }
 
@@ -89,56 +96,69 @@ function TablaVentanas({ ventanas, nombreResultado = "resultados", moneda, titul
 }
 
 /** El botón de una acción de la Q3 que se hace en la aplicación: a producir (el lote, el director). */
-const BOTON_Q3 = { ganchos: ["sparkles", "Mejorar los ganchos"], anuncios: ["sparkles", "Anuncios nuevos"], video: ["video", "Mejorar el guion"] };
+const BOTON_Q3 = { ganchos: ["sparkles", "Mejorar los ganchos"], anuncios: ["sparkles", "Hacer anuncios nuevos"], video: ["video", "Mejorar el guion"] };
 
 /**
- * Lo que se hace con un elemento: su Q3 (cada acción con su porqué y, si se hace aquí, su botón) y las dos que cambian
- * algo en Meta (apagar, subir el presupuesto), con su confirmación. «Abrir en el Ads Manager» siempre.
+ * Por qué y qué hacer, para quien no sabe del curso: la frase del porqué, los pasos en orden y dónde se hace en el Ads
+ * Manager (el semáforo de lib/tresQ.js, `semaforoDe`). Un término que aparece lleva su «¿Qué es…?».
+ */
+function QueHacer({ x }) {
+  const s = x.semaforo;
+  const v = x.veredicto;
+  if (!s || v.heredado) return null;
+  return (
+    <div className="r3q-que-hacer">
+      {s.porque && <p className="r3q-porque"><strong>Por qué:</strong> {s.porque}</p>}
+      {s.pasos?.length > 0 && (
+        <>
+          <p className="r3q-que"><strong>Qué hacer:</strong></p>
+          <ol className="r3q-pasos">{s.pasos.map((p, i) => <li key={i}>{p}</li>)}</ol>
+        </>
+      )}
+      {s.donde && <p className="r3q-donde"><Icon name="external" size={14} /> <span>{s.donde}</span></p>}
+      {v.desglose && <QueEs termino="desglose" />}
+      {v.id === "espera" && <QueEs termino="aprendizaje" />}
+    </div>
+  );
+}
+
+/**
+ * Los botones: lo que se hace en la aplicación (producir anuncios nuevos, mejorar el guion) y lo que cambia algo en
+ * Meta (apagar, subir el presupuesto), con su confirmación. «Abrir en el Ads Manager» siempre.
  */
 function Acciones({ x, nivel, campana, ctx }) {
   const { esAdmin, soloLectura, trabajando, hechos, confirmar, onApagar, onSubir, onNoSubir, irA } = ctx;
   const v = x.veredicto;
   if (hechos[x.id]) return <p className="hint r3q-hecho"><Icon name="check" size={12} /> {hechos[x.id]}</p>;
-  const q3 = (v.acciones ?? []).filter((a) => a.texto);
+  const enApp = [...new Map((v.acciones ?? []).filter((a) => BOTON_Q3[a.ir]).map((a) => [a.ir, a])).values()];
   return (
-    <>
-      {q3.length > 0 && (
-        <ul className="r3q-q3" aria-label="Qué hacer">
-          {q3.map((a) => (
-            <li key={a.id}>
-              <span><strong>{a.titulo}.</strong> {a.texto}</span>
-              {BOTON_Q3[a.ir] && (
-                <button type="button" className="btn btn-secondary btn-sm" onClick={() => irA(a, campana)}>
-                  <Icon name={BOTON_Q3[a.ir][0]} size={14} /> {BOTON_Q3[a.ir][1]}
-                </button>
-              )}
-            </li>
-          ))}
-        </ul>
+    <div className="r3q-botones">
+      {enApp.map((a) => (
+        <button key={a.id} type="button" className="btn btn-secondary btn-sm" onClick={() => irA(a, campana)}>
+          <Icon name={BOTON_Q3[a.ir][0]} size={14} /> {BOTON_Q3[a.ir][1]}
+        </button>
+      ))}
+      {v.id === "apagar" && nivel !== "campana" && !soloLectura && (
+        <button type="button" className="btn btn-danger btn-sm" disabled={Boolean(trabajando)} onClick={() => onApagar(x)}><Icon name="pause" size={14} /> Apagarlo desde aquí</button>
       )}
-      <div className="r3q-botones">
-        {v.id === "apagar" && nivel !== "campana" && !soloLectura && (
-          <button type="button" className="btn btn-danger btn-sm" disabled={Boolean(trabajando)} onClick={() => onApagar(x)}><Icon name="pause" size={14} /> Apagar</button>
-        )}
-        {v.id === "escalar" && v.sugerencia && nivel === "conjunto" && esAdmin && (confirmar?.id === x.id ? (
-          <>
-            <span className="hint">{confirmar.resumen}. ¿Seguro?</span>
-            <button type="button" className="btn btn-primary btn-sm" disabled={Boolean(trabajando)} onClick={() => onSubir(x, true)}>Sí, subir</button>
-            <button type="button" className="btn btn-ghost btn-sm" onClick={onNoSubir}>No</button>
-          </>
-        ) : (
-          <button type="button" className="btn btn-secondary btn-sm" disabled={Boolean(trabajando)} onClick={() => onSubir(x)}>
-            <Icon name="arrowUp" size={14} /> Subir a {formatoMoneda(v.sugerencia.diarioNuevo, ctx.moneda)} al día
-          </button>
-        ))}
-        {v.id === "escalar" && v.sugerencia && nivel === "conjunto" && !esAdmin && <span className="hint">Subir el presupuesto lo hace el administrador.</span>}
-        {x.enlace && (
-          <a className="btn btn-ghost btn-sm" href={x.enlace} target="_blank" rel="noopener noreferrer">
-            <Icon name="external" size={14} /> Abrir en el Ads Manager<span className="sr-only"> (se abre en otra pestaña)</span>
-          </a>
-        )}
-      </div>
-    </>
+      {v.id === "escalar" && v.sugerencia && nivel === "conjunto" && esAdmin && (confirmar?.id === x.id ? (
+        <>
+          <span className="hint">{confirmar.resumen}. ¿Seguro?</span>
+          <button type="button" className="btn btn-primary btn-sm" disabled={Boolean(trabajando)} onClick={() => onSubir(x, true)}>Sí, subir</button>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={onNoSubir}>No</button>
+        </>
+      ) : (
+        <button type="button" className="btn btn-secondary btn-sm" disabled={Boolean(trabajando)} onClick={() => onSubir(x)}>
+          <Icon name="arrowUp" size={14} /> Subir a {formatoMoneda(v.sugerencia.diarioNuevo, ctx.moneda)} al día
+        </button>
+      ))}
+      {v.id === "escalar" && v.sugerencia && nivel === "conjunto" && !esAdmin && <span className="hint">Subir el presupuesto lo hace el administrador.</span>}
+      {x.enlace && (
+        <a className="btn btn-ghost btn-sm" href={x.enlace} target="_blank" rel="noopener noreferrer">
+          <Icon name="external" size={14} /> Abrir en el Ads Manager<span className="sr-only"> (se abre en otra pestaña)</span>
+        </a>
+      )}
+    </div>
   );
 }
 
@@ -163,59 +183,67 @@ export function PublicacionDelAnuncio({ x, ctx }) {
   return null;
 }
 
-/** Un conjunto o un anuncio, con su veredicto y lo que se hace. */
+/** Un conjunto o un anuncio: su semáforo, por qué, qué hacer y dónde; las cifras, plegadas. */
 function Elemento({ x, nivel, campana, ctx }) {
   const v = x.veredicto;
   const c7 = x.ventanas?.[7];
+  const c30 = x.ventanas?.[30];
   const d = (n) => formatoMoneda(n, ctx.moneda);
   return (
-    <li className="r3q-elemento" data-tono={v.tono}>
+    <li className="r3q-elemento" data-tono={x.semaforo?.tono ?? v.tono}>
       <div className="r3q-elemento-cabeza">
         {x.miniatura ? <img src={x.miniatura} alt="" loading="lazy" className="r3q-mini" /> : null}
         <div className="r3q-elemento-nombre">
           <span className="r3q-nivel">{NIVEL[nivel]}</span>
           <strong>{x.nombre || x.titulo || x.id}</strong>
         </div>
-        <Veredicto v={v} />
+        {!v.heredado && <Semaforo s={x.semaforo} />}
       </div>
       {nivel === "anuncio" && <PublicacionDelAnuncio x={x} ctx={ctx} />}
-      {!v.heredado && <p className="r3q-motivo">{v.motivo}</p>}
-      {!v.heredado && c7 && (
-        <p className="hint r3q-cifras">
-          7 días: {d(c7.gasto)} · {c7.resultados ?? 0} {campana.nombreResultado}{c7.costoPorResultado ? ` · ${d(c7.costoPorResultado)} c/u` : ""}
-          {x.presupuestoDiario ? ` · ${d(x.presupuestoDiario)}/día` : ""}
-        </p>
-      )}
-      {!v.heredado && <MetricasQ2 q2={x.q2} moneda={ctx.moneda} />}
-      {!v.heredado && v.luego?.length > 0 && (
-        <p className="hint r3q-luego">Cuando toque cambiar: {v.luego.map((a) => a.titulo.toLowerCase()).join(" · ")}.</p>
-      )}
+      {v.heredado ? <p className="hint r3q-motivo">{v.motivo}</p> : <QueHacer x={x} />}
       {!v.heredado && <Acciones x={x} nivel={nivel} campana={campana} ctx={ctx} />}
+      {!v.heredado && (c7 || c30) && (
+        <details className="r3q-tecnico">
+          <summary>Ver las cifras</summary>
+          <p className="hint r3q-cifras">
+            {c30 ? `30 días: ${d(c30.gasto)} · ${c30.resultados ?? 0} ${campana.nombreResultado}${c30.costoPorResultado ? ` · ${d(c30.costoPorResultado)} c/u` : ""}` : ""}
+            {c7 ? ` · 7 días: ${d(c7.gasto)} · ${c7.resultados ?? 0}${c7.costoPorResultado ? ` · ${d(c7.costoPorResultado)} c/u` : ""}` : ""}
+            {x.presupuestoDiario ? ` · ${d(x.presupuestoDiario)}/día` : ""}
+          </p>
+          <p className="hint">Lo que toca según el método: {v.nombre}.</p>
+          <MetricasQ2 q2={x.q2} moneda={ctx.moneda} />
+          {v.luego?.length > 0 && <p className="hint r3q-luego">Cuando toque cambiar: {v.luego.map((a) => a.titulo.toLowerCase()).join(" · ")}.</p>}
+        </details>
+      )}
     </li>
   );
 }
 
-/** Una campaña encendida: su etapa, sus 3 Q y lo que tiene dentro. */
+/** Una campaña encendida: su semáforo, por qué, qué hacer y dónde; su etapa; y lo que tiene dentro. */
 function Campana({ c, ctx }) {
   const ids = useId();
-  const pendientes = [...c.conjuntos, ...c.anuncios].filter((x) => x.veredicto.tono === "mal" && !x.veredicto.heredado).length;
+  const pendientes = [...c.conjuntos, ...c.anuncios].filter((x) => x.semaforo && ["mala", "vigilar"].includes(x.semaforo.id) && !x.veredicto.heredado).length;
   const [abierta, setAbierta] = useState(pendientes > 0);
-  const v = c.veredicto;
+  const total = SEMAFOROS[c.semaforoTotal];
+  const peorDentro = c.semaforoTotal && c.semaforo && c.semaforoTotal !== c.semaforo.id && total;
   return (
-    <li className="r3q-campana" data-tono={v.tono}>
+    <li className="r3q-campana" data-tono={total?.tono ?? c.veredicto.tono}>
       <div className="r3q-campana-cabeza">
         <div className="r3q-campana-nombre">
+          <span className="r3q-nivel">Campaña</span>
           <h3>{c.nombre}</h3>
           <p className="hint">
-            {c.nombreObjetivo}{c.cbo ? " · presupuesto de campaña" : ""}{c.referencia?.ref ? ` · aguanta ${formatoMoneda(c.referencia.ref, ctx.moneda)} por resultado` : ""}
-            {c.referencia?.de === "promedio" ? " (su promedio del mes)" : ""}
+            {c.nombreObjetivo}{c.cbo ? " · el presupuesto lo lleva la campaña" : ""}{c.referencia?.ref ? ` · número mágico ${formatoMoneda(c.referencia.ref, ctx.moneda)} por ${singular(c.nombreResultado)}` : " · sin número mágico"}
           </p>
         </div>
-        <Veredicto v={v} />
+        <Semaforo s={c.semaforo} />
       </div>
+      {peorDentro && <p className="r3q-dentro"><Semaforo s={total} prefijo="Dentro: " /> {total.tono === "mal" ? "algo de dentro va mal" : "algo de dentro hay que vigilarlo"}: míralo abajo.</p>}
+      <QueHacer x={c} />
+      <Acciones x={c} nivel="campana" campana={c} ctx={ctx} />
       <div className="r3q-etapa">
         {c.etapaDe === "nombre" ? (
-          <span className="badge r3q-etapa-chip" title="Sale del nombre de la campaña">{c.nombreEtapa}</span>
+          <span className="badge r3q-etapa-chip">Etapa: {c.nombreEtapa} <span className="sr-only">(sale del nombre de la campaña)</span></span>
         ) : (
           <div className="field" style={{ margin: 0 }}>
             <label className="label" htmlFor={`${ids}-etapa`}>Etapa {c.etapaDe === "manual" ? "(escogida a mano)" : "(su nombre no la dice)"}</label>
@@ -226,18 +254,21 @@ function Campana({ c, ctx }) {
             </select>
           </div>
         )}
-        <p className="hint r3q-exigencia">{c.exigencia}</p>
+        <QueEs termino="etapa" />
+        {c.cbo && <QueEs termino="cbo" />}
       </div>
-      <p className="r3q-motivo">{v.motivo}</p>
-      <TablaVentanas ventanas={c.ventanas} nombreResultado={c.nombreResultado} moneda={ctx.moneda} titulo={`«${c.nombre}» en 30, 14 y 7 días`} />
-      <MetricasQ2 q2={c.q2} moneda={ctx.moneda} />
-      <Acciones x={c} nivel="campana" campana={c} ctx={ctx} />
+      <details className="r3q-tecnico">
+        <summary>Ver las cifras de la campaña (30, 14 y 7 días)</summary>
+        <p className="hint">Lo que toca según el método: {c.veredicto.nombre}. {TEXTO_EXIGENCIA}</p>
+        <TablaVentanas ventanas={c.ventanas} nombreResultado={c.nombreResultado} moneda={ctx.moneda} titulo={`«${c.nombre}» en 30, 14 y 7 días`} />
+        <MetricasQ2 q2={c.q2} moneda={ctx.moneda} />
+      </details>
       {(c.conjuntos.length > 0 || c.anuncios.length > 0) && (
         <>
           <button type="button" className="btn btn-ghost btn-sm r3q-desplegar" aria-expanded={abierta} aria-controls={`${ids}-dentro`} onClick={() => setAbierta((a) => !a)}>
             <Icon name={abierta ? "chevronUp" : "chevronDown"} size={14} />
             {c.conjuntos.length} {c.conjuntos.length === 1 ? "conjunto" : "conjuntos"} y {c.anuncios.length} {c.anuncios.length === 1 ? "anuncio" : "anuncios"}
-            {pendientes ? ` · ${pendientes} ${pendientes === 1 ? "pide" : "piden"} cambios` : ""}
+            {pendientes ? ` · ${pendientes} con algo que hacer` : ""}
           </button>
           <div id={`${ids}-dentro`} hidden={!abierta}>
             <ul className="r3q-elementos">
@@ -251,33 +282,66 @@ function Campana({ c, ctx }) {
   );
 }
 
-/** La Q1 de la cuenta: el número mágico y lo real en cada ventana. */
+const singular = (n) => ({ conversaciones: "conversación", compras: "compra", "clientes potenciales": "cliente potencial", clics: "clic", interacciones: "interacción", "personas alcanzadas": "persona alcanzada" }[n] ?? "resultado");
+
+/** Arriba de todo: la frase del resumen y cuántas campañas hay de cada color. */
+function Resumen({ d }) {
+  const por = d.resumen?.porSemaforo ?? {};
+  return (
+    <section className="r3q-tarjeta r3q-resumen" aria-labelledby="r3q-resumen">
+      <h2 id="r3q-resumen" className="r3q-titulo"><Icon name="clipboardCheck" size={18} /> Cómo van las campañas</h2>
+      <p className="r3q-frase">{d.resumen?.frase}</p>
+      {d.campanas.length > 0 && (
+        <ul className="r3q-conteo" aria-label="Campañas por color">
+          {Object.entries(SEMAFOROS).filter(([id]) => por[id]).map(([id, s]) => (
+            <li key={id}><Semaforo s={s} /> <strong>{por[id]}</strong></li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+/** El número mágico del cliente (el MISMO de la ficha, el plan y el aviso diario), de dónde sale y lo real de la cuenta. */
 function NumeroMagico({ d, irANegocio }) {
   const q = d.q1Cuenta;
-  const n = d.numero;
+  const n = d.numero ?? {};
   const moneda = d.cuenta.moneda;
   const dinero = (v) => (v == null ? "—" : formatoMoneda(v, moneda));
-  const sinNumero = !q.objetivo && !q.equilibrio;
+  const que = q.metrica === "Costo por compra" ? "compra" : "conversación";
   return (
     <section className="r3q-tarjeta" aria-labelledby="r3q-q1">
-      <h2 id="r3q-q1" className="r3q-titulo"><Icon name="calculator" size={18} /> Q1 · ¿Qué pasó? El número mágico frente a lo real</h2>
-      {sinNumero ? (
-        <p className="notice notice-warn">
-          Sin números del negocio: cada campaña se compara con su propio mes.{" "}
-          <a href="/" onClick={irANegocio}>Ponlos en Marca → Números del negocio</a> para saber cuánto aguanta cada {q.metrica === "Costo por compra" ? "compra" : "conversación"}.
-        </p>
+      <h2 id="r3q-q1" className="r3q-titulo"><Icon name="calculator" size={18} /> El número mágico de {d.cliente?.nombre || "este cliente"}</h2>
+      {!n.valor ? (
+        <div className="notice notice-warn">
+          <p style={{ margin: 0 }}><strong>Todavía no hay número mágico:</strong> no se puede saber si lo que cuesta cada {que} es caro, así que nada se pausa por costo.</p>
+          {n.falta?.length > 0 && <ul style={{ margin: "var(--sp-1) 0" }}>{n.falta.map((f) => <li key={f.id}>{f.texto}</li>)}</ul>}
+          <button type="button" className="btn btn-primary btn-sm" onClick={irANegocio}><Icon name="calculator" size={14} /> Completar los números del negocio</button>
+        </div>
       ) : (
-        <dl className="r3q-magico">
-          <div><dt>{q.metrica} objetivo</dt><dd>{dinero(q.objetivo)}</dd></div>
-          <div><dt>Equilibrio (a partir de aquí se pierde)</dt><dd>{dinero(q.equilibrio)}</dd></div>
-          {n.tasaCierre ? <div><dt>Tasa de cierre</dt><dd>{coma(n.tasaCierre)} %</dd></div> : null}
-        </dl>
+        <>
+          <p className="r3q-numero">
+            Puede pagar hasta <strong>{dinero(n.valor)}</strong> por {que}
+            {n.roasEquilibrio && q.metrica === "Costo por compra" ? <> y tiene que vender al menos <strong>{coma(n.roasEquilibrio)} veces</strong> lo invertido</> : null}.
+          </p>
+          <p className="hint" style={{ margin: 0 }}>Sale {n.de}. Es el mismo para todas las campañas y todas las etapas.</p>
+          {n.explicacion?.length > 0 && (
+            <details className="r3q-tecnico">
+              <summary>Cómo sale esta cifra, con sus números</summary>
+              <ol className="r3q-pasos">{n.explicacion.map((t, i) => <li key={i}>{t}</li>)}</ol>
+            </details>
+          )}
+        </>
       )}
+      {n.gastoMeta30 ? <p className="hint">En los últimos 30 días Meta gastó {dinero(n.gastoMeta30)}: es sólo una referencia, la cuenta usa el presupuesto escrito o la inversión que pide la meta.</p> : null}
       {n.alarma && <p className="notice notice-error">{n.textoAlarma}</p>}
+      <QueEs termino="numeroMagico" />
+      <QueEs termino="equilibrio" />
+      <h3 className="r3q-subtitulo">Lo real de la cuenta {q.tendencia === "empeora" ? "(la última semana empeoró)" : q.tendencia === "mejora" ? "(la última semana mejoró)" : ""}</h3>
       <div className="r3q-tabla-marco">
         <table className="r3q-tabla">
-          <caption className="sr-only">Lo real de toda la cuenta en 30, 14 y 7 días</caption>
-          <thead><tr><th scope="col">Toda la cuenta</th>{VENTANAS.map((w) => <th key={w} scope="col">{w} días</th>)}</tr></thead>
+          <caption className="sr-only">Lo real de la cuenta en 30, 14 y 7 días, sólo de las campañas que buscan {que}s</caption>
+          <thead><tr><th scope="col">Campañas de {que}s</th>{VENTANAS.map((w) => <th key={w} scope="col">{w} días</th>)}</tr></thead>
           <tbody>
             <tr><th scope="row">Gasto</th>{VENTANAS.map((w) => <td key={w}>{dinero(q.ventanas[w].gasto)}</td>)}</tr>
             <tr><th scope="row">{q.resultado.charAt(0).toUpperCase() + q.resultado.slice(1)}</th>{VENTANAS.map((w) => <td key={w}>{q.ventanas[w][q.resultado] ?? 0}</td>)}</tr>
@@ -286,49 +350,55 @@ function NumeroMagico({ d, irANegocio }) {
               <th scope="row">Frente al número mágico</th>
               {VENTANAS.map((w) => {
                 const e = ESTADOS_Q1[q.ventanas[w].estado];
-                return <td key={w}><span className="r3q-estado" data-tono={e?.tono} title={e?.nombre}>{e?.corto ?? "—"}</span></td>;
+                return <td key={w}><span className="r3q-estado" data-tono={e?.tono}>{e?.corto ?? "—"}</span></td>;
               })}
             </tr>
           </tbody>
         </table>
       </div>
+      <p className="hint" style={{ margin: 0 }}>Se juzga con el mes (30 días); 14 y 7 dicen si va mejorando o empeorando.</p>
     </section>
   );
 }
 
-/** Las ventas de la semana (el enlace del cliente): la tasa de cierre medida y el ROAS real. */
-function Ventas({ v, irANegocio }) {
+/** Las ventas de la semana (el enlace del cliente): la tasa de cierre medida y el ROAS real frente al de equilibrio. */
+function Ventas({ v, roasEquilibrio, irANegocio }) {
   if (!v) return null;
   const r = v.resumen ?? {};
   const moneda = v.meta?.moneda ?? "USD";
   const sinMedir = textoSinMedir(r.sinMedir);
+  const frente = roasFrenteAlEquilibrio(r.roas, roasEquilibrio);
   return (
     <section className="r3q-tarjeta" aria-labelledby="r3q-ventas">
       <h2 id="r3q-ventas" className="r3q-titulo"><Icon name="trending" size={18} /> Las ventas de las últimas semanas</h2>
       <dl className="r3q-magico">
         <div><dt>Tasa de cierre medida</dt><dd>{r.tasa?.tasa == null ? "—" : pctFraccion(r.tasa.tasa)}</dd></div>
         <div><dt>ROAS real (lo vendido ÷ la pauta)</dt><dd>{r.roas == null ? "—" : `${coma(Math.round(r.roas * 100) / 100)}×`}</dd></div>
+        {roasEquilibrio ? <div><dt>ROAS de equilibrio</dt><dd>{coma(roasEquilibrio)}×</dd></div> : null}
         <div><dt>Costo real por venta</dt><dd>{r.costoPorVenta == null ? "—" : formatoMoneda(r.costoPorVenta, moneda)}</dd></div>
       </dl>
+      {frente && <p className={`notice ${frente.gana ? "notice-ok" : "notice-error"}`}>{frente.texto}</p>}
       {r.tasa?.motivo && <p className="hint">{r.tasa.motivo}</p>}
       {r.tasa?.aviso && <p className="hint">{r.tasa.aviso}</p>}
       {sinMedir && <p className="hint">{sinMedir}</p>}
+      <QueEs termino="tasaCierre" />
+      <QueEs termino="roas" />
       <p className="hint"><a href="/" onClick={irANegocio}>Marca → Números del negocio</a>: las ventas de cada semana y el enlace del cliente.</p>
     </section>
   );
 }
 
-/** Cómo se juzga: los umbrales del Manual y lo que se le exige a cada etapa. */
+/** Cómo se juzga: los umbrales del Manual y las reglas, para quien quiera saberlo. */
 function ComoSeJuzga({ umbrales, irAlManual }) {
   return (
     <details className="r3q-tarjeta r3q-como">
-      <summary>Cómo se juzga</summary>
+      <summary>Cómo se juzga (para quien quiera el detalle)</summary>
       <ul>
+        <li><strong>El mes manda:</strong> se juzga con los últimos 30 días; 14 y 7 dicen la tendencia. Una mala semana dentro de un buen mes se vigila, no se apaga.</li>
+        <li><strong>Se apaga</strong> si en el mes cada resultado cuesta mucho más que el número mágico (o más que el equilibrio), ya gastó lo bastante para saberlo y la última semana tampoco fue bien.</li>
+        <li><strong>Sin número mágico</strong> no se apaga nada por costo: sólo si casi nadie de los que dan clic escribe.</li>
+        <li>{TEXTO_EXIGENCIA}</li>
         {CAMPOS_UMBRALES_3Q.map((c) => <li key={c.id}><strong>{c.nombre} {coma(umbrales?.[c.id])} {c.unidad}</strong> — {c.ayuda}</li>)}
-      </ul>
-      <p className="hint">Lo que aguanta cada etapa:</p>
-      <ul>
-        {["presentacion", "evaluacion", "conversion", "ascension", "temporada"].map((id) => <li key={id}>{EXIGENCIA_ETAPA[id].texto}</li>)}
       </ul>
       <p className="hint">
         Un conjunto dentro del número mágico no se toca, aunque uno de sus anuncios se vea peor (Meta reparte el presupuesto y
@@ -447,8 +517,8 @@ export default function Revision3Q({ client, esAdmin = false, soloLectura = fals
     <div ref={raiz} className="r3q" tabIndex={-1}>
       <div className="r3q-barra">
         <p className="hint" style={{ margin: 0, flex: "1 1 260px" }}>
-          Lo que corre en su cuenta del Ads Manager, con el método de las 3 Q: qué pasó, por qué y qué hacer. La app sólo lee;
-          nada cambia solo.
+          Lo que corre en su cuenta del Ads Manager: si cada campaña está sana, a vigilar o mala, por qué y qué hacer. La
+          aplicación sólo lee; nada cambia solo.
         </p>
         <label className="r3q-ia"><input type="checkbox" checked={conIA} onChange={(e) => setConIA(e.target.checked)} /> <span>Que la IA lo explique (unos centavos)</span></label>
         <button type="button" className="btn btn-secondary btn-sm" onClick={() => leer({ ia: conIA })} disabled={cargando}>
@@ -473,13 +543,14 @@ export default function Revision3Q({ client, esAdmin = false, soloLectura = fals
           {d.avisoCreativo && <p className="hint">{d.avisoCreativo}</p>}
           {d.explicacion && <p className="r3q-explicacion">{d.explicacion}</p>}
           {d.avisoIA && <p className="hint">Sin explicación de la IA: {d.avisoIA}</p>}
+          <Resumen d={d} />
           <div className="r3q-arriba">
             <NumeroMagico d={d} irANegocio={irANegocio} />
-            <Ventas v={ventas} irANegocio={irANegocio} />
+            <Ventas v={ventas} roasEquilibrio={d.numero?.roasEquilibrio} irANegocio={irANegocio} />
           </div>
           <section aria-labelledby="r3q-campanas">
             <h2 id="r3q-campanas" className="r3q-titulo">
-              <Icon name="megaphone" size={18} /> Q2 y Q3 · Las campañas encendidas
+              <Icon name="megaphone" size={18} /> Las campañas encendidas, una por una
               {d.resumen.pendientes > 0 && <span className="r3q-pendientes">{d.resumen.pendientes} {d.resumen.pendientes === 1 ? "pide" : "piden"} cambios</span>}
             </h2>
             {!d.campanas.length ? <p className="hint">Esta cuenta no tiene campañas encendidas.</p> : (
@@ -490,9 +561,6 @@ export default function Revision3Q({ client, esAdmin = false, soloLectura = fals
             {d.recortado && <p className="hint">La cuenta tiene muchos anuncios: se leyeron los primeros 500 de cada nivel.</p>}
           </section>
           <ComoSeJuzga umbrales={d.umbrales} irAlManual={irAlManual} />
-          <p className="hint r3q-leyenda">
-            {Object.entries(VEREDICTOS).filter(([id]) => d.resumen.porVeredicto?.[id]).map(([id, x]) => `${x.nombre}: ${d.resumen.porVeredicto[id]}`).join(" · ")}
-          </p>
         </>
       )}
       {/* Lo orgánico que rindió y no se ha pautado: no necesita cuenta publicitaria (sólo D1). */}
