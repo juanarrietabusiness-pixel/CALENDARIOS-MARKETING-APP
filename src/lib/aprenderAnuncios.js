@@ -27,6 +27,10 @@
 //     rompe la cuenta. «Más barato» es un 15 % por debajo del total del rasgo; «más caro», un 20 % por encima (o sin
 //     resultados).
 //
+// EL ÁNGULO DE VENTA es un rasgo más (con la misma muestra mínima): el de la publicación (`post.angulo`, lo que guarda
+// el motor de ideas) o, si no lo trae, el del hueco del plan de campañas donde corrió (`angulos`: clave de la
+// publicación → { clave, nombre }, lo lee worker/lib/enPauta.js de los planes guardados). Sin ángulos, todo como antes.
+//
 // Lo leen el motor de ideas cuando escribe para pauta (worker/lib/estudio/lote.js), el director de las piezas que van a
 // pauta (worker/lib/estudio/fichas.js) y el plan de campañas (`preferenciasDeAnuncios`). La `linea` pide preferir lo que
 // funciona sin dejar de probar: con todo igual, Meta deja de distinguir los anuncios (diversificación creativa).
@@ -36,7 +40,7 @@ import { tipoArteDe, tipoArteDePost } from "./tiposArte.js";
 import { nombreDeNivel } from "./consciencia.js";
 import { nombreEtapaCiclo } from "./cicloVentas.js";
 import { formatoMoneda } from "./anuncios.js";
-import { limpiarEnPauta, clavePublicacion, mediana, singularDe } from "./enPauta.js";
+import { limpiarEnPauta, clavePublicacion, mediana, singularDe, anguloDePost } from "./enPauta.js";
 
 export const MIN_PIEZAS = 3;
 /** Cuántos números mágicos tiene que haber gastado una pieza para contar. */
@@ -58,6 +62,7 @@ export const RASGOS = Object.freeze([
   { id: "tipoArte", nombre: "tipo de arte" },
   { id: "nivel", nombre: "nivel de consciencia" },
   { id: "composicion", nombre: "composición" },
+  { id: "angulo", nombre: "ángulo de venta" },
   { id: "etapa", nombre: "etapa" },
 ]);
 
@@ -81,9 +86,10 @@ function indiceDePosts(publicaciones) {
 
 /**
  * Las piezas que se comparan, cada una con sus rasgos. `nombres.composicion`: id → nombre, si se quiere el nombre de
- * una composición que la publicación no traiga recordado. Pura.
+ * una composición que la publicación no traiga recordado; `angulos`: clave de la publicación → { clave, nombre } (el
+ * ángulo del hueco del plan donde corrió, para las publicaciones que no lo traen). Pura.
  */
-export function piezasDeAnuncios(enPauta, publicaciones = null, { nombres = {} } = {}) {
+export function piezasDeAnuncios(enPauta, publicaciones = null, { nombres = {}, angulos = null } = {}) {
   const guardado = limpiarEnPauta(enPauta);
   const posts = indiceDePosts(publicaciones);
   return Object.entries(guardado.publicaciones).map(([k, e]) => {
@@ -98,14 +104,19 @@ export function piezasDeAnuncios(enPauta, publicaciones = null, { nombres = {} }
     const tipoArte = vivo ? tipoArteDePost(vivo) : tipoArteDePost({ tipoArte: recordado.tipoArte, composicion: recordado.composicion, pilar: recordado.pilar });
     const etapa = String(e.etapa || (esObjeto(p.pauta) ? p.pauta.etapa : "") || recordado.pautaEtapa || "");
     const c = e.d30?.gasto > 0 ? e.d30 : e.d7;
+    // El ángulo: el de la publicación de ahora, el recordado o el del hueco del plan donde corrió.
+    const delPost = vivo ? anguloDePost(vivo) : null;
+    const angulo = delPost ?? (recordado.angulo ? { clave: String(recordado.angulo), nombre: String(recordado.anguloNombre || recordado.angulo) } : null)
+      ?? (angulos instanceof Map ? angulos.get(k) ?? null : null);
     return {
       clave: k, titulo: recordado.titulo ?? "", tipoResultado: e.tipoResultado ?? "", nombreResultado: e.nombreResultado ?? "",
       gasto: num(c?.gasto), resultados: num(c?.resultados), activo: Boolean(e.activo),
-      rasgos: { tipoArte, nivel, composicion, etapa },
+      rasgos: { tipoArte, nivel, composicion, angulo: angulo?.clave ?? "", etapa },
       nombres: {
         tipoArte: tipoArteDe(tipoArte)?.nombre ?? "",
         nivel: nombreDeNivel(nivel) || nivel,
         composicion: nombreComposicion,
+        angulo: angulo?.nombre ?? "",
         etapa: e.nombreEtapa || nombreEtapaCiclo(etapa) || (etapa === "temporada" ? "Temporada" : etapa),
       },
     };
@@ -122,15 +133,16 @@ const costoDe = (piezas) => {
 /**
  * Qué rinde más barato para este cliente. `enPauta`: lo guardado (`anuncios_clientes.en_pauta`); `publicaciones`: las
  * publicaciones de ahora, opcional (mandan sobre lo recordado: ver `indiceDePosts`); `minGasto`: lo que tiene que haber
- * gastado una pieza para contar (si no, el que se explica arriba).
+ * gastado una pieza para contar (si no, el que se explica arriba); `angulos`: el ángulo del hueco del plan de cada
+ * publicación (ver `piezasDeAnuncios`).
  * → { muestra, minimo, minGasto, tipoResultado, nombreResultado, moneda, porRasgo: { rasgo → [{ id, nombre, piezas,
  *     gasto, resultados, costo }] }, mejores: [{ rasgo, nombreRasgo, id, nombre, costo, total, piezas }], peores, linea,
  *     motivo }. Pura.
  */
-export function preferenciasDeAnuncios(enPauta, publicaciones = null, { minGasto = null, nombres = {} } = {}) {
+export function preferenciasDeAnuncios(enPauta, publicaciones = null, { minGasto = null, nombres = {}, angulos = null } = {}) {
   const guardado = limpiarEnPauta(enPauta);
   const moneda = guardado.moneda || "USD";
-  const todas = piezasDeAnuncios(guardado, publicaciones, { nombres }).filter((p) => p.gasto > 0);
+  const todas = piezasDeAnuncios(guardado, publicaciones, { nombres, angulos }).filter((p) => p.gasto > 0);
   // El tipo de resultado que más se repite: sólo se compara lo comparable.
   const cuenta = new Map();
   for (const p of todas) if (p.tipoResultado) cuenta.set(p.tipoResultado, (cuenta.get(p.tipoResultado) ?? 0) + 1);
@@ -185,7 +197,7 @@ export function preferenciasDeAnuncios(enPauta, publicaciones = null, { minGasto
 
   const d = (n) => formatoMoneda(n, moneda);
   const resultado = singularDe(nombreResultado);
-  const articulo = (x) => (x.rasgo === "composicion" ? "la" : "el");
+  const articulo = (x) => (x.rasgo === "composicion" || x.rasgo === "etapa" ? "la" : "el");
   const dicho = (x, conTotal) => `${articulo(x)} ${x.nombreRasgo} «${x.nombre}» (${x.costo == null ? `sin ${nombreResultado}` : d(x.costo)}${conTotal ? ` frente a ${d(x.total)} de su etapa` : ""})`;
   const etapas = [...new Set([...mejores, ...peores].map((x) => x.etapa))];
   const partes = etapas.map((e) => {
@@ -204,6 +216,6 @@ export function preferenciasDeAnuncios(enPauta, publicaciones = null, { minGasto
     : "";
   const motivo = hay ? "" : !todas.length
     ? "Todavía no hay piezas del calendario que hayan corrido en el Ads Manager con gasto."
-    : `Todavía no hay con qué comparar: hace falta que, dentro de una misma etapa, al menos dos valores de un mismo rasgo (tipo de arte, nivel o composición) tengan ${MIN_PIEZAS} piezas pautadas cada uno con gasto suficiente (${d(umbral)} o más en 30 días). Hoy cuentan ${muestra.length} de ${todas.length}.`;
+    : `Todavía no hay con qué comparar: hace falta que, dentro de una misma etapa, al menos dos valores de un mismo rasgo (tipo de arte, nivel, composición o ángulo de venta) tengan ${MIN_PIEZAS} piezas pautadas cada uno con gasto suficiente (${d(umbral)} o más en 30 días). Hoy cuentan ${muestra.length} de ${todas.length}.`;
   return { muestra: muestra.length, piezas: todas.length, minimo: MIN_PIEZAS, minGasto: umbral, tipoResultado, nombreResultado, moneda, porRasgo, mejores, peores, linea, motivo };
 }

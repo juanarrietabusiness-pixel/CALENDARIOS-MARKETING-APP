@@ -189,7 +189,10 @@ export function fotoDePublicacion(post, fecha = "", { nombreComposicion = null }
   const etapa = esObjeto(post.pauta) ? corto(post.pauta.etapa, 20) : "";
   const composicion = corto(post.composicion, 40);
   const nombre = composicion && typeof nombreComposicion === "function" ? corto(nombreComposicion(composicion), 60) : "";
+  const angulo = anguloDePost(post);
   return {
+    // El ángulo de venta (si la publicación lo trae): lo que se aprende de sus anuncios lo compara.
+    ...(angulo ? { angulo: angulo.clave, anguloNombre: angulo.nombre } : {}),
     fecha: /^\d{4}-\d{2}-\d{2}$/.test(String(fecha)) ? String(fecha) : "",
     titulo: corto(post.title || post.idea || texto, 80),
     formato: corto(post.format, 20),
@@ -200,6 +203,26 @@ export function fotoDePublicacion(post, fecha = "", { nombreComposicion = null }
     pautaEtapa: etapa, productoId: corto(post.productoId, 80),
   };
 }
+
+/**
+ * El ÁNGULO DE VENTA de una publicación (`post.angulo`, lo que pone el motor de ideas o el plan de campañas): un objeto
+ * { id, productoId?, nombre? } o un texto (su nombre). → { clave, nombre } o null. La clave es «producto:ángulo» si dice
+ * de qué producto es (la del plan, lib/planCiclo.js `claveAngulo`); si no, el ángulo sin tildes. Pura.
+ */
+export function anguloDePost(post) {
+  const a = post?.angulo;
+  if (typeof a === "string") {
+    const nombre = corto(a, 80);
+    return nombre ? { clave: claveDeTexto(nombre), nombre } : null;
+  }
+  if (!esObjeto(a)) return null;
+  const id = corto(a.id, 60);
+  const nombre = corto(a.nombre, 80) || id;
+  if (!id && !nombre) return null;
+  const productoId = corto(a.productoId, 80);
+  return { clave: id && productoId ? `${productoId}:${id}` : claveDeTexto(id || nombre), nombre };
+}
+const claveDeTexto = (t) => String(t).normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 80);
 
 /** Un anuncio de la revisión (o del cron) como se guarda. */
 function anuncioGuardado(a) {

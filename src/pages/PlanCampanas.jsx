@@ -3,7 +3,7 @@ import Icon from "../components/Icon";
 import { leerCiclo, marcarPasos, guardarAjustesCiclo, guardarAnunciosCiclo, guardarRepartoCiclo, escribirTextosCiclo } from "../lib/planCicloApi";
 import {
   guiaDeMontaje, hojasDelPlan, planATextoCiclo, textoCalendario, avanceDeGuia, nombreDelMes, diaCorto, publicoDe, textoDelTotal,
-  nombreDeEtapaDelPlan,
+  nombreDeEtapaDelPlan, textoEdadConjunto,
 } from "../lib/planCiclo";
 import { MODOS_PRODUCTOS, CAMPANAS_DEL_PLAN, MAX_LOGRO, limpiarQue, queDeSiempre } from "../lib/anunciosPlan";
 import { TEXTOS_POR_NIVEL } from "../lib/textosNivel";
@@ -225,6 +225,7 @@ export default function PlanCampanas({ clients = [], pulso = 0, yo = {}, onClien
       frios ? "Los de nivel inconsciente o problema hablan del problema: sin el producto en el centro ni el precio." : "",
       "Dos con el mismo tipo de arte y la misma composición son un solo anuncio para Meta: que se distingan a la vista.",
       c.id === "temporada" && plan.temporada?.ofertas ? `La oferta: ${plan.temporada.ofertas}.` : "",
+      c.faltan.angulos?.length ? `Cada uno prueba un ángulo de venta del estudio de mercado: ${c.faltan.angulos.map((a) => `«${a.nombre}»`).join(", ")}.` : "",
       plan.que?.logro ? `Lo que se quiere lograr: ${plan.que.logro}` : "",
     ].filter(Boolean).join(" ");
     navegar(direccionDelLote(construirRuta({ cliente: clienteId, pestana: "crear", seccion: "galeria" }), c.faltan, pide));
@@ -570,7 +571,9 @@ function Campana({ c, plan, cliente, dinero, soloLectura, ocupado, onProducir, o
             <strong>{k + 1}. {x.nombreCorto}</strong>{!enCampana && x.presupuestoDiario !== null ? <span className="hint"> · {dinero(x.presupuestoDiario)} al día</span> : null}
             <p>{x.publico.texto}</p>
             {x.publico.nombres.length > 0 && <p className="hint">Públicos: {x.publico.nombres.join(", ")}</p>}
-            <p className="hint">Excluir (que no lo vean): {x.excluye.nombres.length ? x.excluye.nombres.join(", ") : x.excluye.nota || "nada"}</p>
+            <p className="hint">Edad: {textoEdadConjunto(x)}</p>
+            <p className="hint">Excluir (que no lo vean): {x.excluye.nombres.length ? x.excluye.nombres.join(", ") : "nada"}</p>
+            {x.excluye.nota && <p className="hint">{x.excluye.nota}</p>}
             {x.nota && <p className="hint">{x.nota}</p>}
           </li>
         ))}

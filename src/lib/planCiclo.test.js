@@ -98,7 +98,9 @@ describe("el plan del ciclo", () => {
     // Los nombres llevan la etapa (así la revisión de lo que corre la reconoce).
     expect(pre.nombre).toBe("Dcasa · Presentación · Interacción WhatsApp · Noviembre 2026");
     expect(idEtapaCiclo(eva.nombre.split(" · ")[1])).toBe("evaluacion");
-    expect(pre.conjuntos[0].nombre).toBe("Intereses · Mamá práctica · 18-65+");
+    expect(pre.conjuntos[0].nombre).toBe("Intereses · Mamá práctica · 30-45");
+    // Los de quien ya interactuó van sin edad en el nombre (abierta).
+    expect(eva.conjuntos[0].nombre).toBe("Interactuaron · 30 días");
     // Los públicos a crear, sin los de la web.
     expect(p.publicos.map((x) => x.id)).toEqual(["interaccion-30", "interaccion-90", "mensajes-30", "clientes", "similares-1"]);
   });
@@ -265,7 +267,7 @@ describe("qué pieza va en cada anuncio", () => {
     const [pre, eva, con] = p.campanas;
     // p1 (3,6×) va a presentación con su publicación; p2 rinde poco y p5 no sirve.
     expect(pre.anuncios.map((a) => a.pieza.postId)).toEqual(["p1"]);
-    expect(pre.anuncios[0]).toMatchObject({ como: "publicacion", origen: "publicada", nombre: "1 · Pieza · Producto" });
+    expect(pre.anuncios[0]).toMatchObject({ como: "publicacion", origen: "publicada", nombre: "1 · Pieza · Pieza p1" });
     expect(textoDeLaPieza(pre.anuncios[0])).toMatch(/usar la publicación: https:\/\/www\.instagram\.com\/p\/AAA\//);
     expect(pre.faltan).toMatchObject({ n: 3, etapa: "presentacion", nivel: "problema" });
     // Evaluación: p3 (con sus textos) y sólo UNA de p4/p4b (mismo tipo de arte y composición).
@@ -331,7 +333,7 @@ describe("la guía de montaje", () => {
     expect(campana.campos.find((f) => f.etiqueta === "Presupuesto de la campaña Advantage+").valor).toMatch(/Desactivado/);
     expect(g.find((x) => x.id === "evaluacion:campana").campos.find((f) => f.etiqueta === "Presupuesto de la campaña Advantage+").valor).toMatch(/^Activado: \$1\.33 al día/);
     const c1 = g.find((x) => x.id === "presentacion:c1");
-    expect(c1.campos.map((f) => f.etiqueta)).toEqual(["Nombre", "Presupuesto diario", "App de mensajes", "Objetivo de rendimiento", "Puja", "Calendario", "Público",
+    expect(c1.campos.map((f) => f.etiqueta)).toEqual(["Nombre", "Presupuesto diario", "App de mensajes", "Objetivo de rendimiento", "Puja", "Calendario", "Edad", "Público",
       "Segmentación detallada Advantage", "Excluir", "Público Advantage+", "Ubicaciones", "Llegar a más personas con más probabilidad de clic"]);
     expect(c1.campos.at(-1).valor).toBe("Desactivado");
     expect(c1.campos.find((f) => f.etiqueta === "Excluir").valor).toMatch(/Interactuaron · 90 días, Lista de clientes/);
