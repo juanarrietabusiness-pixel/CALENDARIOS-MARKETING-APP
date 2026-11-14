@@ -21,6 +21,7 @@
 import { llamarIA } from "../cerebro/ia.js";
 import { fichasDeDiseno } from "./fichas.js";
 import { esFicha, textoDeLaFicha } from "../../../src/lib/director.js";
+import { cuantasVariaciones, ejesDeVariacion, encargoDeVariacion, MIN_VARIACIONES, MAX_VARIACIONES } from "../../../src/lib/variacionesAnuncio.js";
 
 const MAX_IDEA = 2_000;
 /** Palabras como mucho de la idea mejorada: más que eso ya es un prompt. */
@@ -158,6 +159,7 @@ export function encargoDeVersion(ficha, { k = 0, n = 1, texto = "", indicacion =
 export async function versionesDeIdea(env, acceso, cliente, datos = {}) {
   const idea = String(datos.idea ?? "").trim();
   if (!idea) throw Object.assign(new Error("Esta pieza no tiene escena de la que partir."), { estado: 400 });
+  if (datos.para === "anuncios") return variacionesParaAnuncios(env, acceso, cliente, { ...datos, idea });
   const n = Number(datos.n ?? 1);
   if (!(Number.isInteger(n) && n >= 1 && n <= MAX_VERSIONES)) throw Object.assign(new Error(`De 1 a ${MAX_VERSIONES} versiones.`), { estado: 400 });
   if (datos.tipo !== "video") {
@@ -184,4 +186,33 @@ export async function versionesDeIdea(env, acceso, cliente, datos = {}) {
   const versiones = leerVersiones(r.texto, n);
   if (!versiones.length) throw Object.assign(new Error("La IA no devolvió ninguna versión. Inténtalo otra vez."), { estado: 502 });
   return { versiones, modelo: r.modelo, aviso: r.aviso };
+}
+
+// ------------------------------------------------------------
+// «Variaciones para anuncios»: de una pieza maestra, las de un conjunto de anuncios
+// ------------------------------------------------------------
+
+/**
+ * De 3 a 5 fichas que conservan el ADN de la pieza MAESTRA y cambian cada una UNA cosa (src/lib/variacionesAnuncio.js):
+ * el gancho si lleva texto, el ángulo, la composición, el fondo… El director MIRA la maestra (papel «maestra»). Sólo
+ * imagen, y sin el respaldo de las escenas cortas: sin el director no hay variaciones que valgan (lo dice el error).
+ * `datos`: { idea (la ficha o la escena de la maestra), n, texto?, original?, productoIds?, indicacion? }. Texto: no
+ * gasta en el motor (las piezas las pide la pantalla con el costo delante). → { versiones, ejes, modelo, aviso, ficha }.
+ */
+export async function variacionesParaAnuncios(env, acceso, cliente, datos = {}) {
+  if (datos.tipo === "video") throw Object.assign(new Error("Las variaciones para anuncios son de imágenes."), { estado: 400 });
+  const n = cuantasVariaciones(datos.n);
+  if (!n) throw Object.assign(new Error(`De ${MIN_VARIACIONES} a ${MAX_VARIACIONES} variaciones.`), { estado: 400 });
+  const texto = String(datos.texto ?? "").slice(0, 400);
+  const ejes = ejesDeVariacion(n, { conTexto: Boolean(texto.trim()) && datos.sinTexto !== true });
+  const comunes = { texto, sinTexto: datos.sinTexto === true, indicacion: String(datos.indicacion ?? "").slice(0, 400), productoIds: Array.isArray(datos.productoIds) ? datos.productoIds : [] };
+  const r = await fichasDeDiseno(env, acceso, cliente, {
+    piezas: ejes.map((eje, k) => encargoDeVariacion(datos.idea, { ...comunes, k, eje })),
+    // No son una serie que se va armando: cada una parte de la maestra y cambia lo suyo (por eso van a la vez).
+    concepto: "Variaciones de una pieza maestra para un conjunto de anuncios: cada una parte de la maestra y cambia sólo lo que se le pide.",
+    especiales: datos.original ? [{ papel: "maestra", ...datos.original }] : [],
+  });
+  const salen = ejes.map((eje, k) => ({ eje, ficha: r.fichas[k + 1]?.ficha })).filter((x) => x.ficha);
+  if (!salen.length) throw Object.assign(new Error("El director no devolvió variaciones que se puedan usar. Inténtalo otra vez."), { estado: 502 });
+  return { versiones: salen.map((x) => x.ficha), ejes: salen.map((x) => x.eje), modelo: r.modelo, aviso: r.aviso, ficha: true };
 }

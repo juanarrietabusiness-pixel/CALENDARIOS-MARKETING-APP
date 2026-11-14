@@ -17,10 +17,19 @@ vi.mock("./estudio", async (original) => {
     ...real,
     versionesDeIdea: vi.fn(async (_c, datos) => { versiones.push(datos); return { versiones: ["Pieza: post 4:5.\nComposición: a la izquierda.\nTexto (exacto): titular «Desde 399 $»."] }; }),
     pedirImagenes: vi.fn(async () => ({ trabajo: { id: "t9" } })),
+    crearCarpeta: vi.fn(async (_c, nombre) => {
+      carpetas.push(nombre);
+      if (carpetas.length === 1) throw new Error("Ya hay una carpeta con ese nombre.");
+      return { carpeta: { id: "cv", nombre } };
+    }),
+    cambiarArchivo: vi.fn(async (_c, id, cambios) => { movidos.push({ id, ...cambios }); return {}; }),
   };
 });
+const carpetas = [];
+const movidos = [];
 
 const { pedirOtraIgual, pedirVersiones, pedirEdicion, textoTrasEditar } = await import("./visorEstudio.js");
+const estudio = await import("./estudio.js");
 const { modeloPorId } = await import("./estudioCatalogo.js");
 
 const kit = { logo: "clientes/c1/logo.png", paleta: [{ hex: "#123456", nombre: "Azul", rol: "dominante" }] };
@@ -76,5 +85,36 @@ describe("lo que crea el visor, con las mismas reglas que el lote", () => {
     expect(textoTrasEditar("Desde 399 $", "el fondo más claro")).toBe("Desde 399 $");
     expect(textoTrasEditar("Sofa cama", "donde dice «Sofa» debe decir «Sofá»")).toBe("Sofá cama");
     expect(textoTrasEditar("Sofa cama", "pon «Oferta»")).toBe("");
+  });
+});
+
+describe("«Variaciones para anuncios» desde el visor", () => {
+  beforeEach(() => { encargos.length = 0; versiones.length = 0; carpetas.length = 0; movidos.length = 0; });
+
+  it("el director mira la maestra; van juntas a su carpeta (con la maestra si estaba suelta), revisadas y sin ponerse en ningún post", async () => {
+    const fichas = [1, 2, 3].map((n) => `Pieza: post 4:5 — variación ${n}.\nComposición: el sofá ${n}.\nTexto (exacto): titular «Variación ${n}»; apoyo «Desde 399 $».`);
+    estudio.versionesDeIdea.mockImplementationOnce(async (_c, datos) => { versiones.push(datos); return { versiones: fichas, ejes: ["gancho", "angulo", "composicion"] }; });
+    const suelta = { ...a, carpetaId: "" };
+    const r = await pedirVersiones({ clienteId: "c1", a: suelta, p: { ...p, carpetaId: null }, kit, n: 3, para: "anuncios", uso: { calendarId: "cal", postId: "p1" } });
+    expect(versiones[0]).toMatchObject({ n: 3, tipo: "imagen", para: "anuncios", original: a.src, texto: "Desde 399 $", sinTexto: false });
+    // La primera ya existía: « (2)».
+    expect(carpetas).toEqual(["Variaciones · Desde 399 $", "Variaciones · Desde 399 $ (2)"]);
+    expect(movidos).toEqual([{ id: "a1", carpetaId: "cv" }]);
+    expect(encargos[0].carpetaId).toBe("cv");
+    expect(encargos[0].pasos).toHaveLength(3);
+    expect(encargos[0].pasos.map((x) => x.texto)).toEqual(["Variación 1\nDesde 399 $", "Variación 2\nDesde 399 $", "Variación 3\nDesde 399 $"]);
+    for (const paso of encargos[0].pasos) {
+      expect(paso.controlar).toBe(true);
+      expect(paso.pedido.postId).toBeUndefined();
+    }
+    expect(r.texto).toMatch(/^Pedidas 3 variaciones para anuncios con .+ \(otro gancho \(beneficio\), otro ángulo de la escena, otra composición\): quedan juntas en la carpeta «Variaciones · Desde 399 \$ \(2\)», con la maestra, ya revisadas\./);
+  });
+
+  it("con el texto de la plantilla encima, sin gancho: el mismo texto se pone otra vez encima", async () => {
+    estudio.versionesDeIdea.mockImplementationOnce(async (_c, datos) => { versiones.push(datos); return { versiones: ["Pieza: post 4:5.\nComposición: x."], ejes: ["angulo"] }; });
+    const conPlantilla = { ...a, ajustes: { ...a.ajustes, plantilla: { texto: "Hola", plantilla: "banda" } } };
+    await pedirVersiones({ clienteId: "c1", a: conPlantilla, p, kit, n: 3, para: "anuncios" });
+    expect(versiones[0]).toMatchObject({ texto: "", sinTexto: true });
+    expect(movidos).toEqual([]);
   });
 });
