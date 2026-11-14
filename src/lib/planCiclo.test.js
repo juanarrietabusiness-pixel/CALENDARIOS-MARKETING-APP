@@ -83,7 +83,8 @@ describe("el plan del ciclo", () => {
     // Evaluación y ascensión: el presupuesto en la campaña (Advantage+), sin presupuesto por conjunto.
     expect(eva.presupuesto).toMatchObject({ en: "campana", diario: 1.33, porConjunto: null });
     expect(asc.presupuesto.en).toBe("campana");
-    expect(con.presupuesto.en).toBe("conjunto");
+    // Conversión también en la campaña, como su hoja del Excel de la agencia (la columna C, del grupo de la campaña).
+    expect(con.presupuesto.en).toBe("campana");
     // Advantage+ nunca en evaluación ni en ascensión.
     expect(eva.conjuntos.some((x) => x.publico.advantage)).toBe(false);
     expect(asc.conjuntos.some((x) => x.publico.advantage)).toBe(false);
@@ -120,15 +121,23 @@ describe("el plan del ciclo", () => {
     expect(pre).toMatchObject({ objetivo: "ventas", appMensajes: "", rendimiento: "Maximizar el número de conversiones (compras)" });
     expect(pre.nombre).toBe("Dcasa · Presentación · Ventas · Noviembre 2026");
     expect(pre.conjuntos[0].excluye.publicos).toContain("visitas-30");
-    expect(eva.conjuntos[0].publico.publicos).toEqual(["interaccion-30", "visitas-30"]);
+    // En la web, quien visitó la web ya es de conversión: evaluación le habla a quien interactuó y lo excluye.
+    expect(eva.conjuntos[0].publico.publicos).toEqual(["interaccion-30"]);
+    expect(eva.conjuntos[0].excluye.publicos).toEqual(["visitas-30", "clientes"]);
     expect(con.conjuntos[0].publico.publicos).toEqual(["carrito-30", "visitas-30"]);
     expect(p.publicos.map((x) => x.id)).toContain("carrito-30");
+    // Un servicio que capta por formulario en la web no tiene carrito.
+    const servicio = plan({ negocio: { ...NEGOCIO, tipo: "segunda-necesidad", destino: "web" } });
+    expect(servicio.objetivo).toBe("clientes");
+    expect(servicio.campanas.find((c) => c.id === "conversion").conjuntos[0].publico.publicos).toEqual(["visitas-30"]);
+    expect(servicio.publicos.map((x) => x.id)).not.toContain("carrito-30");
   });
 
   it("el reparto y los anuncios del Manual mandan", () => {
     const p = plan({ manual: { reparto: { presentacion: 70, evaluacion: 20, conversion: 5, ascension: 5 }, anunciosPorConjunto: 6 } });
     expect(p.campanas.map((c) => c.presupuesto.mensual)).toEqual([140, 40, 10, 10]);
-    expect(p.campanas.every((c) => c.anunciosPorConjunto === 6)).toBe(true);
+    // Con el tope de cada etapa (el curso): evaluación 4 como mucho, ascensión 3.
+    expect(p.campanas.map((c) => c.anunciosPorConjunto)).toEqual([6, 4, 6, 3]);
     // Un reparto con cuenta nueva vuelve a sumar 100.
     expect(repartoDelPlan({ presentacion: 70, evaluacion: 20, conversion: 5, ascension: 5 }, "nueva").map((r) => r.pct)).toEqual([77.8, 22.2]);
   });
@@ -278,7 +287,8 @@ describe("qué pieza va en cada anuncio", () => {
   it("lo que se aprendió de sus anuncios ordena los tipos de arte de lo que falta y el plan lo dice", () => {
     const sin = conPiezas(plan(), cands(), { hoy: "2026-11-06" });
     // Sin aprender: los de la etapa que no cubre ninguna pieza puesta y, detrás, el que ya va (producto, la de p1).
-    expect(sin.campanas[0].faltan.artes).toEqual(["beneficios", "demostracion", "producto"]);
+    // Lo que falta de presentación es de niveles fríos (problema, solución, inconsciente): sin el arte de producto.
+    expect(sin.campanas[0].faltan.artes).toEqual(["beneficios", "demostracion"]);
     const aprendido = {
       muestra: 7,
       mejores: [{ rasgo: "tipoArte", nombreRasgo: "tipo de arte", id: "demostracion", nombre: "El barato", costo: 0.8, total: 1.2, piezas: 3 }],
@@ -286,7 +296,7 @@ describe("qué pieza va en cada anuncio", () => {
     };
     const con = conPiezas(plan(), cands(), { hoy: "2026-11-06", aprendido });
     // El más barato pasa delante y el más caro, detrás de los que faltan; lo ya cubierto sigue al final; nada se añade.
-    expect(con.campanas[0].faltan.artes).toEqual(["demostracion", "beneficios", "producto"]);
+    expect(con.campanas[0].faltan.artes).toEqual(["demostracion", "beneficios"]);
     const aviso = con.avisos.find((a) => a.codigo === "aprendido");
     expect(aviso.texto).toMatch(/7 piezas/);
     expect(aviso.texto).toMatch(/sale más barato el tipo de arte «El barato» \(\$0\.80\)/);
@@ -310,7 +320,10 @@ describe("qué pieza va en cada anuncio", () => {
 describe("la guía de montaje", () => {
   it("en el orden del Ads Manager: públicos, y por campaña la campaña, el conjunto 1, sus anuncios y los demás conjuntos", () => {
     const g = guiaDeMontaje(plan());
-    expect(g.slice(0, 5).every((x) => x.nivel === "publico")).toBe(true);
+    // Antes de empezar: las etiquetas de WhatsApp Business (en una web, el píxel) y los públicos.
+    expect(g[0].id).toBe("antes:etiquetas");
+    expect(g.slice(1, 6).every((x) => x.nivel === "publico")).toBe(true);
+    expect(guiaDeMontaje(plan({ negocio: { ...NEGOCIO, destino: "web" } }))[0].id).toBe("antes:pixel");
     const pre = g.filter((x) => x.grupo === "presentacion").map((x) => x.id);
     expect(pre).toEqual(["presentacion:campana", "presentacion:c1", "presentacion:a1", "presentacion:a2", "presentacion:a3", "presentacion:a4", "presentacion:c2", "presentacion:c3"]);
     const campana = g.find((x) => x.id === "presentacion:campana");
@@ -318,7 +331,9 @@ describe("la guía de montaje", () => {
     expect(campana.campos.find((f) => f.etiqueta === "Presupuesto de la campaña Advantage+").valor).toMatch(/Desactivado/);
     expect(g.find((x) => x.id === "evaluacion:campana").campos.find((f) => f.etiqueta === "Presupuesto de la campaña Advantage+").valor).toMatch(/^Activado: \$1\.33 al día/);
     const c1 = g.find((x) => x.id === "presentacion:c1");
-    expect(c1.campos.map((f) => f.etiqueta)).toEqual(["Nombre", "Presupuesto diario", "App de mensajes", "Objetivo de rendimiento", "Puja", "Calendario", "Público", "Excluir", "Público Advantage+", "Ubicaciones"]);
+    expect(c1.campos.map((f) => f.etiqueta)).toEqual(["Nombre", "Presupuesto diario", "App de mensajes", "Objetivo de rendimiento", "Puja", "Calendario", "Público",
+      "Segmentación detallada Advantage", "Excluir", "Público Advantage+", "Ubicaciones", "Llegar a más personas con más probabilidad de clic"]);
+    expect(c1.campos.at(-1).valor).toBe("Desactivado");
     expect(c1.campos.find((f) => f.etiqueta === "Excluir").valor).toMatch(/Interactuaron · 90 días, Lista de clientes/);
     expect(g.find((x) => x.id === "presentacion:c2").nota).toMatch(/Duplica el conjunto 1/);
     // Con el presupuesto en la campaña, el conjunto no lo lleva.
@@ -337,18 +352,30 @@ describe("el Excel y el texto", () => {
   it("cinco hojas con las columnas del Excel de la agencia y una fila por conjunto", () => {
     const t = temporadaDelMes({ mes: "2026-11", hoy: "2026-11-06" });
     const hojas = hojasDelPlan(plan({ temporada: t }));
-    expect(hojas.map((h) => h.nombre)).toEqual(Object.values(HOJAS_EXCEL));
+    expect(hojas.map((h) => h.nombre)).toEqual([...Object.values(HOJAS_EXCEL), "Textos de los anuncios"]);
     expect(hojas[4].nombre).toBe("Campaña Especial (temporada)");
     const pre = hojas[0];
     expect(pre.filas[0]).toEqual(["Presupuesto Mensual (USD):", 120]);
     expect(pre.filas[3].slice(0, 9)).toEqual(["Objetivo", "Presupuesto de la campaña Advantage+", "App de Mensajes", "Objetivo de rendimiento", "Presupuesto Diario", "Calendario", "Público", "Exclusiones", "Ubicaciones"]);
     expect(pre.filas[3].slice(9)).toEqual(["Anuncio 1", "Anuncio 2", "Anuncio 3", "Anuncio 4"]);
     expect(pre.filas.slice(4, 7).map((f) => f[4])).toEqual([1.33, 1.33, 1.33]);
+    // B es un sí/no (Presentación: el presupuesto va en cada conjunto) y, como la hoja de la agencia, lo de la campaña y
+    // los anuncios (los mismos en los tres conjuntos) van combinados en sus filas.
+    expect(pre.filas[4][1]).toBe("No");
+    expect(pre.combinadas.slice(0, 3)).toEqual(["A3:B3", "C3:I3", "J3:M3"]);
+    expect(pre.combinadas).toEqual(expect.arrayContaining(["A5:A7", "C5:C7", "J5:J7", "M5:M7"]));
+    expect(pre.combinadas).not.toContain("E5:E7");
     const eva = hojas[1];
     expect(eva.filas[3].slice(0, 3)).toEqual(["Objetivo", "Presupuesto de la campaña Advantage+", "Presupuesto diario"]);
-    expect(eva.filas[4][1]).toBe(1.33);
-    expect(eva.combinadas).toEqual(["A3:C3", "D3:I3", "J3:M3"]);
-    expect(pre.combinadas).toEqual(["A3:B3", "C3:I3", "J3:M3"]);
+    // La cifra diaria va en C «Presupuesto diario»; B dice sí.
+    expect(eva.filas[4].slice(1, 3)).toEqual(["Sí", 1.33]);
+    expect(eva.combinadas.slice(0, 3)).toEqual(["A3:C3", "D3:I3", "J3:M3"]);
+    expect(eva.combinadas).toEqual(expect.arrayContaining(["C5:C6", "D5:D6"]));
+    // Conversión y la Campaña Especial: el presupuesto en la campaña (C), como su Excel.
+    const con = hojas[2];
+    expect(con.filas[4].slice(1, 3)).toEqual(["Sí", 0.67]);
+    expect(hojas[4].filas[4][1]).toBe("Sí");
+    expect(typeof hojas[4].filas[4][2]).toBe("number");
   });
 
   it("una cuenta nueva deja sus hojas de conversión y ascensión con el motivo", () => {

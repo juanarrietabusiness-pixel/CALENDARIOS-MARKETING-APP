@@ -6,7 +6,7 @@ import { REPARTO_POR_DEFECTO, MIN_ANUNCIOS_CONJUNTO, MAX_ANUNCIOS_CONJUNTO, erro
 // Ajustes → Manual de campañas: lo del PLAN DE CAMPAÑAS (lib/manualCiclo.js)
 //
 // El reparto del presupuesto por etapa del ciclo de ventas (60/20/10/10 por defecto) y cuántos anuncios lleva cada
-// conjunto (de 4 a 6). Lo lee el plan de campañas (Anuncios → Plan de campañas). Va en su propio componente: el resto
+// conjunto (de 3 a 6; el plan pone además el tope de cada etapa: evaluación 4, ascensión 3). Lo lee el plan de campañas (Anuncios → Plan de campañas). Va en su propio componente: el resto
 // del Manual lo tocan otras partes del curso, y así cada una vive en su bloque. Un reparto que no suma 100 no se guarda
 // (el servidor lo devolvería al de la casa): aquí se dice y se ofrece volver al de la casa.
 // ============================================================
@@ -44,7 +44,10 @@ export default function ManualCiclo({ m, poner, puede }) {
           onChange={(e) => poner({ anunciosPorConjunto: Number(e.target.value) })}>
           {Array.from({ length: MAX_ANUNCIOS_CONJUNTO - MIN_ANUNCIOS_CONJUNTO + 1 }, (_, i) => MIN_ANUNCIOS_CONJUNTO + i).map((n) => <option key={n} value={n}>{n}</option>)}
         </select>
-        <p className="hint" style={{ margin: 0 }}>Los mismos en todos los conjuntos de una campaña, cada uno de un tipo de arte distinto.</p>
+        <p className="hint" style={{ margin: 0 }}>
+          Los mismos en todos los conjuntos de una campaña, cada uno de un tipo de arte distinto. Evaluación lleva 4 como mucho y
+          ascensión 3: su presupuesto es menor. A un cliente se le puede repartir a mano en su plan (Anuncios → Plan de campañas).
+        </p>
       </div>
     </fieldset>
   );

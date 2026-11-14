@@ -32,7 +32,9 @@ import { tipoArteDe, limpiarTiposArte, tipoArteDePost } from "./tiposArte.js";
 import { maletasQueFaltan, avisoDeMaletas } from "./maletas.js";
 import { objetivo as objetivoDelNegocio, limpiarNegocio, numero } from "./numerosNegocio.js";
 import { limpiarManual, nombreConPlantilla } from "./estratega.js";
-import { limpiarReparto, limpiarAnunciosPorConjunto } from "./manualCiclo.js";
+import { limpiarReparto, limpiarAnunciosPorConjunto, repartoDelCliente } from "./manualCiclo.js";
+import { nivelesParaHuecos, cuentaDeNiveles, esNivelFrio, NIVELES_DE_ETAPA } from "./textosNivel.js";
+import { limpiarQue, limpiarAnunciosPlan, idDeHueco, huecoDeId, PARA_QUE_CAMPANA, faltanTextos, textosATexto } from "./anunciosPlan.js";
 import { limpiarPauta, limpiarAnuncio, problemasDePauta, deLaOferta, etapaSugerida, NIVEL_POR_ETAPA, nombreDeBoton, botonPorDefecto, primeraLinea } from "./pauta.js";
 import { nombreDeNivel } from "./consciencia.js";
 import { fechasDelMes } from "./fechasEspeciales.js";
@@ -106,8 +108,16 @@ const nombresDe = (ids) => ids.map((id) => PUBLICO.get(id)?.nombre).filter(Boole
 // Los conjuntos de cada etapa
 // ------------------------------------------------------------
 
-/** Dónde va el presupuesto en cada campaña (como las hojas del Excel de estrategia). */
-export const PRESUPUESTO_EN = Object.freeze({ presentacion: "conjunto", evaluacion: "campana", conversion: "conjunto", ascension: "campana", temporada: "conjunto" });
+/**
+ * Dónde va el presupuesto en cada campaña, como las hojas del Excel de estrategia de la agencia: Presentación, en cada
+ * conjunto (su columna «Presupuesto Diario» está en el grupo del conjunto); las demás —también Conversión y la Campaña
+ * Especial—, en la campaña (la columna «Presupuesto diario» va en el grupo de la campaña).
+ */
+export const PRESUPUESTO_EN = Object.freeze({ presentacion: "conjunto", evaluacion: "campana", conversion: "campana", ascension: "campana", temporada: "campana" });
+/** Cuántos anuncios por conjunto como mucho en cada etapa (el curso: evaluación, 4; ascensión, 3: su presupuesto es menor). */
+export const TOPE_ANUNCIOS = Object.freeze({ evaluacion: 4, ascension: 3 });
+/** Los anuncios por conjunto de una campaña: los del Manual, con el tope de su etapa. Pura. */
+export const anunciosDeEtapa = (etapa, delManual) => Math.min(limpiarAnunciosPorConjunto(delManual), TOPE_ANUNCIOS[etapa] ?? 99);
 
 /**
  * Los conjuntos de una etapa. Presentación: 3 públicos (con historial, intereses + similares + Advantage+; en una
@@ -115,7 +125,9 @@ export const PRESUPUESTO_EN = Object.freeze({ presentacion: "conjunto", evaluaci
  * interactuó en 30 y en 90 días, sin Advantage+. Conversión: quien escribió (o dejó el carrito). Ascensión: la lista
  * de clientes. Temporada: quien ya conoce la marca y la lista. Pura.
  */
-export function conjuntosDeEtapa(etapa, { nueva = false, web = false, perfiles = [], rubro = "" } = {}) {
+export function conjuntosDeEtapa(etapa, { nueva = false, web = false, perfiles = [], rubro = "", objetivo = "" } = {}) {
+  // La tienda en línea (objetivo de ventas) tiene carrito; un servicio que capta con un formulario, no.
+  const tienda = web && objetivo !== "clientes";
   const sobre = rubro ? ` relacionados con ${rubro.toLowerCase()}` : " relacionados con lo que se vende";
   const fria = { publicos: web ? ["interaccion-90", "visitas-30", "clientes"] : ["interaccion-90", "clientes"],
     nota: "Si los anuncios de presentación y de evaluación se parecen mucho, se pueden quitar estas exclusiones." };
@@ -141,16 +153,20 @@ export function conjuntosDeEtapa(etapa, { nueva = false, web = false, perfiles =
   }
   const sinAdvantage = "Sin público Advantage+: sólo los públicos de aquí (edad y género abiertos).";
   if (etapa === "evaluacion") {
-    const excluye = { publicos: ["mensajes-30", "clientes"] };
+    // En la web, quien visitó la web ya es de conversión: evaluación le habla a quien interactuó o vio videos, y lo
+    // excluye. «Escribieron» no existe en la web.
+    const excluye = { publicos: web ? ["visitas-30", "clientes"] : ["mensajes-30", "clientes"] };
     return [
-      c("c1", "interaccion", "Interactuaron · 30 días", { texto: `Quien interactuó en los últimos 30 días.${web ? " Y quien visitó la web." : ""} ${sinAdvantage}`, publicos: web ? ["interaccion-30", "visitas-30"] : ["interaccion-30"], advantage: false }, excluye),
+      c("c1", "interaccion", "Interactuaron · 30 días", { texto: `Quien interactuó con la página o la cuenta, o vio tus videos, en los últimos 30 días. ${sinAdvantage}`, publicos: ["interaccion-30"], advantage: false }, excluye),
       c("c2", "interaccion", "Interactuaron · 90 días", { texto: `Quien interactuó en los últimos 90 días. ${sinAdvantage}`, publicos: ["interaccion-90"], advantage: false }, excluye),
     ];
   }
   if (etapa === "conversion") {
-    return [c("c1", "mensajes", web ? "Carrito y visitas · 30 días" : "Escribieron · 30 días", {
-      texto: web ? `Quien dejó algo en el carrito o visitó la web en los últimos 30 días. ${sinAdvantage}` : `Quien escribió por mensaje en los últimos 30 días (y, si se quiere, quien interactuó con un anuncio: compite con evaluación). ${sinAdvantage}`,
-      publicos: web ? ["carrito-30", "visitas-30"] : ["mensajes-30"], advantage: false,
+    return [c("c1", "mensajes", tienda ? "Carrito y visitas · 30 días" : web ? "Visitaron la web · 30 días" : "Escribieron · 30 días", {
+      texto: tienda ? `Quien dejó algo en el carrito o visitó la web en los últimos 30 días. ${sinAdvantage}`
+        : web ? `Quien visitó la web (y vio el formulario) en los últimos 30 días. ${sinAdvantage}`
+          : `Quien escribió por mensaje en los últimos 30 días (y, si se quiere, quien interactuó con un anuncio: compite con evaluación). ${sinAdvantage}`,
+      publicos: tienda ? ["carrito-30", "visitas-30"] : web ? ["visitas-30"] : ["mensajes-30"], advantage: false,
     }, { publicos: ["clientes"] }, "Si estos públicos son pequeños (menos de unas 1.000 personas) o el presupuesto es poco, todavía no conviene hacerla.")];
   }
   if (etapa === "ascension") {
@@ -220,27 +236,34 @@ export function plantillaConEtapa(plantilla) {
 /** Las etapas que tocan a la cuenta: nueva → presentación y evaluación; con historial (o sin decir) → las cuatro. */
 export const etapasDeLaCuenta = (cuenta) => (cuenta === "nueva" ? ETAPAS_CICLO.filter((e) => e.id === "presentacion" || e.id === "evaluacion") : ETAPAS_CICLO);
 
-/** El reparto del Manual sobre las etapas que tocan, que vuelve a sumar 100 (75/25 en una cuenta nueva). Pura. */
-export function repartoDelPlan(reparto, cuenta) {
+/**
+ * El reparto (el del Manual o el del cliente a mano) sobre las etapas que tocan, que vuelve a sumar 100 (75/25 en una
+ * cuenta nueva). `soloIds`: las que escogió la agencia en «¿Qué vas a hacer?» (vacío: las de la cuenta). Pura.
+ */
+export function repartoDelPlan(reparto, cuenta, soloIds = null) {
   const r = limpiarReparto(reparto);
-  const etapas = etapasDeLaCuenta(cuenta);
+  const etapas = soloIds?.length ? ETAPAS_CICLO.filter((e) => soloIds.includes(e.id)) : etapasDeLaCuenta(cuenta);
   const suma = etapas.reduce((s, e) => s + r[e.id], 0) || 1;
   return etapas.map((e) => ({ etapa: e.id, nombre: e.nombre, pct: Math.round((r[e.id] / suma) * 1000) / 10 }));
 }
 
 /**
  * El plan del ciclo (C.1). `negocio`: los números del negocio (limpios o no); `numeros`: { tasaDefecto?, inversion? }
- * (una inversión del mes escrita a mano manda sobre la de la meta); `manual`: el Manual de campañas; `mes`: «AAAA-MM»;
- * `calendario`: el de ese mes ({ offers, promoCode, campaign, opciones }); `kit`: el de la marca (sus tipos de arte);
- * `estudio`: el estudio de mercado (aprobado o borrador); `catalogo`; `temporada`: la de `temporadaDelMes` (o null) y
- * `ajustes.temporada` ({ incluir, diario }) lo que decidió la agencia de ella; `cliente`: { nombre, rubro }. Pura.
+ * (una inversión del mes escrita a mano manda sobre la de la meta); `manual`: el Manual de campañas; `reparto`: el del
+ * cliente A MANO (`anuncios_clientes.reparto`; si no vale, el del Manual); `mes`: «AAAA-MM»; `hoy`: AAAA-MM-DD (un plan
+ * del mes en curso arranca HOY, no el 1); `calendario`: el de ese mes ({ offers, promoCode, campaign, opciones });
+ * `kit`: el de la marca (sus tipos de arte); `estudio`: el estudio de mercado (aprobado o borrador); `catalogo`;
+ * `temporada`: la de `temporadaDelMes` (o null) y `ajustes.temporada` ({ incluir, diario }) lo que decidió la agencia de
+ * ella; `ajustes.que`: «¿Qué vas a hacer?» (lib/anunciosPlan.js: qué campañas, qué productos y lo que quiere lograr);
+ * `cliente`: { nombre, rubro }. Pura.
  */
 export function planDelCiclo({
-  negocio = null, numeros = {}, manual = null, mes = "", calendario = null, kit = null, estudio = null, catalogo = null,
-  temporada = null, ajustes = {}, cliente = {}, moneda = "USD",
+  negocio = null, numeros = {}, manual = null, reparto: repartoPropio = null, mes = "", hoy = "", calendario = null, kit = null, estudio = null,
+  catalogo = null, temporada = null, ajustes = {}, cliente = {}, moneda = "USD",
 } = {}) {
   const n = limpiarNegocio(negocio);
   const m = limpiarManual(manual ?? {});
+  const que = limpiarQue(ajustes?.que);
   const avisos = [];
   const tipo = tipoNegocioDe(n.tipo)?.id ?? "";
   const destino = destinoNegocioDe(n.destino)?.id ?? "";
@@ -267,24 +290,42 @@ export function planDelCiclo({
     avisos.push({ codigo: "sin-numeros", grave: true, texto: "Sin los números del negocio (la meta de ventas, el ticket y el % a invertir, o el presupuesto del mes) no hay presupuesto: el plan sale sin cifras. Se completan en Marca → Números del negocio." });
   }
 
-  const etapas = etapasDeLaCuenta(cuenta);
-  const reparto = repartoDelPlan(m.reparto, cuenta);
+  // Qué campañas: las que escogió la agencia («¿Qué vas a hacer?») o las de la cuenta (nueva: presentación y evaluación).
+  const escogidas = que.campanas.filter((id) => id !== "temporada");
+  const soloTemporada = que.campanas.length > 0 && !escogidas.length;
+  const etapas = que.campanas.length ? ETAPAS_CICLO.filter((e) => escogidas.includes(e.id)) : etapasDeLaCuenta(cuenta);
+  if (cuenta === "nueva" && etapas.some((e) => e.id === "conversion" || e.id === "ascension")) {
+    avisos.push({ codigo: "nueva-con-conversion", grave: false, texto: "Escogiste conversión o ascensión con una cuenta nueva: hacen falta públicos de quien ya interactuó o escribió (unas 1.000 personas) y una lista de clientes; si son pequeños, Meta casi no los muestra." });
+  }
+  // El reparto: el del cliente a mano (se queda para los meses siguientes) o el del Manual.
+  const delCliente = repartoDelCliente(m.reparto, repartoPropio);
+  const reparto = soloTemporada ? [] : repartoDelPlan(delCliente.reparto, cuenta, que.campanas.length ? escogidas : null);
   const anuncios = limpiarAnunciosPorConjunto(m.anunciosPorConjunto);
   const e = limpiarEstudio(estudio);
   const perfiles = e?.general?.perfiles ?? [];
   const artesMarca = limpiarTiposArte(kit?.tiposArte);
   const est = esObjeto(calendario?.opciones?.estrategia) ? calendario.opciones.estrategia : null;
   const productos = productosActivos(catalogo);
-  const foco = productos.find((p) => p.id === est?.focoId) ?? null;
+  // Qué productos: el foco (el de la estrategia del mes, o el primero escogido), varios o todo el catálogo.
+  const elegidosProd = que.productoIds.map((id) => productos.find((p) => p.id === id)).filter(Boolean);
+  const foco = que.productos === "foco" ? productos.find((p) => p.id === (elegidosProd[0]?.id ?? est?.focoId)) ?? null : null;
+  const delPlan = que.productos === "todos" ? [] : que.productos === "varios" ? elegidosProd : foco ? [foco] : [];
+  if (que.productos === "varios" && !elegidosProd.length) {
+    avisos.push({ codigo: "sin-productos", grave: false, texto: "Escogiste «Varios productos» sin marcar ninguno: el plan va con todo el catálogo hasta que los marques." });
+  }
+  const nombreProductos = delPlan.length === 1 ? delPlan[0].nombre : delPlan.length === 2 ? `${delPlan[0].nombre} + ${delPlan[1].nombre}` : delPlan.length > 2 ? `${delPlan[0].nombre} + ${delPlan.length - 1} más` : "";
   const datosNombre = (nombreEtapa) => ({
     cliente: corto(cliente?.nombre, 60), etapa: nombreEtapa, objetivo: `${ciclo.nombreObjetivo}${web ? "" : " WhatsApp"}`,
-    producto: foco?.nombre ?? "", mes: nombreDelMes(mes),
+    producto: corto(nombreProductos, 60), mes: nombreDelMes(mes),
   });
   const nombreCampana = (datos) => nombreConPlantilla(plantillaConEtapa(m.nomenclatura.campana), datos);
-  const primerDia = mesDelPlan(mes) ? `${mesDelPlan(mes).texto}-01` : "";
+  const mm = mesDelPlan(mes);
+  const primerDia = mm ? `${mm.texto}-01` : "";
+  // Un plan del mes en curso arranca HOY (las campañas no se montan con fecha pasada).
+  const desde = mm && /^\d{4}-\d{2}-\d{2}$/.test(hoy) && hoy > primerDia && hoy <= ultimoDia(mm) ? hoy : primerDia;
 
   const campana = ({ id, etapa, nombreEtapa, pct, mensual, inicio, fin = "", contenido = "", lleva = "", artes, niveles, extra = {} }) => {
-    const conjuntos = conjuntosDeEtapa(etapa === "temporada" ? "temporada" : etapa, { nueva: cuenta === "nueva", web, perfiles, rubro: cliente?.rubro ?? "" });
+    const conjuntos = conjuntosDeEtapa(etapa === "temporada" ? "temporada" : etapa, { nueva: cuenta === "nueva", web, perfiles, rubro: cliente?.rubro ?? "", objetivo: ciclo.objetivo });
     const en = PRESUPUESTO_EN[etapa] ?? "conjunto";
     const dias = fin ? diasEntre(inicio, fin) + 1 : DIAS_DEL_MES;
     const diario = mensual > 0 ? r2(mensual / dias) : null;
@@ -302,15 +343,18 @@ export function planDelCiclo({
     // la etapa no trae no se fuerzan.
     const deLaEtapa = limpiarTiposArte(artes);
     const ordenados = [...deLaEtapa.filter((a) => artesMarca.includes(a)), ...deLaEtapa.filter((a) => !artesMarca.includes(a))];
+    const porConjuntoAnuncios = anunciosDeEtapa(etapa, anuncios);
     return {
-      id, etapa, nombreEtapa, nombre, objetivo: ciclo.objetivo, nombreObjetivo: ciclo.nombreObjetivo, objetivoMeta: ciclo.objetivoMeta,
+      id, etapa, nombreEtapa, nombre, para: PARA_QUE_CAMPANA[id] ?? "", objetivo: ciclo.objetivo, nombreObjetivo: ciclo.nombreObjetivo, objetivoMeta: ciclo.objetivoMeta,
       rendimiento: RENDIMIENTO[ciclo.objetivo] ?? RENDIMIENTO.interaccion,
       appMensajes: web ? "" : "WhatsApp",
       pct, presupuesto: { mensual: mensual > 0 ? r2(mensual) : null, diario, en, porConjunto, dias },
       calendario: { inicio, fin },
       ubicaciones: "Advantage+ (automáticas)",
       contenido, lleva, artes: ordenados, niveles,
-      conjuntos: conNombres, anunciosPorConjunto: anuncios,
+      // En qué nivel de consciencia se escribe cada anuncio (la regla de 100 dentro de su etapa: lib/textosNivel.js).
+      nivelesAnuncios: nivelesParaHuecos(etapa, porConjuntoAnuncios),
+      conjuntos: conNombres, anunciosPorConjunto: porConjuntoAnuncios,
       anuncios: [], faltan: null,
       ...extra,
     };
@@ -321,19 +365,20 @@ export function planDelCiclo({
     const delCiclo = ciclo.etapas.find((x) => x.id === et.id);
     return campana({
       id: et.id, etapa: et.id, nombreEtapa: et.nombre, pct: r?.pct ?? 0,
-      mensual: inversion ? (inversion * (r?.pct ?? 0)) / 100 : 0, inicio: primerDia,
+      mensual: inversion ? (inversion * (r?.pct ?? 0)) / 100 : 0, inicio: desde,
       contenido: delCiclo?.contenido ?? "", lleva: delCiclo?.lleva ?? "", artes: delCiclo?.artes ?? [], niveles: et.niveles,
     });
   });
 
-  // La temporada: opcional, con su presupuesto APARTE del reparto y lo que dura su fecha.
+  // La temporada: opcional, con su presupuesto APARTE del reparto y lo que dura su fecha. Si la agencia escogió las
+  // campañas, va sólo si la escogió (y la pone aunque el mes no traiga fecha: «la pidió la agencia»).
   const ajT = esObjeto(ajustes?.temporada) ? ajustes.temporada : {};
+  const incluir = que.campanas.length ? que.campanas.includes("temporada") : ajT.incluir;
   let tempo = temporada;
-  if (!tempo && ajT.incluir === true && mesDelPlan(mes)) {
-    const mm = mesDelPlan(mes);
-    tempo = { nombre: "Temporada", motivo: "La pidió la agencia", fechas: [], inicio: primerDia, fin: ultimoDia(mm), dias: diasEntre(primerDia, ultimoDia(mm)) + 1, ofertas: "", codigo: "" };
+  if (!tempo && incluir === true && mm) {
+    tempo = { nombre: "Temporada", motivo: "La pidió la agencia", fechas: [], inicio: desde, fin: ultimoDia(mm), dias: diasEntre(desde, ultimoDia(mm)) + 1, ofertas: "", codigo: "" };
   }
-  const conTemporada = Boolean(tempo) && ajT.incluir !== false;
+  const conTemporada = Boolean(tempo) && incluir !== false;
   if (conTemporada) {
     const diarioEscrito = numero(ajT.diario);
     const diario = diarioEscrito > 0 ? r2(diarioEscrito) : inversion ? r2((inversion * PCT_TEMPORADA) / 100 / DIAS_DEL_MES) : null;
@@ -342,11 +387,14 @@ export function planDelCiclo({
       id: "temporada", etapa: "temporada", nombreEtapa: "Temporada", pct: null,
       mensual: diario ? diario * tempo.dias : 0, inicio: tempo.inicio, fin: tempo.fin,
       contenido: `${tempo.nombre}: la oferta con fecha${tempo.ofertas ? ` (${tempo.ofertas})` : ""}, dicha sin rodeos y con su fecha de fin.`,
-      lleva: conversion?.lleva ?? "", artes: ["promocion", "producto", "testimonio"], niveles: ["producto", "decision"],
+      lleva: conversion?.lleva ?? "", artes: ["promocion", "producto", "testimonio"], niveles: NIVELES_DE_ETAPA.temporada,
       extra: { temporada: { ...tempo, diarioSugerido: !(diarioEscrito > 0) } },
     }));
-  } else if (tempo && ajT.incluir === false) {
+  } else if (tempo && incluir === false && !que.campanas.length) {
     avisos.push({ codigo: "temporada-quitada", grave: false, texto: `El mes trae ${tempo.nombre}: la campaña de temporada se quitó del plan (se vuelve a poner con «Incluir la de temporada»).` });
+  }
+  if (escogidas.length && escogidas.length < etapasDeLaCuenta(cuenta).length && inversion) {
+    avisos.push({ codigo: "algunas", grave: false, texto: `Este mes van sólo ${lista(campanas.map((c) => c.nombreEtapa.toLowerCase()))}: la inversión del ciclo (${dinero(inversion, moneda)}) se reparte entre ${campanas.filter((c) => c.id !== "temporada").length === 1 ? "esa campaña" : "esas campañas"}. Si quieres gastar menos, escribe la inversión a mano.` });
   }
 
   // Presupuestos que casi no salen.
@@ -361,8 +409,8 @@ export function planDelCiclo({
     avisos.push({ codigo: "conversion-chica", grave: false, campana: "conversion", texto: "Conversión con poco presupuesto: si los públicos de quien escribió son pequeños, todavía no conviene hacerla (su parte puede ir a presentación)." });
   }
 
-  // Las 7 maletas del producto foco (o de los activos, si no hay foco): si falta una, no se lanza.
-  const aMirar = foco ? [foco] : productos.slice(0, 3);
+  // Las 7 maletas de los productos del plan (o de los activos, si es de todo el catálogo): si falta una, no se lanza.
+  const aMirar = delPlan.length ? delPlan.slice(0, 3) : productos.slice(0, 3);
   const maletas = aMirar.map((p) => ({ productoId: p.id, producto: p.nombre, faltan: maletasQueFaltan(estudio, p.id) }))
     .filter((x) => x.faltan.length);
   for (const x of maletas) {
@@ -377,14 +425,34 @@ export function planDelCiclo({
   const publicos = PUBLICOS_CICLO.filter((p) => campanas.some((c) => c.conjuntos.some((x) => [...x.publico.publicos, ...x.excluye.publicos].includes(p.id))))
     .map((p) => ({ ...p, usaEn: campanas.filter((c) => c.conjuntos.some((x) => [...x.publico.publicos, ...x.excluye.publicos].includes(p.id))).map((c) => c.id) }));
 
+  // El total del mes: el ciclo y, aparte, la temporada («1.053 $: 1.000 $ del ciclo y 53 $ de la temporada»).
+  const delCicloMes = r2(campanas.filter((c) => c.id !== "temporada").reduce((s, c) => s + (c.presupuesto.mensual ?? 0), 0));
+  const deTemporada = r2(campanas.find((c) => c.id === "temporada")?.presupuesto.mensual ?? 0);
+
   return {
     v: 1, mes, nombreMes: nombreDelMes(mes), cliente: corto(cliente?.nombre, 80), moneda,
     tipo: ciclo.tipo, destino: ciclo.destino, cuenta, objetivo: ciclo.objetivo, nombreObjetivo: ciclo.nombreObjetivo,
     inversion, inversionDe, reparto, anunciosPorConjunto: anuncios, nomenclaturaAnuncio: m.nomenclatura.anuncio,
+    // El reparto de las cuatro etapas (el del cliente a mano o el del Manual): lo que enseña «Repartir a mano».
+    repartoBase: delCliente.reparto, repartoAMano: delCliente.aMano,
+    total: { ciclo: delCicloMes, temporada: deTemporada, mes: r2(delCicloMes + deTemporada) },
     temporada: tempo ? { ...tempo, incluida: conTemporada } : null,
+    que, desde,
     foco: foco ? { id: foco.id, nombre: foco.nombre } : null,
+    productos: delPlan.map((p) => ({ id: p.id, nombre: p.nombre, precio: p.precio ?? "" })),
+    // El catálogo activo (lo que ofrece «¿Qué vas a hacer?» para escoger).
+    catalogo: productos.slice(0, 40).map((p) => ({ id: p.id, nombre: p.nombre, precio: p.precio ?? "" })),
     campanas, publicos, maletas, avisos,
   };
+}
+
+/** El total del mes dicho en una línea: «$1053 en total: $1000 del ciclo y $53 de la temporada» (`formato`: el de la pantalla). Pura. */
+export function textoDelTotal(plan, formato = null) {
+  const t = plan?.total;
+  if (!t || !(t.mes > 0)) return "";
+  const d = (n) => (formato ? formato(n) : dinero(n, plan.moneda));
+  if (t.temporada > 0 && t.ciclo > 0) return `${d(t.mes)} en total: ${d(t.ciclo)} del ciclo y ${d(t.temporada)} de la temporada`;
+  return t.temporada > 0 ? `${d(t.mes)} en total, todo de la temporada` : `${d(t.mes)} en total`;
 }
 
 // ------------------------------------------------------------
@@ -399,13 +467,16 @@ const IMPIDEN = new Set(["sin-caption", "caduca", "personal", "llamado"]);
 
 /**
  * Las publicaciones del cliente que pueden ir en un anuncio, con lo que se sabe de cada una. `calendarios`: [{ id,
- * year, month, days }]; `cola`: las filas de `publicaciones_programadas` (red, estado, variante, calendar_id, post_id,
- * externo_id, enlace); `metricas`: las de `metricas_publicacion` del cliente. Lo PUBLICADO entra con su «rinde» (la
- * cuenta de «Lo mejor») y si su texto sirve para pauta; lo marcado «Va a pauta», con su etapa. → [{ calendarId,
- * postId, fecha, titulo, formato, publicada, enlaces, rinde, pauta, tipoArte, composicion, nivel, productoId, medios,
- * textos, sirve, motivo }]. Pura.
+ * year, month, days, soloClaves? }] (con `soloClaves`, un Set de «calendario|publicación», sólo esas: los meses viejos
+ * que se leen por un anuncio que ya funcionó o una publicación escogida a mano); `cola`: las filas de
+ * `publicaciones_programadas` (red, estado, variante, calendar_id, post_id, externo_id, enlace); `metricas`: las de
+ * `metricas_publicacion` del cliente; `incluir`: claves que entran aunque no estén publicadas ni marcadas «Va a pauta»
+ * (lo que escogió una persona, lo que ya corrió como anuncio). Lo PUBLICADO entra con su «rinde» (la cuenta de «Lo
+ * mejor») y si su texto sirve para pauta; lo marcado «Va a pauta», con su etapa. → [{ calendarId, postId, fecha,
+ * titulo, formato, publicada, enlaces, rinde, pauta, tipoArte, composicion, nivel, productoId, medios, textos, sirve,
+ * motivo, caption }]. Pura.
  */
-export function candidatasDelCalendario({ calendarios = [], cola = [], metricas = [], destino = "", artesMarca = [] } = {}) {
+export function candidatasDelCalendario({ calendarios = [], cola = [], metricas = [], destino = "", artesMarca = [], incluir = null } = {}) {
   const enCola = new Map();
   for (const f of cola) {
     if (f?.variante && f.variante !== "post") continue;
@@ -414,19 +485,26 @@ export function candidatasDelCalendario({ calendarios = [], cola = [], metricas 
     if (!enCola.has(k)) enCola.set(k, []);
     enCola.get(k).push(f);
   }
+  const forzadas = incluir instanceof Set ? incluir : new Set(incluir ?? []);
   const rindes = rindesDePropias(metricas);
   const porExterno = new Map(metricas.map((f) => [`${f.red}:${f.externo_id}`, f]));
   const salida = [];
+  const vistas = new Set();
   for (const cal of calendarios) {
+    const solo = cal.soloClaves instanceof Set ? cal.soloClaves : null;
     for (const d of cal.days ?? []) {
       for (const post of d.posts ?? []) {
         if (!post?.id || post.format === "live") continue;
-        const filas = enCola.get(`${cal.id}|${post.id}`) ?? [];
+        const k = `${cal.id}|${post.id}`;
+        if ((solo && !solo.has(k)) || vistas.has(k)) continue;
+        const forzada = forzadas.has(k);
+        const filas = enCola.get(k) ?? [];
         const publicada = filas.length > 0 || post.status === "published";
         const pauta = limpiarPauta(post.pauta);
-        if (!publicada && !pauta) continue;
+        if (!publicada && !pauta && !forzada) continue;
         // Una historia publicada ya no está: sólo sirve si alguien la marcó para pauta (se sube la pieza).
-        if (post.format === "historia" && !pauta) continue;
+        if (post.format === "historia" && !pauta && !forzada) continue;
+        vistas.add(k);
         let rinde = null;
         let senal = null;
         for (const f of filas) {
@@ -444,6 +522,7 @@ export function candidatasDelCalendario({ calendarios = [], cola = [], metricas 
           formato: post.format ?? "post", publicada, enlaces, rinde, senal, pauta,
           tipoArte: tipoArteDePost(post, artesMarca), composicion: post.composicion ?? "", nivel: post.nivel ?? "", productoId: post.productoId ?? "",
           medios, textos: limpiarAnuncio(post.anuncio, { destino }), sirve: !impiden.length, motivo: impiden[0]?.texto ?? "",
+          caption: String(post.descripcion || post.script || "").trim().slice(0, 2200),
           deOferta: false, post,
         });
       }
@@ -453,18 +532,56 @@ export function candidatasDelCalendario({ calendarios = [], cola = [], metricas 
 }
 
 const claveDiversidad = (p) => (p.tipoArte && p.composicion ? `${p.tipoArte}|${p.composicion}` : "");
+const claveDe = (p) => `${p.calendarId}|${p.postId}`;
 
 /**
- * Pone las piezas en cada campaña (C.2) y dice lo que falta. Primero lo PUBLICADO que rindió (RINDE_PARA_PAUTA o más)
- * y cuyo texto sirve para pauta: a su etapa si va a pauta, si no a presentación (o evaluación si presentación ya está
- * llena); luego lo marcado «Va a pauta» con esa etapa (las del mes del plan primero). En la de temporada, lo de la
- * oferta. Una pieza va en UNA campaña. Dos con el mismo tipo de arte y la misma composición son una para Meta: la
- * segunda no se pone y se avisa. `ofertas`/`codigo`: los del calendario del mes. Pura.
+ * Los anuncios que YA FUNCIONARON en el Ads Manager (lo guardado en `anuncios_clientes.en_pauta`, entrega 7): las
+ * publicaciones del calendario con resultados en 30 días, a un costo dentro del número mágico de ese día (o, sin él,
+ * con 3 resultados o más), de la más barata a la más cara. «No reinventar la rueda»: el curso pide reusar los anuncios
+ * que funcionaron antes que hacer otros. `enPauta`: lo guardado (ya limpio o crudo). → [{ clave, etapa, costo,
+ * resultados, nombreResultado, activo }]. Pura.
  */
-export function conPiezas(plan, candidatas = [], { ofertas = "", codigo = "", hoy = "", aprendido = null } = {}) {
+export function anunciosQueFuncionaron(enPauta) {
+  const d = typeof enPauta === "string" ? (() => { try { return JSON.parse(enPauta); } catch { return null; } })() : enPauta;
+  const ref = Number(d?.referencia) > 0 ? Number(d.referencia) : null;
+  return Object.values(esObjeto(d?.publicaciones) ? d.publicaciones : {})
+    .map((e) => {
+      const c = e?.d30 ?? e?.d7;
+      const costo = Number(c?.costo);
+      const resultados = Number(c?.resultados) || 0;
+      if (!e?.calendarId || !e?.postId || !(resultados > 0) || !(costo > 0)) return null;
+      if (ref ? costo > ref : resultados < 3) return null;
+      return { clave: `${e.calendarId}|${e.postId}`, etapa: idEtapaCiclo(e.etapa) || "", costo, resultados, nombreResultado: corto(e.nombreResultado, 40), activo: e.activo === true };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.costo - b.costo);
+}
+
+/** Las artes que se le piden al lote para un nivel: en los fríos, las que no ponen el producto en el centro. Pura. */
+export function artesParaNiveles(artes = [], niveles = []) {
+  if (!niveles.some(esNivelFrio)) return artes;
+  const sin = artes.filter((a) => !ARTES_DE_PRODUCTO.has(a));
+  return sin.length ? sin : ["educativo", "humano", "dividida"];
+}
+/** Las artes que ponen el producto o la oferta en el centro: no van en un nivel frío. */
+const ARTES_DE_PRODUCTO = new Set(["producto", "promocion"]);
+
+/**
+ * Pone las piezas en cada campaña (C.2) y dice lo que falta. El orden en que se SUGIERE:
+ *   0. Lo que escogió una persona en ese hueco (`elegidos`: lo guardado del plan, `limpiarAnunciosPlan`): una
+ *      publicación (de cualquier mes) o «anuncio nuevo» sin publicación. Manda: el plan sugiere, no limita.
+ *   1. Los anuncios que YA FUNCIONARON (`funcionaron`: `anunciosQueFuncionaron`), en su etapa.
+ *   2. Lo PUBLICADO que rindió (RINDE_PARA_PAUTA o más) y cuyo texto sirve para pauta: a su etapa si va a pauta, si no a
+ *      presentación (o evaluación si presentación ya está llena).
+ *   3. Lo marcado «Va a pauta» con esa etapa (las del mes del plan primero). En la de temporada, lo de la oferta.
+ * Con productos escogidos («¿Qué vas a hacer?»), sólo se sugiere lo de esos productos (o lo que no dice de cuál es). Una
+ * pieza va en UNA campaña. Dos con el mismo tipo de arte y la misma composición son una para Meta: la segunda no se
+ * pone y se avisa. `ofertas`/`codigo`: los del calendario del mes. Pura.
+ */
+export function conPiezas(plan, candidatas = [], { ofertas = "", codigo = "", hoy = "", aprendido = null, funcionaron = [], elegidos = {} } = {}) {
   if (!plan) return plan;
   const usadas = new Set();
-  const avisos = [...plan.avisos.filter((a) => a.codigo !== "diversidad" && a.codigo !== "faltan-piezas" && a.codigo !== "aprendido")];
+  const avisos = [...plan.avisos.filter((a) => !CODIGOS_DE_PIEZAS.has(a.codigo))];
   // Lo que se aprendió de sus anuncios (lib/aprenderAnuncios.js): el tipo de arte más barato va primero en lo que falta
   // y el más caro, al final. Sólo ordena: los tipos de cada etapa no cambian.
   const deArte = (lista) => (Array.isArray(aprendido?.[lista]) ? aprendido[lista] : []).filter((x) => x?.rasgo === "tipoArte").map((x) => x.id);
@@ -472,25 +589,56 @@ export function conPiezas(plan, candidatas = [], { ofertas = "", codigo = "", ho
   const masCaro = deArte("peores");
   const peso = (a) => (masBarato.includes(a) ? 0 : masCaro.includes(a) ? 2 : 1);
   const mes = plan.mes;
-  const ids = new Set(plan.campanas.map((c) => c.id));
-  const llenas = new Map(plan.campanas.map((c) => [c.id, []]));
+  const huecos = new Map(plan.campanas.map((c) => [c.id, Array(c.anunciosPorConjunto).fill(null)]));
   const parecidas = [];
-  const clave = (p) => `${p.calendarId}|${p.postId}`;
-  const poner = (campanaId, p, origen) => {
+  const conOferta = candidatas.map((p) => ({ ...p, deOferta: deLaOferta(p.post ?? {}, { ofertas, codigo }) }));
+  const porClave = new Map(conOferta.map((p) => [claveDe(p), p]));
+  const productos = new Set((plan.productos ?? []).map((p) => p.id));
+  const delPlan = (p) => !productos.size || !p.productoId || productos.has(p.productoId);
+  const poner = (campanaId, p, origen, extra = {}) => {
     const c = plan.campanas.find((x) => x.id === campanaId);
-    const ya = llenas.get(campanaId);
-    if (!c || ya.length >= c.anunciosPorConjunto || usadas.has(clave(p))) return false;
+    const lista = huecos.get(campanaId);
+    if (!c || !lista || usadas.has(claveDe(p))) return false;
+    const libre = lista.indexOf(null);
+    if (libre < 0) return false;
     const k = claveDiversidad(p);
-    const igual = k && ya.find((x) => claveDiversidad(x.pieza) === k);
+    const igual = k && lista.find((x) => x?.pieza && claveDiversidad(x.pieza) === k);
     if (igual) { parecidas.push({ campana: c, pieza: p, igual: igual.pieza }); return false; }
-    ya.push({ pieza: p, origen });
-    usadas.add(clave(p));
+    lista[libre] = { pieza: p, origen, ...extra };
+    usadas.add(claveDe(p));
     return true;
   };
-  const conOferta = candidatas.map((p) => ({ ...p, deOferta: deLaOferta(p.post ?? {}, { ofertas, codigo }) }));
 
-  // 1. Lo publicado que mejor funcionó en orgánico.
-  const buenas = conOferta.filter((p) => p.publicada && p.sirve && p.rinde !== null && p.rinde >= RINDE_PARA_PAUTA && p.formato !== "historia")
+  // 0. Lo que escogió una persona.
+  const escogidos = limpiarAnunciosPlan(elegidos, { destino: plan.destino });
+  const sueltos = new Map();
+  for (const [slot, e] of Object.entries(escogidos)) {
+    const h = huecoDeId(slot);
+    const lista = h && huecos.get(h.campana);
+    if (!lista || h.n > lista.length) continue;
+    if (e.nuevo) { lista[h.n - 1] = { nuevo: true, origen: "nuevo", entrada: e }; continue; }
+    if (e.pieza) {
+      const p = porClave.get(`${e.pieza.calendarId}|${e.pieza.postId}`);
+      if (!p) {
+        avisos.push({ codigo: "escogida-perdida", grave: false, campana: h.campana, texto: `${nombreDeEtapaDelPlan(h.campana)}, anuncio ${h.n}: la publicación que se escogió ya no está en el calendario. Escoge otra.` });
+        continue;
+      }
+      lista[h.n - 1] = { pieza: p, origen: "elegido", entrada: e };
+      usadas.add(claveDe(p));
+      continue;
+    }
+    sueltos.set(slot, e);
+  }
+  // 1. Los anuncios que ya funcionaron.
+  for (const f of funcionaron) {
+    const p = porClave.get(f.clave);
+    if (!p || !delPlan(p)) continue;
+    const etapa = huecos.has(f.etapa) ? f.etapa : null;
+    if (etapa) poner(etapa, p, "funciono", { funciono: f });
+  }
+  // 2. Lo publicado que mejor funcionó en orgánico.
+  const ids = new Set(plan.campanas.map((c) => c.id));
+  const buenas = conOferta.filter((p) => p.publicada && p.sirve && p.rinde !== null && p.rinde >= RINDE_PARA_PAUTA && p.formato !== "historia" && delPlan(p))
     .sort((a, b) => (b.senal ?? 0) - (a.senal ?? 0));
   for (const p of buenas) {
     // A su etapa si va a pauta; si no, la que pide su nivel (lo del producto, a evaluación) y, por defecto,
@@ -501,34 +649,56 @@ export function conPiezas(plan, candidatas = [], { ofertas = "", codigo = "", ho
     if (sugerida !== "presentacion" && ids.has(sugerida) && poner(sugerida, p, "publicada")) continue;
     if (!poner("presentacion", p, "publicada")) poner("evaluacion", p, "publicada");
   }
-  // 2. Lo marcado «Va a pauta»: las del mes del plan primero, en el orden del calendario.
-  const marcadas = conOferta.filter((p) => p.pauta && !usadas.has(clave(p)))
+  // 3. Lo marcado «Va a pauta»: las del mes del plan primero, en el orden del calendario.
+  const marcadas = conOferta.filter((p) => p.pauta && !usadas.has(claveDe(p)) && delPlan(p))
     .sort((a, b) => Number(b.fecha.startsWith(mes)) - Number(a.fecha.startsWith(mes)) || (a.fecha < b.fecha ? -1 : a.fecha > b.fecha ? 1 : 0));
   const temporada = plan.campanas.find((c) => c.id === "temporada");
+  const sinSitio = [];
   for (const p of marcadas) {
     // La oferta del mes va primero a la temporada (si la hay y la pieza cae en sus fechas o es del mes).
     if (temporada && p.deOferta && (p.fecha.startsWith(mes) || (p.fecha >= temporada.calendario.inicio && p.fecha <= temporada.calendario.fin))) {
       if (poner("temporada", p, "pauta")) continue;
     }
     if (ids.has(p.pauta.etapa)) poner(p.pauta.etapa, p, "pauta");
+    else if (p.fecha.startsWith(mes)) sinSitio.push(p);
+  }
+  if (sinSitio.length) {
+    const etapas = [...new Set(sinSitio.map((p) => nombreDeEtapaDelPlan(p.pauta.etapa).toLowerCase()))];
+    avisos.push({ codigo: "pauta-sin-campana", grave: false, texto: `${sinSitio.length === 1 ? "Una publicación del mes va" : `${sinSitio.length} publicaciones del mes van`} a pauta en ${lista(etapas)}, y esa campaña no está en este plan: ${sinSitio.length === 1 ? "no entra" : "no entran"} en ningún anuncio. Escógelas en otra campaña con «Cambiar» o añade la campaña en «¿Qué vas a hacer?».` });
   }
 
+  let faltanTextosTotal = 0;
   const campanas = plan.campanas.map((c) => {
-    const puestas = llenas.get(c.id);
-    const anuncios = puestas.map((x, i) => ({ n: i + 1, ...anuncioDe(x.pieza, x.origen, c, plan, i, hoy) }));
-    const n = c.anunciosPorConjunto - anuncios.length;
-    const cubiertos = new Set(puestas.map((x) => x.pieza.tipoArte).filter(Boolean));
-    const porPeso = (lista) => [...lista].sort((a, b) => peso(a) - peso(b));
-    const artes = [...porPeso(c.artes.filter((a) => !cubiertos.has(a))), ...porPeso(c.artes.filter((a) => cubiertos.has(a)))];
-    const nivel = c.etapa === "temporada" ? "producto" : NIVEL_POR_ETAPA[c.etapa] ?? "";
-    return { ...c, anuncios, faltan: n > 0 ? { n, etapa: c.etapa === "temporada" ? "conversion" : c.etapa, nivel, artes, productoId: plan.foco?.id ?? "" } : null };
+    const lista = huecos.get(c.id);
+    const anuncios = [];
+    const vacios = [];
+    lista.forEach((x, i) => {
+      if (!x) { vacios.push(i); return; }
+      const a = anuncioDe(x, c, plan, i, { hoy, entrada: x.entrada ?? sueltos.get(idDeHueco(c.id, i + 1)) ?? null });
+      if (faltanTextos(a)) faltanTextosTotal += 1;
+      anuncios.push(a);
+    });
+    const cubiertos = new Set(anuncios.map((a) => a.pieza?.tipoArte).filter(Boolean));
+    const porPeso = (xs) => [...xs].sort((a, b) => peso(a) - peso(b));
+    const nivelesVacios = vacios.map((i) => c.nivelesAnuncios[i]).filter(Boolean);
+    const conNivel = artesParaNiveles(c.artes, nivelesVacios);
+    const artes = [...porPeso(conNivel.filter((a) => !cubiertos.has(a))), ...porPeso(conNivel.filter((a) => cubiertos.has(a)))];
+    const etapaLote = c.etapa === "temporada" ? "conversion" : c.etapa;
+    return {
+      ...c, anuncios, faltanTextos: anuncios.filter(faltanTextos).length,
+      faltan: vacios.length ? {
+        n: vacios.length, etapa: etapaLote, nivel: nivelesVacios[0] ?? NIVEL_POR_ETAPA[etapaLote] ?? "",
+        niveles: cuentaDeNiveles(nivelesVacios), artes, productoId: plan.foco?.id ?? plan.productos?.[0]?.id ?? "",
+      } : null,
+    };
   });
   for (const x of parecidas) {
     avisos.push({ codigo: "diversidad", grave: false, campana: x.campana.id,
       texto: `${x.campana.nombreEtapa}: «${x.pieza.titulo}» (${diaCorto(x.pieza.fecha)}) tiene el mismo tipo de arte y la misma composición que «${x.igual.titulo}» (${diaCorto(x.igual.fecha)}). Para Meta serían UN solo anuncio: se dejó una y la otra se pide nueva.` });
   }
   const faltan = campanas.reduce((s, c) => s + (c.faltan?.n ?? 0), 0);
-  if (faltan) avisos.push({ codigo: "faltan-piezas", grave: false, texto: `Faltan ${faltan} ${faltan === 1 ? "pieza" : "piezas"} para completar los anuncios: «Producir los anuncios que faltan» las pide al lote ya marcadas «Va a pauta».` });
+  if (faltan) avisos.push({ codigo: "faltan-piezas", grave: false, texto: `Faltan ${faltan} ${faltan === 1 ? "pieza" : "piezas"} para completar los anuncios: «Producir los anuncios que faltan» las pide al lote ya marcadas «Va a pauta», o escoge una publicación con «Cambiar».` });
+  if (faltanTextosTotal) avisos.push({ codigo: "faltan-textos", grave: false, texto: `${faltanTextosTotal === 1 ? "Un anuncio no tiene" : `${faltanTextosTotal} anuncios no tienen`} sus textos (título y descripción, o el texto principal): «Escribir los que faltan» en su campaña.` });
   const conclusiones = [...(aprendido?.mejores ?? []).map((x) => ({ ...x, lado: "barato" })), ...(aprendido?.peores ?? []).map((x) => ({ ...x, lado: "caro" }))];
   if (conclusiones.length) {
     const articulo = (x) => (x.rasgo === "composicion" || x.rasgo === "etapa" ? "la" : "el");
@@ -541,25 +711,55 @@ export function conPiezas(plan, candidatas = [], { ofertas = "", codigo = "", ho
   }
   return { ...plan, campanas, avisos, aprendido: conclusiones.length ? { mejores: aprendido.mejores ?? [], peores: aprendido.peores ?? [], muestra: aprendido.muestra ?? 0 } : null };
 }
+/** Los avisos que rehace `conPiezas` (rehacer el plan no los repite). */
+const CODIGOS_DE_PIEZAS = new Set(["diversidad", "faltan-piezas", "aprendido", "escogida-perdida", "faltan-textos", "pauta-sin-campana"]);
 
-/** Un anuncio con su pieza: cómo se monta (la publicación existente o subiendo la pieza), su nombre y sus textos. */
-function anuncioDe(p, origen, c, plan, i, hoy) {
+/** El anuncio de un hueco: en qué hueco y en qué nivel, la pieza (o «anuncio nuevo»), cómo se monta, su nombre y sus textos. */
+function anuncioDe(x, c, plan, i, { hoy = "", entrada = null } = {}) {
+  const n = i + 1;
+  const slot = idDeHueco(c.id, n);
+  const nivelHueco = c.nivelesAnuncios?.[i] ?? NIVEL_POR_ETAPA[c.etapa] ?? "";
+  const textosGuardados = entrada?.textos ?? null;
+  const base = { n, slot, origen: x.origen, sugerido: x.origen !== "elegido" && x.origen !== "nuevo", ...(entrada?.editado ? { editado: true } : {}), ...(entrada?.ia ? { ia: true } : {}) };
+  if (x.nuevo) {
+    const nombre = nombreConPlantilla(plan.nomenclaturaAnuncio || limpiarManual({}).nomenclatura.anuncio, { numero: String(n), formato: "Pieza", angulo: nombreNivelCorto(nivelHueco) || "Nuevo", etapa: c.nombreEtapa });
+    return { ...base, nombre, nivel: nivelHueco, como: "subir", puedePublicacion: false, pieza: null, nuevo: true, textos: textosGuardados, textosDe: textosGuardados ? "plan" : "", caption: "", problemas: [] };
+  }
+  const p = x.pieza;
   const enlace = p.enlaces.instagram || p.enlaces.facebook || "";
-  const comoMontar = p.publicada && enlace && p.sirve && (p.pauta?.como ?? "") !== "anuncio" ? "publicacion" : "subir";
+  const futura = !p.publicada && p.fecha && hoy && p.fecha >= hoy;
+  const puedePublicacion = Boolean((p.publicada && enlace) || futura);
+  const porDefecto = p.publicada && enlace && p.sirve && (p.pauta?.como ?? "") !== "anuncio" ? "publicacion" : "subir";
+  const como = entrada?.como === "publicacion" && puedePublicacion ? "publicacion" : entrada?.como === "subir" ? "subir" : porDefecto;
   const formato = p.formato === "carrusel" ? "Carrusel" : p.formato === "reel" ? "Reel" : p.formato === "historia" ? "Historia" : "Pieza";
   const tipoArte = tipoArteDe(p.tipoArte)?.nombre ?? "";
-  const nombre = nombreConPlantilla(plan.nomenclaturaAnuncio || limpiarManual({}).nomenclatura.anuncio, { numero: String(i + 1), formato, angulo: tipoArte || corto(p.titulo, 30), etapa: c.nombreEtapa });
-  const futura = !p.publicada && p.fecha && hoy && p.fecha >= hoy;
+  const nombre = nombreConPlantilla(plan.nomenclaturaAnuncio || limpiarManual({}).nomenclatura.anuncio, { numero: String(n), formato, angulo: tipoArte || corto(p.titulo, 30), etapa: c.nombreEtapa });
+  const etapaPost = c.etapa === "temporada" ? "conversion" : c.etapa;
+  const nivelPieza = p.pauta?.nivel || p.nivel;
+  const nivel = (NIVELES_DE_ETAPA[c.etapa] ?? []).includes(nivelPieza) ? nivelPieza : nivelHueco;
+  // Con la publicación ya subida, el texto principal ES su caption: se enseña y se revisa como anuncio.
+  const problemas = como === "publicacion"
+    ? problemasDePauta({ ...(p.post ?? {}), pauta: { etapa: etapaPost } }, { destino: plan.destino }).filter((q) => !["textos", "parecida"].includes(q.codigo)).map((q) => ({ codigo: q.codigo, texto: q.texto }))
+    : [];
+  const textos = textosGuardados ?? p.textos ?? null;
   return {
-    nombre, origen, como: comoMontar,
+    ...base, nombre, nivel, como, puedePublicacion,
+    textos, textosDe: textosGuardados ? "plan" : p.textos ? "publicacion" : "",
+    caption: como === "publicacion" ? p.caption : "",
+    problemas,
+    ...(x.funciono ? { funciono: { costo: x.funciono.costo, resultados: x.funciono.resultados, nombreResultado: x.funciono.nombreResultado, activo: x.funciono.activo } } : {}),
     pieza: {
       calendarId: p.calendarId, postId: p.postId, fecha: p.fecha, titulo: p.titulo, formato: p.formato, tipoArte: p.tipoArte, composicion: p.composicion,
-      nivel: p.nivel, rinde: p.rinde, enlaces: p.enlaces, medios: p.medios.slice(0, 10), textos: p.textos,
-      boton: p.textos?.boton ?? botonPorDefecto(plan.destino), motivo: p.motivo,
+      nivel: p.nivel, rinde: p.rinde, enlaces: p.enlaces, medios: p.medios.slice(0, 10), textos: p.textos, publicada: p.publicada,
+      boton: textos?.boton ?? botonPorDefecto(plan.destino), motivo: p.motivo, productoId: p.productoId,
       ...(futura ? { sale: p.fecha } : {}),
     },
   };
 }
+const nombreNivelCorto = (nivel) => ({ inconsciente: "Inconsciente", problema: "Problema", solucion: "Solución", producto: "Producto", decision: "Decisión" }[nivel] ?? "");
+
+/** El anuncio de un hueco de una campaña del plan (o null si está por producir). Pura. */
+export const anuncioEn = (c, n) => c?.anuncios?.find((a) => a.n === n) ?? null;
 
 // ------------------------------------------------------------
 // La guía de montaje (C.3)
@@ -577,24 +777,75 @@ const textoExcluye = (x) => (x.excluye.nombres.length ? `${x.excluye.nombres.joi
 
 /** Cómo se monta una pieza, en una línea (también para el Excel). Pura. */
 export function textoDeLaPieza(a) {
+  if (a?.nuevo) return "Anuncio nuevo: subir una pieza propia (no sale de una publicación del calendario)";
   if (!a?.pieza) return "";
   const p = a.pieza;
   const enlace = p.enlaces?.instagram || p.enlaces?.facebook || "";
   const base = `«${p.titulo}»${p.fecha ? ` (${diaCorto(p.fecha)})` : ""}${p.rinde ? ` · rindió ${String(p.rinde).replace(".", ",")}×` : ""}`;
-  if (a.como === "publicacion") return `${base} · usar la publicación: ${enlace}`;
+  if (a.como === "publicacion") return enlace ? `${base} · usar la publicación: ${enlace}` : `${base} · usar la publicación cuando salga${p.sale ? ` (el ${diaCorto(p.sale)})` : ""}`;
   return `${base} · subir la pieza${p.sale ? ` (sale el ${diaCorto(p.sale)}; desde entonces se puede usar la publicación)` : ""}`;
 }
 
+/** De dónde salió la sugerencia de un anuncio, en palabras simples. Pura. */
+export function origenDelAnuncio(a, moneda = "USD") {
+  if (!a) return "";
+  if (a.origen === "elegido") return "La escogiste tú";
+  if (a.origen === "nuevo") return "Anuncio nuevo (sin publicación)";
+  if (a.origen === "funciono") {
+    const f = a.funciono;
+    return `Ya funcionó como anuncio${f?.costo ? `: ${dinero(f.costo, moneda)} por ${singular(f.nombreResultado)} en 30 días` : ""}`;
+  }
+  if (a.origen === "publicada") return "Lo publicado que mejor funcionó";
+  return "Marcada «Va a pauta»";
+}
+const singular = (nombre) => ({ conversaciones: "conversación", compras: "compra", "clientes potenciales": "cliente potencial", clics: "clic", resultados: "resultado" }[String(nombre ?? "").toLowerCase()] ?? "resultado");
+
+/** Los campos de los textos de un anuncio para la guía (cada uno con su «Copiar»). */
+function camposDeTextos(a, destino) {
+  const campos = [];
+  const t = a.textos;
+  if (a.como === "publicacion") {
+    campos.push({ etiqueta: "Texto principal", valor: a.caption ? `El de la publicación (no se cambia): ${a.caption}` : "El de la publicación (no se cambia)." });
+  } else if (t?.textos?.length) {
+    t.textos.forEach((x, k) => campos.push({ etiqueta: `Texto principal ${k + 1}`, valor: x, copiar: true }));
+  } else {
+    campos.push({ etiqueta: "Texto principal", valor: "Falta: «Escribir los textos» en el plan." });
+  }
+  if (t?.titulos?.length) t.titulos.forEach((x, k) => campos.push({ etiqueta: t.titulos.length > 1 ? `Título ${k + 1}` : "Título", valor: x, copiar: true }));
+  else campos.push({ etiqueta: "Título", valor: "Falta: «Escribir los textos» en el plan." });
+  if (t?.descripcion) campos.push({ etiqueta: "Descripción", valor: t.descripcion, copiar: true });
+  else campos.push({ etiqueta: "Descripción", valor: "Falta: «Escribir los textos» en el plan." });
+  campos.push({ etiqueta: "Botón", valor: nombreDeBoton(t?.boton) || nombreDeBoton(botonPorDefecto(destino)) });
+  return campos;
+}
+
 /**
- * Los pasos para montar el plan en el Ads Manager, en su orden: los públicos personalizados; y por campaña, la
- * campaña, el primer conjunto, sus anuncios y los demás conjuntos (se duplica el primero y se cambia el público). Cada
- * paso: { id, nivel, titulo, campos: [{ etiqueta, valor, copiar }], nota? }. El `id` es estable (lo usa el progreso
- * guardado): «publico:<id>», «<campaña>:campana», «<campaña>:<conjunto>», «<campaña>:a<n>». Pura.
+ * Los pasos para montar el plan en el Ads Manager, en su orden: lo de antes de empezar (los públicos personalizados,
+ * el píxel en una web, las etiquetas de WhatsApp Business); y por campaña, la campaña, el primer conjunto, sus anuncios
+ * con sus textos y los demás conjuntos (se duplica el primero y se cambia el público). Cada paso: { id, nivel, titulo,
+ * campos: [{ etiqueta, valor, copiar }], nota?, ayuda? }. El `id` es estable (lo usa el progreso guardado):
+ * «publico:<id>», «antes:pixel», «antes:etiquetas», «<campaña>:campana», «<campaña>:<conjunto>», «<campaña>:a<n>». Pura.
  */
 export function guiaDeMontaje(plan) {
   if (!plan) return [];
   const pasos = [];
   const moneda = plan.moneda;
+  const web = plan.destino === "web";
+  if (web) {
+    pasos.push({ id: "antes:pixel", nivel: "antes", grupo: "publicos", titulo: "Comprobar el píxel de Meta y la API de conversiones en la web",
+      campos: [
+        { etiqueta: "Qué es", valor: "El píxel es un código de Meta en la web que le cuenta quién la visitó, quién agregó al carrito y quién compró. Sin él Meta no sabe a quién mostrar los anuncios ni puede crear los públicos de la web." },
+        { etiqueta: "Dónde", valor: "Administrador de eventos → el conjunto de datos de la web → «Probar eventos»: abre la web y mira que lleguen la visita y la compra (o el formulario enviado)." },
+        { etiqueta: "Evento que se optimiza", valor: plan.objetivo === "clientes" ? "Cliente potencial (el formulario enviado)" : "Compra" },
+      ] });
+  } else {
+    pasos.push({ id: "antes:etiquetas", nivel: "antes", grupo: "publicos", titulo: "Usar las etiquetas de WhatsApp Business",
+      campos: [
+        { etiqueta: "Qué es", valor: "Las etiquetas de WhatsApp Business son para Meta lo que el píxel es para una web: le dicen qué pasó en cada conversación." },
+        { etiqueta: "Cuáles", valor: "Nuevo pedido · Pago pendiente · Pagado · Pedido finalizado (en la app de WhatsApp Business: Herramientas para la empresa → Etiquetas)." },
+        { etiqueta: "Cuándo", valor: "Cada vez que avanza una conversación que vino de un anuncio: así Meta aprende quién compra." },
+      ] });
+  }
   for (const p of plan.publicos) {
     pasos.push({ id: `publico:${p.id}`, nivel: "publico", grupo: "publicos", titulo: `Crear el público «${p.nombre}»`,
       campos: [{ etiqueta: "Nombre", valor: p.nombre, copiar: true }, { etiqueta: "Quién entra", valor: p.que }, { etiqueta: "Cómo", valor: p.como }] });
@@ -602,7 +853,7 @@ export function guiaDeMontaje(plan) {
   for (const c of plan.campanas) {
     const enCampana = c.presupuesto.en === "campana";
     pasos.push({
-      id: `${c.id}:campana`, nivel: "campana", grupo: c.id, titulo: `Campaña de ${c.nombreEtapa.toLowerCase()}`,
+      id: `${c.id}:campana`, nivel: "campana", grupo: c.id, titulo: `Crear la campaña de ${c.nombreEtapa.toLowerCase()}`,
       campos: [
         { etiqueta: "Nombre", valor: c.nombre, copiar: true },
         { etiqueta: "Objetivo", valor: c.nombreObjetivo },
@@ -610,46 +861,51 @@ export function guiaDeMontaje(plan) {
         { etiqueta: "Presupuesto de la campaña Advantage+", valor: enCampana ? `Activado: ${dinero(c.presupuesto.diario, moneda)} al día` : "Desactivado (el presupuesto va en cada conjunto)", copiar: enCampana },
         { etiqueta: "Presupuesto del mes", valor: dinero(c.presupuesto.mensual, moneda) },
       ],
-      nota: c.contenido ? `Qué dicen sus anuncios: ${c.contenido}` : "",
+      nota: c.para,
     });
     const conjuntoCampos = (x) => [
       { etiqueta: "Nombre", valor: x.nombre, copiar: true },
       ...(enCampana ? [] : [{ etiqueta: "Presupuesto diario", valor: dinero(x.presupuestoDiario, moneda), copiar: true }]),
       ...(c.appMensajes ? [{ etiqueta: "App de mensajes", valor: c.appMensajes }] : []),
+      ...(web ? [{ etiqueta: "Conjunto de datos (píxel)", valor: `El de la web · evento: ${plan.objetivo === "clientes" ? "Cliente potencial" : "Compra"}` }] : []),
       { etiqueta: "Objetivo de rendimiento", valor: c.rendimiento },
       { etiqueta: "Puja", valor: "Automática (control de puja en blanco)" },
       { etiqueta: "Calendario", valor: textoCalendario(c) },
       { etiqueta: "Público", valor: textoPublico(x) },
+      ...(x.tipo === "intereses" ? [{ etiqueta: "Segmentación detallada Advantage", valor: "Desactivada si Meta deja (así se prueban esos intereses tal cual); en algunos objetivos va siempre activada." }] : []),
       { etiqueta: "Excluir", valor: textoExcluye(x) },
       { etiqueta: "Público Advantage+", valor: x.publico.advantage ? "Activado" : "Desactivado" },
       { etiqueta: "Ubicaciones", valor: c.ubicaciones },
+      { etiqueta: "Llegar a más personas con más probabilidad de clic", valor: "Desactivado" },
     ];
     const [primero, ...resto] = c.conjuntos;
-    if (primero) pasos.push({ id: `${c.id}:${primero.id}`, nivel: "conjunto", grupo: c.id, titulo: `Conjunto 1 · ${primero.nombreCorto}`, campos: conjuntoCampos(primero), nota: primero.nota ?? "" });
+    if (primero) pasos.push({ id: `${c.id}:${primero.id}`, nivel: "conjunto", grupo: c.id, titulo: `Crear el conjunto 1 · ${primero.nombreCorto}`, campos: conjuntoCampos(primero), nota: primero.nota ?? "" });
     for (let i = 0; i < c.anunciosPorConjunto; i++) {
-      const a = c.anuncios[i];
+      const a = anuncioEn(c, i + 1);
       const campos = [{ etiqueta: "Nombre", valor: a?.nombre ?? `${i + 1} · (por producir)`, copiar: Boolean(a) }];
       if (!a) {
-        campos.push({ etiqueta: "Pieza", valor: `Falta: producirla (${c.artes.slice(0, 3).map((x) => tipoArteDe(x)?.nombre).filter(Boolean).join(" o ") || "un tipo de arte distinto"}, nivel ${nombreDeNivel(c.faltan?.nivel ?? "").toLowerCase() || "de su etapa"}).` });
+        const nivel = c.nivelesAnuncios?.[i] ?? c.faltan?.nivel ?? "";
+        campos.push({ etiqueta: "Pieza", valor: `Falta: producirla o escoger una publicación en el plan (${c.faltan?.artes?.slice(0, 3).map((x) => tipoArteDe(x)?.nombre).filter(Boolean).join(" o ") || "un tipo de arte distinto"}, nivel ${nombreDeNivel(nivel).toLowerCase() || "de su etapa"}).` });
       } else if (a.como === "publicacion") {
+        const enlace = a.pieza.enlaces.instagram || a.pieza.enlaces.facebook || "";
         campos.push({ etiqueta: "Configuración del anuncio", valor: "Usar una publicación existente" });
-        campos.push({ etiqueta: "Publicación", valor: a.pieza.enlaces.instagram || a.pieza.enlaces.facebook, copiar: true, enlace: true });
+        campos.push(enlace
+          ? { etiqueta: "Publicación", valor: enlace, copiar: true, enlace: true }
+          : { etiqueta: "Publicación", valor: `«${a.pieza.titulo}»: todavía no sale${a.pieza.sale ? ` (sale el ${diaCorto(a.pieza.sale)})` : ""}. Móntalo cuando salga.` });
+        campos.push(...camposDeTextos(a, plan.destino));
       } else {
         campos.push({ etiqueta: "Configuración del anuncio", valor: "Crear anuncio (subir la pieza)" });
         campos.push({ etiqueta: "Pieza", valor: textoDeLaPieza(a) });
-        a.pieza.textos?.textos?.forEach((t, k) => campos.push({ etiqueta: `Texto principal ${k + 1}`, valor: t, copiar: true }));
-        a.pieza.textos?.titulos?.forEach((t, k) => campos.push({ etiqueta: `Título ${k + 1}`, valor: t, copiar: true }));
-        if (a.pieza.textos?.descripcion) campos.push({ etiqueta: "Descripción", valor: a.pieza.textos.descripcion, copiar: true });
-        if (!a.pieza.textos) campos.push({ etiqueta: "Textos", valor: "Le faltan sus textos de anuncio: se escriben en la publicación («Va a pauta»)." });
+        campos.push(...camposDeTextos(a, plan.destino));
       }
-      if (a) {
-        campos.push({ etiqueta: "Botón", valor: nombreDeBoton(a.pieza.boton) || nombreDeBoton(botonPorDefecto(plan.destino)) });
-        campos.push({ etiqueta: "Multianunciante", valor: "Activado" });
-      }
-      pasos.push({ id: `${c.id}:a${i + 1}`, nivel: "anuncio", grupo: c.id, titulo: `Anuncio ${i + 1}${a ? ` · ${a.pieza.titulo}` : " · por producir"}`, campos, pieza: a?.pieza ?? null,
-        nota: a ? "Revisa cómo sale en historias y reels, y las mejoras automáticas de la pieza: activa sólo las que convengan." : "" });
+      if (a) campos.push({ etiqueta: "Multianunciante", valor: "Activado" });
+      pasos.push({
+        id: `${c.id}:a${i + 1}`, nivel: "anuncio", grupo: c.id,
+        titulo: `Anuncio ${i + 1}${a?.nuevo ? " · anuncio nuevo" : a ? ` · ${a.pieza.titulo}` : " · por producir"}`, campos, pieza: a?.pieza ?? null,
+        nota: a ? "Revisa cómo sale en historias y reels, y las mejoras automáticas de la pieza: activa sólo las que convengan." : "",
+      });
     }
-    resto.forEach((x, k) => pasos.push({ id: `${c.id}:${x.id}`, nivel: "conjunto", grupo: c.id, titulo: `Conjunto ${k + 2} · ${x.nombreCorto}`,
+    resto.forEach((x) => pasos.push({ id: `${c.id}:${x.id}`, nivel: "conjunto", grupo: c.id, titulo: `Duplicar el conjunto 1 · ${x.nombreCorto}`,
       campos: conjuntoCampos(x), nota: `Duplica el conjunto 1 con sus anuncios y cambia el nombre, el público${enCampana ? "" : " y el presupuesto"}.${x.nota ? ` ${x.nota}` : ""}` }));
   }
   return pasos;
@@ -670,31 +926,55 @@ export function limpiarProgreso(progreso, guia = null) {
 export const avanceDeGuia = (guia, progreso) => ({ hechos: guia.filter((p) => progreso?.[p.id]).length, total: guia.length });
 
 // ------------------------------------------------------------
-// El Excel de estrategia de la agencia (5 hojas)
+// El Excel de estrategia de la agencia (5 hojas y la de los textos)
 // ------------------------------------------------------------
 
 /** El nombre de cada hoja, como el Excel de la agencia (la quinta, la de temporada). */
 export const HOJAS_EXCEL = Object.freeze({ presentacion: "Presentación", evaluacion: "Evaluación", conversion: "Conversión", ascension: "Ascensión", temporada: "Campaña Especial (temporada)" });
+/** La hoja de los textos de los anuncios (la sexta). */
+export const HOJA_TEXTOS = "Textos de los anuncios";
+/** Las columnas de anuncios de cada hoja del Excel de la agencia cuando la campaña no va (la hoja se deja con su forma). */
+const ANUNCIOS_DE_LA_HOJA = Object.freeze({ presentacion: 5, evaluacion: 4, conversion: 3, ascension: 4, temporada: 4 });
+
+const col = (i) => {
+  let n = i + 1;
+  let s = "";
+  while (n > 0) { const r = (n - 1) % 26; s = String.fromCharCode(65 + r) + s; n = Math.floor((n - 1) / 26); }
+  return s;
+};
+
+/** Una celda de anuncio del Excel: el nombre, la pieza y cómo se monta (los textos van en su hoja). */
+function celdaDeAnuncio(c, n) {
+  const a = anuncioEn(c, n);
+  if (!a) return "Falta: producirla o escoger una publicación";
+  return `${a.nombre}\n${textoDeLaPieza(a)}${faltanTextos(a) ? "\n(faltan sus textos)" : "\n(textos en la hoja «Textos de los anuncios»)"}`;
+}
 
 /**
- * Las 5 hojas con las columnas del Excel de estrategia de la agencia, llenas con el plan: arriba el presupuesto mensual,
- * luego «Campaña / Conjunto de anuncios / Anuncios», las columnas y una fila por conjunto; debajo, los nombres para el
- * Ads Manager. Una campaña que el plan no trae (cuenta nueva) sale con su hoja y el motivo. → [{ nombre, filas: [[celda]],
- * combinadas: ["A3:B3"], anchos: [n] }]; una celda es texto o número. Pura.
+ * Las hojas del Excel de estrategia de la agencia, hoja por hoja como la suya (`estrategia.txt`): arriba el
+ * presupuesto mensual; luego «Campaña / Conjunto de anuncios / Anuncios», las columnas y una fila por conjunto, con lo
+ * que es de la campaña (y los anuncios, los mismos en todos los conjuntos) en celdas combinadas.
+ *   · Presentación: A Objetivo, B «Presupuesto de la campaña Advantage+» (No), C App de mensajes, D Objetivo de
+ *     rendimiento, E Presupuesto Diario (el de cada conjunto), F Calendario, G Público, H Exclusiones, I Ubicaciones.
+ *   · Las demás: A Objetivo, B «Presupuesto de la campaña Advantage+» (Sí/No), C Presupuesto diario (el de la campaña),
+ *     D App de mensajes, E Objetivo de rendimiento, F Calendario, G Público, H Exclusiones, I Ubicaciones.
+ * Debajo, los nombres para el Ads Manager. Una campaña que el plan no trae sale con su hoja y el motivo. Y una sexta hoja,
+ * «Textos de los anuncios»: campaña, conjuntos, anuncio, publicación, cómo se monta, texto principal, títulos,
+ * descripción y botón. → [{ nombre, filas: [[celda]], combinadas: ["A3:B3"], anchos: [n], cabeceras }]. Pura.
  */
 export function hojasDelPlan(plan) {
-  return Object.entries(HOJAS_EXCEL).map(([id, nombre]) => {
+  const hojas = Object.entries(HOJAS_EXCEL).map(([id, nombre]) => {
     const c = plan?.campanas.find((x) => x.id === id) ?? null;
-    const anuncios = c?.anunciosPorConjunto ?? plan?.anunciosPorConjunto ?? 4;
-    // Presentación pone «App de mensajes» y «Objetivo de rendimiento» antes del presupuesto diario (como la hoja de la agencia).
+    const anuncios = c?.anunciosPorConjunto ?? ANUNCIOS_DE_LA_HOJA[id];
     const presentacion = id === "presentacion";
     const cabecera = presentacion
       ? ["Objetivo", "Presupuesto de la campaña Advantage+", "App de Mensajes", "Objetivo de rendimiento", "Presupuesto Diario", "Calendario", "Público", "Exclusiones", "Ubicaciones"]
       : ["Objetivo", "Presupuesto de la campaña Advantage+", "Presupuesto diario", "App de Mensajes", "Objetivo de rendimiento", "Calendario", "Público", "Exclusiones", "Ubicaciones"];
     const ancho = cabecera.length + anuncios;
     const filaGrupo = Array(ancho).fill("");
+    const finCampana = presentacion ? 1 : 2;
     filaGrupo[0] = "Campaña";
-    filaGrupo[presentacion ? 2 : 3] = "Conjunto de Anuncios";
+    filaGrupo[finCampana + 1] = "Conjunto de Anuncios";
     filaGrupo[cabecera.length] = "Anuncios";
     const filas = [
       [`Presupuesto Mensual (${plan?.moneda ?? "USD"}):`, c?.presupuesto.mensual ?? ""],
@@ -702,35 +982,68 @@ export function hojasDelPlan(plan) {
       filaGrupo,
       [...cabecera, ...Array.from({ length: anuncios }, (_, i) => `Anuncio ${i + 1}`)],
     ];
+    const combinadas = [`A3:${col(finCampana)}3`, `${col(finCampana + 1)}3:${col(cabecera.length - 1)}3`, `${col(cabecera.length)}3:${col(ancho - 1)}3`];
     if (!c) {
-      filas.push([id === "temporada" ? "Este mes no trae oferta ni fecha comercial (o se quitó del plan)." : "No va este mes: la cuenta es nueva (presentación y evaluación primero)."]);
+      filas.push([id === "temporada" ? "Este mes no trae oferta ni fecha comercial (o se quitó del plan)."
+        : plan?.que?.campanas?.length ? "No va este mes: no se escogió en «¿Qué vas a hacer?»." : "No va este mes: la cuenta es nueva (presentación y evaluación primero)."]);
     } else {
       const enCampana = c.presupuesto.en === "campana";
-      const piezas = Array.from({ length: anuncios }, (_, i) => (c.anuncios[i] ? textoDeLaPieza(c.anuncios[i]) : "Falta: producirla"));
+      const piezas = Array.from({ length: anuncios }, (_, i) => celdaDeAnuncio(c, i + 1));
+      const app = c.appMensajes || "No aplica (lleva a la web)";
+      const advantage = enCampana ? "Sí" : "No";
+      const primera = filas.length + 1;
       c.conjuntos.forEach((x, k) => {
-        const presupuestoCampana = enCampana ? (k === 0 ? c.presupuesto.diario ?? "" : "") : "Desactivado";
-        const diario = enCampana ? "" : x.presupuestoDiario ?? "";
-        const app = c.appMensajes || "No aplica (lleva a la web)";
         const resto = [textoCalendario(c), textoPublico(x), textoExcluye(x), c.ubicaciones];
         const fila = presentacion
-          ? [k === 0 ? c.nombreObjetivo : "", presupuestoCampana, app, c.rendimiento, diario, ...resto]
-          : [k === 0 ? c.nombreObjetivo : "", presupuestoCampana, diario, app, c.rendimiento, ...resto];
-        filas.push([...fila, ...piezas]);
+          ? [k === 0 ? c.nombreObjetivo : "", k === 0 ? advantage : "", k === 0 ? app : "", c.rendimiento, x.presupuestoDiario ?? "", ...resto]
+          : [k === 0 ? c.nombreObjetivo : "", k === 0 ? advantage : "", k === 0 ? c.presupuesto.diario ?? "" : "", k === 0 ? app : "", c.rendimiento, ...resto];
+        filas.push([...fila, ...(k === 0 ? piezas : Array(anuncios).fill(""))]);
       });
+      // Lo que es de la campaña (y los anuncios, los mismos en cada conjunto) va en celdas combinadas, como en su Excel.
+      const ultima = primera + c.conjuntos.length - 1;
+      if (ultima > primera) {
+        const deCampana = presentacion ? [0, 1, 2, 5, 7, 8] : [0, 1, 2, 3, 5, 7, 8];
+        for (const i of [...deCampana, ...Array.from({ length: anuncios }, (_, k) => cabecera.length + k)]) combinadas.push(`${col(i)}${primera}:${col(i)}${ultima}`);
+      }
       filas.push([], ["Nombres para el Ads Manager"], ["Campaña", c.nombre]);
       c.conjuntos.forEach((x, k) => filas.push([`Conjunto ${k + 1}`, x.nombre]));
-      c.anuncios.forEach((a, k) => filas.push([`Anuncio ${k + 1}`, a.nombre]));
+      c.anuncios.forEach((a) => filas.push([`Anuncio ${a.n}`, a.nombre]));
     }
-    const col = (i) => String.fromCharCode(65 + i);
-    const finConjunto = cabecera.length - 1;
     return {
       nombre,
       filas,
-      combinadas: [`A3:${col(presentacion ? 1 : 2)}3`, `${col(presentacion ? 2 : 3)}3:${col(finConjunto)}3`, `${col(cabecera.length)}3:${col(ancho - 1)}3`],
+      combinadas,
       anchos: [...cabecera.map((h) => (["Público", "Exclusiones"].includes(h) ? 48 : h.length > 20 ? 26 : 18)), ...Array(anuncios).fill(40)],
       cabeceras: [3, 4],
     };
   });
+  hojas.push(hojaDeTextos(plan));
+  return hojas;
+}
+
+/** La hoja «Textos de los anuncios»: una fila por anuncio del plan con todo lo que se copia en el Ads Manager. Pura. */
+export function hojaDeTextos(plan) {
+  const cabecera = ["Campaña", "Conjuntos", "Anuncio", "Publicación", "Cómo se monta", "Nivel", "Texto principal", "Títulos", "Descripción", "Botón"];
+  const filas = [[`Textos de los anuncios · ${plan?.cliente ?? ""} · ${plan?.nombreMes ?? ""}`], [], cabecera];
+  for (const c of plan?.campanas ?? []) {
+    for (const a of c.anuncios) {
+      const t = a.textos;
+      filas.push([
+        c.nombre,
+        c.conjuntos.map((x) => x.nombre).join("\n"),
+        a.nombre,
+        a.nuevo ? "Anuncio nuevo (sin publicación)" : `«${a.pieza.titulo}»${a.pieza.fecha ? ` (${diaCorto(a.pieza.fecha)})` : ""}${a.pieza.enlaces?.instagram || a.pieza.enlaces?.facebook ? `\n${a.pieza.enlaces.instagram || a.pieza.enlaces.facebook}` : ""}`,
+        a.como === "publicacion" ? "Usar la publicación existente" : "Subir la pieza",
+        nombreDeNivel(a.nivel),
+        a.como === "publicacion" ? `(El de la publicación, no se cambia)\n${a.caption ?? ""}`.trim() : (t?.textos ?? []).map((x, i) => `${i + 1}) ${x}`).join("\n\n") || "Falta",
+        (t?.titulos ?? []).join("\n") || "Falta",
+        t?.descripcion || "Falta",
+        nombreDeBoton(t?.boton) || nombreDeBoton(botonPorDefecto(plan.destino)),
+      ]);
+    }
+  }
+  if (filas.length === 3) filas.push(["Todavía no hay anuncios con su pieza: escógelos en el plan."]);
+  return { nombre: HOJA_TEXTOS, filas, combinadas: [], anchos: [30, 30, 28, 34, 20, 16, 60, 32, 24, 22], cabeceras: [3] };
 }
 
 // ------------------------------------------------------------
@@ -744,11 +1057,15 @@ export function planATextoCiclo(plan) {
   const moneda = plan.moneda;
   l.push(`PLAN DE CAMPAÑAS${plan.cliente ? ` · ${plan.cliente}` : ""} · ${plan.nombreMes}`);
   l.push(`${tipoNegocioDe(plan.tipo)?.nombre ?? "Productos"} · ${plan.destino === "web" ? "a la web" : "a WhatsApp"} · ${plan.cuenta === "nueva" ? "cuenta nueva" : plan.cuenta === "historial" ? "cuenta con historial" : "cuenta sin decir"} · objetivo: ${plan.nombreObjetivo}`);
-  l.push(plan.inversion ? `Inversión del mes: ${dinero(plan.inversion, moneda)} (${plan.reparto.map((r) => `${r.nombre} ${String(r.pct).replace(".", ",")} %`).join(" · ")})` : "Inversión del mes: sin números del negocio.");
+  l.push(plan.inversion ? `Inversión del ciclo: ${dinero(plan.inversion, moneda)} (${plan.reparto.map((r) => `${r.nombre} ${String(r.pct).replace(".", ",")} %`).join(" · ")}${plan.repartoAMano ? ", repartido a mano" : ""})` : "Inversión del mes: sin números del negocio.");
+  if (textoDelTotal(plan)) l.push(`Total del mes: ${textoDelTotal(plan)}.`);
+  if (plan.productos?.length) l.push(`Productos: ${plan.productos.map((p) => `${p.nombre}${p.precio ? ` (${p.precio})` : ""}`).join(", ")}`);
+  if (plan.que?.logro) l.push(`Lo que se quiere lograr: ${plan.que.logro}`);
   if (plan.avisos.length) l.push("", "AVISOS", ...plan.avisos.map((a) => `- ${a.grave ? "[!] " : ""}${a.texto}`));
   if (plan.publicos.length) l.push("", "PÚBLICOS PERSONALIZADOS A CREAR", ...plan.publicos.map((p) => `- ${p.nombre}: ${p.que}`));
   for (const c of plan.campanas) {
     l.push("", `${c.nombreEtapa.toUpperCase()} · ${c.nombre}`);
+    if (c.para) l.push(c.para);
     l.push(`Objetivo: ${c.nombreObjetivo} · ${c.rendimiento}${c.appMensajes ? ` · app de mensajes: ${c.appMensajes}` : ""}`);
     l.push(`Presupuesto: ${dinero(c.presupuesto.mensual, moneda)} en el periodo · ${c.presupuesto.en === "campana" ? `en la campaña (Advantage+), ${dinero(c.presupuesto.diario, moneda)} al día` : `en cada conjunto, ${dinero(c.presupuesto.porConjunto, moneda)} al día`} · ${textoCalendario(c)}`);
     if (c.contenido) l.push(`Qué dicen sus anuncios: ${c.contenido}`);
@@ -756,8 +1073,13 @@ export function planATextoCiclo(plan) {
     c.conjuntos.forEach((x, k) => l.push(`  Conjunto ${k + 1} · ${x.nombre}${c.presupuesto.en === "conjunto" ? ` · ${dinero(x.presupuestoDiario, moneda)} al día` : ""}`, `    Público: ${textoPublico(x)}`, `    Excluir: ${textoExcluye(x)}`));
     l.push(`  Anuncios (${c.anunciosPorConjunto} por conjunto, los mismos en todos):`);
     for (let i = 0; i < c.anunciosPorConjunto; i++) {
-      const a = c.anuncios[i];
-      l.push(`    ${i + 1}. ${a ? `${a.nombre} — ${textoDeLaPieza(a)}` : "por producir"}`);
+      const a = anuncioEn(c, i + 1);
+      l.push(`    ${i + 1}. ${a ? `${a.nombre} — ${textoDeLaPieza(a)} · nivel ${nombreDeNivel(a.nivel).toLowerCase()}` : "por producir"}`);
+      if (a) {
+        const t = textosATexto(a.textos, { conCaption: a.como === "publicacion" ? a.caption || "(el de la publicación)" : "" });
+        if (t) l.push(t.split("\n").map((x) => `       ${x}`).join("\n"));
+        else l.push("       (faltan sus textos)");
+      }
     }
   }
   return l.join("\n").trim();
