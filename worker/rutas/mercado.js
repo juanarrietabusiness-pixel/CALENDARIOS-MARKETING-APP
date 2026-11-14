@@ -6,6 +6,8 @@
 //   POST   /<cliente>/catalogo/proponer            La IA lo PROPONE desde el cerebro (no guarda)
 //   POST   /<cliente>/estudio/general              { material }: paso 1, lo general del mercado (con búsqueda web)
 //   POST   /<cliente>/estudio/producto             { productoId, material }: un producto o servicio
+//   POST   /<cliente>/estudio/angulos              { productoId }: «Proponer ángulos» de un producto que ya tiene su estudio
+//                                                   (barata, sin búsqueda web); la propuesta va al BORRADOR
 //   PUT    /<cliente>/estudio/borrador             { borrador }: lo corregido a mano; null lo descarta
 //   POST   /<cliente>/estudio/aprobar              Pasa a vigente, va al cerebro y a Drive
 //   POST   /<cliente>/referencias                  { archivoId, competidor, enlace, desde, nota }: añadir y analizar
@@ -32,7 +34,7 @@ import { json, error, cuerpo, noEncontrado } from "../lib/respuesta.js";
 import { ErrorIA } from "../lib/cerebro/ia.js";
 import { contenidoDe, traerPublicacion, traerEnlace, ErrorCompetencia } from "../lib/competencia.js";
 import {
-  leerMercado, guardarCatalogo, proponerCatalogo, estudiarGeneral, estudiarProducto, guardarBorrador,
+  leerMercado, guardarCatalogo, proponerCatalogo, estudiarGeneral, estudiarProducto, proponerAngulos, guardarBorrador,
   aprobarEstudio, agregarReferencia, reanalizarReferencia, borrarReferencia, adaptarReferencia, extraerUgc, ErrorMercado,
 } from "../lib/mercado.js";
 
@@ -70,6 +72,11 @@ export async function rutasMercado(req, env, { acceso, partes, metodo }) {
       const d = (await cuerpo(req)) ?? {};
       if (!ID.test(String(d.productoId ?? ""))) return error("Falta el producto.");
       return json(await estudiarProducto(env, acceso, cliente, { productoId: String(d.productoId), material: d.material }));
+    }
+    if (a === "estudio" && b === "angulos" && metodo === "POST") {
+      const d = (await cuerpo(req)) ?? {};
+      if (!ID.test(String(d.productoId ?? ""))) return error("Falta el producto.");
+      return json(await proponerAngulos(env, acceso, cliente, { productoId: String(d.productoId) }));
     }
     if (a === "estudio" && b === "borrador" && metodo === "PUT") {
       const d = (await cuerpo(req)) ?? {};
