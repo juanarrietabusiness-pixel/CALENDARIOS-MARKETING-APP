@@ -75,6 +75,22 @@ export async function guardarNegocio(acceso, clientId, entrada, usuario) {
   return negocio;
 }
 
+/**
+ * Guarda los números SIN PISAR a otra persona: con `antes` (el `actualizado` que se leyó; null si no había nada
+ * guardado), si alguien guardó desde entonces no se escribe y se devuelve lo de ahora. Sin `antes` (undefined), guarda
+ * sin comprobar. La usan el PUT de la pantalla y `guardar_numeros_negocio` por MCP.
+ * → { negocio } o { conflicto: el texto para la persona, negocio: lo guardado de ahora }.
+ */
+export async function guardarNegocioSinPisar(acceso, clientId, entrada, usuario, { antes } = {}) {
+  if (antes !== undefined) {
+    const actual = await leerNegocio(acceso, clientId);
+    if ((antes ?? null) !== (actual.actualizado ?? null)) {
+      return { conflicto: `${actual.por || "Otra persona"} cambió los números mientras los editabas. Revisa lo de ahora y vuelve a guardar.`, negocio: actual };
+    }
+  }
+  return { negocio: await guardarNegocio(acceso, clientId, entrada, usuario) };
+}
+
 /** Lo aceptable por resultado que usa el diagnóstico si nadie teclea otro (el número mágico guardado), o null. */
 export async function costoAceptableDelCliente(acceso, clientId) {
   const [negocio, tasaDefecto] = await Promise.all([leerNegocio(acceso, clientId), tasaDelManual(acceso)]);
@@ -275,6 +291,36 @@ export async function proponerNegocio(env, acceso, cliente, entrada = null) {
 }
 
 // ------------------------------------------------------------
+// La ficha entera (lo que lee la pantalla y `numeros_del_negocio` por MCP)
+// ------------------------------------------------------------
+
+/**
+ * La ficha de los números del negocio de un cliente: lo guardado, la tasa del Manual, el reparto por etapa del cliente,
+ * EL número mágico y lo de Meta en 30 días (con `meta: false`, sin preguntarle). `cuenta`: su cuenta publicitaria o null.
+ */
+export async function fichaDeNegocio(env, acceso, cliente, cuenta, { meta = true } = {}) {
+  const [fila, manual] = await Promise.all([acceso.leerUno("anuncios_clientes", { client_id: cliente.id }), manualDelEspacio(acceso)]);
+  const negocio = limpiarNegocio(leerJSON(fila?.negocio, {}));
+  const tasaDefecto = manual.tasaCierre;
+  const { lectura, aviso } = meta ? await lecturaMeta(env, acceso, cuenta) : { lectura: null, aviso: null };
+  return {
+    negocio, tasaDefecto,
+    // El reparto por etapa del cliente: el suyo a mano (`anuncios_clientes.reparto`, lo escribe el plan de campañas)
+    // o el del Manual. El mismo que usan el plan y el Excel. → { reparto: { presentacion, … }, aMano }.
+    reparto: repartoDelCliente(manual.reparto, fila?.reparto ?? null),
+    // EL número mágico (el mismo de la revisión, el plan y el estratega), con lo gastado en Meta sólo de referencia.
+    numeroMagico: numeroMagicoDelCliente(negocio, {
+      tasaDefecto, gastoMeta30: lectura?.gasto ?? null, lectura, nombre: cliente.name ?? "", moneda: cuenta?.moneda || "USD",
+    }),
+    cuenta: cuenta ? { nombre: cuenta.nombre, moneda: cuenta.moneda } : null,
+    lectura, avisoMeta: aviso,
+    // La tasa de cierre MEDIDA por el enlace de ventas (entrega 4): { tasa, ventas, conversaciones, desde }. Hasta
+    // que exista, null; la pantalla la aplica con `conTasaMedida` si llega.
+    medida: null,
+  };
+}
+
+// ------------------------------------------------------------
 // La ruta (la despacha worker/rutas/anuncios.js: va antes de exigir la cuenta publicitaria)
 // ------------------------------------------------------------
 
@@ -282,40 +328,16 @@ export async function rutasNegocio(req, env, { acceso, usuario, clientId, accion
   const { cliente, cuenta } = await clienteYCuenta(acceso, clientId, { exigirCuenta: false });
   const url = new URL(req.url);
 
-  if (!accion && metodo === "GET") {
-    const [fila, manual] = await Promise.all([acceso.leerUno("anuncios_clientes", { client_id: cliente.id }), manualDelEspacio(acceso)]);
-    const negocio = limpiarNegocio(leerJSON(fila?.negocio, {}));
-    const tasaDefecto = manual.tasaCierre;
-    const { lectura, aviso } = url.searchParams.get("meta") === "0" ? { lectura: null, aviso: null } : await lecturaMeta(env, acceso, cuenta);
-    return json({
-      negocio, tasaDefecto,
-      // El reparto por etapa del cliente: el suyo a mano (`anuncios_clientes.reparto`, lo escribe el plan de campañas)
-      // o el del Manual. El mismo que usan el plan y el Excel. → { reparto: { presentacion, … }, aMano }.
-      reparto: repartoDelCliente(manual.reparto, fila?.reparto ?? null),
-      // EL número mágico (el mismo de la revisión, el plan y el estratega), con lo gastado en Meta sólo de referencia.
-      numeroMagico: numeroMagicoDelCliente(negocio, {
-        tasaDefecto, gastoMeta30: lectura?.gasto ?? null, lectura, nombre: cliente.name ?? "", moneda: cuenta?.moneda || "USD",
-      }),
-      cuenta: cuenta ? { nombre: cuenta.nombre, moneda: cuenta.moneda } : null,
-      lectura, avisoMeta: aviso,
-      // La tasa de cierre MEDIDA por el enlace de ventas (entrega 4): { tasa, ventas, conversaciones, desde }. Hasta
-      // que exista, null; la pantalla la aplica con `conTasaMedida` si llega.
-      medida: null,
-    });
-  }
+  if (!accion && metodo === "GET") return json(await fichaDeNegocio(env, acceso, cliente, cuenta, { meta: url.searchParams.get("meta") !== "0" }));
 
   if (!accion && metodo === "PUT") {
     const b = (await cuerpo(req)) ?? {};
     const entrada = b.negocio && typeof b.negocio === "object" ? b.negocio : null;
     if (!entrada) return error("Faltan los números del negocio.");
     // Si otra persona guardó desde que se leyó, no se pisa: se devuelve lo de ahora.
-    if ("antes" in b) {
-      const actual = await leerNegocio(acceso, cliente.id);
-      if ((b.antes ?? null) !== (actual.actualizado ?? null)) {
-        return json({ error: `${actual.por || "Otra persona"} cambió los números mientras los editabas. Revisa lo de ahora y vuelve a guardar.`, negocio: actual }, 409);
-      }
-    }
-    const negocio = await guardarNegocio(acceso, cliente.id, entrada, usuario);
+    const r = await guardarNegocioSinPisar(acceso, cliente.id, entrada, usuario, "antes" in b ? { antes: b.antes ?? null } : {});
+    if (r.conflicto) return json({ error: r.conflicto, negocio: r.negocio }, 409);
+    const { negocio } = r;
     difundir(env, acceso.ownerId, { tipo: "anuncios", clientId: cliente.id, por: firma(usuario, req) });
     return json({ negocio });
   }
