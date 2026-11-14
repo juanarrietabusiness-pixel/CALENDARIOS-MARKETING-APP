@@ -14,15 +14,16 @@ describe("cómo se le habla a cada nivel y la regla de 100", () => {
     expect(cuentaDeNiveles(nivelesParaHuecos("presentacion", 6))).toEqual({ inconsciente: 2, problema: 2, solucion: 2 });
     expect(cuentaDeNiveles(nivelesParaHuecos("evaluacion", 4))).toEqual({ solucion: 3, producto: 1 });
     expect(nivelesParaHuecos("ascension", 3)).toEqual(["decision", "decision", "decision"]);
-    expect(nivelesParaHuecos("temporada", 2)).toEqual(["producto", "producto"]);
+    expect(nivelesParaHuecos("temporada", 2)).toEqual(["producto", "decision"]);
+    expect(cuentaDeNiveles(nivelesParaHuecos("conversion", 3))).toEqual({ producto: 2, decision: 1 });
     expect(nivelesParaHuecos("conversion", 0)).toEqual([]);
   });
 
-  it("«Decisión» es quien ya compró, y la tabla le dice a la IA cómo hablarle a cada nivel", () => {
-    expect(nombreNivelTexto("decision")).toBe("Decisión (ya compró)");
+  it("«Decisión» es quien sólo necesita el empujón, y la tabla le dice a la IA cómo hablarle a cada nivel", () => {
+    expect(nombreNivelTexto("decision")).toBe("Decisión (listo para comprar)");
     const t = tablaDeNiveles(["inconsciente", "decision"]);
     expect(t).toMatch(/Inconsciente: No sabe que tiene un problema\. Cómo hablarle: Con un dato o una historia/);
-    expect(t).toMatch(/Decisión \(ya compró\): Lo sabe todo y ya te compró\. Cómo hablarle: Con productos nuevos/);
+    expect(t).toMatch(/Decisión \(listo para comprar\): Lo sabe todo .* sólo le falta el empujón\. .*Cómo hablarle: Con el empujón: la oferta/);
     expect(t).not.toMatch(/Consciente del producto/);
     expect(t).toMatch(/no se empieza por el producto ni por el precio/);
   });
@@ -107,7 +108,7 @@ describe("el pedido de los textos a la IA", () => {
     expect(t).toMatch(/- Inconsciente: No sabe que tiene un problema/);
     expect(t).toMatch(/- Consciente del problema: /);
     expect(t).toMatch(/- Consciente de la solución: /);
-    expect(t).not.toMatch(/- Decisión \(ya compró\)/);
+    expect(t).not.toMatch(/- Decisión \(listo para comprar\)/);
     expect(t).toMatch(/1\. Campaña de presentación \(Para gente que todavía no te conoce[^)]*\) · nivel Inconsciente\./);
     expect(t).toMatch(/Se monta con la PUBLICACIÓN YA SUBIDA[\s\S]*«¿Tu sofá se hunde\? Escríbenos por WhatsApp\.»[\s\S]*Escribe SÓLO "titulos" y "descripcion"/);
     expect(t).toMatch(/2\. [^\n]*nivel Consciente del problema\.\n {3}Se monta SUBIENDO LA PIEZA/);

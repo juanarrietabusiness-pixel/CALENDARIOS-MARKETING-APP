@@ -5423,7 +5423,8 @@ son del servidor.
   · **Qué se marca solo** (`sugerirPauta`): las del tipo «Anuncio» y las de la oferta del mes (`offers`/`promoCode`: el tipo
   «Beneficios», el código, una cifra o dos palabras de la oferta). Al poner el plan del asistente del mes salen marcadas con
   `auto` y se dice cuántas; lo que YA estaba en el calendario sólo se propone (con su casilla), nunca se marca sin verse.
-  La etapa sugerida va por el nivel: el `decision` de la app es «listo para comprar» (conversión), no el «ya compró» del curso.
+  La etapa sugerida va por el nivel: el `decision` de la app es «listo para comprar» (conversión; ver la entrada del número
+  mágico).
   · **La revisión de anuncio son REGLAS** (lo que caduca, la primera línea, el llamado a WhatsApp o a la web, más de 3
   hashtags, lo que dice de quien lee, «casi igual a otra de su etapa» por la primera línea o el 60 % de las palabras). Los
   bordes de palabra van con `\p{L}` y no con `\b`: `\b` sólo entiende ASCII y «acné» o «últimas» no casaban. Lo que no se
@@ -6055,8 +6056,11 @@ son del servidor.
   (src/lib/numerosNegocio.js) es LA cifra de la ficha, la revisión 3Q (también el cron), el informe de anuncios, el plan de
   campañas y el estratega: el menor entre el objetivo y el equilibrio, con el presupuesto escrito (o el que pide la meta;
   lo gastado en Meta sólo se enseña) y SIN ajuste por etapa (`EXIGENCIA_ETAPA` se quitó). Sin costos no hay número: se dice
-  qué falta y no se juzga contra una cifra inventada. «Decisión» es, como en el curso, quien YA COMPRÓ (va en Ascensión);
-  el empujón es la etapa Conversión con textos de nivel Producto. «Nueva campaña» (crear por la API) ya no se abre: la
+  qué falta y no se juzga contra una cifra inventada. «Decisión (listo para comprar)» es quien lo sabe todo y sólo le
+  falta el EMPUJÓN —la oferta, la garantía, la urgencia real— (el «más consciente» de Schwartz y los prompts de
+  investigación del curso; los apuntes decían «ya compró» y se unificó): va en Conversión (con Producto: la regla de 100
+  da 2 de Producto por 1 de Decisión) y en Ascensión, donde quien ya compró recibe el mismo empujón para volver. Un
+  «Anuncio» en nivel Decisión se sugiere a Conversión. «Nueva campaña» (crear por la API) ya no se abre: la
   página de Anuncios lleva a «Plan de campañas», que da campañas, conjuntos, anuncios (cualquier publicación, o una nueva)
   y sus textos según el nivel de consciencia de su etapa; el estratega de un cliente lleva a su plan.
 

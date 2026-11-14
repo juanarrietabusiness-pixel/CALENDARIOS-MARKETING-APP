@@ -16,7 +16,7 @@ describe("la marca «Va a pauta»", () => {
     expect(limpiarPauta({ etapa: "tibio", como: "anuncio", nivel: "producto" })).toEqual({ etapa: "evaluacion", nivel: "producto", como: "anuncio" });
     expect(limpiarPauta({ etapa: "Conversión", como: "inventado", nivel: "nada" })).toEqual({ etapa: "conversion", como: "" });
     // Sin etapa: la de su nivel; sin nada, presentación.
-    expect(limpiarPauta({ nivel: "decision" }).etapa).toBe("ascension");
+    expect(limpiarPauta({ nivel: "decision" }).etapa).toBe("conversion");
     expect(limpiarPauta({}).etapa).toBe("presentacion");
     // `auto` sólo si lo puso la app, y su motivo con él.
     expect(limpiarPauta({ etapa: "conversion", auto: true, motivo: "La oferta del mes" })).toMatchObject({ auto: true, motivo: "La oferta del mes" });
@@ -40,7 +40,8 @@ describe("la marca «Va a pauta»", () => {
     expect(nivelDePauta({ etapa: "presentacion", nivel: "solucion" }, { nivel: "problema" })).toBe("solucion");
     expect(nivelDePauta({ etapa: "presentacion" }, { nivel: "inconsciente" })).toBe("inconsciente");
     expect(nivelDePauta({ etapa: "presentacion" }, { nivel: "decision" })).toBe("problema");
-    expect(nivelDePauta({ etapa: "conversion" }, {})).toBe("producto");
+    expect(nivelDePauta({ etapa: "conversion" }, {})).toBe("decision");
+    expect(nivelDePauta({ etapa: "conversion" }, { nivel: "producto" })).toBe("producto");
     expect(nivelDePauta(false, {})).toBe("");
   });
 
@@ -131,7 +132,7 @@ describe("lo que lee la IA", () => {
   });
 
   it("la línea de la pieza dice su etapa, su nivel y cómo se monta", () => {
-    expect(lineaDePauta({ etapa: "conversion", como: "publicacion" }, {})).toMatch(/^VA A PAUTA · etapa Conversión · nivel Consciente del producto · se monta con la publicación/);
+    expect(lineaDePauta({ etapa: "conversion", como: "publicacion" }, {})).toMatch(/^VA A PAUTA · etapa Conversión · nivel Decisión \(listo para comprar\) · se monta con la publicación/);
     expect(lineaDePauta(false)).toBe("");
   });
 
@@ -175,7 +176,7 @@ describe("qué se marca solo (decisión 9)", () => {
     const s = sugerirPauta(items, { ofertas: "15 % en colchones hasta el 30" });
     expect(s.map((x) => x.id)).toEqual(["a", "b", "c", "d"]);
     // «Decisión» es quien YA compró (el curso): ascensión.
-    expect(s[0].pauta).toMatchObject({ etapa: "ascension", auto: true, motivo: "Tipo «Anuncio» del plan semanal" });
+    expect(s[0].pauta).toMatchObject({ etapa: "conversion", auto: true, motivo: "Tipo «Anuncio» del plan semanal" });
     expect(s[1].pauta.etapa).toBe("evaluacion");
     expect(s[2]).toMatchObject({ motivo: "La oferta del mes", pauta: { etapa: "conversion" } });
     // Sin oferta en el mes, «Beneficios» no va solo.

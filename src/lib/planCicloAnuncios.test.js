@@ -87,7 +87,8 @@ describe("¿Qué vas a hacer?, el reparto a mano, el total y desde hoy", () => {
     expect(pre.para).toMatch(/no te conoce/);
     expect(pre.nivelesAnuncios).toEqual(["inconsciente", "problema", "solucion", "inconsciente"]);
     expect(eva.nivelesAnuncios).toEqual(["solucion", "producto", "solucion", "solucion"]);
-    expect(con.nivelesAnuncios.every((n) => n === "producto")).toBe(true);
+    expect(con.nivelesAnuncios.every((n) => n === "producto" || n === "decision")).toBe(true);
+    expect(con.nivelesAnuncios[0]).toBe("producto");
     expect(asc.nivelesAnuncios).toEqual(["decision", "decision", "decision"]);
   });
 });

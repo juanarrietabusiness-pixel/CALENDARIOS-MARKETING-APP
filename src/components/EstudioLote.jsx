@@ -567,7 +567,7 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
   else if (ideas.some((i) => i.deseo || i.perfil)) {
     grupos = [...new Set(ideas.map((i) => `${i.deseo ?? ""}|${i.perfil ?? ""}`))].map((k) => {
       const [d, p] = k.split("|");
-      return { clave: k, titulo: [d && `Deseo de ${d}`, p].filter(Boolean).join(" · "), ayuda: "del inconsciente al que ya compró", ideas: ideas.filter((i) => `${i.deseo ?? ""}|${i.perfil ?? ""}` === k) };
+      return { clave: k, titulo: [d && `Deseo de ${d}`, p].filter(Boolean).join(" · "), ayuda: "del inconsciente al que sólo le falta el empujón", ideas: ideas.filter((i) => `${i.deseo ?? ""}|${i.perfil ?? ""}` === k) };
     });
   } else grupos = NIVELES_CONSCIENCIA.map((n) => ({ clave: n.clave, titulo: n.nombre, ayuda: n.ayuda, ideas: ideas.filter((i) => i.nivel === n.clave) })).filter((g) => g.ideas.length);
   const listas = Object.values(resultados).filter((r) => r.opciones).length;

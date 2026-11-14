@@ -27,7 +27,7 @@ export const ETAPAS_CICLO = Object.freeze([
   {
     id: "conversion", nombre: "Conversión", corto: "Conversión",
     ayuda: "Quien ya decidió y necesita el empujón: testimonio, garantía, la oferta y un llamado claro.",
-    niveles: ["producto"], reparto: 10,
+    niveles: ["producto", "decision"], reparto: 10,
     publico: "Quien escribió por mensaje, dio clic a un anuncio, abrió un formulario sin llenarlo o agregó al carrito.",
     excluye: "Quien ya compró (ascensión).",
   },

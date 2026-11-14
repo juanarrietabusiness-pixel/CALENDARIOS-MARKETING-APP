@@ -237,7 +237,7 @@ describe("las referencias de la competencia", () => {
     expect(a.deseo).toBe("Ahorro");
     const nota = notaDeReferencia({ id: "r1", competidor: "LimpiaYa", desde: "2026-07-01", analisis: a });
     expect(nota).toContain("# Referencia de la competencia: LimpiaYa");
-    expect(nota).toContain("- Nivel de consciencia: Decisión (ya compró)");
+    expect(nota).toContain("- Nivel de consciencia: Decisión (listo para comprar)");
     expect(leerReferencia("nada")).toBeNull();
   });
 

@@ -6,13 +6,13 @@ import { NIVELES_CONSCIENCIA, nombreDeNivel } from "./consciencia.js";
 
 const post = (x = {}) => ({ id: "p", format: "post", status: "pending", ...x });
 
-describe("«Decisión» es quien YA compró (decisión del 14-nov)", () => {
-  it("en pantalla dice «Decisión (ya compró)» y se le habla con productos nuevos o promociones", () => {
-    expect(nombreDeNivel("decision")).toBe("Decisión (ya compró)");
-    expect(NIVELES_CONSCIENCIA.find((n) => n.clave === "decision").ayuda).toMatch(/Ya te compró/);
+describe("«Decisión» es quien sólo necesita el empujón (14-nov, segunda vuelta)", () => {
+  it("en pantalla dice «Decisión (listo para comprar)»: la oferta, la garantía o la urgencia, y también quien ya compró", () => {
+    expect(nombreDeNivel("decision")).toBe("Decisión (listo para comprar)");
+    expect(NIVELES_CONSCIENCIA.find((n) => n.clave === "decision").ayuda).toMatch(/empujón.*quien ya compró/);
   });
-  it("un «Anuncio» en nivel Decisión va a ascensión, no a conversión", () => {
-    expect(etapaSugerida({ nivel: "decision" })).toBe("ascension");
+  it("un «Anuncio» en nivel Decisión va a conversión (el empujón), el del producto a evaluación", () => {
+    expect(etapaSugerida({ nivel: "decision" })).toBe("conversion");
     expect(etapaSugerida({ nivel: "producto" })).toBe("evaluacion");
   });
 });
@@ -36,7 +36,7 @@ describe("lo que se marca solo «Va a pauta»", () => {
   it("en una cuenta nueva, lo de conversión o ascensión va a Evaluación y se avisa (antes se perdía sin decir nada)", () => {
     const s = sugerirPauta([post({ id: "a", pilar: "anuncio", nivel: "decision" }), post({ id: "b", pilar: "beneficios" })], { ofertas: "15 % en todo", cuenta: "nueva" });
     expect(s.map((x) => x.pauta.etapa)).toEqual(["evaluacion", "evaluacion"]);
-    expect(s[0]).toMatchObject({ cuentaNueva: "ascension" });
+    expect(s[0]).toMatchObject({ cuentaNueva: "conversion" });
     expect(s[0].motivo).toMatch(/cuenta nueva/);
     expect(avisoCuentaNueva(s)).toMatch(/2 publicaciones .* van a Evaluación/);
     expect(avisoCuentaNueva(sugerirPauta([post({ id: "a", pilar: "anuncio", nivel: "decision" })]))).toBe("");

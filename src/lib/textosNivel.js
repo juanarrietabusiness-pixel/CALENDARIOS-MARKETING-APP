@@ -7,12 +7,12 @@
 // compraron. Aquí va con palabras propias (la licencia de su método no deja copiar su texto):
 //
 //   · `TEXTOS_POR_NIVEL`   — por nivel: qué sabe la persona, cómo se le habla y si la venta es indirecta o directa.
-//                            «Decisión» es quien YA COMPRÓ (como el curso): se le habla de productos nuevos o se le
-//                            reactiva con un servicio o una promoción especial. El empujón final es la etapa Conversión,
-//                            escrita en nivel Producto.
+//                            «Decisión» es quien lo sabe todo y sólo le falta el EMPUJÓN (la oferta, la garantía, la
+//                            urgencia real): va en Conversión con Producto y en Ascensión, donde quien ya compró recibe el
+//                            mismo empujón para volver.
 //   · `NIVELES_DE_ETAPA`   — los niveles que tocan a cada campaña del ciclo (Presentación: inconsciente, problema y
-//                            solución; Evaluación: solución y producto; Conversión: producto; Ascensión: decisión; la
-//                            de temporada, producto). Curso.txt ~560-600.
+//                            solución; Evaluación: solución y producto; Conversión: producto y decisión; Ascensión:
+//                            decisión; la de temporada, producto y decisión). Curso.txt ~560-600.
 //   · `nivelesParaHuecos`  — en qué nivel se escribe cada anuncio de una campaña, repartidos por la regla de 100.
 //   · `tablaDeNiveles`     — la tabla dicha a la IA que escribe los textos del anuncio.
 //
@@ -34,13 +34,13 @@ export const TEXTOS_POR_NIVEL = Object.freeze([
   { nivel: "producto", nombre: "Consciente del producto", sabe: "Conoce el problema, las soluciones del mercado y tu producto.",
     hablale: "Con tus diferenciales: por qué comprarte a ti y no a los demás (la prueba, la garantía, la oferta si existe).",
     venta: "directa" },
-  { nivel: "decision", nombre: "Decisión (ya compró)", sabe: "Lo sabe todo y ya te compró.",
-    hablale: "Con productos nuevos, el complemento o el combo, o reactivándolo con un servicio o una promoción especial para clientes.",
+  { nivel: "decision", nombre: "Decisión (listo para comprar)", sabe: "Lo sabe todo (el problema, las soluciones y tu producto) y sólo le falta el empujón. También quien ya te compró y puede volver.",
+    hablale: "Con el empujón: la oferta o el bono, la garantía, la urgencia real (cupos, fecha) y un llamado sin rodeos. Si ya te compró: lo nuevo, el complemento, el combo o una promoción especial para clientes.",
     venta: "directa" },
 ]);
 const POR_NIVEL = new Map(TEXTOS_POR_NIVEL.map((x) => [x.nivel, x]));
 export const textoDeNivel = (nivel) => POR_NIVEL.get(nivel) ?? null;
-/** El nombre de un nivel para la pantalla («Decisión (ya compró)»). Pura. */
+/** El nombre de un nivel para la pantalla («Decisión (listo para comprar)»). Pura. */
 export const nombreNivelTexto = (nivel) => POR_NIVEL.get(nivel)?.nombre ?? "";
 
 /** La regla de 100: cuántas personas de cada 100 hay en cada nivel (solución, 20 a 30: el punto medio). */
@@ -50,9 +50,9 @@ export const REGLA_DE_100 = Object.freeze({ inconsciente: 30, problema: 30, solu
 export const NIVELES_DE_ETAPA = Object.freeze({
   presentacion: ["inconsciente", "problema", "solucion"],
   evaluacion: ["solucion", "producto"],
-  conversion: ["producto"],
+  conversion: ["producto", "decision"],
   ascension: ["decision"],
-  temporada: ["producto"],
+  temporada: ["producto", "decision"],
 });
 
 /**
