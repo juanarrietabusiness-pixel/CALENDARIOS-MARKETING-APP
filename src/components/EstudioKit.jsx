@@ -7,8 +7,10 @@ import {
   MAX_REGLAS,
 } from "../lib/kitMarca";
 import { MODOS_LOGO, ESQUINAS_LOGO, TAMANO_LOGO, MARGEN_LOGO, posicionDelKit } from "../lib/logoEncima";
-import { quitarPerdidasDelKit } from "../lib/estudio";
+import { quitarPerdidasDelKit, prepararKitDesdeImagenes } from "../lib/estudio";
 import { TIPOS_ARTE, MIN_TIPOS_ARTE, MAX_TIPOS_ARTE, tipoArteDe } from "../lib/tiposArte";
+import { SUGERENCIAS_ANCLAS, MAX_ANCLAS, MAX_ANCLA, avisoDeAncla, limpiarAnclas } from "../lib/anclasEstilo";
+import { fundirMoodboard, MIN_MOODBOARD, MAX_MOODBOARD } from "../lib/kitDesdeImagenes";
 // Sus estilos son los del Estudio (est-kit-*): ahora vive en Marca, donde el Estudio no se ha cargado.
 import "./Estudio.css";
 
@@ -62,6 +64,117 @@ function TiposArteDeMarca({ kit, lectura = false, ocupado = false, onCambiar }) 
   );
 }
 
+/**
+ * Las REFERENCIAS DE ESTILO de la marca (`kit.anclas`, hasta 6): un tipo de película, una época, una revista, un
+ * movimiento, una técnica de luz. Sugerencias de la casa con un toque y propias escritas a mano; las que parecen el
+ * nombre de una persona o de una marca se avisan y NO van a las piezas (src/lib/anclasEstilo.js).
+ */
+function AnclasDeEstilo({ ids, anclas = [], onCambiar }) {
+  const [propia, setPropia] = useState("");
+  const lista = anclas ?? [];
+  const llenas = lista.length >= MAX_ANCLAS;
+  const igual = (a, b) => a.toLowerCase() === b.toLowerCase();
+  const alternar = (f) => onCambiar(lista.some((x) => igual(x, f)) ? lista.filter((x) => !igual(x, f)) : llenas ? lista : [...lista, f]);
+  const aviso = avisoDeAncla(propia);
+  const anadir = () => {
+    const t = limpiarAnclas([propia])[0];
+    if (!t || llenas) return;
+    onCambiar(limpiarAnclas([...lista, t]));
+    setPropia("");
+  };
+  return (
+    <fieldset className="est-kit-propios">
+      <legend className="label">Referencias de estilo (opcional)</legend>
+      <p className="hint" style={{ margin: 0 }}>
+        Cómo «se siente» la marca en pocas palabras: un tipo de película o de revelado, una época, un tipo de revista, un movimiento
+        artístico, una técnica de luz. Van en todas las piezas. Siempre con palabras genéricas: sin nombres de artistas, fotógrafos ni marcas.
+      </p>
+      {lista.length > 0 && (
+        <ul className="est-kit-reglas" aria-label="Referencias de estilo escogidas">
+          {lista.map((a) => {
+            const av = avisoDeAncla(a);
+            return (
+              <li key={a}>
+                {a}{" "}
+                <button type="button" className="btn-icon" aria-label={`Quitar la referencia «${a}»`} onClick={() => onCambiar(lista.filter((x) => x !== a))}><Icon name="close" size={14} /></button>
+                {av && <span className="hint" style={{ display: "block" }}><Icon name="alert" size={14} /> No va a las piezas: {av}</span>}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      <details>
+        <summary className="hint">Sugerencias de la casa (toca para añadir o quitar){llenas ? ` · ya hay ${MAX_ANCLAS}` : ""}</summary>
+        {SUGERENCIAS_ANCLAS.map((g) => (
+          <div key={g.grupo} role="group" aria-label={g.grupo} style={{ marginTop: "var(--sp-2)" }}>
+            <span className="hint">{g.grupo}</span>
+            <div className="est-tipos">
+              {g.frases.map((f) => {
+                const dentro = lista.some((x) => igual(x, f));
+                return <button key={f} type="button" className="filter-chip" aria-pressed={dentro} disabled={!dentro && llenas} onClick={() => alternar(f)}>{f}</button>;
+              })}
+            </div>
+          </div>
+        ))}
+      </details>
+      <div className="est-kit-regla">
+        <input className="input" id={`${ids}-ancla`} aria-label="Escribir una referencia de estilo" value={propia} maxLength={MAX_ANCLA}
+          placeholder="luz de ventana de una casa de playa" onChange={(e) => setPropia(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); anadir(); } }} />
+        <button type="button" className="btn btn-ghost btn-sm" disabled={!propia.trim() || llenas} onClick={anadir}><Icon name="plus" size={14} /> Añadir</button>
+      </div>
+      {propia.trim() && aviso && <p className="hint" role="status" style={{ margin: 0 }}><Icon name="alert" size={14} /> {aviso}</p>}
+    </fieldset>
+  );
+}
+
+/**
+ * «Preparar desde imágenes»: se escogen de 3 a 10 imágenes de la galería (las que le gustan a la marca) y la IA las mira
+ * juntas y PROPONE lo visual del kit. No guarda: la propuesta se revisa como la de «Preparar con IA».
+ */
+function DesdeImagenes({ ids, archivos = [], ocupado = false, onLeer, onCerrar }) {
+  const [elegidas, setElegidas] = useState([]);
+  const imagenes = archivos.filter((a) => a.tipo === "imagen" && (!a.mime || /^image\/(png|jpeg|webp)$/.test(a.mime))).slice(0, 60);
+  const alternar = (id) => setElegidas((l) => (l.includes(id) ? l.filter((x) => x !== id) : l.length >= MAX_MOODBOARD ? l : [...l, id]));
+  const faltan = Math.max(0, MIN_MOODBOARD - elegidas.length);
+  return (
+    <section className="est-kit-propuesta" aria-labelledby={`${ids}-mb`}>
+      <p className="est-kit-propuesta-titulo" id={`${ids}-mb`}><Icon name="image" size={14} /> Preparar desde imágenes</p>
+      <p className="hint" style={{ margin: 0 }}>
+        Escoge de {MIN_MOODBOARD} a {MAX_MOODBOARD} imágenes que le gusten a la marca: de su galería o de otras cuentas que hayas subido antes
+        (Crear → Galería → Subir). La IA las mira juntas y propone el estilo, la luz, la paleta, las referencias de estilo y lo que nunca;
+        lo revisas antes de guardar y lo demás del kit no cambia.
+      </p>
+      {imagenes.length < MIN_MOODBOARD ? (
+        <p className="hint">La galería tiene {imagenes.length === 1 ? "1 imagen" : `${imagenes.length} imágenes`}: sube al menos {MIN_MOODBOARD} para preparar el kit desde ellas.</p>
+      ) : (
+        <div className="est-kit-refs-rejilla" role="group" aria-label="Imágenes del moodboard" style={{ maxHeight: 320 }}>
+          {imagenes.map((a) => {
+            const dentro = elegidas.includes(a.id);
+            return (
+              <button key={a.id} type="button" className="est-kit-refs-opcion" aria-pressed={dentro} disabled={!dentro && elegidas.length >= MAX_MOODBOARD}
+                aria-label={`${dentro ? "Quitar" : "Escoger"}: ${a.prompt || "imagen"}`} onClick={() => alternar(a.id)}>
+                <img src={a.src} alt="" loading="lazy" />
+              </button>
+            );
+          })}
+        </div>
+      )}
+      <p role="status" className="hint" style={{ margin: 0 }}>
+        {elegidas.length} de {MAX_MOODBOARD} escogidas{faltan ? ` (falta${faltan === 1 ? "" : "n"} ${faltan})` : ""}.
+      </p>
+      <div className="est-kit-botones">
+        {/* `aria-disabled` y no `disabled`: el botón pulsado no suelta el foco mientras la IA mira. */}
+        <button type="button" className="btn btn-primary btn-sm" aria-disabled={Boolean(faltan) || ocupado || undefined}
+          onClick={() => { if (!faltan && !ocupado) onLeer(elegidas); }}>
+          <Icon name="sparkles" size={14} /> {ocupado ? "Mirando las imágenes…" : `Proponer desde ${elegidas.length === 1 ? "esta imagen" : `estas ${elegidas.length}`}`}
+        </button>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={onCerrar}>Cancelar</button>
+      </div>
+    </section>
+  );
+}
+
 /** Hasta dos imágenes de la galería como referencia visual de un tipo de pieza. */
 function RefsDeTipo({ ids, id, nombre, claves = [], archivos = [], onCambiar, titulo = "Referencia visual:" }) {
   const imagenes = archivos.filter((a) => a.tipo === "imagen").slice(0, 36);
@@ -108,7 +221,8 @@ export default function EstudioKit({ client, kit: guardado, archivos = [], perdi
   const [abierto, setAbierto] = useState(vacio);
   const [quitando, setQuitando] = useState(false);
   const [editando, setEditando] = useState(null); // el borrador, o null
-  const [propuesta, setPropuesta] = useState(null); // { kit, dudas, conCerebro }
+  const [propuesta, setPropuesta] = useState(null); // { kit, dudas, conCerebro } o, del moodboard, { kit, dudas, vistas, desde: "imagenes" }
+  const [moodboard, setMoodboard] = useState(false);
   const [ocupado, setOcupado] = useState("");
   const [error, setError] = useState("");
   const logo = archivos.find((a) => a.clave === kit.logo);
@@ -120,6 +234,22 @@ export default function EstudioKit({ client, kit: guardado, archivos = [], perdi
     try {
       const r = await onPreparar();
       setPropuesta(r);
+      setAbierto(true);
+    } catch (e) {
+      setError(e.message);
+    }
+    setOcupado("");
+  };
+
+  // Lo que se guardaría con la propuesta: la del moodboard sólo toca lo visual; la del cerebro, como siempre.
+  const fundida = (p) => (p.desde === "imagenes" ? fundirMoodboard(kit, p.kit) : fundirKit(kit, p.kit));
+  const desdeImagenes = async (archivoIds) => {
+    setOcupado("moodboard");
+    setError("");
+    try {
+      const r = await prepararKitDesdeImagenes(client.id, archivoIds);
+      setPropuesta({ ...r, desde: "imagenes" });
+      setMoodboard(false);
       setAbierto(true);
     } catch (e) {
       setError(e.message);
@@ -162,8 +292,12 @@ export default function EstudioKit({ client, kit: guardado, archivos = [], perdi
             <button type="button" className="btn btn-secondary btn-sm" onClick={preparar} disabled={Boolean(ocupado)}>
               <Icon name="brain" size={14} /> {ocupado === "preparar" ? "Leyendo el cerebro…" : vacio ? "Preparar con IA" : "Volver a preparar"}
             </button>
+            <button type="button" className="btn btn-ghost btn-sm" aria-expanded={moodboard} aria-controls={`${ids}-c`} disabled={Boolean(ocupado) && ocupado !== "moodboard"}
+              onClick={() => { setMoodboard((v) => !v); setPropuesta(null); setAbierto(true); }}>
+              <Icon name="image" size={14} /> Preparar desde imágenes
+            </button>
             {!vacio && !editando && (
-              <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setEditando({ ...kit, paleta: [...kit.paleta], propios: [...kit.propios], estilos: [...kit.estilos], personajes: [...kit.personajes], reglas: [...kit.reglas] }); setAbierto(true); }}>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setEditando({ ...kit, paleta: [...kit.paleta], propios: [...kit.propios], estilos: [...kit.estilos], personajes: [...kit.personajes], reglas: [...kit.reglas], anclas: [...(kit.anclas ?? [])] }); setAbierto(true); }}>
                 <Icon name="pencil" size={14} /> Editar
               </button>
             )}
@@ -192,18 +326,25 @@ export default function EstudioKit({ client, kit: guardado, archivos = [], perdi
 
       {abierto && (
         <div id={`${ids}-c`} className="est-kit-cuerpo">
+          {moodboard && !propuesta && !lectura && (
+            <DesdeImagenes ids={ids} archivos={archivos} ocupado={ocupado === "moodboard"} onLeer={desdeImagenes} onCerrar={() => setMoodboard(false)} />
+          )}
           {propuesta && (
             <div className="est-kit-propuesta" role="status">
               <p className="est-kit-propuesta-titulo">
-                <Icon name="sparkles" size={14} /> Propuesta de la IA {propuesta.conCerebro ? "a partir del cerebro" : "(el cerebro no tenía guía visual: revisa con cuidado)"}
+                <Icon name="sparkles" size={14} /> {propuesta.desde === "imagenes"
+                  ? `Propuesta de la IA mirando ${propuesta.vistas === 1 ? "1 imagen" : `${propuesta.vistas ?? "tus"} imágenes`}: sólo lo visual (estilo, luz, paleta, referencias de estilo y lo que nunca); lo demás del kit se queda`
+                  : `Propuesta de la IA ${propuesta.conCerebro ? "a partir del cerebro" : "(el cerebro no tenía guía visual: revisa con cuidado)"}`}
               </p>
               {propuesta.dudas && <p className="hint">Dudas: {propuesta.dudas}</p>}
-              <VistaKit kit={propuesta.kit} marca={marca} />
+              {propuesta.desde === "imagenes"
+                ? <VistaKit kit={fundida(propuesta)} marca={marca} soloVisual />
+                : <VistaKit kit={propuesta.kit} marca={marca} />}
               <div className="est-kit-botones">
-                <button type="button" className="btn btn-primary btn-sm" onClick={() => guardar(fundirKit(kit, propuesta.kit))} disabled={Boolean(ocupado)}>
+                <button type="button" className="btn btn-primary btn-sm" onClick={() => guardar(fundida(propuesta))} disabled={Boolean(ocupado)}>
                   <Icon name="check" size={14} /> {ocupado === "guardar" ? "Guardando…" : "Guardar este kit"}
                 </button>
-                <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setEditando(fundirKit(kit, propuesta.kit)); setPropuesta(null); }}>Corregir antes</button>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => { const f = fundida(propuesta); setEditando({ ...f, anclas: [...(f.anclas ?? [])] }); setPropuesta(null); }}>Corregir antes</button>
                 <button type="button" className="btn btn-ghost btn-sm" onClick={() => setPropuesta(null)}>Descartar</button>
               </div>
             </div>
@@ -251,6 +392,7 @@ export default function EstudioKit({ client, kit: guardado, archivos = [], perdi
                   <input id={`${ids}-${campo}`} className="input" value={borrador[campo] ?? ""} onChange={(e) => cambiar(campo, e.target.value)} placeholder={ejemplo} />
                 </div>
               ))}
+              <AnclasDeEstilo ids={ids} anclas={borrador.anclas ?? []} onCambiar={(l) => cambiar("anclas", l)} />
               <fieldset className="est-kit-propios">
                 <legend className="label">Reglas que no se rompen</legend>
                 {(borrador.reglas ?? []).map((r, i) => (
@@ -409,7 +551,7 @@ export default function EstudioKit({ client, kit: guardado, archivos = [], perdi
 }
 
 /** El kit tal cual, para mirar: colores, tipografía, estilo, logo y los presets. */
-function VistaKit({ kit: k, marca, logo = null, onQuitarPlantilla = null, onTiposPlantilla = null }) {
+function VistaKit({ kit: k, marca, logo = null, onQuitarPlantilla = null, onTiposPlantilla = null, soloVisual = false }) {
   const kit = limpiarKit(k);
   return (
     <div className="est-kit-vista">
@@ -428,8 +570,21 @@ function VistaKit({ kit: k, marca, logo = null, onQuitarPlantilla = null, onTipo
         {kit.estilo && <div><dt>Estilo</dt><dd>{kit.estilo}</dd></div>}
         {kit.luz && <div><dt>Luz</dt><dd>{kit.luz}</dd></div>}
         {kit.evitar && <div><dt>Nunca</dt><dd>{kit.evitar}</dd></div>}
-        {kit.reglas.length > 0 && <div><dt>Reglas</dt><dd><ul className="est-kit-reglas">{kit.reglas.map((r) => <li key={r}>{r}</li>)}</ul></dd></div>}
-        {kit.aprendido.length > 0 && (
+        {kit.anclas?.length > 0 && (
+          <div>
+            <dt>Referencias de estilo</dt>
+            <dd>
+              <ul className="est-kit-reglas">
+                {kit.anclas.map((a) => {
+                  const av = avisoDeAncla(a);
+                  return <li key={a}>{a}{av && <span className="hint"> · no va a las piezas: {av}</span>}</li>;
+                })}
+              </ul>
+            </dd>
+          </div>
+        )}
+        {!soloVisual && kit.reglas.length > 0 && <div><dt>Reglas</dt><dd><ul className="est-kit-reglas">{kit.reglas.map((r) => <li key={r}>{r}</li>)}</ul></dd></div>}
+        {!soloVisual && kit.aprendido.length > 0 && (
           <div>
             <dt>Aprendido</dt>
             <dd>
@@ -438,15 +593,15 @@ function VistaKit({ kit: k, marca, logo = null, onQuitarPlantilla = null, onTipo
             </dd>
           </div>
         )}
-        <div>
+        {!soloVisual && <div>
           <dt>Logo</dt>
           <dd>
             {logo ? <img src={logo.src} alt="Logo de la marca" className="est-kit-logo" /> : kit.logo ? "Guardado" : "Sin escoger: abre una imagen de la galería y pulsa «Usar como logo»."}
             {kit.logo && <span className="hint"> · {MODOS_LOGO[kit.logoModo].nombre}{kit.logoModo === "estampado" ? ` (${ESQUINAS_LOGO[kit.logoPosicion.esquina].toLowerCase()}, ${Math.round(kit.logoPosicion.tamano * 100)} %)` : ""}</span>}
           </dd>
-        </div>
+        </div>}
       </dl>
-      {kit.plantillas.length > 0 && (
+      {!soloVisual && kit.plantillas.length > 0 && (
         <section className="est-kit-plantillas" aria-label="Plantillas de la marca">
           <p className="label" style={{ margin: 0 }}>Plantillas ({kit.plantillas.length})</p>
           <p className="hint" style={{ margin: 0 }}>Piezas que quedaron muy bien: se repite su diseño con otro contenido. Se guardan desde la galería («Guardar como plantilla»).</p>
@@ -476,7 +631,7 @@ function VistaKit({ kit: k, marca, logo = null, onQuitarPlantilla = null, onTipo
           </ul>
         </section>
       )}
-      <details className="est-kit-presets">
+      {!soloVisual && <details className="est-kit-presets">
         <summary>Ver lo que va en cada pieza y los presets</summary>
         {bloqueDeMarca(kit) && <p><strong>En toda pieza:</strong> {bloqueDeMarca(kit)}</p>}
         {Object.entries(TIPOS_PRESET).map(([tipo, def]) => (
@@ -491,7 +646,7 @@ function VistaKit({ kit: k, marca, logo = null, onQuitarPlantilla = null, onTipo
         {Object.keys(kit.estiloPorTipo).length > 0 && (
           <p><strong>Estilos fijados:</strong> {Object.entries(kit.estiloPorTipo).map(([t, id]) => `${TIPOS_PRESET[t]?.nombre} → ${nombreDeEstilo(kit, id)}`).join(" · ")}</p>
         )}
-      </details>
+      </details>}
     </div>
   );
 }

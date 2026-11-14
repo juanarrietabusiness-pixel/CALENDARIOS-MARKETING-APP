@@ -32,6 +32,9 @@
 //   POST   /<cliente>/video-producto/guion         { productoId, segundos?, idea?, post? }: la receta «Video del producto» (texto)
 //   PUT    /<cliente>/kit                          { kit }: guarda el kit de marca (paleta, presets, logo…)
 //   POST   /<cliente>/kit/preparar                 La IA PROPONE el kit desde el cerebro (no guarda)
+//   POST   /<cliente>/kit/moodboard                { archivoIds: 3–10 }: la IA MIRA esas imágenes de la galería de ESTE
+//                                                   cliente y PROPONE lo visual del kit (estilo, luz, paleta, referencias
+//                                                   de estilo, «nunca»); no guarda
 //   POST   /<cliente>/kit/aprender                 La IA MIRA los «Me gusta» y la papelera y PROPONE reglas visuales (no guarda)
 //   POST   /<cliente>/revisar                      { archivoId } o { clave }: la IA mira la imagen contra el kit
 //   POST   /<cliente>/revisar-video                { archivoId } o { clave }, idea?, productoId?, formato?, otraVez?, fotogramas?:
@@ -77,7 +80,7 @@ import { estadoMotores } from "../lib/estudio/motores.js";
 import { mejorarIdea, versionesDeIdea } from "../lib/estudio/prompt.js";
 import { fichasDeDiseno } from "../lib/estudio/fichas.js";
 import { guionCorto, guionDeVideoProducto } from "../lib/estudio/guionCorto.js";
-import { kitDe, guardarKit, guardarLexico, prepararKit, revisarPieza, subirFuente } from "../lib/estudio/kit.js";
+import { kitDe, guardarKit, guardarLexico, prepararKit, prepararKitDesdeImagenes, revisarPieza, subirFuente } from "../lib/estudio/kit.js";
 import { guardarPlantilla, quitarPlantilla } from "../lib/estudio/plantillas.js";
 import { revisarVideo } from "../lib/estudio/revisionVideo.js";
 import { revisarSerie } from "../lib/estudio/serie.js";
@@ -241,6 +244,10 @@ export async function rutasEstudio(req, env, { acceso, usuario, partes, metodo }
         return json(r);
       }
       if (c === "preparar" && metodo === "POST") return json(await prepararKit(env, acceso, cliente));
+      if (c === "moodboard" && !d && metodo === "POST") {
+        const datos = (await cuerpo(req)) ?? {};
+        return json(await prepararKitDesdeImagenes(env, acceso, cliente, datos.archivoIds));
+      }
       if (c === "aprender" && metodo === "POST") return json(await aprenderDeLoVisual(env, acceso, cliente));
     }
     if (b === "revisar-video" && !c && metodo === "POST") {

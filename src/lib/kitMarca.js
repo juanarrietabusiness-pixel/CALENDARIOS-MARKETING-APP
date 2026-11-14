@@ -41,6 +41,7 @@ import { limpiarTiposArte } from "./tiposArte.js";
 import { limpiarCanciones } from "./cancionesInstagram.js";
 import { limpiarEstilosVideo } from "./estilosVideo.js";
 import { limpiarLexico } from "./lexico.js";
+import { limpiarAnclas, lineaDeAnclas, anclasUsables, MAX_LINEA_ANCLAS } from "./anclasEstilo.js";
 
 /** Los presets, uno por tipo de contenido (los ids de `PILARES`, en pilares.js). `base`: la plantilla sin escribir. */
 export const TIPOS_PRESET = Object.freeze({
@@ -295,6 +296,9 @@ export function limpiarKit(guardado) {
     // El LÉXICO de la marca (src/lib/lexico.js): cómo se dice algo y qué no se dice nunca; el código lo aplica a lo que se
     // dice y se lee en sus videos. Sólo lo cambia su ruta (el PUT del kit lo conserva). Sólo si lo hay.
     ...(limpiarLexico(g.lexico).length ? { lexico: limpiarLexico(g.lexico) } : {}),
+    // Las REFERENCIAS DE ESTILO de la marca (src/lib/anclasEstilo.js): película, época, publicación, movimiento, técnica de
+    // luz, siempre genéricas. Las lee el director y van en la línea de la marca. Sólo si las hay: un kit de antes no cambia.
+    ...(limpiarAnclas(g.anclas).length ? { anclas: limpiarAnclas(g.anclas) } : {}),
     ...(g.preparadoAt ? { preparadoAt: String(g.preparadoAt) } : {}),
   };
 }
@@ -464,7 +468,7 @@ export function referenciasDePreset(kitGuardado, id, archivos = [], { toma = ["e
 /** ¿Tiene algo el kit? Pura. */
 export const kitVacio = (kit) => {
   const k = limpiarKit(kit);
-  return !k.paleta.length && !k.tipografia && !k.estilo && !k.luz && !k.evitar && !Object.keys(k.presets).length && !k.propios.length && !k.estilos.length && !k.personajes.length && !k.aprendido.length && !k.reglas.length;
+  return !k.paleta.length && !k.tipografia && !k.estilo && !k.luz && !k.evitar && !Object.keys(k.presets).length && !k.propios.length && !k.estilos.length && !k.personajes.length && !k.aprendido.length && !k.reglas.length && !k.anclas?.length;
 };
 
 /** «azul profundo #1B3246 (estructura/tipografía), verde suave #91C9A2 (acento)». Pura. */
@@ -484,6 +488,8 @@ export function bloqueDeMarca(kitGuardado) {
     kit.paleta.length ? `Paleta estrictamente limitada a: ${textoPaleta(kit.paleta)}; sin colores fuera de la paleta.` : "",
     kit.estilo ? `Estilo de la marca: ${sinPunto(kit.estilo)}.` : "",
     kit.luz ? `Luz: ${sinPunto(kit.luz)}.` : "",
+    // Corta (el pedido del motor tiene tope): las que quepan, sólo las genéricas.
+    lineaDeAnclas(kit.anclas, { max: MAX_LINEA_ANCLAS }),
     kit.tipografia ? `Si lleva texto, tipografía únicamente ${sinPunto(kit.tipografia)}.` : "",
     kit.evitar ? `Nunca: ${sinPunto(kit.evitar)}.` : "",
     lineaDeReglas(kit.reglas),
@@ -719,6 +725,7 @@ export function pedidoDeKit({ marca, rubro = "", guia = "", ficha = "" }) {
     "- Cada color con su papel (dominante, acento, fondo, texto…) y cuál manda sobre cuál.",
     "- La tipografía, sólo si aparece; si no, vacía.",
     "- El estilo, la luz y «evitar» describen la marca en CUALQUIER pieza: van en todo pedido, junto con la paleta.",
+    `- «anclas»: de 2 a 4 REFERENCIAS DE ESTILO cortas que le van a la marca (un tipo de película o de revelado, una época, un tipo de publicación, un movimiento artístico, una técnica de luz), cada una de 3 a 10 palabras. SIEMPRE genéricas: nunca nombres de artistas, fotógrafos, personas ni marcas (tampoco marcas de película fotográfica): «película de color cálida y de grano fino», no un nombre comercial.`,
     "- Un preset por TIPO DE CONTENIDO del calendario de la agencia:",
     ...PRESETS_DE_LA_IA.map((id) => `  · ${id} (${TIPOS_PRESET[id].nombre}): ${TIPOS_PRESET[id].ayuda}`),
     "  Cada uno es UNA o DOS frases (de 20 a 45 palabras) para ESTA marca: para qué sirve la pieza, qué comunica, la emoción, el tono y la gente que sale (si sale). Sin listas.",
@@ -730,7 +737,7 @@ export function pedidoDeKit({ marca, rubro = "", guia = "", ficha = "" }) {
     EJEMPLOS,
     "",
     "Responde SOLO con JSON, sin texto alrededor:",
-    `{"paleta":[{"hex":"#RRGGBB","nombre":"…","rol":"…"}],"tipografia":"…","estilo":"…","luz":"…","evitar":"…","presets":{${PRESETS_DE_LA_IA.map((id) => `"${id}":"…"`).join(",")}},"dudas":"lo que no estaba claro, en una frase (o vacío)"}`,
+    `{"paleta":[{"hex":"#RRGGBB","nombre":"…","rol":"…"}],"tipografia":"…","estilo":"…","luz":"…","evitar":"…","anclas":["…"],"presets":{${PRESETS_DE_LA_IA.map((id) => `"${id}":"…"`).join(",")}},"dudas":"lo que no estaba claro, en una frase (o vacío)"}`,
   ].join("\n");
 }
 
@@ -743,7 +750,9 @@ export function leerKit(texto) {
   if (!m) return null;
   let d;
   try { d = JSON.parse(m[0]); } catch { return null; }
-  return { kit: limpiarKit({ ...d, logo: "" }), dudas: corto(d.dudas, 300) };
+  // Las referencias que parecen un nombre propio (una persona, una marca) no se proponen: la IA no las debió escribir.
+  const kit = limpiarKit({ ...d, logo: "", anclas: anclasUsables(d.anclas) });
+  return { kit, dudas: corto(d.dudas, 300) };
 }
 
 /** Lo que propone la IA sobre lo guardado: conserva el logo y los presets propios (la IA no los escribe). Pura. */
@@ -755,7 +764,10 @@ export function fundirKit(guardado, propuesto, ahora = new Date().toISOString())
     aprendido: antes.aprendido, referencias: antes.referencias, modelos: antes.modelos, reglas: antes.reglas,
     logoModo: antes.logoModo, logoPosicion: antes.logoPosicion, fuente: antes.fuente, voz: antes.voz, locucion: antes.locucion, musica: antes.musica, ...(antes.personajeVideo ? { personajeVideo: antes.personajeVideo } : {}), plantillas: antes.plantillas, tiposArte: antes.tiposArte,
     // El estilo del video y sus referencias los escribe la agencia: la IA del kit no los toca.
-    estiloVideo: antes.estiloVideo, referenciasVideo: antes.referenciasVideo, estilosVideo: antes.estilosVideo, lexico: antes.lexico, preparadoAt: ahora,
+    estiloVideo: antes.estiloVideo, referenciasVideo: antes.referenciasVideo, estilosVideo: antes.estilosVideo, lexico: antes.lexico,
+    // Las referencias de estilo: las que propone la IA si trae alguna; si no, se quedan las que había.
+    anclas: limpiarAnclas(propuesto?.anclas).length ? propuesto.anclas : antes.anclas,
+    preparadoAt: ahora,
   });
 }
 
@@ -771,6 +783,7 @@ export function pedidoDeRevision({ marca, kit: kitGuardado, prompt = "" }) {
     kit.estilo ? `Estilo: ${kit.estilo}` : "",
     kit.luz ? `Luz: ${kit.luz}` : "",
     kit.evitar ? `Nunca: ${kit.evitar}` : "",
+    lineaDeAnclas(kit.anclas),
     lineaDeReglas(kit.reglas),
     lineasAprendidas(kit.aprendido),
     prompt ? `\nLo que se pidió: ${corto(prompt, 1500)}` : "",

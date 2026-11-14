@@ -460,3 +460,64 @@ describe("POST /api/estudio/<cliente>/kit/aprender", () => {
     expect(fundirKit(kitGuardado(), prop.kit ?? {}).aprendido).toHaveLength(2);
   });
 });
+
+describe("POST /api/estudio/<cliente>/kit/moodboard (preparar desde imágenes)", () => {
+  const PROPUESTA = JSON.stringify({
+    estilo: "luminoso y sereno, mucho aire", luz: "lateral cálida de la tarde", evitar: "colores saturados",
+    paleta: [{ hex: "#f2ede4", nombre: "crema", rol: "fondo" }],
+    anclas: ["revista de diseño de interiores", "Kodak Portra 400"],
+    dudas: "una de las fotos es de noche",
+  });
+  const sembrar = (filas) => {
+    for (const [id, cliente, extra = {}] of filas) {
+      const clave = `clientes/${cliente}/estudio/${id}.png`;
+      env.MEDIA.objetos.set(clave, { bytes: PNG, tipo: "image/png" });
+      db.sqlite.prepare("insert into estudio_archivos (id, owner_id, client_id, clave, tipo, mime, prompt, borrado_at) values (?,?,?,?,?,?,?,?)")
+        .run(id, JEFE, cliente, clave, extra.tipo ?? "imagen", extra.mime ?? "image/png", "", extra.borrado ?? null);
+    }
+  };
+
+  it("MIRA las imágenes (van como imágenes), propone sólo lo visual sin marcas y NO guarda", async () => {
+    anthropic(PROPUESTA);
+    sembrar([["m1", "c1"], ["m2", "c1"], ["m3", "c1"]]);
+    const res = await pedir("/api/estudio/c1/kit/moodboard", { method: "POST", body: { archivoIds: ["m1", "m2", "m3"] } });
+    expect(res.status).toBe(200);
+    const r = await res.json();
+    expect(r.kit).toEqual({
+      estilo: "luminoso y sereno, mucho aire", luz: "lateral cálida de la tarde", evitar: "colores saturados",
+      paleta: [{ hex: "#F2EDE4", nombre: "crema", rol: "fondo" }], anclas: ["revista de diseño de interiores"],
+    });
+    expect(r.dudas).toBe("una de las fotos es de noche");
+    expect(r.vistas).toBe(3);
+    const contenido = peticiones[0].messages[0].content;
+    expect(contenido.filter((b) => b.type === "image")).toHaveLength(3);
+    expect(textoDe(peticiones[0])).toMatch(/Las 3 imágenes de arriba son el MOODBOARD de la marca Dcasa/);
+    expect(textoDe(peticiones[0])).not.toMatch(/margen del 40/);
+    expect(kitGuardado()).toBeNull();
+    expect(db.sqlite.prepare("select funcion from consumo_ia").get().funcion).toBe("kit desde imágenes");
+  });
+
+  it("de 3 a 10, y sólo imágenes de ESTE cliente que no estén en la papelera", async () => {
+    anthropic(PROPUESTA);
+    sembrar([["m1", "c1"], ["m2", "c1"], ["m3", "c1"], ["ajena", "c2"], ["borrada", "c1", { borrado: "2026-11-01T00:00:00.000Z" }],
+      ["video", "c1", { tipo: "video", mime: "video/mp4" }]]);
+    const pedirCon = (archivoIds) => pedir("/api/estudio/c1/kit/moodboard", { method: "POST", body: { archivoIds } });
+    expect((await pedirCon(["m1", "m2"])).status).toBe(400);
+    expect((await pedirCon(Array.from({ length: 11 }, (_, i) => `x${i}`))).status).toBe(400);
+    for (const otra of ["ajena", "borrada", "video", "no-existe"]) {
+      const res = await pedirCon(["m1", "m2", otra]);
+      expect(res.status, otra).toBe(400);
+      expect((await res.json()).error).toMatch(/no es de la galería de este cliente/);
+    }
+    expect(peticiones).toHaveLength(0);
+  });
+
+  it("si no se pueden preparar las copias para mirarlas, no llama a la IA", async () => {
+    anthropic(PROPUESTA);
+    sembrar([["m1", "c1"], ["m2", "c1"], ["m3", "c1"]]);
+    env.MEDIA.objetos.delete("clientes/c1/estudio/m3.png");
+    const res = await pedir("/api/estudio/c1/kit/moodboard", { method: "POST", body: { archivoIds: ["m1", "m2", "m3"] } });
+    expect(res.status).toBe(503);
+    expect(peticiones).toHaveLength(0);
+  });
+});
