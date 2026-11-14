@@ -317,7 +317,7 @@ export function roasFrenteAlEquilibrio(roas, roasEquilibrio) {
   const r = Number(roas);
   const e = Number(roasEquilibrio);
   if (!(r > 0) || !(e > 0)) return null;
-  const v = (x) => `${(Math.round(x * 10) / 10).toFixed(1).replace(".", ",")}×`;
+  const v = (x) => `${String(Math.round(x * 100) / 100).replace(".", ",")}×`;
   return r >= e
     ? { gana: true, texto: `Por cada 1 $ en anuncios se vendieron ${v(r)}: por encima del equilibrio (${v(e)}), así que la pauta deja dinero.` }
     : { gana: false, texto: `Por cada 1 $ en anuncios se vendieron ${v(r)}: por debajo del equilibrio (${v(e)}), así que la pauta pierde dinero. Hay que bajar el costo por conversación o cerrar más ventas.` };

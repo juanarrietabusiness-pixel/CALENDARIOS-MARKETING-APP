@@ -340,8 +340,8 @@ function NumeroMagico({ d, irANegocio }) {
       <h3 className="r3q-subtitulo">Lo real de la cuenta {q.tendencia === "empeora" ? "(la última semana empeoró)" : q.tendencia === "mejora" ? "(la última semana mejoró)" : ""}</h3>
       <div className="r3q-tabla-marco">
         <table className="r3q-tabla">
-          <caption className="sr-only">Lo real de la cuenta en 30, 14 y 7 días, sólo de las campañas que buscan {que}s</caption>
-          <thead><tr><th scope="col">Campañas de {que}s</th>{VENTANAS.map((w) => <th key={w} scope="col">{w} días</th>)}</tr></thead>
+          <caption className="sr-only">Lo real de la cuenta en 30, 14 y 7 días, sólo de las campañas que buscan {q.resultado}</caption>
+          <thead><tr><th scope="col">Campañas que buscan {q.resultado}</th>{VENTANAS.map((w) => <th key={w} scope="col">{w} días</th>)}</tr></thead>
           <tbody>
             <tr><th scope="row">Gasto</th>{VENTANAS.map((w) => <td key={w}>{dinero(q.ventanas[w].gasto)}</td>)}</tr>
             <tr><th scope="row">{q.resultado.charAt(0).toUpperCase() + q.resultado.slice(1)}</th>{VENTANAS.map((w) => <td key={w}>{q.ventanas[w][q.resultado] ?? 0}</td>)}</tr>

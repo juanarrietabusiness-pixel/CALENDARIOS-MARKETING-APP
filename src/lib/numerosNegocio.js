@@ -758,7 +758,9 @@ export const CAMPOS_SIMULADOR = Object.freeze({
   gasto: { nombre: "Lo que se gasta", unidad: "dinero" },
   cpm: { nombre: "CPM (costo por mil impresiones)", unidad: "dinero" },
   frecuencia: { nombre: "Frecuencia", unidad: "veces" },
-  ctrUnico: { nombre: "CTR único en el enlace", unidad: "%" },
+  // Ojo: NO es el «CTR único» de Meta (ése va sobre las personas alcanzadas): aquí, clics únicos ÷ IMPRESIONES, como en
+  // el Excel del simulador. Se llaman distinto para no confundirlos.
+  ctrUnico: { nombre: "Clics únicos por cada 100 impresiones", unidad: "%" },
   ctrSaliente: { nombre: "% de clics salientes", unidad: "%" },
   pctConversion: { nombre: "% de conversión", unidad: "%" },
   pctVisitas: { nombre: "% de visitas (de los clics que llegan a la página)", unidad: "%" },

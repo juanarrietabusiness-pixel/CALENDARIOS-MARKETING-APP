@@ -76,11 +76,11 @@ export function evaluar({ nivel, estado, presupuestoDiario = null, i7, i30, obje
   if (!r7 || r7.gasto === 0) return null;
   const cpr = r7.costoPorResultado;
   if (ref > 0 && !r7.resultados && r7.gasto >= u.gastoSinResultado * ref) {
-    return { accion: "apagar", motivo: `Gastó ${d(r7.gasto)} en 7 días sin un solo resultado (lo aceptable es ${d(ref)} por resultado).` };
+    return { accion: "apagar", motivo: `Gastó ${d(r7.gasto)} en 7 días sin un solo resultado (el número mágico es ${d(ref)} por resultado).` };
   }
   // Con el doble de lo aceptable gastado ya hay con qué juzgar: no hace falta esperar a tres resultados caros.
   if (ref > 0 && r7.resultados && r7.gasto >= u.gastoSinResultado * ref && cpr > u.apagar * ref) {
-    return { accion: "apagar", motivo: `Cada resultado le cuesta ${d(cpr)}, más de ${String(u.apagar).replace(".", ",")} veces lo aceptable (${d(ref)}).` };
+    return { accion: "apagar", motivo: `Cada resultado le cuesta ${d(cpr)}, más de ${String(u.apagar).replace(".", ",")} veces el número mágico (${d(ref)}).` };
   }
   if (nivel === "anuncio") {
     if (r7.frecuencia >= u.frecuenciaFatiga) {
@@ -97,7 +97,7 @@ export function evaluar({ nivel, estado, presupuestoDiario = null, i7, i30, obje
     if (presupuestoDiario > 0) {
       const nuevo = redondeo(presupuestoDiario * (1 + u.subidaPresupuesto));
       return {
-        accion: "escalar", motivo: `Funciona: ${d(cpr)} por resultado, por debajo de lo aceptable (${d(ref)}). Sube el presupuesto un 20 %, de ${d(presupuestoDiario)} a ${d(nuevo)} al día; más de golpe reinicia el aprendizaje.`,
+        accion: "escalar", motivo: `Funciona: ${d(cpr)} por resultado, por debajo del número mágico (${d(ref)}). Sube el presupuesto un 20 %, de ${d(presupuestoDiario)} a ${d(nuevo)} al día; más de golpe reinicia el aprendizaje.`,
         sugerencia: { diarioActual: presupuestoDiario, diarioNuevo: nuevo },
       };
     }
