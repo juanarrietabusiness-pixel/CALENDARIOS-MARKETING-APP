@@ -21,6 +21,7 @@
 
 import { limpiarAnuncio, cortarEnPalabra, MIN_TEXTOS, MAX_TEXTOS, MAX_TITULOS, MAX_TITULO_ANUNCIO, MAX_DESCRIPCION_ANUNCIO, BOTONES_PAUTA, nombreDeBoton } from "./pauta.js";
 import { tablaDeNiveles, nombreNivelTexto } from "./textosNivel.js";
+import { miniaturaDe } from "./estadoChip.js";
 
 /** Las campañas que se pueden escoger (las cuatro del ciclo y la de temporada). */
 export const CAMPANAS_DEL_PLAN = Object.freeze(["presentacion", "evaluacion", "conversion", "ascension", "temporada"]);
@@ -294,4 +295,43 @@ export function textosATexto(t, { conCaption = "" } = {}) {
     t?.descripcion ? `Descripción: ${t.descripcion}` : "",
     t?.boton ? `Botón: ${nombreDeBoton(t.boton)}` : "",
   ].filter(Boolean).join("\n\n");
+}
+
+// ------------------------------------------------------------
+// «Cambiar»: cualquier publicación del cliente
+// ------------------------------------------------------------
+
+const FORMATO = { post: "Post", carrusel: "Carrusel", reel: "Reel", historia: "Historia" };
+const MESES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+const sinTildes = (t) => String(t ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+
+/**
+ * Las publicaciones del cliente que se pueden poner en un anuncio del plan: de CUALQUIER mes, publicadas o no (la
+ * agencia muchas veces ya sabe qué publicación va a montar). `calendars`: los del cliente con sus días
+ * (`client.calendars`); `buscar`: por fecha, formato, título o lo que dice (sin tildes); las más nuevas primero. Un
+ * directo no se pauta. → [{ calendarId, postId, fecha, etiqueta, titulo, formato, publicada, miniatura, video,
+ * vaAPauta }]. Pura.
+ */
+export function publicacionesParaAnuncio(calendars = [], { buscar = "", max = 60 } = {}) {
+  const q = sinTildes(buscar).trim();
+  const todas = [];
+  for (const cal of calendars ?? []) {
+    for (const d of cal?.days ?? []) {
+      for (const p of d?.posts ?? []) {
+        if (!p?.id || !d.date || p.format === "live") continue;
+        const titulo = corto(p.title || p.idea || p.descripcion || "sin título", 80);
+        const [, m, dia] = d.date.split("-").map(Number);
+        const etiqueta = `${dia} ${MESES[m - 1] ?? ""} · ${FORMATO[p.format] ?? "Post"} · ${titulo}`;
+        if (q && !sinTildes(`${d.date} ${etiqueta} ${p.descripcion ?? ""} ${p.textoPieza ?? ""}`).includes(q)) continue;
+        const mini = miniaturaDe(p);
+        todas.push({
+          calendarId: cal.dbId || cal.id, postId: p.id, fecha: d.date, etiqueta, titulo, formato: p.format || "post",
+          publicada: p.status === "published", miniatura: mini?.src && /^\/api\//.test(mini.src) ? mini.src : "", video: Boolean(mini?.video),
+          vaAPauta: Boolean(p.pauta && typeof p.pauta === "object"),
+        });
+      }
+    }
+  }
+  todas.sort((a, b) => b.fecha.localeCompare(a.fecha));
+  return todas.slice(0, max);
 }

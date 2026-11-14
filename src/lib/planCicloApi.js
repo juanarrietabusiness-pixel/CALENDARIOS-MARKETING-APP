@@ -14,3 +14,13 @@ export const marcarPasos = (clientId, mes, marcar) => pedir(ruta(clientId), { me
 
 /** Cambiar los ajustes del plan (la temporada, la inversión a mano): rehace el plan → { plan, guardado, avance }. */
 export const guardarAjustesCiclo = (clientId, mes, ajustes) => pedir(ruta(clientId), { method: "PUT", body: JSON.stringify({ mes, ajustes }) });
+
+/** Lo decidido de los anuncios: { "<campaña>:a<n>": { pieza | nuevo, como, textos, editado } | null } → { plan, guardado, avance, enPublicaciones }. */
+export const guardarAnunciosCiclo = (clientId, mes, anuncios) => pedir(ruta(clientId), { method: "PUT", body: JSON.stringify({ mes, anuncios }) });
+
+/** El reparto a mano del cliente (que suma 100) o null para volver al estándar → { plan, guardado, avance }. */
+export const guardarRepartoCiclo = (clientId, mes, reparto) => pedir(ruta(clientId), { method: "PUT", body: JSON.stringify({ mes, reparto }) });
+
+/** Los textos de unos anuncios por la IA → { escritos, enPublicaciones, plan, guardado, avance }. */
+export const escribirTextosCiclo = (clientId, mes, escribir, { reescribir = false } = {}) =>
+  pedir(ruta(clientId), { method: "POST", body: JSON.stringify({ mes, escribir, reescribir }) });

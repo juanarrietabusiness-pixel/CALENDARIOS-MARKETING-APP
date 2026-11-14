@@ -440,6 +440,8 @@ export function planDelCiclo({
     que, desde,
     foco: foco ? { id: foco.id, nombre: foco.nombre } : null,
     productos: delPlan.map((p) => ({ id: p.id, nombre: p.nombre, precio: p.precio ?? "" })),
+    // El catálogo activo (lo que ofrece «¿Qué vas a hacer?» para escoger).
+    catalogo: productos.slice(0, 40).map((p) => ({ id: p.id, nombre: p.nombre, precio: p.precio ?? "" })),
     campanas, publicos, maletas, avisos,
   };
 }

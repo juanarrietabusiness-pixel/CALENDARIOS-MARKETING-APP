@@ -38,10 +38,10 @@
 .plan-conjuntos, .plan-anuncios { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-2); }
 .plan-conjuntos li { padding: var(--sp-2) var(--sp-3); border-radius: var(--radius-sm); background: var(--surface-2); font-size: var(--fs-xs); min-width: 0; }
 .plan-conjuntos p { margin: var(--sp-1) 0 0; overflow-wrap: anywhere; }
-.plan-anuncios li { display: flex; gap: var(--sp-3); align-items: flex-start; padding: var(--sp-2); border-radius: var(--radius-sm); background: var(--surface-2); font-size: var(--fs-xs); min-width: 0; }
-.plan-anuncios li > div { min-width: 0; overflow-wrap: anywhere; }
-.plan-anuncios p { margin: var(--sp-1) 0 0; }
-.plan-anuncios img { width: 56px; height: 56px; object-fit: cover; border-radius: var(--radius-xs, 4px); flex: 0 0 auto; }
+
+
+
+
 .plan-sin-imagen { width: 56px; height: 56px; flex: 0 0 auto; display: grid; place-items: center; border-radius: var(--radius-xs, 4px); background: var(--surface-3); color: var(--text-dim); }
 .plan-falta { border: 1px dashed var(--border-strong); }
 .plan-producir { align-self: flex-start; min-height: var(--tap-sm); }
@@ -68,3 +68,56 @@
   .plan-campo { grid-template-columns: 1fr; gap: 0; }
   .plan-tarjeta { padding: var(--sp-3); }
 }
+
+/* Los anuncios de cada campaña: la pieza, cómo se monta y sus textos. */
+.plan-anuncios-cabeza { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--sp-2); margin-top: var(--sp-1); }
+.plan-anuncio { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-3); border-radius: var(--radius-sm); background: var(--surface-2); font-size: var(--fs-xs); min-width: 0; }
+.plan-anuncio p { margin: 0; }
+.plan-anuncio-cabeza { display: flex; gap: var(--sp-3); align-items: flex-start; min-width: 0; }
+.plan-anuncio-cabeza > div { min-width: 0; overflow-wrap: anywhere; display: flex; flex-direction: column; gap: 2px; }
+.plan-anuncio-cabeza img { width: 64px; height: 64px; object-fit: cover; border-radius: var(--radius-sm); flex: 0 0 auto; }
+.plan-anuncio-nombre { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-1); }
+.plan-anuncio-acciones { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; }
+.plan-anuncio-acciones .btn, .plan-mas { min-height: var(--tap-sm); }
+.plan-como { border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-1); min-width: 0; }
+.plan-como label, .plan-opcion { display: flex; gap: var(--sp-2); align-items: center; min-height: var(--tap-sm); cursor: pointer; overflow-wrap: anywhere; }
+.plan-como input, .plan-opcion input { width: 20px; height: 20px; margin: 0; flex: 0 0 auto; accent-color: var(--accent); }
+.plan-textos { display: flex; flex-direction: column; gap: var(--sp-2); border-top: 1px solid var(--border); padding-top: var(--sp-2); min-width: 0; }
+.plan-textos .field { margin: 0; min-width: 0; }
+.plan-textos-fila { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.plan-textos-fila .field { flex: 1 1 200px; }
+.plan-caption blockquote { margin: var(--sp-1) 0 0; padding: var(--sp-2) var(--sp-3); border-left: 3px solid var(--accent-line); background: var(--surface); border-radius: var(--radius-sm); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 14em; overflow: auto; }
+.plan-problemas { list-style: none; margin: var(--sp-2) 0 0; padding: 0; }
+.plan-problemas li, .plan-avisos li span { display: flex; gap: var(--sp-2); align-items: flex-start; }
+.plan-problemas li { margin-bottom: var(--sp-1); }
+.plan-como-monta { overflow-wrap: anywhere; }
+.plan-para { margin: 0; font-size: var(--fs-sm); }
+
+/* «¿Qué es esto?»: plegado, al lado de donde aparece el término. */
+.plan-ayuda summary { cursor: pointer; font-size: var(--fs-2xs); color: var(--text-dim); min-height: var(--tap-sm); display: inline-flex; align-items: center; }
+.plan-ayuda > div, .plan-ayuda > p { font-size: var(--fs-xs); color: var(--text-muted); }
+.plan-ayuda p, .plan-ayuda ul { margin: var(--sp-1) 0 0; }
+.plan-ayuda ul { padding-left: var(--sp-4); }
+
+/* «¿Qué vas a hacer?» y «Repartir a mano». */
+.plan-que { display: flex; flex-direction: column; gap: var(--sp-3); }
+.plan-que fieldset { border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.plan-casillas { display: flex; flex-wrap: wrap; column-gap: var(--sp-4); padding-left: var(--sp-5, 28px); }
+.plan-reparto { display: flex; flex-direction: column; gap: var(--sp-1); align-items: flex-start; }
+.plan-reparto > .btn { min-height: var(--tap-sm); }
+.plan-reparto-form { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: flex-start; width: 100%; }
+.plan-reparto-form .field { flex: 1 1 130px; margin: 0; min-width: 0; }
+.plan-reparto-form > p, .plan-reparto-form > div:last-child { flex-basis: 100%; margin: 0; }
+
+/* «Cambiar»: escoger cualquier publicación del cliente. */
+.plan-elegir { display: flex; flex-direction: column; gap: var(--sp-3); max-width: 560px; width: 100%; max-height: min(86vh, 760px); overflow: auto; }
+.plan-elegir-cabeza { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); }
+.plan-elegir-cabeza h3 { margin: 0; font-size: var(--fs-sm); }
+.plan-elegir-lista { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-1); }
+.plan-elegir-opcion {
+  display: flex; gap: var(--sp-2); align-items: center; width: 100%; min-height: var(--tap); padding: var(--sp-2);
+  border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); color: var(--text); text-align: left; cursor: pointer; font: inherit; font-size: var(--fs-xs);
+}
+.plan-elegir-opcion:hover, .plan-elegir-opcion:focus-visible { border-color: var(--accent-line); background: var(--accent-soft); }
+.plan-elegir-opcion img, .plan-elegir-opcion .plan-sin-imagen { width: 48px; height: 48px; object-fit: cover; border-radius: var(--radius-sm); flex: 0 0 auto; }
+.plan-elegir-opcion > span:last-child { display: flex; flex-direction: column; min-width: 0; overflow-wrap: anywhere; }

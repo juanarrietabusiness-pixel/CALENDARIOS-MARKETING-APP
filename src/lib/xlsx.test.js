@@ -62,7 +62,7 @@ describe("el XLSX", () => {
     expect(nombreDeHoja("x".repeat(40), new Set())).toHaveLength(31);
   });
 
-  it("el del plan de campañas: cinco hojas con las columnas y una fila por conjunto", () => {
+  it("el del plan de campañas: las cinco hojas de la agencia, una fila por conjunto, y la de los textos", () => {
     const plan = planDelCiclo({
       negocio: { tipo: "productos", destino: "whatsapp", cuenta: "historial", ticket: { valor: 50 }, invertir: { valor: 20 }, metaVentas: { valor: 1000 } },
       mes: "2026-11", cliente: { nombre: "Dcasa" }, temporada: temporadaDelMes({ mes: "2026-11", hoy: "2026-11-06" }),
@@ -72,8 +72,10 @@ describe("el XLSX", () => {
     const libro = dec.decode(partes.find((p) => p.nombre === "xl/workbook.xml").datos);
     for (const n of Object.values(HOJAS_EXCEL)) expect(libro).toContain(`name="${n}"`);
     const hojas = partes.filter((p) => p.nombre.startsWith("xl/worksheets/")).map((p) => dec.decode(p.datos));
-    expect(hojas).toHaveLength(5);
-    for (const h of hojas) {
+    expect(hojas).toHaveLength(6);
+    expect(libro).toContain('name="Textos de los anuncios"');
+    expect(hojas[5]).toContain(">Texto principal</t>");
+    for (const h of hojas.slice(0, 5)) {
       expect(bienFormado(h)).toBe(true);
       expect(h).toContain(">Objetivo</t>");
       expect(h).toContain(">Presupuesto de la campaña Advantage+</t>");
@@ -84,6 +86,8 @@ describe("el XLSX", () => {
     expect(hojas[0]).toContain('<c r="B1" s="2"><v>120</v></c>');
     expect(hojas[0]).toContain('<c r="E7" s="2"><v>1.33</v></c>');
     expect(hojas[0]).not.toContain('<c r="E8"');
+    // Lo de la campaña, combinado en sus tres filas (como la hoja de la agencia).
+    expect(hojas[0]).toContain('<mergeCell ref="A5:A7"/>');
     // La de temporada lleva su fecha.
     expect(hojas[4]).toContain("Del 20 nov al 30 nov");
   });
