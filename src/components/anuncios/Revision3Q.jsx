@@ -316,7 +316,7 @@ function Resumen({ d }) {
  * Lo que se ve DÍA A DÍA (src/lib/alertas3q.js): cada alerta con su semáforo con texto, por qué en una frase, qué hacer
  * y dónde en el Ads Manager, y su «¿Qué es…?».
  */
-function AlertasDelDia({ d }) {
+export function AlertasDelDia({ d }) {
   const lista = d.alertasDia ?? [];
   if (!lista.length && !d.avisoDia) return null;
   return (
