@@ -570,7 +570,7 @@ export default function Cerebro({ client, abrirMercado = null }) {
                       <p className="hint">La ficha técnica, las cifras y las pautas van en todo lo que escribe. Si un dato está mal aquí, está mal en todo.</p>
                       <ul className="cerebro-lista">
                         {agrupadas.siempre.map((n) => (
-                          <NotaFila key={n.id} nota={n} lectura={lectura} vieja={Boolean(estado.fichaVieja) && (n.tipo === "ficha" || n.tipo === "cifras")}
+                          <NotaFila key={n.id} nota={n} lectura={lectura} vieja={Boolean(estado.fichaVieja) && n.origen === "ia" && (n.tipo === "ficha" || n.tipo === "cifras")}
                             onAbrir={() => abrir(n)} onInterna={() => alternarInterna(n)} onBorrar={() => setBorrando(n)} />
                         ))}
                       </ul>
