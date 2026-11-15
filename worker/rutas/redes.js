@@ -35,6 +35,7 @@ import {
   leerPublicacion, firmaWebhook, marcaEnMs, DESFASE_MAX_MS,
 } from "../lib/postpeer.js";
 import { youtubeConfigurado, urlVueltaYouTube, extraCuentaYouTube } from "../lib/youtube.js";
+import { rutaLotes } from "../lib/programarServidor.js";
 
 const leerJSON = (t, d) => { try { return JSON.parse(t) ?? d; } catch { return d; } };
 
@@ -339,6 +340,8 @@ export async function rutasRedes(req, env, { acceso, usuario, partes, metodo }) 
  *   POST /:id/reintentar       Volver a intentar una que falló
  */
 export async function rutasPublicar(req, env, { acceso, usuario, partes, metodo, ctx }) {
+  // «Programar lo aprobado» en el servidor (prepara en el Container y programa aunque se cierre la pestaña).
+  if (partes[1] === "lotes") return rutaLotes(req, env, { acceso, usuario, partes, metodo });
   const [, id, sub] = partes;
   const url = new URL(req.url);
 

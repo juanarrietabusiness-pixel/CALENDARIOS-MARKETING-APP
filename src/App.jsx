@@ -282,6 +282,9 @@ function ClientDrawer({ ruta, pulso, clients, selectedClientId, onSelect, onNew,
  */
 function Inicio({ yo, clients, pulso, presentes, onAbrir, onNuevo }) {
   const hoy = fechaEnZona();
+  // Lo que respondió el cliente (approvals), como Producción: el `status` del mes no lo sabe si nadie abrió ese mes.
+  const [respuestas, setRespuestas] = useState(null);
+  useEffect(() => { db.aprobacionesDelEspacio().then(setRespuestas).catch(() => {}); }, [pulso]);
   const saludo = (() => {
     const h = Number(new Intl.DateTimeFormat("en-US", { hour: "numeric", hour12: false, timeZone: "America/Panama" }).format(new Date()));
     return h < 12 ? "Buenos días" : h < 19 ? "Buenas tardes" : "Buenas noches";
@@ -311,7 +314,7 @@ function Inicio({ yo, clients, pulso, presentes, onAbrir, onNuevo }) {
         {clients.map((c) => {
           // Lo de ESTE mes: el calendario es uno y se abre en hoy.
           const cal = (c.calendars ?? []).find((k) => esMismoMes(k, mesDeFecha(hoy))) ?? null;
-          const r = resumenCalendario(cal);
+          const r = resumenCalendario(cal, respuestas);
           return (
             <li key={c.id}>
               <button type="button" className="inicio-cliente" onClick={() => onAbrir(c.id)}>

@@ -13,8 +13,8 @@
 import { pedir } from "./db";
 import { imagenParaModelo } from "./medios";
 import { estaVivo, diasQueQuedan, modeloPorId, modeloPorDefecto, modeloQueRespeta, VOCES_OMNI, ajustesDe, nombreDelModelo } from "./estudioCatalogo";
-import { composicionDe } from "./loteAnuncios";
-import { productosDelPost } from "./pilares";
+// `composicionDe` de pilares.js y no de loteAnuncios.js: este archivo lo carga el panel de cada publicación.
+import { productosDelPost, composicionDe } from "./pilares";
 import { piezasDeGrupo, textoDeLaPieza, fotosDeVariosProductos } from "./galeriaPura.js";
 import { coincideConBusqueda, formaDe, enFecha, esDelProducto, esCarpetaCompetencia } from "./galeriaVistas.js";
 export { coincideConBusqueda, formaDe, esCarpetaAutomatica, esCarpetaCompetencia, porSemanas, FORMAS_GALERIA, FECHAS_GALERIA, palabrasDeBusqueda } from "./galeriaVistas.js";

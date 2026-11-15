@@ -28,6 +28,11 @@ import { sinCosto } from "../../src/lib/informeAnuncios.js";
 const MIN_TESTIGO = 24;
 const corta = (s, n) => (s == null ? null : String(s).slice(0, n));
 
+/** Cada cuánto se apunta, como mucho, que el cliente abrió su enlace. */
+export const APUNTAR_APERTURA_MS = 60 * 60_000;
+/** ¿Toca apuntar que lo abrió? Pura. */
+export const abrirToca = (ultima, ahoraMs = Date.now()) => !ultima || !(Date.parse(ultima) > ahoraMs - APUNTAR_APERTURA_MS);
+
 /** Ni siquiera se consulta si el testigo no tiene la forma de un testigo. */
 function testigoValido(token) {
   return typeof token === "string" && token.length >= MIN_TESTIGO;
@@ -39,7 +44,7 @@ async function calendarioVigente(db, token) {
   return db
     .prepare(
       `select id, client_id, owner_id, name, month, year, campaign, week_concepts, days,
-              visual_references, day_labels, allow_editing, opciones, revision_enviada, revision_revisor
+              visual_references, day_labels, allow_editing, opciones, revision_enviada, revision_revisor, cliente_abrio_at
          from calendars
         where share_token = ? and share_enabled = 1
           and (share_expires_at is null or share_expires_at > ?)`,
@@ -59,9 +64,14 @@ async function calendarioVigente(db, token) {
  * cliente. Un `select *` recortado después en JavaScript es una
  * filtración esperando su turno: basta que alguien añada una columna.
  */
-export async function calendarioPorTestigo(db, token) {
+export async function calendarioPorTestigo(db, token, { registrar = false } = {}) {
   const cal = await calendarioVigente(db, token);
   if (!cal) return null;
+  // Cuándo lo abrió el cliente («Enviar a cliente» lo enseña): una escritura como mucho cada hora por calendario, y sin
+  // tocar `updated_at` (es la condición con la que se escribe el mes en otros sitios). Si falla, se abre igual.
+  if (registrar && abrirToca(cal.cliente_abrio_at)) {
+    try { await db.prepare("update calendars set cliente_abrio_at = ? where id = ?").bind(ahora(), cal.id).run(); } catch { /* no tumba la página */ }
+  }
 
   const cliente = await db
     .prepare("select name, industry, instagram, primary_color, secondary_color, accent_color, logo, revision_interna from clients where id = ?")
@@ -213,36 +223,9 @@ function buscarConDia(cal, postId) {
   return null;
 }
 
-/** submit_approval. */
-export async function enviarAprobacion(db, datos) {
-  const { token, postId, estado, comentario, revisor, sugeridaDescripcion, sugeridoGuion } = datos;
-
-  if (estado !== "aprobado" && estado !== "cambios") throw new Error("Estado inválido");
-  if (typeof postId !== "string" || postId.length === 0 || postId.length > 200) {
-    throw new Error("Identificador inválido");
-  }
-  if (!testigoValido(token)) throw new Error("Enlace inválido");
-
-  const cal = await calendarioVigente(db, token);
-  if (!cal) throw new Error("Enlace inválido o caducado");
-  if (!perteneceAlCalendario(cal, postId)) throw new Error("El elemento no pertenece a este calendario");
-
-  const traeSugerencia = sugeridaDescripcion != null || sugeridoGuion != null;
-  if (traeSugerencia && cal.allow_editing !== 1) {
-    throw new Error("La edición no está habilitada para este calendario");
-  }
-
-  // Qué se le pedía (idea o pieza final) y con qué texto: lo que deja
-  // saber después si está «por producir» o «por programar», y si la
-  // agencia cambió algo tras el sí. Lo calcula el servidor sobre lo
-  // guardado, no lo que diga el navegador del cliente.
-  const encontrada = buscarConDia(cal, postId);
-  const post = encontrada?.post ?? null;
-  const tipo = post ? tipoAprobacion(post) : null;
-  const huella = post ? huellaPieza(post) : null;
-
-  const t = ahora();
-  await db
+/** La sentencia que guarda (o cambia) la respuesta del cliente a UNA publicación: un upsert por (calendario, publicación). */
+function sentenciaDeRespuesta(db, cal, { postId, estado, comentario, revisor, sugeridaDescripcion, sugeridoGuion, tipo, huella, t }) {
+  return db
     .prepare(
       `insert into approvals
          (id, calendar_id, post_id, estado, comentario, reviewer_name,
@@ -266,16 +249,79 @@ export async function enviarAprobacion(db, datos) {
       corta(sugeridoGuion, 5000),
       tipo, huella,
       t, t,
-    )
-    .run();
+    );
+}
+
+/**
+ * Qué se le pedía (idea o pieza final) y con qué texto: lo que deja saber después si está «por producir» o «por
+ * programar», y si la agencia cambió algo tras el sí. Lo calcula el servidor sobre lo guardado, no lo que diga el
+ * navegador del cliente. De qué publicación habla, para que el cerebro aprenda de la respuesta (null si es una
+ * referencia visual: de eso no hay nada que aprender).
+ */
+function queSePedia(cal, postId) {
+  const encontrada = buscarConDia(cal, postId);
+  const post = encontrada?.post ?? null;
+  return {
+    tipo: post ? tipoAprobacion(post) : null,
+    huella: post ? huellaPieza(post) : null,
+    publicacion: encontrada ? resumenDePublicacion(encontrada.post, encontrada.dia) : null,
+  };
+}
+
+/** submit_approval. */
+export async function enviarAprobacion(db, datos) {
+  const { token, postId, estado, comentario, revisor, sugeridaDescripcion, sugeridoGuion } = datos;
+
+  if (estado !== "aprobado" && estado !== "cambios") throw new Error("Estado inválido");
+  if (typeof postId !== "string" || postId.length === 0 || postId.length > 200) {
+    throw new Error("Identificador inválido");
+  }
+  if (!testigoValido(token)) throw new Error("Enlace inválido");
+
+  const cal = await calendarioVigente(db, token);
+  if (!cal) throw new Error("Enlace inválido o caducado");
+  if (!perteneceAlCalendario(cal, postId)) throw new Error("El elemento no pertenece a este calendario");
+
+  const traeSugerencia = sugeridaDescripcion != null || sugeridoGuion != null;
+  if (traeSugerencia && cal.allow_editing !== 1) {
+    throw new Error("La edición no está habilitada para este calendario");
+  }
+
+  const { tipo, huella, publicacion } = queSePedia(cal, postId);
+  const t = ahora();
+  await sentenciaDeRespuesta(db, cal, { postId, estado, comentario, revisor, sugeridaDescripcion, sugeridoGuion, tipo, huella, t }).run();
 
   // Los ids salen para que el Worker pueda avisar al espacio: la agencia
   // ve la respuesta del cliente final en el momento, sin esperar a la
   // siguiente vuelta del sondeo.
-  // De qué publicación habla, para que el cerebro pueda aprender de la respuesta (worker/lib/cerebro/aprender.js).
-  // null si lo aprobado no es una publicación sino una referencia visual: de eso no hay nada que aprender.
-  const publicacion = encontrada ? resumenDePublicacion(encontrada.post, encontrada.dia) : null;
-  return { ok: true, estado, tipo, calendarId: cal.id, ownerId: cal.owner_id, clientId: cal.client_id, postId, publicacion };
+  return { ok: true, estado, tipo, calendarId: cal.id, ownerId: cal.owner_id, clientId: cal.client_id, postId, publicacion, fecha: t };
+}
+
+/** Lo más que se aprueba en una sola petición (un mes trae unas 30). */
+export const MAX_APROBAR_DE_UNA_VEZ = 100;
+
+/**
+ * «Aprobar todas»: varias publicaciones de una vez, TODAS o NINGUNA (un lote de D1 es una transacción). Antes eran una
+ * petición por publicación, en serie, y la página decía «Aprobamos todas» aunque fallara una. Mismas comprobaciones
+ * que `enviarAprobacion`, una por una: cada publicación tiene que ser de ESTE calendario.
+ */
+export async function enviarAprobaciones(db, { token, postIds, revisor }) {
+  if (!testigoValido(token)) throw new Error("Enlace inválido");
+  const ids = [...new Set(Array.isArray(postIds) ? postIds : [])];
+  if (!ids.length || ids.some((id) => typeof id !== "string" || id.length === 0 || id.length > 200)) {
+    throw new Error("Identificador inválido");
+  }
+  if (ids.length > MAX_APROBAR_DE_UNA_VEZ) throw new Error(`Son demasiadas de una vez (como mucho ${MAX_APROBAR_DE_UNA_VEZ}): inválido`);
+  const cal = await calendarioVigente(db, token);
+  if (!cal) throw new Error("Enlace inválido o caducado");
+  if (ids.some((id) => !perteneceAlCalendario(cal, id))) throw new Error("El elemento no pertenece a este calendario");
+
+  const t = ahora();
+  const aprobadas = ids.map((postId) => ({ postId, ...queSePedia(cal, postId) }));
+  const sentencias = aprobadas.map((a) => sentenciaDeRespuesta(db, cal, { postId: a.postId, estado: "aprobado", comentario: "", revisor, tipo: a.tipo, huella: a.huella, t }));
+  if (db.batch) await db.batch(sentencias);
+  else for (const x of sentencias) await x.run();
+  return { ok: true, estado: "aprobado", calendarId: cal.id, ownerId: cal.owner_id, clientId: cal.client_id, fecha: t, aprobadas };
 }
 
 /**

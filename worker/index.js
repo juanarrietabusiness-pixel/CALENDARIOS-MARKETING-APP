@@ -35,7 +35,8 @@ import { rutasPush } from "./rutas/push.js";
 import { rutasSalud } from "./rutas/salud.js";
 import { correrCron, volcarSalud, limitesVencidosPendiente } from "./lib/salud.js";
 import { barrerRendersVencidos } from "./lib/estudio/render.js";
-import { avisarRespuestaCliente } from "./lib/equipo.js";
+import { avisarRespuestaCliente, avisarRevisionCliente } from "./lib/equipo.js";
+import { aprobarTodas } from "./lib/aprobarTodas.js";
 import { rutasEquipo, rutaInvitacionPublica } from "./rutas/equipo.js";
 import { rutaIA } from "./rutas/ia.js";
 import { rutaChat, rutaResumenChat, rutaTurnoChat } from "./rutas/chat.js";
@@ -167,7 +168,8 @@ const trabajador = {
         const testigo = partes[1] ?? "";
 
         if (partes.length === 2 && metodo === "GET") {
-          const datos = await calendarioPorTestigo(env.DB, testigo);
+          // Cuándo lo abrió el cliente («Enviar a cliente» lo enseña); el equipo, con su sesión, no cuenta.
+          const datos = await calendarioPorTestigo(env.DB, testigo, { registrar: !String(req.headers.get("Cookie") ?? "").includes("__Host-sesion=") });
           return datos ? json(datos) : noEncontrado("Calendario");
         }
 
@@ -192,7 +194,7 @@ const trabajador = {
             ctx?.waitUntil?.(cola.catch((e) => console.error("cola al aprobar:", e)));
             // Y a la bandeja de quien la lleva (o de todo el equipo).
             const aviso = avisarRespuestaCliente(env, crearAcceso(env.DB, r.ownerId), {
-              calendarId: r.calendarId, postId: r.postId, estado: r.estado, revisor: b.revisor,
+              calendarId: r.calendarId, postId: r.postId, estado: r.estado, revisor: b.revisor, comentario: b.comentario, fecha: r.fecha,
             });
             if (ctx?.waitUntil) ctx.waitUntil(aviso.catch((e) => console.error("aviso al aprobar:", e)));
             else await aviso.catch(() => {});
@@ -206,6 +208,14 @@ const trabajador = {
               if (ctx?.waitUntil) ctx.waitUntil(aprende); else await aprende;
             }
             return json({ ok: r.ok, estado: r.estado });
+          } catch (e) { return comoRespuesta(e); }
+        }
+
+        // «Aprobar todas» en UNA petición (todas o ninguna) y UN aviso: worker/lib/aprobarTodas.js.
+        if (partes[2] === "aprobaciones" && metodo === "POST") {
+          const b = (await cuerpo(req)) ?? {};
+          try {
+            return json(await aprobarTodas(env, ctx, { token: testigo, postIds: b.postIds, revisor: b.revisor }));
           } catch (e) { return comoRespuesta(e); }
         }
 
@@ -252,6 +262,9 @@ const trabajador = {
               tipo: "revision", calId: r.calendarId, clientId: r.clientId,
               por: { userId: "cliente", nombre: b.revisor || "El cliente", color: "#F5A623" },
             });
+            // Y en la campana: si nadie estaba conectado, el aviso del momento se perdía.
+            const aviso = avisarRevisionCliente(env, crearAcceso(env.DB, r.ownerId), { calendarId: r.calendarId, revisor: b.revisor });
+            if (ctx?.waitUntil) ctx.waitUntil(aviso); else await aviso;
             return json({ ok: true, fecha: r.fecha });
           } catch (e) { return comoRespuesta(e); }
         }

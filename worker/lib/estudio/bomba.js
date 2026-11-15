@@ -18,6 +18,8 @@ import { procesarPublicacion } from "../publicador.js";
 import { despertar } from "../despertar.js";
 import { avanzarTrabajo, esperaDe } from "./trabajos.js";
 import { avanzarEncargo } from "./encargos.js";
+import { lotesVivos, avanzarLoteProgramar } from "../programarServidor.js";
+import { lotesProgramarPendientes } from "../acceso.js";
 
 /** Pasos caros por vuelta (cada uno, hasta ~8 consultas y un par de peticiones de salida). */
 export const PASOS_POR_VUELTA = 3;
@@ -32,15 +34,17 @@ export const COLA_DESPIERTA_MS = 5 * 60_000;
  */
 export async function bombear(env, ownerId, { pasos = PASOS_POR_VUELTA, presupuestoMs = PRESUPUESTO_MS } = {}) {
   const inicio = Date.now();
-  const [{ trabajos, encargos }, cola] = await Promise.all([
+  const acceso = crearAcceso(env.DB, ownerId);
+  const [{ trabajos, encargos }, cola, lotes] = await Promise.all([
     estudioVivoDe(env.DB, ownerId),
     colaDelEspacio(env.DB, ownerId, new Date().toISOString()),
+    // «Programar lo aprobado» en el servidor (worker/lib/programarServidor.js): una publicación por paso.
+    lotesVivos(acceso).catch(() => []),
   ]);
   // Lo que sale en la cola dentro de poco también la mantiene despierta (a su hora); lo de más lejos, el cron.
   const enMs = cola.cuando ? Date.parse(cola.cuando) - Date.now() : Infinity;
   const colaPronto = enMs <= COLA_DESPIERTA_MS;
-  if (!trabajos.length && !encargos.length && !cola.ya.length && !colaPronto) return null;
-  const acceso = crearAcceso(env.DB, ownerId);
+  if (!trabajos.length && !encargos.length && !lotes.length && !cola.ya.length && !colaPronto) return null;
   const queda = () => Date.now() - inicio < presupuestoMs;
   let dados = 0;
   let espera = colaPronto ? Math.max(0, enMs) : Infinity;
@@ -52,6 +56,22 @@ export async function bombear(env, ownerId, { pasos = PASOS_POR_VUELTA, presupue
       dados++;
     } catch (err) {
       console.error("bomba: publicación", f.id, err?.message);
+    }
+  }
+
+  // Después de publicar a su hora, lo que se está programando: cada paso prepara (Container) y programa una publicación.
+  for (const l of lotes) {
+    if ((Date.parse(l.bloqueado_hasta || "") || 0) > Date.now()) { espera = Math.min(espera, 3000); continue; }
+    while (dados < pasos && queda()) {
+      try {
+        const r = await avanzarLoteProgramar(env, acceso, l.id);
+        if (!r?.hizo) break;
+        dados++;
+        if (r.lote?.estado !== "en_marcha") break;
+      } catch (err) {
+        console.error("bomba: programar", l.id, err?.message);
+        break;
+      }
     }
   }
 
@@ -92,12 +112,25 @@ export async function bombear(env, ownerId, { pasos = PASOS_POR_VUELTA, presupue
 export async function encargosDelCron(env, ahora = new Date()) {
   const antesDe = new Date(ahora.getTime() - 15_000).toISOString();
   const [encargo] = await encargosPendientes(env.DB, ahora.toISOString(), antesDe, 1);
-  if (!encargo) return 0;
+  if (!encargo) return loteDelCron(env, ahora, antesDe);
   try {
     await avanzarEncargo(env, crearAcceso(env.DB, encargo.owner_id), encargo.id);
   } catch (e) {
     console.error("cron encargo:", encargo.id, e?.message);
   }
   await despertar(env, encargo.owner_id);
+  return 1;
+}
+
+/** El mismo respaldo para «Programar lo aprobado» en el servidor: un paso de un lote que nadie avanza. → 1 si hizo algo. */
+async function loteDelCron(env, ahora, antesDe) {
+  const [lote] = await lotesProgramarPendientes(env.DB, ahora.toISOString(), antesDe, 1);
+  if (!lote) return 0;
+  try {
+    await avanzarLoteProgramar(env, crearAcceso(env.DB, lote.owner_id), lote.id);
+  } catch (e) {
+    console.error("cron programar:", lote.id, e?.message);
+  }
+  await despertar(env, lote.owner_id);
   return 1;
 }
