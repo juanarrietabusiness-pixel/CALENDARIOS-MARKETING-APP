@@ -194,12 +194,22 @@ conCuenta("la cuenta de Cloudflare", () => {
     //   juancitoads-bot    el bot de atención, con su D1 juancitoads-bot-db
     //   juancitoads-bot-wa la pata de WhatsApp del bot, con su D1 de sesión
     //   nebula-*           la tienda
+    //   babycaleb-*        el sistema de Baby Caleb (catálogo, pedidos, existencias; su conector de Claude), su
+    //                      copia de pruebas y su web, en su propio repositorio
+    //   agenda-personal    la agenda personal (Agenda Kairos, con su conector de Claude), en su repositorio
+    //   gestor-de-gastos   el gestor de gastos personal, en su repositorio
+    // (Los cuatro últimos aparecieron en la cuenta en noviembre de 2026 y la revisión diaria fallaba por ellos.)
     const conocidos = [
       "calendarios",
       "juancitoads-bot",
       "juancitoads-bot-wa",
       "nebula-storefront",
       "nebula-admin",
+      "babycaleb-sistema",
+      "babycaleb-sistema-staging",
+      "babycaleb-web",
+      "agenda-personal",
+      "gestor-de-gastos",
     ];
     const desconocidos = nombres.filter((n) => !conocidos.includes(n));
 
