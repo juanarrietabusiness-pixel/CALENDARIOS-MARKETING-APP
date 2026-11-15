@@ -122,6 +122,12 @@ export const HORAS_PLAN = 12;
 const MAX_IDEA_PLAN = 300;
 const MAX_PORQUE_PLAN = 200;
 
+/**
+ * La clave de una casilla para guardar lo planificado: la suya (el plan, «campos») o, en el modo «mes» (sus casillas no
+ * traen clave), la fecha y su número en el plan entero (que no cambia entre tandas: el plan sale igual con la semilla). Pura.
+ */
+export const claveDeCasilla = (r = {}) => (r.clave ? String(r.clave) : `${r.fecha ?? ""}|${r.n ?? ""}`);
+
 /** Lo que tiene que seguir igual para reusar lo planificado de una casilla: su formato, su tipo, su producto, su nivel y su fecha. Pura. */
 export const firmaDeCasilla = (r = {}) => [r.formato ?? "", r.tipo ?? r.pilar ?? "", r.pilarSub ?? "", r.productoId ?? "", r.nivel ?? "", r.fecha ?? ""].join("|");
 
@@ -216,8 +222,8 @@ export function planificadoVigente(guardado = null, plan = [], ahora = Date.now(
   if (!(ahora - Date.parse(guardado.at ?? "") < HORAS_PLAN * 3600_000)) return vacio;
   const porClave = new Map();
   for (const r of plan) {
-    const p = r.clave ? guardado.piezas[r.clave] : null;
-    if (p?.idea && p.firma === firmaDeCasilla(r)) porClave.set(r.clave, p);
+    const p = guardado.piezas[claveDeCasilla(r)];
+    if (p?.idea && p.firma === firmaDeCasilla(r)) porClave.set(claveDeCasilla(r), p);
   }
   return { arco: corto(guardado.arco, 600), porClave };
 }

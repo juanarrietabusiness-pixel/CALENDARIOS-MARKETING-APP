@@ -147,6 +147,23 @@ describe("el mes en dos pasadas: el planificador y el redactor", () => {
     expect(textoDe(peticiones[0])).toMatch(/«La idea planificada 3»/);
   });
 
+  it("el lote del mes («Mes completo»: sus casillas no traen clave) planifica una vez y las tandas siguientes lo reusan", async () => {
+    const responder = (p) => (esPlanificador(p)
+      ? JSON.stringify({ arco: "Arco", piezas: [1, 2, 3, 4].map((n) => ({ n, idea: `Lunes planificado ${n}` })) })
+      : esRevisor(p) ? '{"revisadas":[]}' : ideasDe(textoDe(p)));
+    anthropic(responder);
+    const mes = (desde) => pedir("/api/estudio/c1/lote/mes", { method: "POST", body: { mes: "2030-03", dias: [1], formato: "post", semilla: 2, desde, tamano: 2 } });
+    const r1 = await (await mes(0)).json();
+    expect(r1.ideas.map((i) => i.fecha)).toEqual(["2030-03-04", "2030-03-11"]);
+    expect(peticiones.filter(esPlanificador)).toHaveLength(1);
+    const guardado = JSON.parse(env.MEDIA.objetos.get("planificador/u-jefe/c1/2030-03.json"));
+    expect(Object.keys(guardado.piezas)).toEqual(["2030-03-04|1", "2030-03-11|2", "2030-03-18|3", "2030-03-25|4"]);
+    anthropic(responder);
+    await mes(2);
+    expect(peticiones.some(esPlanificador)).toBe(false);
+    expect(textoDe(peticiones[0])).toMatch(/«Lunes planificado 3»/);
+  });
+
   it("sin `planificar`, el plan va como siempre (sin planificador); si el planificador falla, se escribe sin él", async () => {
     anthropic((p) => (esRevisor(p) ? '{"revisadas":[]}' : ideasDe(textoDe(p))));
     await lote({ modo: "plan", casillas, semilla: 5 });

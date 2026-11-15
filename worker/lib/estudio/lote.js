@@ -59,7 +59,7 @@ import { preferenciasDelCliente } from "../enPauta.js";
 import { estrategiaDelCalendario } from "../../../src/lib/estrategiaMes.js";
 import {
   bloqueDeEjemplos, ejemplosDelCliente, sePlanifica, planificadoVigente, conPlanificado, pedidoDelPlanificador, leerPlanificador,
-  planificadoParaGuardar, lineaPlanificada, choquesDeVariedad, pedidoDeCritica, leerCritica, MAX_PLANIFICAR, MIN_REVISAR,
+  planificadoParaGuardar, lineaPlanificada, choquesDeVariedad, pedidoDeCritica, leerCritica, claveDeCasilla, MAX_PLANIFICAR, MIN_REVISAR,
 } from "../../../src/lib/motorTextos.js";
 import { duracionUgc } from "../../../src/lib/ugc.js";
 import { aprenderComposiciones } from "../../../src/lib/loteAnuncios.js";
@@ -467,7 +467,7 @@ export async function pedidoDelLote(env, acceso, cliente, datos = {}) {
     const vigente = planificadoVigente(guardadoPlan, planEntero);
     if (vigente.porClave.size) {
       arco = vigente.arco;
-      const aplicar = (r) => (vigente.porClave.has(r.clave) ? conPlanificado(r, vigente.porClave.get(r.clave)) : r);
+      const aplicar = (r) => (vigente.porClave.has(claveDeCasilla(r)) ? conPlanificado(r, vigente.porClave.get(claveDeCasilla(r))) : r);
       planEntero = planEntero.map(aplicar);
       plan = plan.map(aplicar);
     }
@@ -648,10 +648,11 @@ async function leerPlanGuardado(env, acceso, cliente, plan) {
 async function planificarMes(env, acceso, cliente, pedido) {
   const { plan, planEntero, paraPlanificar, guardadoPlan, formato } = pedido;
   const vigente = planificadoVigente(guardadoPlan, planEntero);
-  if (plan.every((r) => vigente.porClave.has(r.clave))) return null;
-  const desde = Math.max(0, planEntero.findIndex((r) => r.clave === plan[0]?.clave));
-  const pendientes = [...planEntero.slice(desde), ...planEntero.slice(0, desde)].filter((r) => !vigente.porClave.has(r.clave)).slice(0, MAX_PLANIFICAR);
-  const yaPlanificadas = planEntero.filter((r) => vigente.porClave.has(r.clave)).map((r) => lineaPlanificada(r, vigente.porClave.get(r.clave)));
+  const k = claveDeCasilla;
+  if (plan.every((r) => vigente.porClave.has(k(r)))) return null;
+  const desde = Math.max(0, planEntero.findIndex((r) => k(r) === k(plan[0] ?? {})));
+  const pendientes = [...planEntero.slice(desde), ...planEntero.slice(0, desde)].filter((r) => !vigente.porClave.has(k(r))).slice(0, MAX_PLANIFICAR);
+  const yaPlanificadas = planEntero.filter((r) => vigente.porClave.has(k(r))).map((r) => lineaPlanificada(r, vigente.porClave.get(k(r))));
   const r = await llamarIA(env, acceso, cliente, {
     prompt: pedidoDelPlanificador({
       marca: cliente.name, lineas: pendientes.map((x) => lineaDePieza(x, paraPlanificar.productos, formato)), contexto: paraPlanificar.contexto,
@@ -665,13 +666,13 @@ async function planificarMes(env, acceso, cliente, pedido) {
   if (!leido?.piezas.size) return null;
   // Se guarda junto a lo de antes (las otras tandas del mes), cada casilla con su firma.
   const piezas = { ...(guardadoPlan && planificadoVigente(guardadoPlan, planEntero).porClave.size ? guardadoPlan.piezas : {}) };
-  for (const x of pendientes) if (leido.piezas.has(x.n)) piezas[x.clave] = planificadoParaGuardar(x, leido.piezas.get(x.n));
+  for (const x of pendientes) if (leido.piezas.has(x.n)) piezas[k(x)] = planificadoParaGuardar(x, leido.piezas.get(x.n));
   const arco = leido.arco || vigente.arco;
   try {
     await env.MEDIA?.put?.(clavePlan(acceso, cliente.id, mesDeLasCasillas(planEntero)), JSON.stringify({ v: 1, at: new Date().toISOString(), arco, piezas }));
   } catch { /* sin guardar, esta tanda lo usa igual */ }
   const porClave = new Map(Object.entries(piezas));
-  return { plan: plan.map((x) => (porClave.has(x.clave) && !x.planificada ? conPlanificado(x, porClave.get(x.clave)) : x)), arco, modelo: r.modelo };
+  return { plan: plan.map((x) => (porClave.has(k(x)) && !x.planificada ? conPlanificado(x, porClave.get(k(x))) : x)), arco, modelo: r.modelo };
 }
 
 /** Las aprobaciones de sus últimos meses y sus métricas → los ejemplos (lib/motorTextos.js). Vacío si falla o no hay. */
