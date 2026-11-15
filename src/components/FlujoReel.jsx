@@ -64,7 +64,7 @@ const FASE_MONTAJE = {
   render: "Renderizando el mp4…", renderizando: "Renderizando el mp4…",
 };
 
-export default function FlujoReel({ client, estudio, inicial = {}, onPoner = null, onListo = null, cabecera = null, onCreando = () => {} }) {
+export default function FlujoReel({ client, estudio, inicial = {}, onPoner = null, onListo = null, cabecera = null, onCreando = () => {}, sinFormas = false }) {
   const ids = useId();
   const [forma, setForma] = useState(["producto", "animado", "cancion"].includes(inicial.forma) ? inicial.forma : "guion");
   const [abrirVideoId, setAbrirVideoId] = useState(null);
@@ -489,7 +489,8 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
   const costoLanzar = costoFotos + (revisar ? 0 : costoVideo);
 
   // Qué video: por planos (este flujo) o la receta del producto. Mientras se crea algo no se cambia (se perdería).
-  const selectorForma = (paso === "idea" || forma !== "guion") && (
+  // `sinFormas`: el Estudio ya lo escoge arriba, en UN selector con todos los tipos de video (EstudioCompositor, QueCrear).
+  const selectorForma = !sinFormas && (paso === "idea" || forma !== "guion") && (
     <div className="est-formas-video flujo-reel-formas" role="radiogroup" aria-label="Qué video">
       {FORMAS.map(([id, nombre, ayuda]) => (
         <button key={id} type="button" role="radio" aria-checked={forma === id} className="est-forma-video" disabled={Boolean(ocupado)} onClick={() => { setAbrirVideoId(null); setForma(id); }}>

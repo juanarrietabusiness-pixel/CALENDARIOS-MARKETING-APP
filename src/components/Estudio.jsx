@@ -1,6 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import Icon from "./Icon";
-import Compositor, { QueCrear } from "./EstudioCompositor";
 import Visor, { Pieza } from "./EstudioVisor";
 import {
   kitVacio, limpiarKit, textoPreset, bloqueDeMarca, presetActual, ponerLogo, ideaDelPedido, nombreDePreset,
@@ -8,7 +7,7 @@ import {
 } from "../lib/kitMarca";
 import { presetDePilar, nombreDePilar } from "../lib/pilares";
 import { ideaDesdeAngulo } from "../lib/estudioMercado";
-import { pedidoDePieza, apoyosDelCompositor } from "../lib/pieza";
+import { pedidoDePieza, apoyosDelCompositor, lineaDeTexto } from "../lib/pieza";
 import { segundosParaModelo, ajusteDeDuracion } from "../lib/videoCorto";
 import BancoSelector from "./BancoSelector";
 import ExploradorDrive from "./ExploradorDrive";
@@ -31,6 +30,11 @@ import { FiltroDeModelo } from "./SelectorModelo";
 import { loteDeLaDireccion } from "../lib/lotePauta";
 import "./Estudio.css";
 
+// El compositor (crear A MANO) va en su chunk: el del Estudio estaba en su tope (20,5 kB). «Qué crear» sale del mismo.
+const Compositor = lazy(() => import("./EstudioCompositor"));
+const QueCrear = lazy(() => import("./EstudioCompositor").then((m) => ({ default: m.QueCrear })));
+// «De la galería» del compositor: varias de una vez en un diálogo (sin bajar y subir la página).
+const EstudioElegir = lazy(() => import("./EstudioElegir"));
 const EstudioLote = lazy(() => import("./EstudioLote"));
 // La tarjeta «Muchas de una vez» (casi todo texto): aparte, el chunk del Estudio está en su tope.
 const EstudioMuchas = lazy(() => import("./EstudioMuchas"));
@@ -39,8 +43,8 @@ const EleccionRanura = lazy(() => import("./EleccionRanura"));
 const EstudioRecrear = lazy(() => import("./EstudioRecrear"));
 const FlujoCarrusel = lazy(() => import("./FlujoCarrusel"));
 const FlujoReel = lazy(() => import("./FlujoReel"));
-/** Lo que se crea con pasos (no de una vez): el carrusel por láminas y el reel por planos. */
-const GUIADOS = [["carrusel", "Carrusel", "formatCarrusel"], ["reel", "Video", "formatReel"]];
+/** La proporción que fija cada formato de «Qué» (el carrusel y el video van por su flujo). */
+const PROPORCION_FORMATO = { post: "4:5", historia: "9:16" };
 
 // ============================================================
 // El Estudio de un cliente: la pestaña y el diálogo «Crear con IA»
@@ -75,7 +79,7 @@ const EstudioPapelera = lazy(() => import("./EstudioPapelera"));
 
 const reemplazar = (lista = [], t) => (lista.some((x) => x.id === t.id) ? lista.map((x) => (x.id === t.id ? t : x)) : [t, ...lista]);
 
-export default function Estudio({ client, pulso = 0, modo = "pestana", inicial = null, uso = null, onUsar = null, onUsarVarias = null, onCerrar = null, onLlevarAlCalendario = null, onDatos = null, onIrAlKit = null }) {
+export default function Estudio({ client, pulso = 0, modo = "pestana", inicial = null, uso = null, onUsar = null, onUsarVarias = null, onCerrar = null, onLlevarAlCalendario = null, onDatos = null, onIrAlKit = null, aMano = false, onAMano = null }) {
   const ids = useId();
   const lectura = soloLectura();
   const dialogo = modo === "dialogo";
@@ -107,9 +111,11 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
     if (!desdePost) try { localStorage.setItem(clavePreset, v); } catch { /* sin almacenamiento */ }
   };
   const [conLogo, setConLogo] = useState(true);
-  // Un flujo guiado abierto en lugar del compositor ("" = el compositor de imagen o video).
+  // Un flujo guiado abierto en lugar del compositor ("" = el compositor de imagen o video), y el tipo de video escogido
+  // en «Qué» («clip» es el compositor de video; los demás, el reel guiado en esa forma).
   const [guiado, setGuiado] = useState("");
   const [vueltaGuiado, setVueltaGuiado] = useState(0);
+  const [tipoVideo, setTipoVideo] = useState("guion");
   // Los personajes de la marca que salen en esta pieza (sus imágenes van de referencia: que salgan IGUAL).
   const [personajesSel, setPersonajesSel] = useState([]);
   // Una plantilla del kit: la pieza repite su diseño (su imagen de referencia y su sistema escrito).
@@ -133,9 +139,9 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
   };
   // Traer de Drive: el papel (referencia, inicial…) para el que se abrió el selector.
   const [driveRol, setDriveRol] = useState(null);
-  // «¿Dónde va esta imagen?» y «De la galería» en un sitio concreto del compositor.
+  // «¿Dónde va esta imagen?» y «De la galería» de un sitio del compositor (un diálogo: varias de una vez).
   const [eligiendoRanura, setEligiendoRanura] = useState(null);
-  const [destinoGaleria, setDestinoGaleria] = useState(null);
+  const [eligiendoDeGaleria, setEligiendoDeGaleria] = useState(null); // el sitio («reference», «start», «end») o null
   const galeriaRef = useRef(null);
   // La galería: lo que no se pudo pintar (el archivo ya no está) y lo marcado para mandar varias a la papelera.
   const [perdidos, setPerdidos] = useState(() => new Set());
@@ -164,9 +170,23 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
     if (loteAbierto?.alcance) window.history.replaceState(window.history.state, "", window.location.pathname);
   }, [loteAbierto]);
   const [recrear, setRecrear] = useState(null); // null, o { archivo }: «Recrear un anuncio» abierto (con uno ya escogido)
-  // En la pestaña Crear, lo manual (el compositor, los flujos, muchas de una vez) va plegado en «Avanzado»: arriba está
-  // el director. Se abre solo cuando algo pone una pieza en el compositor (`enfocarPrompt`).
-  const [avanzado, setAvanzado] = useState(false);
+  // Lo manual (el compositor, los flujos, muchas de una vez) se ve en Crear → «A mano» (`aMano`) y siempre en el diálogo
+  // de una publicación. Si algo pone una pieza en el compositor desde otra sub-sección, se va a «A mano» (`enfocarPrompt`).
+  const conCompositor = dialogo || aMano;
+  // Lo último que salió del compositor (se enseña ahí mismo) y lo que se espera en el visor (la corrección, la versión).
+  const [ultimas, setUltimas] = useState([]);
+  const [enCamino, setEnCamino] = useState(null); // { desde: id de la pieza tocada, texto } o null
+  const visorRef = useRef(null);
+  visorRef.current = visor;
+  // ¿Se ve el compositor? Si no (se bajó a la galería, o se está en otra sub-sección), la tira «En el pedido» lo dice
+  // abajo: así escoger referencias en la galería no hace saltar la página. (Ref con limpieza, de React 19.)
+  const [compositorALaVista, setCompositorALaVista] = useState(false);
+  const zonaCompositor = useCallback((el) => {
+    if (!el || typeof IntersectionObserver === "undefined") return undefined;
+    const io = new IntersectionObserver(([e]) => setCompositorALaVista(e.isIntersecting), { threshold: 0.02 });
+    io.observe(el);
+    return () => { io.disconnect(); setCompositorALaVista(false); };
+  }, []);
   const [carpetaNueva, setCarpetaNueva] = useState(null);
   const [renombrando, setRenombrando] = useState(null);
   const [borrando, setBorrando] = useState(null);
@@ -210,8 +230,9 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
 
   // El formulario de partida, una vez que se sabe qué motores tienen llave.
   useEffect(() => {
-    if (motores && datos && !form) setForm(formularioInicial(motores, inicial, datos.productos ?? [], datos.kit?.modelos ?? {}));
-  }, [motores, datos, form, inicial]);
+    // En la pestaña arranca en «Post» (4:5): el formato fija la proporción. Desde una publicación, la de su formato.
+    if (motores && datos && !form) setForm(formularioInicial(motores, inicial ?? (dialogo ? null : { proporcion: PROPORCION_FORMATO.post }), datos.productos ?? [], datos.kit?.modelos ?? {}));
+  }, [motores, datos, form, inicial, dialogo]);
 
   const modelo = form ? modeloPorId(form.modelo) : null;
   const motorActivo = (m) => Boolean(motores?.[m.motor]?.activo);
@@ -280,22 +301,56 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
 
   // ---------- El compositor ----------
   const avisar = (ok, textoAviso) => setAviso({ ok, texto: textoAviso });
-  const enfocarPrompt = () => {
-    setAvanzado(true);
-    requestAnimationFrame(() => {
-      promptRef.current?.focus();
-      promptRef.current?.scrollIntoView?.({ block: "center", behavior: "smooth" });
-    });
+  // Llevar el foco a la idea. Desde fuera del compositor («Animar» en la galería, una idea, el recreador) también se baja
+  // hasta él —o se va a «A mano»—; desde dentro (la ficha del director, «Volver a mi idea») sólo el foco, sin mover la
+  // página. El compositor se carga aparte: se espera unos cuadros a que esté.
+  const [pedirFoco, setPedirFoco] = useState(null); // { desplazar } o null
+  const enfocarPrompt = ({ desplazar = true } = {}) => {
+    if (!conCompositor) onAMano?.();
+    setPedirFoco({ desplazar, n: Date.now() });
   };
+  useEffect(() => {
+    if (!pedirFoco || !conCompositor) return;
+    let vueltas = 0;
+    let id = 0;
+    const probar = () => {
+      const campo = promptRef.current;
+      if (!campo) { if (vueltas++ < 60) id = requestAnimationFrame(probar); return; }
+      campo.focus({ preventScroll: true });
+      if (pedirFoco.desplazar) campo.scrollIntoView?.({ block: "center", behavior: "smooth" });
+    };
+    id = requestAnimationFrame(probar);
+    return () => cancelAnimationFrame(id);
+  }, [pedirFoco, conCompositor]);
 
-  const cambiarTipo = (tipo) => {
+  const cambiarTipo = (tipo, proporcion = null) => {
     if (!motores || tipo === form.tipo) return;
     const m = api.modeloPreferido(activos, tipo, fijados[tipo]);
     setConfirmando(null);
     setForm((f) => {
       const medios = recortarMedios(f.medios, m);
-      return { ...f, tipo, modelo: m.id, n: 1, medios, ajustes: ajustesDe(m, { aspectRatio: f.ajustes.aspectRatio }, clavesDe(medios)) };
+      return { ...f, tipo, modelo: m.id, n: 1, medios, ajustes: ajustesDe(m, { aspectRatio: proporcion ?? f.ajustes.aspectRatio }, clavesDe(medios)) };
     });
+  };
+
+  /**
+   * «Qué crear»: Post (4:5) e Historia (9:16) son una imagen con su proporción; Carrusel, su flujo por láminas; Video,
+   * el tipo escogido debajo (el clip es el compositor de video; los demás, el reel guiado en esa forma).
+   */
+  const cambiarFormato = (formato, tipoV = tipoVideo) => {
+    setConfirmando(null);
+    if (formato === "carrusel") { setGuiado("carrusel"); return; }
+    if (formato === "video") {
+      setTipoVideo(tipoV);
+      if (tipoV !== "clip" && !dialogo) { setGuiado("reel"); return; }
+      setGuiado("");
+      cambiarTipo("video", "9:16");
+      return;
+    }
+    setGuiado("");
+    const proporcion = PROPORCION_FORMATO[formato];
+    if (form.tipo !== "imagen") { cambiarTipo("imagen", proporcion); return; }
+    setForm((f) => ({ ...f, ajustes: ajustesDe(modeloPorId(f.modelo), { ...f.ajustes, aspectRatio: proporcion }, clavesDe(f.medios)) }));
   };
 
   const cambiarModelo = (id) => {
@@ -329,6 +384,8 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
       const r = await api.mejorarIdea(client.id, {
         idea: antes, tipo: form.tipo, pieza: presetVigente ? nombreDePreset(presetVigente, kit) : "",
         proporcion: form.ajustes?.aspectRatio ?? "", productoId: inicial?.post?.productoId ?? "", productoIds: inicial?.post?.productoIds,
+        // El texto exacto escrito en su campo: el director lo pone tal cual en la ficha.
+        ...(form.tipo === "imagen" && form.texto?.trim() ? { texto: form.texto.trim() } : {}),
         // «¿Qué quieres?» de la publicación manda; y la plantilla que escoja el director va de referencia (enviar).
         indicacion: inicial?.abrir ? "" : inicial?.indicacion ?? "", plantilla: form.tipo === "imagen" ? plantillaSel : "",
       });
@@ -339,7 +396,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
       // La de al abrir desde un post se queda en él: la próxima vez sale lista (lib/promptImagen.js).
       if (alAbrir && form.tipo === "imagen") inicial?.alMejorar?.(r.idea);
       avisar(true, ["Listo: revísala antes de crear.", r.aviso ?? ""].filter(Boolean).join(" "));
-      enfocarPrompt();
+      enfocarPrompt({ desplazar: false });
     } catch (e) {
       avisar(false, e.message);
     } finally {
@@ -412,10 +469,11 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
   const usarIdeaGenerada = (idea) => {
     setConfirmando(null);
     setIdeaAnterior(form.prompt || null);
-    setForm((f) => ({ ...f, prompt: (f.tipo === "video" ? idea.escena : api.ideaAlPedido(idea)).slice(0, MAX_PROMPT) }));
+    // La escena a la idea y su texto a «Texto exacto»: cada cosa en su campo.
+    setForm((f) => ({ ...f, prompt: String(idea.escena ?? "").slice(0, MAX_PROMPT), ...(f.tipo === "video" ? {} : { texto: String(idea.texto ?? "").slice(0, 300) }) }));
     setPreset(presetDePilar(idea.tipo));
     if (form.tipo === "imagen" && idea.productoId) ponerFotosDeProducto(idea.productoId);
-    avisar(true, "Idea puesta en el pedido. Revísala (o pulsa «Diseñar con el director») y crea.");
+    avisar(true, "Idea puesta en el pedido. Revísala (o pulsa «Ver la ficha del director») y crea.");
     enfocarPrompt();
   };
 
@@ -424,7 +482,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
     if (ideaAnterior == null) return;
     setForm((f) => ({ ...f, prompt: ideaAnterior }));
     setIdeaAnterior(null);
-    enfocarPrompt();
+    enfocarPrompt({ desplazar: false });
   };
 
   const enviar = async (confirmado = false) => {
@@ -447,18 +505,25 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
       const delNombrado = fotosNombradas;
       const dePlantilla = form.tipo === "imagen" && plantillaSel ? referenciaDePlantilla(kit, plantillaSel, datos?.archivos ?? []) : null;
       const refs = [...delNombrado, ...(dePlantilla ? [dePlantilla] : []), ...deLosPersonajes, ...deLaLetra, ...form.medios.reference, ...refsTipo, ...gustos];
+      // El texto exacto de su campo, con la línea de siempre (si la idea ya es una ficha con su «Texto exacto», no se repite).
+      const textoExacto = form.tipo === "imagen" ? String(form.texto ?? "").trim() : "";
       // El MISMO camino que el lote y «Producir el mes» (lib/pieza.js); aquí la resolución la escoge la persona.
       const pieza = pedidoDePieza({
         kit, idea: form.prompt, preset: presetVigente, estilo: estiloVigente, apoyos: refs, modelo, marca: client.name, rubro: client.industry ?? "",
         usarKit: conKit, conLogo, video: form.tipo === "video", altaResolucion: false, ajustes: form.ajustes, n: form.n,
-        extra: dePlantilla ? lineaDePlantillaEnPedido(kit, plantillaSel) : "",
+        extra: [textoExacto && !/texto exacto/i.test(form.prompt) ? lineaDeTexto(textoExacto) : "", dePlantilla ? lineaDePlantillaEnPedido(kit, plantillaSel) : ""].filter(Boolean).join(" "),
       });
       const medios = { ...clavesDe(form.medios), ...pieza.medios };
       const pedido = { modelo: form.modelo, prompt: pieza.prompt, n: form.n, ajustes: ajustesDe(modelo, form.ajustes, medios), medios };
       if (form.tipo === "imagen") {
         // Por el SERVIDOR, como el lote (lib/visorEstudio.js): control, proporción y logo aunque se cierre la pantalla.
         const v = await import("../lib/visorEstudio");
-        await v.pedirDelCompositor({ clienteId: client.id, ...pedido, kit, estampar: estampa && conLogo, uso, seguir: () => montado.current, alFallo: (t) => montado.current && avisar(false, t) });
+        await v.pedirDelCompositor({
+          clienteId: client.id, ...pedido, kit, estampar: estampa && conLogo, uso, texto: textoExacto, seguir: () => montado.current,
+          alFallo: (t) => montado.current && avisar(false, t),
+          // Lo que sale se enseña ahí mismo, bajo «Crear», con su visor a un toque.
+          alListo: (nuevas) => { if (!montado.current) return; setUltimas(nuevas); cargar(); },
+        });
         cargar();
       } else {
         const { trabajo } = await api.pedirImagenes(client.id, { ...pedido, confirmado: true, ...(uso ? { calendarId: uso.calendarId, postId: uso.postId } : {}) });
@@ -507,6 +572,14 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
     });
   };
 
+  /** Tocar otra vez un producto puesto: sus fotos salen del pedido (las de los demás se quedan). */
+  const quitarFotosDeProducto = (productoId) => {
+    const p = (datos?.productos ?? []).find((x) => x.id === productoId);
+    if (!p) return;
+    setConfirmando(null);
+    setForm((f) => ({ ...f, medios: { ...f.medios, reference: f.medios.reference.filter((x) => x.producto?.nombre !== p.nombre) } }));
+  };
+
   const NOMBRE_RANURA = { start: "imagen inicial", end: "imagen final", reference: "referencia", video: "video de referencia" };
 
   /**
@@ -533,19 +606,27 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
     if (rol && !libres.includes(rol)) { avisar(false, `Ya no queda sitio en «${NOMBRE_RANURA[rol]}». Quita alguna o ponla en otro sitio.`); return; }
     if (!destino) { setEligiendoRanura({ archivo: a, opciones: libres }); return; }
     setEligiendoRanura(null);
-    setDestinoGaleria(null);
     setConfirmando(null);
     setForm((f) => ({ ...f, medios: { ...f.medios, [destino]: [...f.medios[destino], a] } }));
-    avisar(true, `Puesta como ${NOMBRE_RANURA[destino]}. Escribe qué quieres hacer con ella.`);
-    enfocarPrompt();
+    // Sin mover la página (antes subía al compositor con cada imagen): la tira de abajo dice cuántas van.
+    const max = destino === "reference" ? modelo.referencias : 1;
+    avisar(true, `Puesta como ${NOMBRE_RANURA[destino]}${destino === "reference" ? ` (${form.medios.reference.length + 1} de ${max})` : ""}.`);
   };
 
-  /** «De la galería» en un sitio del compositor: la siguiente imagen que se toque en la galería va ahí. */
-  const escogerDeLaGaleria = (rol) => {
-    setDestinoGaleria(rol);
-    setEnPapelera(false);
-    setEnDrive(false);
-    galeriaRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  /** «De la galería» en un sitio del compositor: un diálogo encima, para escoger VARIAS de una vez, sin saltos. */
+  const escogerDeLaGaleria = (rol) => setEligiendoDeGaleria(rol);
+  /** Lo escogido en ese diálogo, en su orden, al sitio (sólo las que caben). */
+  const ponerDeLaGaleria = (rol, lista) => {
+    setEligiendoDeGaleria(null);
+    if (!form || !modelo) return;
+    const max = { reference: modelo.referencias, start: modelo.inicial ? 1 : 0, end: modelo.final ? 1 : 0 }[rol] || 0;
+    setConfirmando(null);
+    setForm((f) => {
+      const ya = f.medios[rol] ?? [];
+      const nuevas = lista.filter((a) => !Object.values(f.medios).some((l) => l.some((x) => x.id === a.id)));
+      return { ...f, medios: { ...f.medios, [rol]: (max === 1 ? nuevas.slice(0, 1) : [...ya, ...nuevas]).slice(0, max) } };
+    });
+    avisar(true, lista.length === 1 ? `Puesta como ${NOMBRE_RANURA[rol]}.` : `Puestas ${lista.length} como ${NOMBRE_RANURA[rol]}s, en ese orden.`);
   };
 
   /**
@@ -560,6 +641,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
     setConfirmando(null);
     setVisor(null);
     setEnPapelera(false);
+    setGuiado("");
     // El modelo lo propone el recreador entre los que tienen llave (lib/motorRecrear.js); sin llave no se respeta.
     setForm(formularioInicial(motores, pedido, [], fijados));
     setPreset(pedido.preset ?? "anuncio");
@@ -577,6 +659,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
     setConfirmando(null);
     setVisor(null);
     setEnPapelera(false);
+    setGuiado("");
     setForm({
       tipo: "video", modelo: m.id, n: 1, medios,
       prompt: `Anima esta imagen con un movimiento suave y natural: ${a.prompt}`.slice(0, MAX_PROMPT),
@@ -612,25 +695,51 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
   const delVisor = async (que, a, extra = {}) => {
     if (versionando || !motores) return;
     const p = que === "edicion" ? null : pedidoDe(a, extra.otro ?? "");
+    // Las variaciones para anuncios son otras piezas (van a su carpeta): el visor se cierra. Lo demás (otra igual, otra
+    // versión, la corrección) es OTRA VERSIÓN de ésta: el visor se queda abierto y la nueva se abre sola al llegar.
+    const variaciones = que === "versiones" && extra.para === "anuncios";
     setVersionando(true);
     if (que === "versiones") avisar(true, "El director está mirando la pieza y diseñando…");
     try {
       if (p?.error) throw new Error(p.error);
       const v = await import("../lib/visorEstudio");
-      const comun = { clienteId: client.id, a, p, kit, uso, seguir: () => montado.current, alFallo: (t) => montado.current && avisar(false, t) };
+      const comun = {
+        clienteId: client.id, a, p, kit, uso, seguir: () => montado.current, alFallo: (t) => { if (montado.current) { setEnCamino(null); avisar(false, t); } },
+        alListo: variaciones ? null : (nuevas) => abrirLaNueva(a, nuevas),
+      };
       const r = await (que === "igual" ? v.pedirOtraIgual(comun) : que === "versiones" ? v.pedirVersiones({ ...comun, n: extra.n, para: extra.para })
         : v.pedirEdicion({ ...comun, instruccion: extra.instruccion, ejemplos: extra.ejemplos, escogido: extra.otro, activos }));
       for (const t of r.trabajos ?? []) { setDatos((d) => (d ? { ...d, trabajos: reemplazar(d.trabajos, t) } : d)); seguir(t.id); }
       setEnPapelera(false);
       avisar(true, r.texto);
+      if (variaciones || r.trabajos?.length) setVisor(null);
+      else setEnCamino({ desde: a.id, texto: que === "edicion" ? "Corrigiendo: la nueva se abre aquí cuando salga (la de ahora no se toca)." : "Creando la otra versión: se abre aquí cuando salga." });
       cargar();
     } catch (e) {
+      // Si falla, el visor sigue abierto con la pieza: el aviso está arriba y en el visor.
+      setEnCamino(null);
       avisar(false, e.message);
     } finally {
-      // El visor se cierra también si falla: el aviso está en la pantalla de detrás.
-      setVisor(null);
       setVersionando(false);
       window.dispatchEvent(new Event("ia:gasto"));
+    }
+  };
+
+  /**
+   * La pieza nueva (una corrección, otra versión) llegó: si el visor sigue en la pieza de la que salió (o en una de sus
+   * versiones), se abre ahí con las demás como versiones; si se cerró, el aviso ofrece abrirla. No queda escondida en la pila.
+   */
+  const abrirLaNueva = (a, nuevas) => {
+    if (!montado.current || !nuevas?.length) return;
+    setEnCamino(null);
+    cargar();
+    const v = visorRef.current;
+    const pila = v ? [v.id, ...(v.anteriores ?? []).map((x) => x.id)] : [];
+    if (v && pila.includes(a.id)) {
+      import("../lib/visorEstudio").then((m) => { if (montado.current) setVisor((actual) => (actual?.id === v.id ? m.conLaNueva(actual, nuevas) : actual)); });
+      avisar(true, nuevas.length === 1 ? "Lista: la tienes abierta. La de antes sigue entre sus versiones." : `Listas ${nuevas.length}: la primera está abierta y las demás, entre sus versiones.`);
+    } else {
+      setAviso({ ok: true, texto: "Lista la pieza nueva.", abrir: nuevas[0] });
     }
   };
 
@@ -877,12 +986,21 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
   // En «Todas», un carrusel o un reel es UNA tarjeta y las versiones de una pieza también (lib/estudio.js).
   const vista = useMemo(() => (filtro === "todas" ? agruparGaleria(api.apilarVersiones(visibles, carpetas, datos?.trabajos), carpetas, archivos) : visibles), [visibles, carpetas, archivos, filtro, datos]);
   const carpetasPropias = useMemo(() => carpetas.filter((c) => !esGrupo(c)), [carpetas]);
-  const abrirPieza = (a) => (seleccion ? alternarSeleccion(a) : destinoGaleria ? usarComoMedio(a, destinoGaleria) : setVisor(a));
+  const abrirPieza = (a) => (seleccion ? alternarSeleccion(a) : setVisor(a));
   const enCurso = useMemo(() => trabajosVisibles(datos?.trabajos ?? [], { descartados }), [datos, descartados]);
   const carpetaActiva = carpetas.find((c) => c.id === filtro) ?? null;
   const soloPrueba = motores && !Object.entries(motores).some(([id, m]) => id !== "prueba" && m.activo);
   const llavesQueFaltan = Object.values(motores ?? {}).map((m) => m.llave).filter(Boolean);
   const enMedios = (a) => form && Object.values(form.medios).some((l) => l.some((x) => x.id === a.id));
+  // El formato de «Qué», sacado de lo que hay: el flujo guiado, el tipo y la proporción (9:16 es una historia).
+  const formato = guiado === "carrusel" ? "carrusel" : guiado === "reel" || form?.tipo === "video" ? "video" : ajustes.aspectRatio === "9:16" ? "historia" : "post";
+  const queCrear = form ? (
+    <QueCrear formato={formato} tipoVideo={guiado === "reel" ? tipoVideo : "clip"} conGuiados={!dialogo}
+      onFormato={(f) => cambiarFormato(f)} onTipoVideo={(t) => cambiarFormato("video", t)} />
+  ) : null;
+  // Lo puesto en el pedido, para la tira de abajo mientras se mira la galería.
+  const puestas = form ? [...form.medios.start, ...form.medios.end, ...form.medios.reference, ...(form.medios.video ?? [])] : [];
+  const verTira = !dialogo && !lectura && puestas.length > 0 && !compositorALaVista;
 
   if (cargando || (!form && !error)) return <p role="status" className="est-nota">Cargando el Estudio…</p>;
   if (error && !datos) return <div className="est-error" role="alert"><p>{error}</p><button type="button" className="btn btn-secondary btn-sm" onClick={cargar}>Reintentar</button></div>;
@@ -893,11 +1011,12 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
     <section className={`estudio${dialogo ? " estudio-dialogo" : ""}`} aria-labelledby={`${ids}-h`}>
       <header className="est-cabecera">
         <div>
-          <TituloH id={`${ids}-h`} className="est-titulo">{dialogo ? "Crear en el Estudio" : "Estudio"}</TituloH>
+          <TituloH id={`${ids}-h`} className="est-titulo">{dialogo ? "Crear en el Estudio" : aMano ? "Crear a mano" : "Estudio"}</TituloH>
           <p className="est-sub">
             {dialogo
               ? "Crea una imagen o un video para esta publicación, o escoge uno que ya hayas hecho."
-              : `Lo creado para ${client.name}, con su pedido y lo que costó. A mano, en «Avanzado».`}
+              : aMano ? `Escoge el formato, escribe la idea y crea. Lo que salga queda en la galería de ${client.name}, debajo.`
+                : `Lo creado para ${client.name}, con su pedido y lo que costó. Para crear tú, «A mano».`}
           </p>
         </div>
         {dialogo && onCerrar && <button type="button" className="btn-icon" aria-label="Cerrar" onClick={onCerrar}><Icon name="close" size={18} /></button>}
@@ -907,6 +1026,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
         {aviso && (
           <p className={aviso.ok ? "est-aviso" : "est-aviso est-aviso-mal"}>
             {aviso.texto}
+            {aviso.abrir && <>{" "}<button type="button" className="btn btn-secondary btn-sm" onClick={() => { setVisor(aviso.abrir); setAviso(null); }}><Icon name="eye" size={14} /> Abrirla</button></>}
             <button type="button" className="btn-icon est-cerrar" aria-label="Cerrar el aviso" onClick={() => setAviso(null)}><Icon name="close" size={16} /></button>
           </p>
         )}
@@ -920,79 +1040,76 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
         </p>
       )}
 
-      {/* ---------- Pedir: en la pestaña, plegado en «Avanzado» ---------- */}
-      {!dialogo && !lectura && (
-        <button type="button" className="btn btn-secondary est-avanzado" aria-expanded={avanzado} aria-controls={`${ids}-av`} onClick={() => setAvanzado((v) => !v)}>
-          <Icon name={avanzado ? "chevronDown" : "chevronRight"} size={16} /> Avanzado: crear a mano (imagen, video, carrusel), varias de una vez o recrear
-        </button>
-      )}
-      <div id={`${ids}-av`} className="est-av" hidden={!dialogo && !avanzado}>
-      {!lectura && form && modelo && guiado && (
-        <Suspense fallback={<p className="hint">Cargando…</p>}>
-          {(() => {
-            const Flujo = guiado === "reel" ? FlujoReel : FlujoCarrusel;
-            return (
-              <Flujo
-                key={`${guiado}-${vueltaGuiado}`} client={client}
-                estudio={{ kit, productos: datos?.productos ?? [], archivos: datos?.archivos ?? [], activos }}
-                inicial={{ preset: presetVigente }}
-                cabecera={<QueCrear actual={guiado} guiados={GUIADOS} onCambiar={(t) => { if (GUIADOS.some(([x]) => x === t)) setGuiado(t); else { setGuiado(""); cambiarTipo(t); } }} />}
-                onCreando={(si) => { if (!si) cargar(); }}
-                // «Listo»: todo quedó en la galería; el flujo vuelve a empezar, limpio, para el siguiente.
-                onListo={() => { setVueltaGuiado((n) => n + 1); cargar(); avisar(true, guiado === "reel" ? "Reel listo: está en la galería, en su carpeta." : "Carrusel listo: está en la galería, en su carpeta."); }}
+      {/* ---------- Crear a mano: en Crear → «A mano» (arriba) y siempre en el diálogo de una publicación ---------- */}
+      {conCompositor && !lectura && form && modelo && (
+        <div className="est-av" ref={zonaCompositor}>
+          <Suspense fallback={<p role="status" className="hint">Abriendo el compositor…</p>}>
+            {guiado ? (() => {
+              const Flujo = guiado === "reel" ? FlujoReel : FlujoCarrusel;
+              return (
+                <Flujo
+                  key={`${guiado}-${guiado === "reel" ? tipoVideo : ""}-${vueltaGuiado}`} client={client}
+                  estudio={{ kit, productos: datos?.productos ?? [], archivos: datos?.archivos ?? [], activos }}
+                  inicial={{ preset: presetVigente, ...(guiado === "reel" ? { forma: tipoVideo } : {}) }}
+                  sinFormas
+                  cabecera={queCrear}
+                  onCreando={(si) => { if (!si) cargar(); }}
+                  // «Listo»: todo quedó en la galería; el flujo vuelve a empezar, limpio, para el siguiente.
+                  onListo={() => { setVueltaGuiado((n) => n + 1); cargar(); avisar(true, guiado === "reel" ? "Reel listo: está en la galería, en su carpeta." : "Carrusel listo: está en la galería, en su carpeta."); }}
+                />
+              );
+            })() : (
+              <Compositor
+                ids={ids} form={{ ...form, ajustes }} setForm={setForm} modelo={modelo} motores={motores} costo={costo}
+                confirmando={confirmando} enviando={enviando} subiendo={subiendo} promptRef={promptRef}
+                onEnviar={enviar} onConfirmar={() => enviar(true)} onNo={() => setConfirmando(null)}
+                onModelo={cambiarModelo} onQuitarMedio={quitarMedio} onMarcarReferencia={marcarReferencia} nombrado={nombrado} onSubirArchivos={subirArchivos}
+                onDrive={client.driveFolder ? (rol) => setDriveRol(rol) : null}
+                onGaleria={escogerDeLaGaleria}
+                queCrear={queCrear}
+                mejorando={mejorando} onMejorar={mejorarConIA} onVolverIdea={ideaAnterior != null ? volverAMiIdea : null}
+                estilo={{
+                  preset: presetVigente, onPreset: setPreset, kitListo, kit: limpiarKit(kit), marca: client.name, textoPreset: textoDelPreset, refsTipo, sinIdea: !form.prompt.trim(),
+                  nombrePieza: presetVigente ? nombreDePreset(presetVigente, kit) : "",
+                  bloqueMarca,
+                  estilo: estiloVigente, estiloResuelto: estiloDeEsta, nombreEstilo: nombreDeEstilo(kit, estiloDeEsta), lineaEstilo: lineaDelEstilo, onEstilo: setEstilo,
+                  fijadoTipo: limpiarKit(kit).estiloPorTipo[presetVigente.split("-")[0]] ?? "", onFijarEstilo: lectura ? null : fijarEstilo,
+                  conLogo, onConLogo: setConLogo, puedeLogo, estampa,
+                  angulos: datos?.angulos ?? [],
+                  onAngulo: (a) => { setConfirmando(null); setForm((f) => ({ ...f, prompt: ideaDesdeAngulo(a) })); },
+                  productos: modelo.referencias > 0 ? (datos?.productos ?? []).filter((p) => p.fotos?.length) : [],
+                  gustos: hayGustos && modelo.referencias > 0 ? { activo: conGustos, onCambiar: setConGustos, van: gustos.length } : null,
+                  personajes: modelo.referencias > 0 && limpiarKit(kit).personajes.length
+                    ? { lista: limpiarKit(kit).personajes, escogidos: personajesSel, onCambiar: setPersonajesSel, van: deLosPersonajes.length }
+                    : null,
+                  onProducto: ponerFotosDeProducto, onQuitarProducto: quitarFotosDeProducto,
+                  plantillas: form.tipo === "imagen" && modelo.referencias > 0 && limpiarKit(kit).plantillas.length
+                    ? { lista: limpiarKit(kit).plantillas, escogida: plantillaSel, onCambiar: setPlantillaSel }
+                    : null,
+                }}
+                fijado={fijados[form.tipo] ?? ""} onFijar={(id) => fijar(form.tipo, id)}
+                ideas={{
+                  generando: ideasGen.generando, lista: ideasGen.lista, conTema: Boolean(form.prompt.trim()),
+                  deTipo: presetVigente && !presetVigente.startsWith("propio-") ? presetVigente.split("-")[0] : "",
+                  onGenerar: generarIdeas, onUsar: usarIdeaGenerada, onCerrar: () => setIdeasGen((x) => ({ ...x, lista: [] })),
+                  nombreDeTipo: (id) => nombreDePilar(id) || nombreDePreset(id, kit),
+                  nombreDeProducto: (id) => ideasGen.productos.find((p) => p.id === id)?.nombre ?? "",
+                }}
+                guionCorto={{
+                  segundos: segundosGuion, escribiendo: escribiendoGuion, resultado: guion,
+                  onEscribir: escribirGuion, onUsar: usarGuion, onDescartar: () => setGuion(null),
+                }}
+                ultimas={ultimas} onAbrir={(a) => setVisor(a)}
               />
-            );
-          })()}
-        </Suspense>
-      )}
-      {!lectura && form && modelo && !guiado && (
-        <Compositor
-          ids={ids} form={{ ...form, ajustes }} setForm={setForm} modelo={modelo} motores={motores} costo={costo}
-          confirmando={confirmando} enviando={enviando} subiendo={subiendo} promptRef={promptRef}
-          onEnviar={enviar} onConfirmar={() => enviar(true)} onNo={() => setConfirmando(null)}
-          onModelo={cambiarModelo} onTipo={cambiarTipo} onQuitarMedio={quitarMedio} onMarcarReferencia={marcarReferencia} nombrado={nombrado} onSubirArchivos={subirArchivos}
-          onDrive={client.driveFolder ? (rol) => setDriveRol(rol) : null}
-          onGaleria={escogerDeLaGaleria}
-          mejorando={mejorando} onMejorar={mejorarConIA} onVolverIdea={ideaAnterior != null ? volverAMiIdea : null}
-          estilo={{
-            preset: presetVigente, onPreset: setPreset, kitListo, kit: limpiarKit(kit), marca: client.name, textoPreset: textoDelPreset, refsTipo, sinIdea: !form.prompt.trim(),
-            bloqueMarca,
-            estilo: estiloVigente, estiloResuelto: estiloDeEsta, nombreEstilo: nombreDeEstilo(kit, estiloDeEsta), lineaEstilo: lineaDelEstilo, onEstilo: setEstilo,
-            fijadoTipo: limpiarKit(kit).estiloPorTipo[presetVigente.split("-")[0]] ?? "", onFijarEstilo: lectura ? null : fijarEstilo,
-            conLogo, onConLogo: setConLogo, puedeLogo, estampa,
-            angulos: datos?.angulos ?? [],
-            onAngulo: (a) => { setConfirmando(null); setForm((f) => ({ ...f, prompt: ideaDesdeAngulo(a) })); },
-            productos: modelo.referencias > 0 ? datos?.productos ?? [] : [],
-            gustos: hayGustos && modelo.referencias > 0 ? { activo: conGustos, onCambiar: setConGustos, van: gustos.length } : null,
-            personajes: modelo.referencias > 0 && limpiarKit(kit).personajes.length
-              ? { lista: limpiarKit(kit).personajes, escogidos: personajesSel, onCambiar: setPersonajesSel, van: deLosPersonajes.length }
-              : null,
-            onProducto: ponerFotosDeProducto,
-            plantillas: form.tipo === "imagen" && modelo.referencias > 0 && limpiarKit(kit).plantillas.length
-              ? { lista: limpiarKit(kit).plantillas, escogida: plantillaSel, onCambiar: setPlantillaSel }
-              : null,
-          }}
-          fijado={fijados[form.tipo] ?? ""} onFijar={(id) => fijar(form.tipo, id)}
-          guiados={dialogo ? [] : GUIADOS} onGuiado={setGuiado}
-          ideas={{
-            generando: ideasGen.generando, lista: ideasGen.lista, conTema: Boolean(form.prompt.trim()),
-            deTipo: presetVigente && !presetVigente.startsWith("propio-") ? presetVigente.split("-")[0] : "",
-            onGenerar: generarIdeas, onUsar: usarIdeaGenerada, onCerrar: () => setIdeasGen((x) => ({ ...x, lista: [] })),
-            nombreDeTipo: (id) => nombreDePilar(id) || nombreDePreset(id, kit),
-            nombreDeProducto: (id) => ideasGen.productos.find((p) => p.id === id)?.nombre ?? "",
-          }}
-          guionCorto={{
-            segundos: segundosGuion, escribiendo: escribiendoGuion, resultado: guion,
-            onEscribir: escribirGuion, onUsar: usarGuion, onDescartar: () => setGuion(null),
-          }}
-        />
-      )}
+            )}
+          </Suspense>
 
-      {/* ---------- Muchas de una vez (anuncios en matriz, por tipo o el mes) y recrear un anuncio de otra cuenta ---------- */}
-      {!lectura && !dialogo && motores && (
-        <Suspense fallback={null}><EstudioMuchas onLote={() => setLoteAbierto(true)} onRecrear={() => setRecrear({ archivo: null })} /></Suspense>
+          {/* ---------- Muchas de una vez (anuncios en matriz, por tipo o el mes) y recrear un anuncio de otra cuenta ---------- */}
+          {!dialogo && motores && (
+            <Suspense fallback={null}><EstudioMuchas onLote={() => setLoteAbierto(true)} onRecrear={() => setRecrear({ archivo: null })} /></Suspense>
+          )}
+        </div>
       )}
-      </div>
       {recrear && (
         <Suspense fallback={null}>
           <EstudioRecrear
@@ -1043,12 +1160,6 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
 
       {/* ---------- Galería ---------- */}
       <div className="est-galeria-cabecera" ref={galeriaRef}>
-        {destinoGaleria && (
-          <p className="notice est-destino" role="status">
-            Toca una imagen para ponerla como <strong>{NOMBRE_RANURA[destinoGaleria]}</strong>.
-            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setDestinoGaleria(null)}>Cancelar</button>
-          </p>
-        )}
         <h3 className="est-subtitulo">{enPapelera ? "Papelera" : enDrive ? "Drive de " + client.name : "Galería"}</h3>
         <div className="est-filtros" role="group" aria-label="Filtrar la galería">
           <button type="button" className="filter-chip" aria-pressed={!enPapelera && !enDrive && filtro === "todas"} onClick={() => { setEnPapelera(false); setEnDrive(false); setFiltro("todas"); }}>Todas ({cuentas.todas})</button>
@@ -1182,7 +1293,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
             <li key={a.id} className={`est-tarjeta${marcada ? " est-tarjeta-marcada" : ""}`}>
               <button
                 type="button" className="est-img" data-control={a.ajustes?.control?.estado}
-                aria-label={seleccion ? `${marcada ? "Quitar de" : "Añadir a"} la selección: ${escena}` : destinoGaleria ? `Poner como ${NOMBRE_RANURA[destinoGaleria]}: ${escena}` : `Abrir: ${escena}`}
+                aria-label={seleccion ? `${marcada ? "Quitar de" : "Añadir a"} la selección: ${escena}` : `Abrir: ${escena}`}
                 aria-pressed={seleccion ? marcada : undefined}
                 onClick={() => abrirPieza(a)}
               >
@@ -1251,8 +1362,28 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
         </ul>
       )}
 
+      {verTira && (
+        <div className="est-tira-pedido" role="group" aria-label="Lo que va en el pedido">
+          {puestas.slice(0, 4).map((a) => (a.tipo === "video" ? <Icon key={a.id} name="video" size={18} /> : <img key={a.id} src={a.src} alt="" />))}
+          <span className="hint">
+            En el pedido: {form.medios.reference.length > 0 && modelo?.referencias ? `${form.medios.reference.length} de ${modelo.referencias} referencias` : `${puestas.length} ${puestas.length === 1 ? "imagen" : "imágenes"}`}
+          </span>
+          <button type="button" className="btn btn-primary btn-sm" onClick={() => enfocarPrompt()}><Icon name="pencil" size={14} /> Ir al pedido</button>
+        </div>
+      )}
+
       <p className="est-precios">Los precios son aproximados y de {new Date(PRECIOS_AL).toLocaleDateString("es-PA", { month: "long", year: "numeric", timeZone: "UTC" })}. Lo que se gasta aquí suma al presupuesto de IA del mes.</p>
 
+      {eligiendoDeGaleria && form && modelo && (
+        <Suspense fallback={null}>
+          <EstudioElegir
+            archivos={datos?.archivos ?? []} rol={eligiendoDeGaleria}
+            caben={Math.max(1, ({ reference: modelo.referencias, start: 1, end: 1 }[eligiendoDeGaleria] || 1) - (eligiendoDeGaleria === "reference" ? form.medios.reference.length : 0))}
+            yaPuestas={puestas.map((a) => a.id)}
+            onPoner={(lista) => ponerDeLaGaleria(eligiendoDeGaleria, lista)} onCerrar={() => setEligiendoDeGaleria(null)}
+          />
+        </Suspense>
+      )}
       {eligiendoRanura && (
         <Suspense fallback={null}>
           <EleccionRanura
@@ -1325,12 +1456,9 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
           onLogo={/^image\/(png|jpeg|webp)$/.test(visor.mime ?? "") ? () => usarComoLogo(visor) : null}
           revision={revisiones[visor.id] ?? null}
           onRevisar={kitVacio(kit) || !/^image\/(png|jpeg|webp|gif)$/.test(visor.mime ?? "") ? null : () => revisar(visor)}
-          onCorregir={(sugerencia) => {
-            const a = visor;
-            setVisor(null);
-            setForm((f) => ({ ...f, prompt: `${ideaDelPedido(a.prompt)} ${sugerencia}`.trim().slice(0, MAX_PROMPT) }));
-            enfocarPrompt();
-          }}
+          // Lo que se está haciendo a partir de esta pieza (la corrección, otra versión): se abre aquí al llegar.
+          enCamino={enCamino && [visor.id, ...(visor.anteriores ?? []).map((x) => x.id)].includes(enCamino.desde) ? enCamino.texto : ""}
+          onAbrirNueva={(nueva) => abrirLaNueva(visor, [nueva])}
         />
       )}
     </section>

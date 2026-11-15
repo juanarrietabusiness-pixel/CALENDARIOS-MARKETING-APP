@@ -134,6 +134,16 @@ describe("analizar y construir son inversas", () => {
     }
   });
 
+  it("Crear → «A mano» tiene su dirección, y las de antes siguen donde estaban", () => {
+    expect(SECCIONES_DEL_CLIENTE.crear).toEqual(["director", "a-mano", "galeria"]);
+    expect(analizarRuta(url("/cliente/dcasa/crear/a-mano"))).toEqual({ vista: "panel", cliente: "dcasa", calendario: null, pestana: "crear", seccion: "a-mano" });
+    expect(construirRuta({ cliente: "dcasa", pestana: "crear", seccion: "a-mano" })).toBe("/cliente/dcasa/crear/a-mano");
+    // `/a-mano/…` de arriba (publicar desde el teléfono) no se confunde con la sub-sección.
+    expect(analizarRuta(url("/a-mano/cal-1/post-2"))).toEqual({ vista: "a-mano", calendario: "cal-1", publicacion: "post-2" });
+    expect(analizarRuta(url("/cliente/dcasa/estudio"))).toMatchObject({ pestana: "crear", seccion: "galeria" });
+    expect(analizarRuta(url("/cliente/dcasa/crear/galeria"))).toMatchObject({ pestana: "crear", seccion: "galeria" });
+  });
+
   it("Marca → «Música y efectos» (la biblioteca de sonido) tiene su dirección", () => {
     expect(analizarRuta(url("/cliente/dcasa/marca/sonido"))).toMatchObject({ pestana: "marca", seccion: "sonido" });
     expect(construirRuta({ cliente: "dcasa", pestana: "marca", seccion: "sonido" })).toBe("/cliente/dcasa/marca/sonido");

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useId, useState } from "react";
+import { lazy, Suspense, useId, useRef, useState } from "react";
 import Icon from "./Icon";
 import { useDialogA11y } from "../hooks/useDialogA11y";
 import { modeloPorId, nombreDelModelo, textoCosto, estimar, NOMBRE_PROPORCION } from "../lib/estudioCatalogo";
@@ -131,34 +131,49 @@ function RevisionDeMarca({ revision, onRevisar, onCorregir }) {
 }
 
 /**
- * El texto de la pieza, de un toque (lib/estudio.js: AJUSTES_DE_TEXTO): más arriba, más abajo, más pequeño, más grande,
- * centrado. Y si es de un carrusel, «Igualar el texto a…» otra lámina de su serie (va de referencia). Cada toque es una
- * edición: sale una imagen nueva y esta se queda.
+ * UNA sola «Corregir», con su campo en su sitio: lo que se escribe, los cambios frecuentes y los del texto (más arriba,
+ * más grande…), «Igualar el texto a…» otra lámina de su serie y ejemplos de la galería. Los atajos sólo RELLENAN el
+ * campo: lo único que cobra es el botón, que dice cuánto. Sale una imagen NUEVA (ésta no se toca) y se abre aquí.
  */
-function AjustarTexto({ archivo: a, galeria = [], onEditar }) {
-  const id = useId();
+function Corregir({ id, archivo: a, galeria = [], cambio, setCambio, ejemplos, setEjemplos, costo, ocupado, selector, clienteId, lectura, onEditar, onCancelar, campo }) {
   const serie = a.carpetaId ? galeria.filter((x) => x.carpetaId === a.carpetaId && x.id !== a.id && x.tipo === "imagen" && !x.borrado) : [];
+  const sumar = (t) => setCambio((c) => (c.trim() ? `${c.trim().replace(/[.\s]+$/, "")}; ${t.charAt(0).toLowerCase()}${t.slice(1)}` : t));
   return (
-    <div className="est-ajustar-texto" role="group" aria-labelledby={`${id}-t`}>
-      <span className="label" id={`${id}-t`}>Ajustar el texto</span>
-      <div className="est-editar-atajos">
-        {AJUSTES_DE_TEXTO.map((x) => (
-          <button key={x.id} type="button" className="filter-chip" onClick={() => onEditar(x.instruccion, [])}>{x.etiqueta}</button>
-        ))}
+    <form id={id} className="est-editar est-corregir" onSubmit={(e) => { e.preventDefault(); if (cambio.trim() && !ocupado) onEditar(cambio, ejemplos); }}>
+      <label className="label" htmlFor={`${id}-e`}>¿Qué cambio en esta imagen?</label>
+      <textarea id={`${id}-e`} ref={campo} className="input" rows={2} value={cambio} maxLength={500}
+        placeholder="Ej.: quita el texto de arriba y pon el fondo blanco" onChange={(e) => setCambio(e.target.value)} />
+      <div className="est-editar-atajos" role="group" aria-label="Cambios frecuentes (rellenan el campo)">
+        {ATAJOS_EDICION.map((t) => <button key={t} type="button" className="filter-chip" onClick={() => sumar(t)}>{t}</button>)}
+      </div>
+      <div className="est-editar-atajos" role="group" aria-label="El texto de la pieza (rellenan el campo)">
+        {AJUSTES_DE_TEXTO.map((x) => <button key={x.id} type="button" className="filter-chip" aria-pressed={cambio === x.instruccion} onClick={() => setCambio(x.instruccion)}>{x.etiqueta}</button>)}
       </div>
       {serie.length > 0 && (
         <div className="field" style={{ margin: 0 }}>
           <label className="label" htmlFor={`${id}-ig`}>Igualar el texto a otra lámina del carrusel</label>
           <select id={`${id}-ig`} className="input" value="" onChange={(e) => {
             const otra = serie.find((x) => x.id === e.target.value);
-            if (otra) onEditar(IGUALAR_TEXTO, [ejemploParaIgualar(otra)]);
+            if (!otra) return;
+            setCambio(IGUALAR_TEXTO);
+            setEjemplos([ejemploParaIgualar(otra)]);
           }}>
             <option value="">Escoge la lámina que quedó bien…</option>
             {serie.map((x) => <option key={x.id} value={x.id}>{`${String(x.prompt ?? "").replace(/^(Escena|Lámina \d+ de \d+[^.]*\.)\s*/, "").slice(0, 50) || "Sin descripción"} · ${hace(x.creado)}`}</option>)}
           </select>
         </div>
       )}
-    </div>
+      <ReferenciasGaleria archivos={galeria} elegidas={ejemplos} onCambiar={setEjemplos} max={2} etiqueta="Ejemplo de la galería" />
+      {selector}
+      <div className="est-editar-botones">
+        <button type="submit" className="btn btn-primary btn-sm" aria-disabled={!cambio.trim() || ocupado || undefined}>
+          <Icon name="wand" size={14} /> {ocupado ? "Pidiendo…" : `Corregir${costo != null ? ` · ${textoCosto(costo)}` : ""}`}
+        </button>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={onCancelar}>Cancelar</button>
+        {clienteId && !lectura && <GuardarRegla clienteId={clienteId} texto={cambio} />}
+      </div>
+      <p className="hint" style={{ margin: 0 }}>Sale una imagen NUEVA, ya revisada, y se abre aquí; ésta se queda entre sus versiones.</p>
+    </form>
   );
 }
 
@@ -166,14 +181,18 @@ export default function Visor({
   archivo: a, carpetas, lectura, onCerrar, onFavorito, onPapelera, onMover, onReferencia, onAnimar, onUsar, etiquetaUsar,
   costoOtra = null, onOtraIgual = null, onOtrasVersiones = null, versionando = false, onRecrear = null,
   onEditar = null, original = null, onVerOriginal = null, anteriores = null, onPrincipal = null, onQuitarOtras = null,
-  esLogo = false, onLogo = null, revision = null, onRevisar = null, onCorregir = null, galeria = [],
+  esLogo = false, onLogo = null, revision = null, onRevisar = null, galeria = [],
   clienteId = null, onEstampar = null, cliente = null, onPlantilla = null, activos = null, desdePost = null,
+  enCamino = "", onAbrirNueva = null,
 }) {
   const ref = useDialogA11y(onCerrar);
   const id = useId();
-  // Desde «Corregir esta» de una publicación, el visor abre ya en «Editar», con lo escrito en «¿Qué quieres?».
-  const [editando, setEditando] = useState(desdePost?.accion === "editar");
-  // El modelo de «Editar» y de «Otra versión» para ESTA vez ("" = el de siempre); no fija nada.
+  const panel = useRef(null);
+  const campo = useRef(null);
+  // Lo que está abierto bajo la barra: «corregir», «otra» o «mas». Desde «Corregir esta» de una publicación, ya en
+  // «Corregir», con lo escrito en «¿Qué quieres?».
+  const [abierto, setAbiertoEstado] = useState(desdePost?.accion === "editar" ? "corregir" : "");
+  // El modelo de «Corregir» y de «Otra versión» para ESTA vez ("" = el de siempre); no fija nada.
   const [modeloSel, setModeloSel] = useState("");
   const [cambio, setCambio] = useState(desdePost?.accion === "editar" ? desdePost.indicacion ?? "" : "");
   const [ejemplos, setEjemplos] = useState([]);
@@ -184,23 +203,146 @@ export default function Visor({
   const m = modeloPorId(a.modelo);
   const puedeOtra = !lectura && !a.subido && costoOtra != null && onOtraIgual;
   const video = a.tipo === "video";
+  const puedeCorregir = !lectura && !video && Boolean(onEditar);
   const proporcion = a.ajustes?.aspectRatio ?? api.proporcionDeMedidas(a.ancho, a.alto) ?? "";
   const elegido = modeloPorId(modeloSel);
   const costoVersion = elegido ? estimar(elegido, 1, a.ajustes ?? {}) : costoOtra;
-  const editarCon = (instruccion, ejemplos) => onEditar(instruccion, ejemplos, modeloSel);
+  const deEditar = activos ? api.modeloDeEdicion(activos, modeloSel, proporcion) : null;
+  const costoCorregir = deEditar ? estimar(deEditar, 1, { aspectRatio: proporcion }) : null;
+  const editarCon = (instruccion, lista) => onEditar(instruccion, lista, modeloSel);
   const selector = (vacio) => activos && (
     <SelectorModelo activos={activos} valor={modeloSel} onCambiar={setModeloSel} proporcion={proporcion} conReferencias etiqueta="Con qué modelo (sólo esta vez)" vacio={vacio} disabled={versionando} />
   );
+  // Abrir una sección la deja ARRIBA del panel (en el teléfono la barra va abajo): se ve sin buscarla.
+  const setAbierto = (que) => {
+    setAbiertoEstado((x) => (x === que ? "" : que));
+    requestAnimationFrame(() => {
+      panel.current?.scrollTo?.({ top: 0 });
+      if (que === "corregir") campo.current?.focus({ preventScroll: true });
+    });
+  };
+  // «Pedirla corregida» de la revisión de marca: su sugerencia, en «Corregir».
+  const corregirCon = (sugerencia) => {
+    setCambio(sugerencia);
+    setAbiertoEstado("corregir");
+    requestAnimationFrame(() => panel.current?.scrollTo?.({ top: 0 }));
+  };
+  const usar = onUsar
+    ? <button type="button" className="btn btn-primary est-barra-boton est-barra-principal" onClick={onUsar}><Icon name="check" size={18} /> <span>{etiquetaUsar ?? "Usar en la publicación"}</span></button>
+    : !lectura && cliente
+      ? <button type="button" className="btn btn-primary est-barra-boton est-barra-principal" onClick={() => setPoniendo(true)}><Icon name="send" size={18} /> <span>Poner en una publicación…</span></button>
+      : null;
+
   return (
     <div className="overlay" onClick={(e) => { if (e.target === e.currentTarget) onCerrar(); }}>
-      <div ref={ref} className="dialog est-visor" role="dialog" aria-modal="true" aria-labelledby={`${id}-t`}>
+      <div ref={ref} className="dialog est-visor" role="dialog" aria-modal="true" aria-labelledby={`${id}-t`} data-abierto={abierto || undefined}>
+        <div className="est-visor-cabecera">
+          <h3 id={`${id}-t`}>{a.subido ? "Imagen subida" : video ? "Video creado" : "Imagen creada"}</h3>
+          <button type="button" className="btn-icon" aria-label="Cerrar" onClick={onCerrar}><Icon name="close" size={18} /></button>
+        </div>
         <div className="est-visor-imagen"><Pieza archivo={a} grande /></div>
-        <div className="est-visor-panel">
-          <div className="est-visor-cabecera">
-            <h3 id={`${id}-t`}>{a.subido ? "Imagen subida" : video ? "Video creado" : "Imagen creada"}</h3>
-            <button type="button" className="btn-icon" aria-label="Cerrar" onClick={onCerrar}><Icon name="close" size={18} /></button>
+
+        {/* La barra: lo de siempre a un toque. Arriba del panel a lo ancho; abajo, fija, en el teléfono. */}
+        <div className="est-visor-barra" role="group" aria-label="Acciones de la pieza">
+          {usar}
+          {puedeCorregir && (
+            <button type="button" className="btn btn-secondary est-barra-boton" aria-expanded={abierto === "corregir"} aria-controls={`${id}-corregir`} onClick={() => setAbierto("corregir")}>
+              <Icon name="pencil" size={18} /> <span>Corregir</span>
+            </button>
+          )}
+          {puedeOtra && (
+            <button type="button" className="btn btn-secondary est-barra-boton" aria-expanded={abierto === "otra"} aria-controls={`${id}-otra`} onClick={() => setAbierto("otra")}>
+              <Icon name="sparkles" size={18} /> <span>Otra versión</span>
+            </button>
+          )}
+          <a className="btn btn-secondary est-barra-boton" href={a.src} download={nombreDeDescarga(a)}><Icon name="download" size={18} /> <span>Descargar</span></a>
+          {!lectura && (
+            <button type="button" className="btn btn-secondary est-barra-boton" aria-expanded={abierto === "mas"} aria-controls={`${id}-mas`} onClick={() => setAbierto("mas")}>
+              <Icon name="more" size={18} /> <span>Más</span>
+            </button>
+          )}
+        </div>
+
+        <div ref={panel} className="est-visor-panel">
+          <div role="status" aria-live="polite" className={enCamino ? "est-visor-encamino" : "sr-only"}>
+            {enCamino && <><Icon name="sparkles" size={14} /> {enCamino}</>}
           </div>
-          <p className="est-visor-prompt">{a.prompt}</p>
+
+          {abierto === "corregir" && puedeCorregir && (
+            <Corregir
+              id={`${id}-corregir`} archivo={a} galeria={galeria} cambio={cambio} setCambio={setCambio} ejemplos={ejemplos} setEjemplos={setEjemplos}
+              costo={costoCorregir} ocupado={versionando} clienteId={clienteId} lectura={lectura} campo={campo}
+              selector={selector(`El de corregir (${deEditar?.nombre ?? "automático"})`)}
+              onEditar={editarCon} onCancelar={() => { setAbiertoEstado(""); setCambio(""); setEjemplos([]); }}
+            />
+          )}
+
+          {abierto === "otra" && puedeOtra && (
+            <div id={`${id}-otra`} className="est-otra" role="group" aria-labelledby={`${id}-otra-t`}>
+              <span className="label" id={`${id}-otra-t`}>Otra versión</span>
+              <div className="est-otra-fila">
+                <span className="est-otra-versiones">
+                  <label className="est-otra-cuantas">
+                    <span className="sr-only">Cuántas versiones</span>
+                    <select className="input" value={cuantas} disabled={versionando} onChange={(e) => setCuantas(Number(e.target.value))}>
+                      {[1, 2, 3].map((n) => <option key={n} value={n}>{n}</option>)}
+                    </select>
+                  </label>
+                  <button type="button" className="btn btn-primary btn-sm" disabled={versionando} onClick={() => onOtrasVersiones(cuantas, modeloSel)}>
+                    <Icon name="sparkles" size={14} /> {versionando ? "Pidiendo…" : `${cuantas === 1 ? "Otra versión" : `${cuantas} versiones`} · ${textoCosto((costoVersion ?? 0) * cuantas)}`}
+                  </button>
+                </span>
+                <button type="button" className="btn btn-secondary btn-sm" disabled={versionando} onClick={() => onOtraIgual(modeloSel)}>
+                  <Icon name="refresh" size={14} /> Otra igual · {textoCosto(costoVersion ?? 0)}
+                </button>
+              </div>
+              {!video && (
+                <button type="button" className="btn btn-ghost btn-sm" style={{ justifySelf: "start" }} aria-expanded={variando} aria-controls={`${id}-var`}
+                  title="Esta pieza como maestra: 3 a 5 más con su mismo estilo para un conjunto de anuncios" onClick={() => setVariando((v) => !v)}>
+                  <Icon name="layers" size={14} /> Variaciones para anuncios
+                </button>
+              )}
+              {!video && variando && (
+                <Suspense fallback={<p role="status" className="hint">Cargando…</p>}>
+                  <VariacionesAnuncio id={`${id}-var`} archivo={a} costo={costoVersion} estimado={Boolean((elegido ?? m)?.estimado)} ocupado={versionando}
+                    onCrear={(n) => onOtrasVersiones(n, modeloSel, "anuncios")} onCerrar={() => setVariando(false)} />
+                </Suspense>
+              )}
+              {selector(`El de esta pieza (${nombreDelModelo(a.modelo) || "el mismo"})`)}
+              <p className="hint" style={{ margin: 0 }}>
+                «Otra versión»: la misma información y el mismo texto con otra composición (el director la rediseña mirando ésta). «Otra igual» repite el pedido con la marca de hoy. Salen revisadas y con el logo, y la nueva se abre aquí{(elegido ?? m)?.estimado ? " (precio aproximado)" : ""}.
+              </p>
+            </div>
+          )}
+
+          {abierto === "mas" && !lectura && (
+            <div id={`${id}-mas`} className="est-visor-mas" role="group" aria-label="Más acciones">
+              <button type="button" className="btn btn-secondary btn-sm est-me-gusta" aria-pressed={a.favorito} onClick={onFavorito} title="El cerebro aprende de lo que te gusta"><Icon name="heart" size={16} /> {a.favorito ? "Te gusta" : "Me gusta"}</button>
+              {!video && <button type="button" className="btn btn-secondary btn-sm" onClick={onAnimar}><Icon name="video" size={16} /> Animar</button>}
+              {!video && <button type="button" className="btn btn-secondary btn-sm" onClick={onReferencia}><Icon name="paperclip" size={16} /> Usar de referencia</button>}
+              {onRecrear && <button type="button" className="btn btn-secondary btn-sm" onClick={onRecrear} title="Para un anuncio de OTRA cuenta: lo analiza y hace una versión propia con esta marca, sin copiarlo"><Icon name="refresh" size={16} /> Recrear con mi marca</button>}
+              {video && cliente && esVideoReal(a) && (
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => setExtrayendo(true)} title="Sacar lo que se dice y lo que se ve, y reescribirlo para esta marca como UGC para grabar">
+                  <Icon name="user" size={16} /> Extraer guion UGC
+                </button>
+              )}
+              {!video && onEstampar && (
+                <button type="button" className="btn btn-secondary btn-sm" onClick={onEstampar} title="Pega el logo original del kit encima, en su esquina: sale una pieza nueva">
+                  <Icon name="star" size={16} /> Estampar el logo
+                </button>
+              )}
+              {!video && onLogo && (
+                <button type="button" className="btn btn-secondary btn-sm" aria-pressed={esLogo} onClick={onLogo} disabled={esLogo}>
+                  <Icon name="star" size={16} /> {esLogo ? "Es el logo de la marca" : "Usar como logo"}
+                </button>
+              )}
+              {/* Lo de la marca (el logo, una foto del catálogo…) no va a la papelera: se dice qué es y dónde se cambia. */}
+              {a.deLaMarca
+                ? <p className="hint" style={{ margin: 0 }}><Icon name="lock" size={14} /> Es {a.deLaMarca}: para quitarla, cámbiala primero en el kit o en el catálogo.</p>
+                : <button type="button" className="btn btn-ghost btn-sm" onClick={onPapelera}><Icon name="trash" size={16} /> A la papelera</button>}
+            </div>
+          )}
+
           {/* Las otras versiones de esta pieza (la galería enseña una sola tarjeta: lib/estudio.js, `apilarVersiones`). */}
           {anteriores?.length > 0 && (() => {
             // Todas las versiones juntas, en orden de creación, con la que se ve marcada: se pasa de una a otra sin
@@ -209,7 +351,7 @@ export default function Visor({
             const todas = [a, ...anteriores].sort((x, y) => String(x.creado).localeCompare(String(y.creado)));
             return (
               <div className="est-visor-versiones">
-                <p className="hint" style={{ margin: 0 }}>{todas.length} versiones de esta pieza (la cruda, la corregida, la recompuesta…). Toca una para verla.</p>
+                <p className="hint" style={{ margin: 0 }}>{todas.length} versiones de esta pieza. Toca una para verla.</p>
                 <ul className="est-visor-versiones-lista">
                   {todas.map((v, i) => (
                     <li key={v.id}>
@@ -248,6 +390,12 @@ export default function Visor({
               <button type="button" className="btn btn-ghost btn-sm" onClick={() => onVerOriginal?.(original)}>la imagen original</button>, que no se tocó.
             </p>
           )}
+          {!video && <ControlDeCalidad key={a.id} archivo={a} clienteId={clienteId} lectura={lectura} onAbrir={onAbrirNueva ?? onVerOriginal} />}
+          {!video && (onRevisar || revision) && <RevisionDeMarca revision={revision} onRevisar={onRevisar} onCorregir={puedeCorregir ? corregirCon : null} />}
+          <details className="est-visor-pedido">
+            <summary>Lo que se pidió</summary>
+            <p className="est-visor-prompt">{a.prompt}</p>
+          </details>
           <dl className="est-detalles">
             <div><dt>Modelo</dt><dd>{a.subido ? "Subida a mano" : nombreDelModelo(a.modelo) || "Aplicación"}</dd></div>
             {a.ajustes?.aspectRatio && <div><dt>Formato</dt><dd>{NOMBRE_PROPORCION[a.ajustes.aspectRatio] ?? a.ajustes.aspectRatio} ({a.ajustes.aspectRatio})</dd></div>}
@@ -255,7 +403,7 @@ export default function Visor({
             {a.ancho > 0 && <div><dt>Tamaño</dt><dd>{a.ancho}×{a.alto}</dd></div>}
             {a.costo > 0 && <div><dt>Costo</dt><dd>{textoCosto(a.costo)}{m?.estimado ? " (aprox.)" : ""}</dd></div>}
             <div><dt>Creada</dt><dd>{hace(a.creado)}</dd></div>
-            {a.usadoEn.length > 0 && <div><dt>En uso</dt><dd>{a.usadoEn.length} publicación{a.usadoEn.length === 1 ? "" : "es"}</dd></div>}
+            {a.usadoEn?.length > 0 && <div><dt>En uso</dt><dd>{a.usadoEn.length} publicación{a.usadoEn.length === 1 ? "" : "es"}</dd></div>}
           </dl>
           {!lectura && (
             <div className="field">
@@ -266,66 +414,6 @@ export default function Visor({
               </select>
             </div>
           )}
-          {editando && (
-            <form className="est-editar" onSubmit={(e) => { e.preventDefault(); if (cambio.trim()) editarCon(cambio, ejemplos); }}>
-              <label className="label" htmlFor={`${id}-e`}>¿Qué cambio?</label>
-              <input id={`${id}-e`} className="input" value={cambio} maxLength={500}
-                placeholder="Ej.: quita el texto de arriba y pon el fondo blanco" onChange={(e) => setCambio(e.target.value)} />
-              <div className="est-editar-atajos" role="group" aria-label="Cambios frecuentes">
-                {ATAJOS_EDICION.map((t) => (
-                  <button key={t} type="button" className="filter-chip" onClick={() => setCambio((c) => (c.trim() ? `${c.trim().replace(/[.\s]+$/, "")}; ${t.toLowerCase()}` : t))}>{t}</button>
-                ))}
-              </div>
-              <ReferenciasGaleria archivos={galeria} elegidas={ejemplos} onCambiar={setEjemplos} max={2} etiqueta="Ejemplo de la galería" />
-              {selector(`El de editar (${api.modeloParaEditar(activos ?? {})?.nombre ?? "automático"})`)}
-              <div className="est-editar-botones">
-                <button type="submit" className="btn btn-primary btn-sm" disabled={!cambio.trim()}><Icon name="wand" size={14} /> Corregir</button>
-                <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setEditando(false); setCambio(""); }}>Cancelar</button>
-                {clienteId && !lectura && <GuardarRegla clienteId={clienteId} texto={cambio} />}
-              </div>
-              <p className="hint" style={{ margin: 0 }}>Sale una imagen NUEVA en la galería, ya revisada; esta se queda como está.</p>
-            </form>
-          )}
-          {puedeOtra && (
-            <div className="est-otra" role="group" aria-labelledby={`${id}-otra`}>
-              <span className="label" id={`${id}-otra`}>¿Otra?</span>
-              <div className="est-otra-fila">
-                <button type="button" className="btn btn-secondary btn-sm" disabled={versionando} onClick={() => onOtraIgual(modeloSel)}>
-                  <Icon name="refresh" size={14} /> Otra igual
-                </button>
-                <span className="est-otra-versiones">
-                  <label className="est-otra-cuantas">
-                    <span className="sr-only">Cuántas versiones</span>
-                    <select className="input" value={cuantas} disabled={versionando} onChange={(e) => setCuantas(Number(e.target.value))}>
-                      {[1, 2, 3].map((n) => <option key={n} value={n}>{n}</option>)}
-                    </select>
-                  </label>
-                  <button type="button" className="btn btn-secondary btn-sm" disabled={versionando} onClick={() => onOtrasVersiones(cuantas, modeloSel)}>
-                    <Icon name="sparkles" size={14} /> {versionando ? "Escribiendo las versiones…" : cuantas === 1 ? "Otra versión" : `${cuantas} versiones`}
-                  </button>
-                </span>
-              </div>
-              {!video && (
-                <button type="button" className="btn btn-ghost btn-sm" style={{ justifySelf: "start" }} aria-expanded={variando} aria-controls={`${id}-var`}
-                  title="Esta pieza como maestra: 3 a 5 más con su mismo estilo para un conjunto de anuncios" onClick={() => setVariando((v) => !v)}>
-                  <Icon name="layers" size={14} /> Variaciones para anuncios
-                </button>
-              )}
-              {!video && variando && (
-                <Suspense fallback={<p role="status" className="hint">Cargando…</p>}>
-                  <VariacionesAnuncio id={`${id}-var`} archivo={a} costo={costoVersion} estimado={Boolean((elegido ?? m)?.estimado)} ocupado={versionando}
-                    onCrear={(n) => onOtrasVersiones(n, modeloSel, "anuncios")} onCerrar={() => setVariando(false)} />
-                </Suspense>
-              )}
-              {!editando && selector(`El de esta pieza (${nombreDelModelo(a.modelo) || "el mismo"})`)}
-              <p className="hint" style={{ margin: 0 }}>
-                «Otra igual» repite el pedido con la marca de hoy. «Otra versión»: la misma información y el mismo texto con otra composición (el director la rediseña mirando esta). Salen revisadas por el control y con el logo.
-                {" "}{textoCosto(costoVersion)} cada una{(elegido ?? m)?.estimado ? ", aprox." : ""}.
-              </p>
-            </div>
-          )}
-          {!lectura && !video && onEditar && !editando && <AjustarTexto archivo={a} galeria={galeria} onEditar={editarCon} />}
-          {!video && <ControlDeCalidad key={a.id} archivo={a} clienteId={clienteId} lectura={lectura} onAbrir={onVerOriginal} />}
           {!video && !lectura && clienteId && <Suspense fallback={null}><GuardarPlantilla key={`p-${a.id}`} clienteId={clienteId} archivo={a} onGuardada={onPlantilla} /></Suspense>}
           {video && clienteId && esVideoReal(a) && (
             <Suspense fallback={null}><VideoListo key={`v-${a.id}`} clienteId={clienteId} archivoId={a.id} src={a.src} inicial={a.ajustes?.revisionVideo} /></Suspense>
@@ -333,39 +421,6 @@ export default function Visor({
           {video && clienteId && esVideoReal(a) && (
             <Suspense fallback={null}><DesgloseVideo key={`d-${a.id}`} clienteId={clienteId} archivoId={a.id} src={a.src} nombre={a.prompt} inicial={a.ajustes?.deconstruccion} lectura={lectura} /></Suspense>
           )}
-          {!video && (onRevisar || revision) && <RevisionDeMarca revision={revision} onRevisar={onRevisar} onCorregir={lectura ? null : onCorregir} />}
-          <div className="est-visor-acciones">
-            {!lectura && !video && onEditar && !editando && <button type="button" className="btn btn-secondary" onClick={() => setEditando(true)} title="Corregir: edita esta misma imagen (sale una nueva; ésta se queda)"><Icon name="pencil" size={16} /> Corregir</button>}
-            {onUsar && <button type="button" className="btn btn-primary" onClick={onUsar}><Icon name="check" size={16} /> {etiquetaUsar ?? "Usar en la publicación"}</button>}
-            {/* Desde la pestaña Estudio (no desde una publicación, que tiene «Usar»): a un post de cualquier mes. */}
-            {!onUsar && !lectura && cliente && (
-              <button type="button" className="btn btn-primary" onClick={() => setPoniendo(true)}><Icon name="send" size={16} /> Poner en una publicación…</button>
-            )}
-            {!lectura && !video && <button type="button" className="btn btn-secondary" onClick={onAnimar}><Icon name="video" size={16} /> Animar</button>}
-            {!lectura && !video && <button type="button" className="btn btn-secondary" onClick={onReferencia}><Icon name="paperclip" size={16} /> Usar de referencia</button>}
-            {!lectura && onRecrear && <button type="button" className="btn btn-secondary" onClick={onRecrear} title="Para un anuncio de OTRA cuenta: lo analiza y hace una versión propia con esta marca, sin copiarlo"><Icon name="refresh" size={16} /> Recrear con mi marca</button>}
-            {!lectura && video && cliente && esVideoReal(a) && (
-              <button type="button" className="btn btn-secondary" onClick={() => setExtrayendo(true)} title="Sacar lo que se dice y lo que se ve, y reescribirlo para esta marca como UGC para grabar">
-                <Icon name="user" size={16} /> Extraer guion UGC
-              </button>
-            )}
-            {!lectura && !video && onEstampar && (
-              <button type="button" className="btn btn-secondary" onClick={onEstampar} title="Pega el logo original del kit encima, en su esquina: sale una pieza nueva">
-                <Icon name="star" size={16} /> Estampar el logo
-              </button>
-            )}
-            {!lectura && !video && onLogo && (
-              <button type="button" className="btn btn-secondary" aria-pressed={esLogo} onClick={onLogo} disabled={esLogo}>
-                <Icon name="star" size={16} /> {esLogo ? "Es el logo de la marca" : "Usar como logo"}
-              </button>
-            )}
-            {!lectura && <button type="button" className="btn btn-secondary est-me-gusta" aria-pressed={a.favorito} onClick={onFavorito} title="El cerebro aprende de lo que te gusta"><Icon name="heart" size={16} /> {a.favorito ? "Te gusta" : "Me gusta"}</button>}
-            <a className="btn btn-secondary" href={a.src} download={nombreDeDescarga(a)}><Icon name="download" size={16} /> Descargar</a>
-            {/* Lo de la marca (el logo, una foto del catálogo…) no va a la papelera: se dice qué es y dónde se cambia. */}
-            {!lectura && (a.deLaMarca
-              ? <p className="hint" style={{ margin: 0 }}><Icon name="lock" size={14} /> Es {a.deLaMarca}: para quitarla, cámbiala primero en el kit o en el catálogo.</p>
-              : <button type="button" className="btn btn-ghost" onClick={onPapelera}><Icon name="trash" size={16} /> A la papelera</button>)}
-          </div>
         </div>
       </div>
       {extrayendo && (
