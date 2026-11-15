@@ -14,6 +14,7 @@
 import { uuid, ahora } from "./ids.js";
 import { difundir } from "./vivo.js";
 import { cambiosEntre, mencionesEn } from "../../src/lib/trabajo.js";
+import { pushDeAvisos } from "./push.js";
 
 /** Los miembros del espacio, con la forma del navegador. */
 export async function miembrosDe(acceso) {
@@ -39,6 +40,8 @@ export async function avisar(env, acceso, { para = [], tipo, texto, enlace = "",
       enlace: String(enlace).slice(0, 500), por_nombre: String(por?.nombre ?? "").slice(0, 80), leido_at: null, created_at: t,
     })));
     difundir(env, acceso.ownerId, { tipo: "avisos", para: destinatarios });
+    // Lo importante, también al teléfono (Web Push, worker/lib/push.js). Nunca lanza: un push que falla no tumba el aviso.
+    await pushDeAvisos(env, acceso, destinatarios, { tipo, texto, enlace });
   } catch (e) {
     console.error("avisos:", e);
     return 0;
