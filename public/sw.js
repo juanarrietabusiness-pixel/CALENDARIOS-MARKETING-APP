@@ -1,5 +1,5 @@
 // ============================================================
-// Service worker de «Compartir»: SÓLO recibe lo que se comparte con la app
+// El ÚNICO service worker: lo que se comparte con la app y los avisos en el teléfono
 //
 // Desde la hoja de compartir del teléfono (Android, la app instalada), el
 // manifiesto manda un POST multipart a /compartir con el texto, el enlace
@@ -11,6 +11,13 @@
 //
 // Todo lo demás pasa de largo (no hay caché de la aplicación ni modo sin
 // conexión): sólo se atiende POST /compartir.
+//
+// Y los AVISOS EN EL TELÉFONO (Web Push, worker/lib/push.js): el servidor
+// manda los importantes cifrados, el navegador los descifra y aquí se
+// enseñan como notificación ({ titulo, texto, enlace, etiqueta }). Tocarla
+// abre (o trae al frente) la aplicación en su enlace, que siempre es de
+// este sitio. En el iPhone sólo llegan con la app instalada en la pantalla
+// de inicio.
 // ============================================================
 
 const CACHE = "compartido";
@@ -43,5 +50,38 @@ self.addEventListener("fetch", (e) => {
       q.set("error", "archivos");
     }
     return Response.redirect(new URL(`/compartir?${q}`, self.location.origin).href, 303);
+  })());
+});
+
+self.addEventListener("push", (e) => {
+  let d = {};
+  try { d = e.data ? e.data.json() : {}; } catch { d = { texto: e.data ? e.data.text() : "" }; }
+  const titulo = String(d.titulo || "Juancito Ads").slice(0, 80);
+  e.waitUntil(self.registration.showNotification(titulo, {
+    body: String(d.texto || "").slice(0, 300),
+    icon: "/icon-192.png",
+    badge: "/favicon-32.png",
+    tag: d.etiqueta ? String(d.etiqueta).slice(0, 40) : undefined,
+    lang: "es",
+    data: { enlace: typeof d.enlace === "string" ? d.enlace : "/" },
+  }));
+});
+
+self.addEventListener("notificationclick", (e) => {
+  e.notification.close();
+  let destino = new URL("/", self.location.origin);
+  try {
+    const u = new URL(e.notification.data?.enlace || "/", self.location.origin);
+    if (u.origin === self.location.origin) destino = u;
+  } catch { /* el inicio */ }
+  e.waitUntil((async () => {
+    const ventanas = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    const propia = ventanas.find((c) => new URL(c.url).origin === self.location.origin);
+    if (propia) {
+      await propia.focus();
+      if ("navigate" in propia) await propia.navigate(destino.href).catch(() => {});
+      return;
+    }
+    await self.clients.openWindow(destino.href);
   })());
 });
