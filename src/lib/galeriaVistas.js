@@ -22,15 +22,21 @@ const DIA = 86_400_000;
 /** Panamá no cambia de hora: siempre UTC−5. */
 const PANAMA = -5 * 3_600_000;
 
-/** El día de Panamá (YYYY-MM-DD) de una fecha ISO; uno que ya es un día se queda. "" si no se entiende. Pura. */
+/** «AAAA-MM-DD» de un instante, por sus campos UTC (quien llama ya lo movió a la hora de Panamá). */
+const diaUTC = (ms) => {
+  const d = new Date(ms);
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+};
+
+/** El día de Panamá (YYYY-MM-DD) de una fecha ISO o de un instante en ms; un día se queda. "" si no se entiende. Pura. */
 export function diaDePanama(fecha) {
   const t = String(fecha ?? "");
   if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return t;
-  const ms = Date.parse(t);
-  return Number.isFinite(ms) ? new Date(ms + PANAMA).toISOString().slice(0, 10) : "";
+  const ms = typeof fecha === "number" ? fecha : Date.parse(t);
+  return Number.isFinite(ms) ? diaUTC(ms + PANAMA) : "";
 }
 
-const sumarDias = (dia, n) => new Date(Date.parse(`${dia}T12:00:00Z`) + n * DIA).toISOString().slice(0, 10);
+const sumarDias = (dia, n) => diaUTC(Date.parse(`${dia}T12:00:00Z`) + n * DIA);
 
 /** El lunes (YYYY-MM-DD) de la semana de una fecha, en Panamá. "" si no se entiende. Pura. */
 export function lunesDe(fecha) {
@@ -108,7 +114,7 @@ export const FECHAS_GALERIA = [["semana", "Esta semana"], ["pasada", "La semana 
 /** ¿Cae la fecha de la pieza en ese periodo (semanas de lunes a domingo y meses de Panamá)? Pura. */
 export function enFecha(a, periodo, ahora = Date.now()) {
   if (!periodo) return true;
-  const hoy = new Date(ahora).toISOString();
+  const hoy = diaDePanama(ahora);
   const dia = diaDePanama(a?.creado);
   if (!dia) return false;
   if (periodo === "semana") return lunesDe(dia) === lunesDe(hoy);
@@ -158,7 +164,7 @@ export const esCarpetaAutomatica = (c) => c?.tipo === "auto" || esCarpetaCompete
 
 /** «Esta semana», «La semana pasada», «Semana del 3 nov» (con el año si no es este). Pura. */
 export function tituloDeSemana(lunes, ahora = Date.now()) {
-  const hoy = lunesDe(new Date(ahora).toISOString());
+  const hoy = lunesDe(ahora);
   if (lunes === hoy) return "Esta semana";
   if (lunes === sumarDias(hoy, -7)) return "La semana pasada";
   const [y, m, d] = String(lunes).split("-").map(Number);
