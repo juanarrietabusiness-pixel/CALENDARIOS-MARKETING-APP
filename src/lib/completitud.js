@@ -15,9 +15,25 @@
 // publicación, sale un número y una lista de lo que falta.
 // ============================================================
 
-import { hashtagsDe } from "./exportarContenido";
 import { mediosDe } from "./publicacion";
 import { llevaGuion, llevaCaption, llevaHashtags } from "./reglasFormato";
+
+/**
+ * Los hashtags de una publicación (aquí y no en exportarContenido.js, que sólo usa el diálogo de exportar: importarla de
+ * allí metía ese módulo entero en la carga inicial).
+ *
+ * `hashtagsFinales` casi siempre viene vacío: el prompt de generación los
+ * pide DENTRO del caption, al final, y así es como los escribe el modelo.
+ * Cuando no está suelto se recogen del propio texto, sin repetirlos y en
+ * el orden en que aparecen.
+ */
+export function hashtagsDe(post) {
+  const sueltos = (post?.hashtagsFinales || "").trim();
+  if (sueltos) return sueltos;
+  const texto = post?.descripcion || post?.script || "";
+  const encontrados = texto.match(/#[\p{L}\p{N}_]+/gu) || [];
+  return [...new Set(encontrados)].join(" ");
+}
 
 /**
  * Los campos que se miran, en el orden en que se nombran al humano.

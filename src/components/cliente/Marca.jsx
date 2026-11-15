@@ -114,8 +114,7 @@ function PlanDeLaSemana({ client, lectura, onGuardarPlan }) {
   return (
     <section className="card" aria-label={`Plan semanal de ${client.name}`}>
       <p className="hint" style={{ marginTop: 0 }}>
-        Lo que sale cada día, fijo todos los meses: formato, tipo, hora y la nota del día. Es lo que leen el asistente del
-        mes, «Planificar mes», el lote del Estudio y la IA. En el calendario, la barra de los días lo enseña y lo edita.
+        En el calendario, la barra de los días enseña este mismo plan y también lo edita.
       </p>
       <EditorSemana
         client={clientePlan}
@@ -213,6 +212,19 @@ export default function Marca({ client, seccion = null, pulso = 0, lectura = fal
     listarCerebro(client.id).then((r) => setCerebro(r?.estado ?? null)).catch(() => setCerebro(null));
   }, [client.id]);
   useEffect(() => { void cargar(); }, [cargar, pulso]);
+
+  // «Primeros pasos» (fuera de Marca) trae aquí con «?mercado=catalogo|estudio»: se abre ahí y se limpia la dirección.
+  useEffect(() => {
+    const mirar = () => {
+      const m = new URLSearchParams(window.location.search).get("mercado");
+      if (m !== "catalogo" && m !== "estudio") return;
+      setAbrirMercado((x) => ({ tab: m, n: (x?.n ?? 0) + 1 }));
+      window.history.replaceState(window.history.state, "", window.location.pathname);
+    };
+    mirar();
+    window.addEventListener("popstate", mirar);
+    return () => window.removeEventListener("popstate", mirar);
+  }, []);
 
   const irDesdeSemaforo = (p, s, opciones = {}) => {
     if (opciones.mercado) setAbrirMercado((x) => ({ tab: opciones.mercado, n: (x?.n ?? 0) + 1 }));

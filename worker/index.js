@@ -71,6 +71,7 @@ import { rutasAnuncios } from "./rutas/anuncios.js";
 import { rutasHistoriasAuto } from "./rutas/historiasAuto.js";
 import { rutasVentas, rutaVentasPublica } from "./rutas/ventas.js";
 import { rutasWhatsApp, rutaVozPublica } from "./rutas/whatsapp.js";
+import { rutaPrimerosPasos } from "./rutas/primerosPasos.js";
 import { rutasTrozos } from "./rutas/trozos.js";
 import { avanzarPendientes } from "./lib/estudio/trabajos.js";
 import { rutasMCP, rutasMCPPublicas } from "./rutas/mcp.js";
@@ -494,6 +495,8 @@ export default {
       if (partes[0] === "ventas") return await rutasVentas(req, env, { acceso, usuario, partes, metodo });
       // El kit de WhatsApp Business de cada cliente y la voz de sus clientes (curso de campañas, entrega 8).
       if (partes[0] === "whatsapp") return await rutasWhatsApp(req, env, { acceso, usuario, partes, metodo });
+      // «Primeros pasos» de un cliente: lo que le falta para arrancar, en una lectura ligera (worker/rutas/primerosPasos.js).
+      if (partes[0] === "primeros-pasos") return await rutaPrimerosPasos(req, env, { acceso, partes, metodo });
 
       // ---------- Medios ----------
       //

@@ -110,7 +110,7 @@ export default function SeccionManualCampanas({ pulso = 0 }) {
             <label className="label" htmlFor={`${ids}-diseno`}>Manual del director creativo (diseño de las piezas)</label>
             <textarea id={`${ids}-diseno`} className="textarea" rows={10} maxLength={MAX_MANUAL_DISENO} value={m.diseno ?? ""} readOnly={!puede}
               onChange={(e) => poner({ diseno: e.target.value })} placeholder={MANUAL_DISENO_BASE} />
-            <p className="hint" style={{ margin: 0 }}>Lo sigue TODA pieza de imagen: el asistente cuando diseña, el director de arte del Estudio, el lote, «Producir el mes», el post y las historias. Vacío, vale el de la casa (el que se ve de ejemplo).</p>
+            <p className="hint" style={{ margin: 0 }}>Lo sigue TODA pieza de imagen: el asistente cuando diseña, el director de arte del Estudio, «Muchas piezas de una vez», «Preparar el mes», el post y las historias. Vacío, vale el de la casa (el que se ve de ejemplo).</p>
             {puede && !m.diseno && <button type="button" className="btn btn-ghost btn-sm" onClick={() => poner({ diseno: MANUAL_DISENO_BASE })}>Partir del de la casa</button>}
           </div>
           <details className="field">

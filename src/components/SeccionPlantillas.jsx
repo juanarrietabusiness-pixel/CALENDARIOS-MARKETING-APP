@@ -59,7 +59,7 @@ export default function SeccionPlantillas({ pulso = 0 }) {
       <p className="ajustes-intro">
         Qué se publica cada día según el plan del cliente. «Del ritmo del cliente» es el tipo que le toca ese día
         (lunes Anuncio, martes Beneficios…). Cada cliente elige la suya en su ficha (pestaña Semanal) y la puede
-        personalizar para él solo; «Planificar mes» abre con ella.
+        personalizar para él solo; «Preparar el mes» abre con ella.
       </p>
       {aviso && <p role={aviso.ok ? "status" : "alert"} className={aviso.ok ? "hint" : "cerebro-error"}>{aviso.texto}</p>}
       {!lista && !aviso && <p className="hint">Cargando…</p>}

@@ -160,7 +160,7 @@ export default function SeccionIA({ esAdmin, pulso = 0 }) {
             <p style={{ ...nota, margin: 0 }}>
               {MOTORES_VIDEO.find((m) => m.id === (config.ia_modelos?.video ?? "gemini"))?.nota}
               {modelos?.video?.llaves && !modelos.video.llaves[config.ia_modelos?.video ?? "gemini"] && (
-                <> Falta el secreto <code>{MOTORES_VIDEO.find((m) => m.id === (config.ia_modelos?.video ?? "gemini"))?.llave}</code> del Worker.</>
+                <> Falta la llave <code>{MOTORES_VIDEO.find((m) => m.id === (config.ia_modelos?.video ?? "gemini"))?.llave}</code> en el servidor (Cloudflare).</>
               )}
             </p>
             {modelos?.video?.aviso && <p className="notice notice-warn" style={{ margin: 0 }}>{modelos.video.aviso}</p>}
