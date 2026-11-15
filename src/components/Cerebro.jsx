@@ -9,8 +9,9 @@ import {
 import { describirLenguaje } from "../lib/lenguajeCliente";
 import {
   TIPOS_VISTA, FILTROS_TIPO, nombreDeTipo, ordenarNotas, filtrarNotas, contarPorTipo, agruparNotas,
-  formatoCaracteres, describirImportacion, describirFicha, avisoSinFicha, leerDocumento,
+  formatoCaracteres, describirImportacion, sumarImportaciones, describirFicha, avisoSinFicha, leerDocumento,
 } from "../lib/cerebroVista";
+import CerebroGitHub from "./CerebroGitHub";
 import { deleteClientMemory } from "../lib/db";
 import CerebroAprendizaje from "./CerebroAprendizaje";
 import NotaLegible from "./NotaLegible";
@@ -57,7 +58,8 @@ export default function Cerebro({ client, abrirMercado = null }) {
   const [borrando, setBorrando] = useState(null);
   const [vista, setVista] = useState(leerVista);      // "lista" | "mapa"
   const [datosMal, setDatosMal] = useState([]);       // «Datos que no cuadran»
-  const [sinActualizar, setSinActualizar] = useState([]); // notas corregidas aquí que GitHub traía cambiadas
+  const [revisando, setRevisando] = useState(false);  // la revisión de GitHub al abrir la pestaña
+  const revisado = useRef("");                        // de qué cliente ya se hizo (StrictMode monta dos veces)
   const [fichaTuya, setFichaTuya] = useState(false);  // la última renovación conservó la ficha editada a mano
   const [mas, setMas] = useState(false);              // el menú «Más»
   const [lenguaje, setLenguaje] = useState(false);    // el diálogo «Lenguaje del cliente»
@@ -82,7 +84,6 @@ export default function Cerebro({ client, abrirMercado = null }) {
     setDatos(null);
     setBusqueda(null);
     setAviso(null);
-    setSinActualizar([]);
     setFichaTuya(false);
     cargar();
   }, [cargar]);
@@ -100,33 +101,73 @@ export default function Cerebro({ client, abrirMercado = null }) {
   // Lo que cambie en las notas tiene que llegar a la ficha y las cifras, que es lo que la IA lee SIEMPRE: si no, sigue
   // escribiendo con lo de antes (el WhatsApp viejo de ROFER). Por eso, si la importación trajo algo y ya había ficha,
   // se renueva sola (sin pisar la que alguien editó a mano: eso lo decide la persona con «Renovar de todas formas»).
-  const importar = async (actualizar, pisar = []) => {
+  // Si quedan archivos para la siguiente vuelta (40 por llamada), sigue sola hasta terminar; la ficha se renueva UNA vez,
+  // al final, y sólo si algo cambió de verdad.
+  const renovarSiTrajo = async (trajo) => {
+    if (!trajo || !estado?.conFicha) return "";
+    setTrabajando("ficha");
+    try {
+      const f = await prepararFicha(client.id, { forzar: false });
+      setFichaTuya(f.ficha === "conservada" || f.cifras === "conservada");
+      return ` ${describirFicha(f)}`;
+    } catch (e) {
+      return ` La ficha técnica no se pudo renovar (${e.message}): pulsa «Renovar ficha».`;
+    }
+  };
+
+  const importar = async (actualizar) => {
     setTrabajando(actualizar ? "actualizar" : "importar");
     setAviso(null);
     try {
-      const r = await importarAlCerebro(client.id, { actualizar, pisar });
-      const d = describirImportacion(r);
-      setSinActualizar(r.sinActualizar ?? []);
-      let texto = d.texto;
-      const trajo = (r.notas?.creadas ?? 0) + (r.notas?.reemplazadas ?? 0) > 0;
-      if (trajo && estado?.conFicha) {
-        setTrabajando("ficha");
-        try {
-          const f = await prepararFicha(client.id, { forzar: false });
-          setFichaTuya(f.ficha === "conservada" || f.cifras === "conservada");
-          texto += ` ${describirFicha(f)}`;
-        } catch (e) {
-          texto += ` La ficha técnica no se pudo renovar (${e.message}): pulsa «Renovar ficha».`;
-        }
+      let r = null;
+      for (let vuelta = 0; vuelta < 12; vuelta++) {
+        r = sumarImportaciones(r, await importarAlCerebro(client.id, { actualizar }));
+        if (!r.archivos?.omitidos) break;
       }
-      avisar(true, texto, d.detalles);
+      const d = describirImportacion(r);
+      avisar(true, d.texto + await renovarSiTrajo(r.trajo), d.detalles);
       await cargar();
     } catch (e) {
       avisar(false, e.message);
+      await cargar();
     } finally {
       setTrabajando("");
     }
   };
+
+  // La revisión al abrir: una petición del árbol de GitHub (ninguna si se miró hace poco). Lo que no choca se aplica solo;
+  // lo que choca queda en la lista de conflictos.
+  useEffect(() => {
+    if (lectura || !estado?.repositorio || !estado.delRepositorio || revisado.current === client.id) return;
+    revisado.current = client.id;
+    let vivo = true;
+    (async () => {
+      setRevisando(true);
+      try {
+        let r = null;
+        for (let vuelta = 0; vuelta < 12; vuelta++) {
+          r = sumarImportaciones(r, await importarAlCerebro(client.id, { actualizar: true, auto: true }));
+          if (!r.archivos?.omitidos) break;
+        }
+        if (!vivo || r?.reciente) return;
+        if (r.trajo || r.conflictos?.total) {
+          const d = describirImportacion(r);
+          setRevisando(false);
+          avisar(true, `Al día con GitHub: ${d.texto.charAt(0).toLowerCase()}${d.texto.slice(1)}${await renovarSiTrajo(r.trajo)}`, d.detalles);
+          setTrabajando("");
+        }
+        await cargar();
+      } catch {
+        // Si GitHub falla, el motivo queda apuntado y se enseña en «Cómo va con GitHub»: no tumba la pantalla.
+        if (vivo) await cargar();
+      } finally {
+        if (vivo) setRevisando(false);
+      }
+    })();
+    return () => { vivo = false; };
+    // Sólo cuando se sabe qué hay (la primera carga de este cliente).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [client.id, Boolean(estado)]);
 
   const preparar = async (forzar) => {
     setTrabajando("ficha");
@@ -338,7 +379,7 @@ export default function Cerebro({ client, abrirMercado = null }) {
                 <Icon name="plus" size={18} /> Añadir
               </button>
               {estado?.repositorio && (
-                <button type="button" className="btn btn-secondary" disabled={trabajo} onClick={() => importar(true)}
+                <button type="button" className="btn btn-secondary" disabled={trabajo || revisando} onClick={() => importar(true)}
                   title="Trae lo nuevo y lo que cambió en GitHub, y renueva la ficha técnica. Lo que corregiste aquí se conserva">
                   <Icon name="refresh" size={18} /> {trabajando === "actualizar" ? "Actualizando…" : "Actualizar desde GitHub"}
                 </button>
@@ -404,10 +445,18 @@ export default function Cerebro({ client, abrirMercado = null }) {
           <ul className="cerebro-datos">
             {datosMal.map((d) => (
               <li key={`${d.tipo}|${d.valor}`}>
-                <p>
-                  {d.tipo === "telefono" ? "El teléfono" : "El correo"} <strong>{d.valor}</strong> está en {d.en.join(", ")}; las notas dicen{" "}
-                  <strong>{d.vigentes.join(" o ")}</strong>{d.vigentesEn.length ? ` (${d.vigentesEn.slice(0, 3).join(", ")})` : ""}.
-                </p>
+                {d.tipo === "precio" ? (
+                  <p>
+                    El precio <strong>{d.valor}</strong> de {d.producto} está en {d.en.join(", ")};{" "}
+                    {d.vigentes.length ? <>el catálogo dice <strong>{d.vigentes.join(" o ")}</strong>.</> : "el catálogo no le pone precio."}{" "}
+                    Los precios los manda el catálogo del estudio de mercado.
+                  </p>
+                ) : (
+                  <p>
+                    {d.tipo === "telefono" ? "El teléfono" : "El correo"} <strong>{d.valor}</strong> está en {d.en.join(", ")}; las notas dicen{" "}
+                    <strong>{d.vigentes.join(" o ")}</strong>{d.vigentesEn.length ? ` (${d.vigentesEn.slice(0, 3).join(", ")})` : ""}.
+                  </p>
+                )}
                 {!lectura && (
                   <div className="cerebro-alerta-botones">
                     {(d.fuentes.includes("ficha") || d.fuentes.includes("cifras")) && (
@@ -419,6 +468,9 @@ export default function Cerebro({ client, abrirMercado = null }) {
                       </button>
                     )}
                     {d.fuentes.includes("cliente") && <span className="hint">Corrígelo en Marca → Ficha del cliente (teléfono o WhatsApp).</span>}
+                    {d.tipo === "precio" && abrirMercado && (
+                      <button type="button" className="btn btn-ghost btn-sm" onClick={() => abrirMercado({ tab: "catalogo", n: Date.now() })}>Abrir el catálogo</button>
+                    )}
                   </div>
                 )}
               </li>
@@ -427,21 +479,9 @@ export default function Cerebro({ client, abrirMercado = null }) {
         </section>
       )}
 
-      {sinActualizar.length > 0 && !lectura && (
-        <div className="cerebro-alerta" role="note">
-          <p>
-            <strong>{sinActualizar.length === 1 ? "Una nota no se actualizó" : `${sinActualizar.length} notas no se actualizaron`}</strong>: cambiaron en GitHub,
-            pero aquí alguien les había corregido el texto, y lo corregido aquí manda.
-          </p>
-          <ul>{sinActualizar.slice(0, 8).map((n) => <li key={n.id}>{n.titulo}</li>)}</ul>
-          <div className="cerebro-alerta-botones">
-            <button type="button" className="btn btn-primary btn-sm" disabled={trabajo} onClick={() => importar(true, sinActualizar.map((n) => n.id))}>
-              Usar la versión de GitHub en {sinActualizar.length === 1 ? "esa" : "todas"}
-            </button>
-            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSinActualizar([])}>Quedarme con lo de aquí</button>
-          </div>
-        </div>
-      )}
+      <CerebroGitHub client={client} estado={estado} conflictos={datos?.conflictos ?? []} noTraer={datos?.noTraer ?? []} lectura={lectura}
+        ocupado={trabajo} revisando={revisando} avisar={avisar}
+        alCambiar={async ({ trajo }) => { const extra = await renovarSiTrajo(trajo); if (extra) avisar(true, extra.trim()); setTrabajando(""); await cargar(); }} />
 
       <div aria-live="polite">
         {trabajo && <p role="status" className="cerebro-trabajando">{trabajando === "ficha" ? "La IA está leyendo las notas de marca. Tarda de medio minuto a un par de minutos." : trabajando === "rubro" ? "La IA está escribiendo lo que sabe un experto del rubro. Tarda un minuto o dos." : trabajando === "voz" ? "La IA está leyendo los guiones UGC de este cliente. Tarda menos de un minuto." : "Leyendo el repositorio…"}</p>}
@@ -674,6 +714,11 @@ function EditorNota({ nota, lectura, onCerrar, onGuardar, onNota }) {
             <span className={`badge cerebro-tipo cerebro-tipo-${nota.tipo}`}>{nombreDeTipo(nota.tipo)}</span>
             {nota.interna && <span className="badge cerebro-interna"><Icon name="lock" size={12} /> Interna</span>}
             {nota.fuente && <span>De <code>{nota.fuente}</code></span>}
+            {nota.github && (
+              <a className="cerebro-editor-github" href={nota.github} target="_blank" rel="noopener noreferrer">
+                <Icon name="external" size={12} /> Editar en GitHub<span className="sr-only"> (se abre en otra pestaña)</span>
+              </a>
+            )}
             {nota.actualizada && <span>{fecha(nota.actualizada)}</span>}
           </p>
           <NotaLegible texto={nota.texto} onNota={(ruta) => { onCerrar(); onNota?.(ruta); }} />
@@ -690,7 +735,14 @@ function EditorNota({ nota, lectura, onCerrar, onGuardar, onNota }) {
     <div className="overlay" onClick={(e) => { if (e.target === e.currentTarget) onCerrar(); }}>
       <form ref={ref} className="dialog cerebro-editor" role="dialog" aria-modal="true" aria-labelledby={`${ids}-t`} onSubmit={enviar}>
         <h3 id={`${ids}-t`}>{nueva ? "Añadir al cerebro" : "Editar la nota"}</h3>
-        {!nueva && nota.fuente && <p className="hint">De <code>{nota.fuente}</code>. Si le cambias el texto, al actualizar desde GitHub no se pisa (se te avisará si allí cambió).</p>}
+        {!nueva && nota.fuente && nota.origen === "repositorio" && (
+          <p className="hint">
+            De <code>{nota.fuente}</code>. GitHub manda en el canon: si el cambio es de la marca, hazlo allí
+            {nota.github ? <> (<a href={nota.github} target="_blank" rel="noopener noreferrer">Editar en GitHub<span className="sr-only">, se abre en otra pestaña</span></a>)</> : ""}.
+            Si lo corriges aquí, al actualizar no se pisa, y si esa sección cambia en GitHub, se te pedirá que decidas.
+          </p>
+        )}
+        {!nueva && nota.fuente && nota.origen !== "repositorio" && <p className="hint">De <code>{nota.fuente}</code>.</p>}
 
         {nueva && (
           <fieldset className="cerebro-que">
@@ -761,7 +813,11 @@ function ConfirmarBorrado({ nota, onCancelar, onBorrar }) {
     <div className="overlay" onClick={(e) => { if (e.target === e.currentTarget) onCancelar(); }}>
       <div ref={ref} className="dialog" role="alertdialog" aria-modal="true" aria-labelledby={`${ids}-t`} aria-describedby={`${ids}-d`}>
         <h3 id={`${ids}-t`}>¿Borrar «{nota.titulo}»?</h3>
-        <p id={`${ids}-d`} className="hint">La IA dejará de leerla. Si viene del repositorio, sigue allí como copia y podrías volver a traerla.</p>
+        <p id={`${ids}-d`} className="hint">
+          La IA dejará de leerla.{nota.origen === "repositorio" && nota.fuente
+            ? " Viene de GitHub: al actualizar ya no se volverá a traer (lo puedes deshacer en «No se traen de GitHub»). Para quitarla de verdad, bórrala también en GitHub."
+            : ""}
+        </p>
         <div className="cerebro-editor-pie">
           <button type="button" className="btn btn-secondary" onClick={onCancelar}>Cancelar</button>
           <button type="button" className="btn btn-danger" onClick={onBorrar}>Borrar</button>
