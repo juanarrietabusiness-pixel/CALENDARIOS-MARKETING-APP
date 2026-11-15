@@ -301,15 +301,16 @@ export async function volcarSalud(env) {
 
 /**
  * Envuelve una llamada a un proveedor: apunta si fue bien o el error (que se vuelve a lanzar tal cual). Para los módulos
- * que tienen UNA función por la que pasa todo (`llamar`).
+ * que tienen UNA función por la que pasa todo (`llamar`). `ignorar(e)`: un error que no dice nada de la salud del
+ * proveedor (el filtro de contenido de Google rechazó la escena) no se apunta.
  */
-export async function seguido(proveedor, fn, opciones) {
+export async function seguido(proveedor, fn, { espacio = "", ignorar = null } = {}) {
   try {
     const v = await fn();
-    anotar(proveedor, null, opciones);
+    anotar(proveedor, null, { espacio });
     return v;
   } catch (e) {
-    anotar(proveedor, e, opciones);
+    if (!ignorar?.(e)) anotar(proveedor, e, { espacio });
     throw e;
   }
 }

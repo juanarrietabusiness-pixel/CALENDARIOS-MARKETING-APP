@@ -31,6 +31,7 @@
 // ============================================================
 
 import { llamarGemini, aBase64, ErrorMotor } from "./gemini.js";
+import { seguido } from "../salud.js";
 import { MEDIDAS, proporcionDe } from "../../../src/lib/estudioCatalogo.js";
 import { PRECIOS_GEMINI, costoGemini } from "../configIA.js";
 import { MOTOR_FAL } from "./fal.js";
@@ -164,7 +165,10 @@ export function descargaDeArchivoGemini(uri) {
 
 const deBase64 = (b64) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
 
-async function pedirGoogle(env, url, opciones = {}, gid) {
+/** Toda llamada a Google (Omni) pasa por aquí: su salud se apunta (Ajustes → Salud, worker/lib/salud.js). */
+const pedirGoogle = (env, url, opciones, gid) => seguido("google", () => pedirGoogleOmni(env, url, opciones, gid));
+
+async function pedirGoogleOmni(env, url, opciones = {}, gid) {
   const res = await fetch(url, { ...opciones, headers: { "Content-Type": "application/json", "x-goog-api-key": env.GOOGLE_AI_KEY, ...(opciones.headers ?? {}) } })
     .catch(() => { throw new ErrorMotor("No se pudo contactar con Google AI", 502, { reintentable: true }); });
   const texto = await res.text().catch(() => "");

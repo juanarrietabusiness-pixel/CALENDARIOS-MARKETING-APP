@@ -29,6 +29,7 @@
 //     igual y los tiempos los pone la verificación posterior (Gemini) o la estimación, como con Kie.
 // ============================================================
 
+import { seguido } from "../salud.js";
 import { ErrorMotor } from "./gemini.js";
 import { tipoPorBytes } from "./archivos.js";
 import { uuid } from "../ids.js";
@@ -66,7 +67,10 @@ export function errorDeElevenLabs(estado, motivo = "") {
   return new ErrorMotor(`ElevenLabs rechazó el pedido (${estado})${d}.`, 502);
 }
 
-async function llamar(env, ruta, { method = "GET", cuerpo, crudo = false } = {}) {
+/** Toda llamada a ElevenLabs pasa por aquí (o por `llamarConArchivo`): su salud se apunta (Ajustes → Salud, worker/lib/salud.js). */
+const llamar = (env, ruta, opciones) => seguido("elevenlabs", () => llamarElevenLabs(env, ruta, opciones));
+
+async function llamarElevenLabs(env, ruta, { method = "GET", cuerpo, crudo = false } = {}) {
   let res;
   try {
     res = await fetch(`${BASE}${ruta}`, {
@@ -257,7 +261,9 @@ const PLAZO_CANCION_MS = 120_000;
 const TOPE_AISLADA = 40 * 1024 * 1024;
 
 /** Un pedido multipart (el audio y su texto): sin `Content-Type`, que lo pone el `FormData` con su frontera. */
-async function llamarConArchivo(env, ruta, form) {
+const llamarConArchivo = (env, ruta, form) => seguido("elevenlabs", () => llamarConArchivoElevenLabs(env, ruta, form));
+
+async function llamarConArchivoElevenLabs(env, ruta, form) {
   let res;
   try {
     res = await fetch(`${BASE}${ruta}`, { method: "POST", headers: { "xi-api-key": env.ELEVENLABS_API_KEY }, body: form, signal: AbortSignal.timeout(PLAZO_CANCION_MS) });

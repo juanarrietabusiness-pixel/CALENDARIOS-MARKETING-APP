@@ -18,6 +18,7 @@
 // Un test recorre los dos lados y falla si un modelo de fal no tiene su ruta aquí, o al revés.
 // ============================================================
 
+import { seguido } from "../salud.js";
 import { ErrorMotor, aBase64 } from "./gemini.js";
 import { abrirDescarga, TOPE_IMAGEN } from "./descarga.js";
 import { MEDIDAS } from "../../../src/lib/estudioCatalogo.js";
@@ -97,7 +98,10 @@ export function errorDeFal(estado, texto) {
   return new ErrorMotor(`fal.ai devolvió un error (${estado})${d || "."}`, 502, { reintentable: estado >= 500 });
 }
 
-async function llamar(env, url, opciones = {}) {
+/** Toda llamada pasa por aquí: su salud se apunta (Ajustes → Salud, worker/lib/salud.js). */
+const llamar = (env, url, opciones = {}) => seguido("fal", () => llamarFal(env, url, opciones));
+
+async function llamarFal(env, url, opciones = {}) {
   let res;
   try {
     res = await fetch(url, { ...opciones, headers: { Authorization: `Key ${env.FAL_KEY}`, "Content-Type": "application/json", ...(opciones.headers ?? {}) }, signal: AbortSignal.timeout(PLAZO_MS) });

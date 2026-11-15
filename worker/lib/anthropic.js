@@ -20,6 +20,7 @@
 import { partirSSE, crearAcumulador } from "./flujoAnthropic.js";
 import { MARGEN_RAZONAMIENTO, esMuse, llaveMeta } from "./configIA.js";
 import { conReglaIdioma } from "../../src/lib/idioma.js";
+import { anotar } from "./salud.js";
 
 const dormir = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -174,6 +175,7 @@ export async function abrirFlujo(env, peticion, { signal } = {}) {
     } catch (e) {
       if (signal?.aborted) throw e;
       if (intento < 1) { await dormir(2000); continue; }
+      anotar(meta ? "meta-ia" : "anthropic", `No se pudo contactar con ${nombre}.`);
       throw new Error(`No se pudo contactar con ${nombre}.`, { cause: e });
     }
     if ((res.status === 429 || res.status >= 500) && intento < 1) { await dormir(2000); continue; }
@@ -182,8 +184,12 @@ export async function abrirFlujo(env, peticion, { signal } = {}) {
       console.error(`${proveedor}: rechazo`, res.status, cuerpoError);
       let detalle = {};
       try { detalle = JSON.parse(cuerpoError)?.error ?? {}; } catch { /* no era JSON */ }
-      throw new RechazoAnthropic(res.status, detalle.type ?? "", detalle.message ?? "", proveedor);
+      const rechazo = new RechazoAnthropic(res.status, detalle.type ?? "", detalle.message ?? "", proveedor);
+      // Ajustes → Salud (y el aviso del saldo que se acabó): con el motivo en palabras.
+      anotar(meta ? "meta-ia" : "anthropic", { message: mensajeDeRechazo(rechazo), estado: res.status });
+      throw rechazo;
     }
+    anotar(meta ? "meta-ia" : "anthropic");
     return res;
   }
   throw new Error("No se pudo generar la respuesta.");

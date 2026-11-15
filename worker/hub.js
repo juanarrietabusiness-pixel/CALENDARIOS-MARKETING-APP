@@ -48,6 +48,7 @@
 // ============================================================
 
 import { bombear } from "./lib/estudio/bomba.js";
+import { volcarSalud } from "./lib/salud.js";
 
 /** Lo que se guarda pegado a cada socket. Sobrevive a la hibernación. */
 function datosDe(ws) {
@@ -125,6 +126,8 @@ export class EspacioHub {
       console.error("bomba del estudio:", e?.message ?? e);
       siguiente = 30_000;
     }
+    // La salud de los proveedores que llamó esta alarma (Kie, Google…): vive en la memoria de ESTE objeto (salud.js).
+    await volcarSalud(this.env);
     if (siguiente != null) await this.state.storage.setAlarm(Date.now() + siguiente);
   }
 
