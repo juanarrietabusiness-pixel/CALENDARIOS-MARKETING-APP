@@ -3,7 +3,7 @@ import worker from "../../worker/index.js";
 import { d1EnMemoria } from "../utils/d1Memoria.js";
 import { COOKIE } from "../../worker/lib/sesion.js";
 import { sha256 } from "../../worker/lib/ids.js";
-import { olvidarModelos } from "../../worker/lib/configIA.js";
+import { olvidarModelos, mesActual } from "../../worker/lib/configIA.js";
 
 // ============================================================
 // El MOTOR DE TEXTOS como lo haría Claude, de punta a punta (worker/lib/estudio/lote.js + lib/motorTextos.js):
@@ -209,6 +209,16 @@ describe("el revisor y la variedad", () => {
     expect(r.ideas.find((i) => i.n === 2)).toMatchObject({ titular: "Tus visitas duermen bien", descripcion: "Nuevo caption. Escríbenos.", textoPieza: "Tus visitas duermen bien" });
     expect(r.ideas.find((i) => i.n === 1).titular).toBe("Titular 1");
     expect(db.sqlite.prepare("select funcion from consumo_ia").all().map((f) => f.funcion)).toContain("crítica de textos");
+  });
+
+  it("con el presupuesto agotado y «detener»: 402 sin llamar a la IA (ni el planificador, ni el redactor, ni el revisor)", async () => {
+    db.sqlite.prepare("insert into ajustes_espacio (id, owner_id, presupuesto_usd, al_limite) values (?,?,?,?)").run("u-jefe", "u-jefe", 1, "detener");
+    db.sqlite.prepare("insert into consumo_ia (id, owner_id, mes, funcion, modelo, costo_usd) values (?,?,?,?,?,?)")
+      .run("g1", "u-jefe", mesActual(), "x", "claude-sonnet-5", 5);
+    anthropic((p) => ideasDe(textoDe(p)));
+    const r = await lote({ modo: "plan", casillas, planificar: true, semilla: 5 });
+    expect(r.status).toBe(402);
+    expect(peticiones).toHaveLength(0);
   });
 
   it("si el revisor falla, la tanda sale igual", async () => {

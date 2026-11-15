@@ -755,6 +755,8 @@ async function escribirTanda(env, acceso, cliente, pedido, datos = {}) {
     for (const [n, x] of res.value.crudas) if (!crudas.has(n)) crudas.set(n, x);
   };
   apuntar(...(await Promise.allSettled([escribir(grupos[0], [])])));
+  // Sin presupuesto, las demás llamadas tampoco saldrían: se dice ya.
+  if (!crudas.size && errores[0]?.estado === 402) throw errores[0];
   const titulares = [...crudas.values()].map((x) => String(x?.titular || x?.titulo || "").slice(0, 80)).filter(Boolean);
   const resto = grupos.slice(1);
   for (let k = 0; k < resto.length; k += LLAMADAS_A_LA_VEZ) {
