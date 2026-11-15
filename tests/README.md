@@ -38,7 +38,7 @@ Tarda unos trece segundos y no necesita ninguna llave.
 | `secretos.test.js` | Que ninguna clave esté escrita en el repositorio, que el navegador no lea secretos del servidor, y que no se versionen binarios grandes |
 | `migraciones.test.js` | RLS por tabla, políticas acotadas al propietario, `search_path` en las `security definer`, revocaciones a `anon`, índices de clave ajena |
 | `funciones.test.js` | Que toda Edge Function del repositorio se despliegue, autentique, acote CORS y tamaño, y no filtre errores del proveedor |
-| `regresiones.test.js` | Las trampas documentadas en `CLAUDE.md`: fechas en UTC, variables CSS concatenadas, `div` con `onClick`, `alert()`, la barra del chip del mes |
+| `regresiones.test.js` | Las trampas documentadas en `docs/trampas/`: fechas en UTC, variables CSS concatenadas, `div` con `onClick`, `alert()`, la barra del chip del mes |
 | `rendimiento.bundle.test.js` | Presupuesto de descarga y el canario del *tree-shaking* |
 | `infra.live.test.js` | Deriva entre lo desplegado y el repositorio, avisos del proyecto, cabeceras reales del sitio |
 
