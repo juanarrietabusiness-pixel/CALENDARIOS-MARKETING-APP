@@ -43,7 +43,7 @@
 import { NIVELES_CONSCIENCIA, CLAVES_NIVEL, nombreDeNivel } from "./consciencia.js";
 import { lineaDeNotaDelDia } from "./notasSemana.js";
 import { PLANTILLAS_TEXTO } from "./carrusel.js";
-import { PILARES, pilarDe, nombreDePilar } from "./pilares.js";
+import { PILARES, pilarDe, nombreDePilar, COMPOSICIONES, composicionDe } from "./pilares.js";
 import { estructuraDe, estructuraPara, limpiarEstructurasRecientes, lineaDeEstructura } from "./estructurasCarrusel.js";
 import { camposDePromptListo } from "./promptImagen.js";
 import { FORMATO_FICHA, limpiarFicha, asegurarTexto, ajustarFicha } from "./director.js";
@@ -102,24 +102,9 @@ export const MAX_GUION = 2000;
 /** Dónde va el texto en la plantilla, según el formato (en una historia, abajo tapa los botones de Instagram). */
 export const plantillaDeFormato = (formato) => (formato === "historia" ? "centro" : "banda");
 
-/**
- * Las composiciones: CÓMO se ve cada pieza. `objeto`: necesita un producto físico en cuadro (sin él, no se usa);
- * `uso`: lo enseña en uso o en su lugar; `plantilla`: dónde va el texto si lo pone la plantilla.
- */
-export const COMPOSICIONES = Object.freeze([
-  { id: "heroe", nombre: "Producto héroe", objeto: true, linea: "Composición: el producto como protagonista absoluto, en primer plano y ligeramente en ángulo, sobre un fondo limpio; plano cerrado.", plantilla: "banda" },
-  { id: "uso", nombre: "En uso", uso: true, linea: "Composición: una persona real usando el producto o el servicio en un momento cotidiano, plano medio, gesto natural.", plantilla: "arriba" },
-  { id: "ugc", nombre: "Selfie con el celular", uso: true, linea: "Composición: foto tomada con el celular por una persona real que lo prueba (estilo contenido de cliente): luz de casa, encuadre imperfecto, nada de estudio.", plantilla: "degradado" },
-  { id: "cenital", nombre: "Vista cenital", objeto: true, linea: "Composición: vista cenital (desde arriba) ordenada, el producto con pocos objetos de su entorno alrededor, mucho espacio libre.", plantilla: "degradado" },
-  { id: "macro", nombre: "Macro de textura", objeto: true, linea: "Composición: primerísimo plano de la textura o un detalle del producto (grano, tejido, brillo), fondo desenfocado, sensación táctil.", plantilla: "arriba" },
-  { id: "tipografica", nombre: "Tipográfica", linea: "Composición de diseño gráfico: un gran bloque de color de la paleta domina la pieza y la imagen ocupa sólo un tercio, recortada limpia a un lado.", plantilla: "centro" },
-  { id: "ambiente", nombre: "En su lugar", uso: true, linea: "Composición: la escena en su ambiente real (el lugar donde se usa), plano abierto, luz que entra de lado, mucho aire alrededor.", plantilla: "degradado" },
-  { id: "dividida", nombre: "Antes y después", linea: "Composición dividida en dos mitades: a un lado el problema, al otro el resultado; el cambio se entiende de un vistazo.", plantilla: "banda" },
-  { id: "emocion", nombre: "Emoción", linea: "Composición: primer plano de una cara con una emoción clara (alivio, alegría, tranquilidad, frustración según el mensaje).", plantilla: "arriba" },
-  { id: "oficio", nombre: "El oficio", uso: true, linea: "Composición: el trabajo hecho o en proceso (las manos, la herramienta, el resultado), plano medio, luz de taller u oficina real.", plantilla: "banda" },
-  { id: "unboxing", nombre: "Recién llegado", objeto: true, linea: "Composición: el producto recién sacado de su empaque sobre una mesa, manos que lo abren, sensación de estreno.", plantilla: "arriba" },
-  { id: "serie", nombre: "Serie", objeto: true, linea: "Composición editorial en cuadrícula: dos o tres tomas del producto (o de varios) en paneles ordenados, como una página de revista.", plantilla: "centro" },
-]);
+// Las composiciones viven en pilares.js (lo lee también lib/estudio.js, que carga el panel de cada publicación y no debe
+// arrastrar este archivo entero). Se reexportan: quien las importaba de aquí no cambia.
+export { COMPOSICIONES, composicionDe };
 
 /** La táctica del gancho: el ángulo con que se escribe el titular. Ninguna se inventa datos. */
 export const TACTICAS = Object.freeze([
@@ -153,7 +138,6 @@ const lineaDe = (lista, id) => lista.find(([x]) => x === id)?.[1] ?? "";
 // Las estructuras de un carrusel viven en su módulo (pequeño: lo leen también «Dame ideas» y el director).
 export { ESTRUCTURAS_CARRUSEL, estructuraDe, estructuraPara, limpiarEstructurasRecientes, estructurasDeCalendarios, lineaDeEstructura } from "./estructurasCarrusel.js";
 
-export const composicionDe = (id) => COMPOSICIONES.find((x) => x.id === id) ?? null;
 const mcd = (a, b) => (b ? mcd(b, a % b) : a);
 /** Un salto que recorre la lista entera antes de repetir y no deja dos vecinas seguidas. */
 const saltoPara = (n) => [5, 3, 7, 1].find((k) => k < n && mcd(k, n) === 1) ?? 1;

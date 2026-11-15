@@ -23,7 +23,9 @@
 
 import { ETAPAS_CICLO, idEtapaCiclo, etapaCiclo, nombreEtapaCiclo, tipoNegocioDe, destinoNegocioDe } from "./cicloVentas.js";
 import { CLAVES_NIVEL, nombreDeNivel } from "./consciencia.js";
-import { LIMITES_ANUNCIO } from "./estudioMercado.js";
+// De su módulo pequeño, no de estudioMercado.js: el panel de una publicación carga este archivo y no debe arrastrar el
+// estudio de mercado entero (16,5 kB comprimidos) por una constante.
+import { LIMITES_ANUNCIO } from "./limitesAnuncio.js";
 import { cicloDe } from "./cicloNegocio.js";
 import { llevaCaption, separarHashtags, juntarHashtags } from "./reglasFormato.js";
 
@@ -32,7 +34,7 @@ export const MIN_TEXTOS = 3;
 export const MAX_TEXTOS = 5;
 export const MAX_TITULOS = 5;
 /**
- * Un texto principal, como mucho: el tope ÚNICO de la aplicación (LIMITES_ANUNCIO del estudio de mercado, el mismo del
+ * Un texto principal, como mucho: el tope ÚNICO de la aplicación (LIMITES_ANUNCIO de limitesAnuncio.js, el mismo del
  * asistente de campañas). El de evaluación es más largo a propósito (detalles, beneficios, una objeción).
  */
 export const MAX_TEXTO_ANUNCIO = LIMITES_ANUNCIO.textoPrincipal;

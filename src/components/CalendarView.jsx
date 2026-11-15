@@ -38,6 +38,8 @@ let vistaRecordada = "grid";
 
 const PostSidePanel = lazy(() => import("./calendario/PostSidePanel").then((m) => ({ default: m.PostSidePanel })));
 const ProgramarAprobadas = lazy(() => import("./calendario/programarAprobadas"));
+// «Enviar a cliente», en diferido: sólo hace falta al mandar el mes.
+const EnviarCliente = lazy(() => import("./calendario/EnviarCliente"));
 // «Ver el mes como se verá»: la cuadrícula del perfil, el feed, los detalles y «Programar todo lo listo». Se carga al abrirla.
 const VistaMes = lazy(() => import("./calendario/VistaMes"));
 import { MonthGrid } from "./calendario/MonthGrid";
@@ -59,7 +61,7 @@ const FechasEspecialesDialog = lazy(() => import("./calendario/fechasEspeciales"
 import { BankPanel } from "./calendario/BankPanel";
 import {
   ElegirNuevaPublicacion,
-  EditMetaDialog, ApprovalDialog, AddPostDialog,
+  EditMetaDialog, AddPostDialog,
 } from "./calendario/dialogos";
 import { fmt12h } from "./calendario/formato";
 
@@ -187,7 +189,8 @@ export default function CalendarView({
 
   // Lo aprobado que aún no está en la cola, y las redes que el cliente
   // tiene de verdad: sin ninguna cuenta, la barra de publicar no sale.
-  const candidatas = useMemo(() => aprobadasSinProgramar(cal?.days ?? [], cola), [cal?.days, cola]);
+  const sinAprobar = client?.apruebaAntes === false;
+  const candidatas = useMemo(() => aprobadasSinProgramar(cal?.days ?? [], cola, undefined, { sinAprobar }), [cal?.days, cola, sinAprobar]);
   // «Programar al aprobar» es del CLIENTE (todos sus meses); un mes que lo tenía encendido antes también cuenta.
   const alAprobar = Boolean(client?.programarAlAprobar || cal?.opciones?.programarAlAprobar);
   const cambiarAlAprobar = (valor) => {
@@ -1107,18 +1110,20 @@ export default function CalendarView({
         <div className="barra-publicar">
           <span className="barra-publicar-texto">
             <Icon name="clock" size={16} />
-            {candidatas.length
-              ? `${candidatas.length} ${candidatas.length === 1 ? "aprobada" : "aprobadas"} sin programar`
-              : "Nada aprobado pendiente de programar"}
+            {sinAprobar
+              ? "Este cliente no aprueba antes de publicar"
+              : candidatas.length
+                ? `${candidatas.length} ${candidatas.length === 1 ? "aprobada" : "aprobadas"} sin programar`
+                : "Nada aprobado pendiente de programar"}
           </span>
-          {candidatas.length > 0 && (
+          {candidatas.length > 0 && !sinAprobar && (
             <button type="button" className="btn btn-primary btn-sm" onClick={() => abrirCapa("programarAprobadas")}>
               Programar lo aprobado
             </button>
           )}
           {/* Para los clientes que no revisan: lo que ya está listo (pieza, hora y texto), sin pedir la aprobación. */}
           {!virtual && (
-            <button type="button" className="btn btn-secondary btn-sm" onClick={abrirVistaMes}>
+            <button type="button" className={`btn btn-sm ${sinAprobar ? "btn-primary" : "btn-secondary"}`} onClick={abrirVistaMes}>
               Ver y programar lo listo
             </button>
           )}
@@ -1653,7 +1658,8 @@ export default function CalendarView({
 
       {/* Approval link modal */}
       {capa === "aprobacion" && (
-        <ApprovalDialog
+        <Suspense fallback={null}>
+        <EnviarCliente
           hasLink={!!cal.shareToken}
           shareEnabled={cal.shareEnabled !== false}
           working={shareWorking}
@@ -1678,8 +1684,14 @@ export default function CalendarView({
           envio={envio}
           onDisenar={() => abrirAsistente(3)}
           onEnviado={marcarEnvio}
+          whatsapp={client.whatsapp}
+          abiertoAt={cal.clienteAbrioAt}
+          apruebaAntes={!sinAprobar}
+          onCambiarApruebaAntes={onPersistClient ? (si) => onPersistClient({ ...client, apruebaAntes: si }) : null}
+          onVerMes={virtual ? null : () => { cerrarCapa(); abrirVistaMes(); }}
           onClose={cerrarCapa}
         />
+        </Suspense>
       )}
 
       {/* El asistente del mes (fase 6): «Producir el mes». Escribe por `escribirMes`, que parte del calendario más nuevo. */}

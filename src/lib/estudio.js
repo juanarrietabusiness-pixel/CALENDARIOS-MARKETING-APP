@@ -13,8 +13,8 @@
 import { pedir } from "./db";
 import { imagenParaModelo } from "./medios";
 import { estaVivo, diasQueQuedan, modeloPorId, modeloPorDefecto, modeloQueRespeta, VOCES_OMNI, ajustesDe, nombreDelModelo } from "./estudioCatalogo";
-import { composicionDe } from "./loteAnuncios";
-import { productosDelPost } from "./pilares";
+// `composicionDe` de pilares.js y no de loteAnuncios.js: este archivo lo carga el panel de cada publicación.
+import { productosDelPost, composicionDe } from "./pilares";
 import { piezasDeGrupo, textoDeLaPieza, fotosDeVariosProductos } from "./galeriaPura.js";
 export { piezasDeGrupo, textoDeLaPieza, fotosDelProducto, fotosDeVariosProductos, esVideoReal, medioDeArchivo, IGUALAR_TEXTO, ejemploParaIgualar } from "./galeriaPura.js";
 // Lo de editar una imagen vive en un módulo puro: también lo usa el Worker (los encargos del servidor).
