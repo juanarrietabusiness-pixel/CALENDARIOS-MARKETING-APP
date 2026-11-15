@@ -206,6 +206,18 @@ const CON_CALENDARIO = new Set(TABLAS_CON_CALENDARIO);
 export const NULO = Symbol("nulo");
 export const NO_NULO = Symbol("no nulo");
 
+/**
+ * Para un WHERE de la capa: comparar en vez de igualar (`{ created_at: menorQue(cursor) }`, `{ tipo: distintoDe("audio") }`).
+ * Lo pidió la galería del Estudio: paginar por fecha y no contar los audios en la página. El operador sale de esta lista
+ * cerrada, nunca de quien llama.
+ */
+class Comparacion {
+  constructor(op, valor) { this.op = op; this.valor = valor; }
+}
+export const menorQue = (valor) => new Comparacion("<", valor);
+export const mayorOIgual = (valor) => new Comparacion(">=", valor);
+export const distintoDe = (valor) => new Comparacion("<>", valor);
+
 export class ErrorAcceso extends Error {
   constructor(mensaje = "No tienes acceso a ese cliente.") {
     super(mensaje);
@@ -279,8 +291,10 @@ export function crearAcceso(db, ownerId, { clientes = null } = {}) {
   function acotar(tabla, where = {}) {
     exigirTabla(tabla);
     const cols = exigirColumnas(Object.keys(where));
-    const condicion = (c) => (where[c] === NULO ? `${c} is null` : where[c] === NO_NULO ? `${c} is not null` : `${c} = ?`);
-    const valores = cols.filter((c) => where[c] !== NULO && where[c] !== NO_NULO).map((c) => where[c]);
+    const condicion = (c) => (where[c] === NULO ? `${c} is null` : where[c] === NO_NULO ? `${c} is not null`
+      : where[c] instanceof Comparacion ? `${c} ${where[c].op} ?` : `${c} = ?`);
+    const valores = cols.filter((c) => where[c] !== NULO && where[c] !== NO_NULO)
+      .map((c) => (where[c] instanceof Comparacion ? where[c].valor : where[c]));
     const cliente = porCliente(tabla);
     const extra = cliente ? { sql: [cliente.sql], valores: cliente.valores } : { sql: [], valores: [] };
 

@@ -18,12 +18,23 @@
 // ============================================================
 
 import { uuid } from "../ids.js";
-import { NULO, NO_NULO } from "../acceso.js";
+import { NULO, NO_NULO, menorQue, mayorOIgual, distintoDe } from "../acceso.js";
+import { coincideConBusqueda, esCarpetaAutomatica } from "../../../src/lib/galeriaVistas.js";
 import { claveDeArchivo, medidasDe, tipoPorBytes } from "./archivos.js";
 import { DIAS_PAPELERA } from "../../../src/lib/estudioCatalogo.js";
 import { ErrorEstudio, trabajoPublico } from "./trabajos.js";
 
+/**
+ * Una PÁGINA de la galería (las más recientes; «Cargar más» pide la siguiente por fecha). Antes era el tope de TODO:
+ * Baby Caleb tenía 401 piezas vivas y 101 no se veían ni se encontraban buscando, y los audios (las locuciones) contaban
+ * en esas 300 aunque no se enseñan.
+ */
 export const MAX_LISTADOS = 300;
+/** Lo que se relee de una vez cuando la pantalla ya cargó más páginas (`hasta`): todo lo de esa fecha en adelante. */
+export const MAX_HASTA = 3000;
+/** Cuántas filas mira una búsqueda en el servidor como mucho, y cuántas devuelve. */
+export const MAX_BUSQUEDA = 3000;
+const MAX_RESULTADOS = 150;
 export const MAX_SUBIDA = 15 * 1024 * 1024;
 /** Un video subido a mano (el de la competencia, para copiar su estructura o su movimiento). */
 export const MAX_SUBIDA_VIDEO = 50 * 1024 * 1024;
@@ -51,7 +62,12 @@ export const carpetaPublica = (c) => ({ id: c.id, nombre: c.nombre, creada: c.cr
 
 /** Los tipos de carpeta que la galería agrupa (los crea el flujo del carrusel o del reel IA). */
 export const TIPOS_CARPETA = ["carrusel", "reel"];
-/** Las agrupadas no cuentan en las 30 de la persona (sale una por carrusel), pero tienen su propio tope. */
+/**
+ * «auto»: la carpeta que pone la aplicación (el lote, las variaciones). No agrupa, pero tampoco gasta las 30 de la
+ * persona ni sale en la fila de carpetas (src/lib/galeriaVistas.js, `esCarpetaAutomatica`).
+ */
+export const TIPOS_VALIDOS = [...TIPOS_CARPETA, "auto"];
+/** Las agrupadas y las automáticas no cuentan en las 30 de la persona (sale una por carrusel), pero tienen su propio tope. */
 export const MAX_GRUPOS = 300;
 const MAX_ORDEN = 40;
 
@@ -74,12 +90,23 @@ export async function usosVivos(acceso, clientId, filas) {
   const calendarios = await acceso.leerColumnas("calendars", ["id", "days"], { client_id: clientId });
   const posts = new Map();
   for (const c of calendarios) {
-    for (const d of leerJSON(c.days, [])) for (const p of d?.posts ?? []) posts.set(`${c.id}:${p.id}`, { texto: JSON.stringify(p), fecha: d.date });
+    for (const d of leerJSON(c.days, [])) {
+      for (const p of d?.posts ?? []) {
+        posts.set(`${c.id}:${p.id}`, {
+          texto: JSON.stringify(p), fecha: d.date,
+          // Lo que la galería busca y filtra de la publicación (src/lib/galeriaVistas.js): su título y su producto.
+          titulo: String(p.title ?? "").slice(0, 80), producto: String(p.producto ?? "").slice(0, 80), productoId: String(p.productoId ?? "").slice(0, 80),
+        });
+      }
+    }
   }
   return new Map(conUsos.map((f) => [f.id, leerJSON(f.usado_en, [])
     .map((u) => ({ u, p: posts.get(`${u.calendarId}:${u.postId}`) }))
     .filter(({ p }) => p?.texto.includes(f.clave))
-    .map(({ u, p }) => ({ ...u, fecha: p.fecha }))]));
+    .map(({ u, p }) => ({
+      ...u, fecha: p.fecha,
+      ...(p.titulo ? { titulo: p.titulo } : {}), ...(p.producto ? { producto: p.producto } : {}), ...(p.productoId ? { productoId: p.productoId } : {}),
+    }))]));
 }
 
 /**
@@ -119,27 +146,117 @@ const conProteccion = (f, protegidas, vivos) => {
   return { ...a, ...(vivos?.has(f.id) ? { usadoEn: vivos.get(f.id) } : {}), ...(marca ? { deLaMarca: marca.que } : {}) };
 };
 
+/** Lo vivo de la galería: sin la papelera y sin los audios (la voz del video animado se oye en su proyecto). */
+const VIVAS = (clientId) => ({ client_id: clientId, borrado_at: NULO, tipo: distintoDe("audio") });
+
+/**
+ * Una página de archivos vivos, del más nuevo al más viejo: `n` filas más las que comparten el instante de la última (un
+ * lote apunta varias a la vez: la siguiente página empieza ANTES de ese instante y no se puede saltar ninguna). →
+ * { filas, siguiente } — `siguiente`: el cursor de «Cargar más» (la fecha de la última) o null si no hay más.
+ */
+async function pagina(acceso, where, n) {
+  const filas = await acceso.leer("estudio_archivos", where, "created_at desc", n + 1);
+  if (filas.length <= n) return { filas, siguiente: null };
+  const ultimo = filas[n - 1].created_at;
+  let dentro = filas.slice(0, n);
+  if (filas[n].created_at === ultimo) {
+    const ya = new Set(dentro.map((f) => f.id));
+    const empatadas = await acceso.leer("estudio_archivos", { ...where, created_at: ultimo }, "created_at desc");
+    dentro = [...dentro, ...empatadas.filter((f) => !ya.has(f.id))];
+    // Con todas las de ese instante dentro, puede no quedar nada más viejo: «Cargar más» no tiene que salir para nada.
+    const mas = await acceso.leerColumnas("estudio_archivos", ["id"], { ...where, created_at: menorQue(ultimo) }, "created_at desc", 1);
+    if (!mas.length) return { filas: dentro, siguiente: null };
+  }
+  return { filas: dentro, siguiente: ultimo };
+}
+
+/** Un cursor de la galería es la fecha de una fila; lo que no lo parece se ignora (llega por la dirección). */
+const cursor = (x) => (typeof x === "string" && /^\d{4}-\d{2}-\d{2}[T ][\d:.]+(Z|[+-]\d{2}:?\d{2})?$/.test(x) ? x : null);
+
+/**
+ * Los archivos vivos de un cliente por páginas: la primera (sin nada), la que va antes de `antes` («Cargar más»), o todo
+ * desde `hasta` (la pantalla ya cargó varias páginas y relee lo mismo: si no, cada aviso del espacio la devolvería a la
+ * primera; como mucho `MAX_HASTA`).
+ */
+export async function archivosVivos(acceso, clientId, { antes = null, hasta = null } = {}) {
+  const base = VIVAS(clientId);
+  if (cursor(antes)) return pagina(acceso, { ...base, created_at: menorQue(cursor(antes)) }, MAX_LISTADOS);
+  if (cursor(hasta)) {
+    const r = await pagina(acceso, { ...base, created_at: mayorOIgual(cursor(hasta)) }, MAX_HASTA);
+    if (r.siguiente) return r;
+    const mas = await acceso.leerColumnas("estudio_archivos", ["id"], { ...base, created_at: menorQue(cursor(hasta)) }, "created_at desc", 1);
+    return { filas: r.filas, siguiente: mas.length ? cursor(hasta) : null };
+  }
+  return pagina(acceso, base, MAX_LISTADOS);
+}
+
+const COLUMNAS = ["id", "client_id", "clave", "tipo", "mime", "ancho", "alto", "bytes", "prompt", "modelo", "ajustes", "trabajo_id", "carpeta_id",
+  "origen", "costo", "favorito", "subido", "usado_en", "huella", "borrado_at", "created_at", "updated_at"];
+
+/**
+ * Las fichas de lo que usa la MARCA (el logo, las fotos del catálogo, las plantillas…) que no entraron en la página: la
+ * vista «Marca» las enseña todas, y sin su ficha `clavesPerdidas` preguntaría a R2 por cada una en cada lectura.
+ */
+async function fichasDeLaMarca(acceso, clientId, protegidas, yaEstan) {
+  const faltan = [...(protegidas?.keys() ?? [])].filter((c) => !yaEstan.has(c));
+  if (!faltan.length) return [];
+  return acceso.leerVarios("estudio_archivos", COLUMNAS, "clave", faltan, { client_id: clientId, borrado_at: NULO });
+}
+
+/** Del más nuevo al más viejo. */
+const porFecha = (a, b) => String(b.created_at).localeCompare(String(a.created_at));
+
 /**
  * Todo lo que la pantalla del Estudio necesita de un cliente, en una lectura. La galería y la papelera se leen APARTE:
  * juntas en los 300 más recientes, una papelera vieja no se veía (ni se podía vaciar) en cuanto la galería pasaba de 300.
+ * La galería va POR PÁGINAS (`siguiente`: el cursor de «Cargar más»; `hasta`: relee todo lo ya cargado), con los usos de
+ * VERDAD de cada pieza —una sola lectura de los calendarios para la galería y la papelera—: `usado_en` se apunta y nunca
+ * se quita, y una imagen cambiada por otra salía «Usada» para siempre (y la pila de versiones la prefería).
  */
-export async function leerGaleria(env, acceso, clientId, { protegidas = null } = {}) {
+export async function leerGaleria(env, acceso, clientId, { protegidas = null, hasta = null } = {}) {
   const [activas, enPapelera, trabajos, carpetas] = await Promise.all([
-    acceso.leer("estudio_archivos", { client_id: clientId, borrado_at: NULO }, "created_at desc", MAX_LISTADOS),
+    archivosVivos(acceso, clientId, { hasta }),
     acceso.leer("estudio_archivos", { client_id: clientId, borrado_at: NO_NULO }, "borrado_at desc", MAX_PAPELERA),
     acceso.leer("estudio_trabajos", { client_id: clientId }, "created_at desc", 40),
     acceso.leer("estudio_carpetas", { client_id: clientId }, "created_at asc"),
   ]);
-  const vivos = await usosVivos(acceso, clientId, enPapelera);
+  const vivas = [...activas.filas, ...await fichasDeLaMarca(acceso, clientId, protegidas, new Set(activas.filas.map((f) => f.clave)))];
+  const vivos = await usosVivos(acceso, clientId, [...vivas, ...enPapelera]);
   const papelera = await purgarPapelera(env, acceso, enPapelera, Date.now(), protegidas, vivos);
   // La voz del video animado (tipo «audio») no se enseña en la galería: se oye en su proyecto.
   const visible = (f) => f.tipo !== "audio";
   return {
-    archivos: activas.filter(visible).map((f) => conProteccion(f, protegidas, null)),
+    archivos: vivas.filter(visible).sort(porFecha).map((f) => conProteccion(f, protegidas, vivos)),
     papelera: papelera.filter(visible).map((f) => conProteccion(f, protegidas, vivos)),
     trabajos: trabajos.filter(visible).map(trabajoPublico),
     carpetas: carpetas.map(carpetaPublica),
+    siguiente: activas.siguiente,
   };
+}
+
+/** «Cargar más»: la página que va antes de `antes`, con sus usos de verdad y lo que es de la marca. → { archivos, siguiente } */
+export async function paginaDeGaleria(acceso, clientId, antes, { protegidas = null } = {}) {
+  const { filas, siguiente } = await archivosVivos(acceso, clientId, { antes });
+  const vivos = await usosVivos(acceso, clientId, filas);
+  return { archivos: filas.map((f) => conProteccion(f, protegidas, vivos)), siguiente };
+}
+
+/**
+ * Buscar en TODA la galería, no sólo en lo cargado: con la MISMA regla que la pantalla (`coincideConBusqueda`), sobre
+ * las `MAX_BUSQUEDA` más recientes (por páginas). → { archivos (las `MAX_RESULTADOS` primeras), total, buscadas,
+ * completa }. `productos`: los del catálogo con sus fotos (una foto suya se encuentra por el nombre del producto).
+ */
+export async function buscarEnGaleria(acceso, clientId, texto, { protegidas = null, productos = [] } = {}) {
+  const filas = [];
+  let siguiente = null;
+  do {
+    const r = await archivosVivos(acceso, clientId, { antes: siguiente });
+    filas.push(...r.filas);
+    siguiente = r.siguiente;
+  } while (siguiente && filas.length < MAX_BUSQUEDA);
+  const vivos = await usosVivos(acceso, clientId, filas);
+  const halladas = filas.map((f) => conProteccion(f, protegidas, vivos)).filter((a) => coincideConBusqueda(a, texto, { productos }));
+  return { archivos: halladas.slice(0, MAX_RESULTADOS), total: halladas.length, buscadas: filas.length, completa: !siguiente };
 }
 
 const archivoDe = (acceso, clientId, id) => acceso.leerUno("estudio_archivos", { id, client_id: clientId });
@@ -376,13 +493,24 @@ const nombreDeCarpeta = (nombre) => {
   return limpio;
 };
 
-export async function crearCarpeta(acceso, clientId, nombre, { tipo = "" } = {}) {
+/**
+ * Una carpeta nueva. `tipo` «carrusel» | «reel» (la galería la agrupa) o «auto» (la pone la aplicación: el lote, las
+ * variaciones). Con `reusar`, si ya hay una con ese nombre se devuelve ésa (el lote del mismo día o del mismo mes).
+ */
+export async function crearCarpeta(acceso, clientId, nombre, { tipo = "", reusar = false } = {}) {
   const limpio = nombreDeCarpeta(nombre);
-  const t = TIPOS_CARPETA.includes(tipo) ? tipo : "";
-  const existentes = await acceso.leerColumnas("estudio_carpetas", ["id", "nombre", "tipo"], { client_id: clientId });
-  const mismas = existentes.filter((c) => (c.tipo ?? "") === "" ? !t : Boolean(t));
-  if (!t && mismas.length >= MAX_CARPETAS) throw new ErrorEstudio(`Puedes tener hasta ${MAX_CARPETAS} carpetas.`, 409);
-  if (t && mismas.length >= MAX_GRUPOS) throw new ErrorEstudio(`Hay ${MAX_GRUPOS} carruseles y reels en la galería: borra alguno viejo.`, 409);
+  const t = TIPOS_VALIDOS.includes(tipo) ? tipo : "";
+  const existentes = await acceso.leerColumnas("estudio_carpetas", ["id", "nombre", "tipo", "orden", "created_at"], { client_id: clientId });
+  if (reusar) {
+    const misma = existentes.find((c) => c.nombre.toLowerCase() === limpio.toLowerCase());
+    if (misma) return carpetaPublica(misma);
+  }
+  // Las 30 son las de la PERSONA: las de la aplicación (tipo o, las de antes, por su nombre: «Lote …», «Competencia»)
+  // tienen su propio tope y no le quitan sitio. Así «Competencia» se crea aunque la persona tenga ya sus 30.
+  const automatica = Boolean(t) || esCarpetaAutomatica({ nombre: limpio, tipo: t });
+  const mismas = existentes.filter((c) => ((c.tipo ?? "") === "" && !esCarpetaAutomatica(c) ? !automatica : automatica));
+  if (!automatica && mismas.length >= MAX_CARPETAS) throw new ErrorEstudio(`Puedes tener hasta ${MAX_CARPETAS} carpetas.`, 409);
+  if (automatica && mismas.length >= MAX_GRUPOS) throw new ErrorEstudio(`Hay ${MAX_GRUPOS} carruseles, reels y carpetas de la aplicación en la galería: borra alguna vieja.`, 409);
   const ocupado = (n) => existentes.some((c) => c.nombre.toLowerCase() === n.toLowerCase());
   // La de un carrusel o un reel la pone la aplicación con su título y el día: dos reels con el mismo título el mismo día
   // compartían carpeta (la pantalla reusaba la que ya había) y sus piezas se mezclaban. Ahora la segunda lleva « (2)».
