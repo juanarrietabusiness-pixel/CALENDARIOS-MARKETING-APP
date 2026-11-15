@@ -1,36 +1,34 @@
 import { lazy, Suspense, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import Icon from "./Icon";
-import Compositor, { QueCrear } from "./EstudioCompositor";
-import Visor, { Pieza } from "./EstudioVisor";
+import Visor from "./EstudioVisor";
 import {
-  kitVacio, limpiarKit, textoPreset, bloqueDeMarca, presetActual, ponerLogo, ideaDelPedido, nombreDePreset,
+  kitVacio, limpiarKit, textoPreset, bloqueDeMarca, presetActual, ponerLogo, nombreDePreset,
   estiloDeLaPieza, lineaDeEstilo, nombreDeEstilo, estiloValido, TIPOS_PRESET, referenciaDePlantilla, lineaDePlantillaEnPedido,
 } from "../lib/kitMarca";
 import { presetDePilar, nombreDePilar } from "../lib/pilares";
 import { ideaDesdeAngulo } from "../lib/estudioMercado";
-import { pedidoDePieza, apoyosDelCompositor } from "../lib/pieza";
+import { pedidoDePieza, apoyosDelCompositor, lineaDeTexto } from "../lib/pieza";
 import { segundosParaModelo, ajusteDeDuracion } from "../lib/videoCorto";
 import BancoSelector from "./BancoSelector";
-import ExploradorDrive from "./ExploradorDrive";
-import { idDeCarpeta } from "../lib/drive";
-import { OverflowMenu } from "./calendario/primitivas";
 import { soloLectura } from "../lib/sesionActual";
 import * as api from "../lib/estudio";
 import { MEDIOS_VACIOS, recortarMedios, clavesDe, formularioInicial } from "../lib/estudio";
 import { estampaSola, estamparEnGaleria } from "../lib/logoEstudio";
 import {
-  modeloPorId, nombreDelModelo, estimar, textoCosto, ajustesDe, estaVivo, maxPorPedido, PRECIOS_AL, MAX_PROMPT,
+  modeloPorId, nombreDelModelo, estimar, ajustesDe, estaVivo, maxPorPedido, PRECIOS_AL, MAX_PROMPT,
 } from "../lib/estudioCatalogo";
 import { decidirConfirmacion } from "../lib/sinPreguntar";
 import {
-  filtrarArchivos, contarFiltros, trabajosVisibles, fraseDeTrabajo, hace, nombreDeDescarga,
-  proporcionDeMedidas, originalDe, FILTROS_GALERIA, agruparGaleria, esGrupo, estaUsado, textoDeGrupo,
-  modeloDeLaPieza,
+  trabajosVisibles, fraseDeTrabajo, nombreDeDescarga, proporcionDeMedidas, originalDe, FILTROS_GALERIA, esGrupo,
 } from "../lib/estudio";
-import { FiltroDeModelo } from "./SelectorModelo";
 import { loteDeLaDireccion } from "../lib/lotePauta";
 import "./Estudio.css";
 
+// El compositor (crear A MANO) va en su chunk: el del Estudio estaba en su tope (20,5 kB). «Qué crear» sale del mismo.
+const Compositor = lazy(() => import("./EstudioCompositor"));
+const QueCrear = lazy(() => import("./EstudioCompositor").then((m) => ({ default: m.QueCrear })));
+// «De la galería» del compositor: varias de una vez en un diálogo (sin bajar y subir la página).
+const EstudioElegir = lazy(() => import("./EstudioElegir"));
 const EstudioLote = lazy(() => import("./EstudioLote"));
 // La tarjeta «Muchas de una vez» (casi todo texto): aparte, el chunk del Estudio está en su tope.
 const EstudioMuchas = lazy(() => import("./EstudioMuchas"));
@@ -39,8 +37,8 @@ const EleccionRanura = lazy(() => import("./EleccionRanura"));
 const EstudioRecrear = lazy(() => import("./EstudioRecrear"));
 const FlujoCarrusel = lazy(() => import("./FlujoCarrusel"));
 const FlujoReel = lazy(() => import("./FlujoReel"));
-/** Lo que se crea con pasos (no de una vez): el carrusel por láminas y el reel por planos. */
-const GUIADOS = [["carrusel", "Carrusel", "formatCarrusel"], ["reel", "Video", "formatReel"]];
+/** La proporción que fija cada formato de «Qué» (el carrusel y el video van por su flujo). */
+const PROPORCION_FORMATO = { post: "4:5", historia: "9:16" };
 
 // ============================================================
 // El Estudio de un cliente: la pestaña y el diálogo «Crear con IA»
@@ -69,13 +67,13 @@ const dormir = (ms) => new Promise((r) => setTimeout(r, ms));
 const FILTROS_FIJOS = FILTROS_GALERIA;
 // Un carrusel o un reel de la galería con todas sus piezas y la descarga en ZIP: sólo al abrirlo.
 const VisorGrupo = lazy(() => import("./VisorGrupo"));
-const PonerEnPublicacion = lazy(() => import("./PonerEnPublicacion"));
-// La papelera, igual: sólo al abrirla (la pestaña tiene tope de 20 kB comprimidos).
-const EstudioPapelera = lazy(() => import("./EstudioPapelera"));
+// La galería (vistas, filtros, semanas, «Cargar más», seleccionar, la papelera y Drive), en su chunk: el del Estudio
+// está en su tope de 20 kB comprimidos.
+const EstudioGaleria = lazy(() => import("./EstudioGaleria"));
 
 const reemplazar = (lista = [], t) => (lista.some((x) => x.id === t.id) ? lista.map((x) => (x.id === t.id ? t : x)) : [t, ...lista]);
 
-export default function Estudio({ client, pulso = 0, modo = "pestana", inicial = null, uso = null, onUsar = null, onUsarVarias = null, onCerrar = null, onLlevarAlCalendario = null, onDatos = null, onIrAlKit = null }) {
+export default function Estudio({ client, pulso = 0, modo = "pestana", inicial = null, uso = null, onUsar = null, onUsarVarias = null, onCerrar = null, onLlevarAlCalendario = null, onDatos = null, onIrAlKit = null, aMano = false, onAMano = null }) {
   const ids = useId();
   const lectura = soloLectura();
   const dialogo = modo === "dialogo";
@@ -107,9 +105,11 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
     if (!desdePost) try { localStorage.setItem(clavePreset, v); } catch { /* sin almacenamiento */ }
   };
   const [conLogo, setConLogo] = useState(true);
-  // Un flujo guiado abierto en lugar del compositor ("" = el compositor de imagen o video).
+  // Un flujo guiado abierto en lugar del compositor ("" = el compositor de imagen o video), y el tipo de video escogido
+  // en «Qué» («clip» es el compositor de video; los demás, el reel guiado en esa forma).
   const [guiado, setGuiado] = useState("");
   const [vueltaGuiado, setVueltaGuiado] = useState(0);
+  const [tipoVideo, setTipoVideo] = useState("guion");
   // Los personajes de la marca que salen en esta pieza (sus imágenes van de referencia: que salgan IGUAL).
   const [personajesSel, setPersonajesSel] = useState([]);
   // Una plantilla del kit: la pieza repite su diseño (su imagen de referencia y su sistema escrito).
@@ -133,20 +133,18 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
   };
   // Traer de Drive: el papel (referencia, inicial…) para el que se abrió el selector.
   const [driveRol, setDriveRol] = useState(null);
-  // «¿Dónde va esta imagen?» y «De la galería» en un sitio concreto del compositor.
+  // «¿Dónde va esta imagen?» y «De la galería» de un sitio del compositor (un diálogo: varias de una vez).
   const [eligiendoRanura, setEligiendoRanura] = useState(null);
-  const [destinoGaleria, setDestinoGaleria] = useState(null);
+  const [eligiendoDeGaleria, setEligiendoDeGaleria] = useState(null); // el sitio («reference», «start», «end») o null
   const galeriaRef = useRef(null);
-  // La galería: lo que no se pudo pintar (el archivo ya no está) y lo marcado para mandar varias a la papelera.
+  // La galería: lo que no se pudo pintar (el archivo ya no está). Lo demás (vistas, filtros, selección) es suyo.
   const [perdidos, setPerdidos] = useState(() => new Set());
-  const [seleccion, setSeleccion] = useState(null); // null = no se está seleccionando; si no, un Set de ids
-  const [poner, setPoner] = useState(null); // «Poner en una publicación…» con las escogidas (ids en su orden)
   // La revisión de marca de cada imagen: id → { cargando } | { datos } | { error }.
   const [revisiones, setRevisiones] = useState({});
 
   const [filtro, setFiltro] = useState("todas");
-  const [texto, setTexto] = useState("");
-  const [modeloFiltro, setModeloFiltro] = useState(""); // el nombre de un modelo de la galería («Nano Banana»), o todos
+  // Hasta dónde se cargó la galería con «Cargar más» (una fecha): `cargar` relee eso, no sólo la primera página.
+  const hastaRef = useRef(null);
   const [enPapelera, setEnPapeleraEstado] = useState(false);
   // La carpeta de Drive del cliente, dentro de la galería: de ahí se traen referencias sin salir.
   const [enDrive, setEnDrive] = useState(false);
@@ -164,12 +162,23 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
     if (loteAbierto?.alcance) window.history.replaceState(window.history.state, "", window.location.pathname);
   }, [loteAbierto]);
   const [recrear, setRecrear] = useState(null); // null, o { archivo }: «Recrear un anuncio» abierto (con uno ya escogido)
-  // En la pestaña Crear, lo manual (el compositor, los flujos, muchas de una vez) va plegado en «Avanzado»: arriba está
-  // el director. Se abre solo cuando algo pone una pieza en el compositor (`enfocarPrompt`).
-  const [avanzado, setAvanzado] = useState(false);
-  const [carpetaNueva, setCarpetaNueva] = useState(null);
-  const [renombrando, setRenombrando] = useState(null);
-  const [borrando, setBorrando] = useState(null);
+  // Lo manual (el compositor, los flujos, muchas de una vez) se ve en Crear → «A mano» (`aMano`) y siempre en el diálogo
+  // de una publicación. Si algo pone una pieza en el compositor desde otra sub-sección, se va a «A mano» (`enfocarPrompt`).
+  const conCompositor = dialogo || aMano;
+  // Lo último que salió del compositor (se enseña ahí mismo) y lo que se espera en el visor (la corrección, la versión).
+  const [ultimas, setUltimas] = useState([]);
+  const [enCamino, setEnCamino] = useState(null); // { desde: id de la pieza tocada, texto } o null
+  const visorRef = useRef(null);
+  visorRef.current = visor;
+  // ¿Se ve el compositor? Si no (se bajó a la galería, o se está en otra sub-sección), la tira «En el pedido» lo dice
+  // abajo: así escoger referencias en la galería no hace saltar la página. (Ref con limpieza, de React 19.)
+  const [compositorALaVista, setCompositorALaVista] = useState(false);
+  const zonaCompositor = useCallback((el) => {
+    if (!el || typeof IntersectionObserver === "undefined") return undefined;
+    const io = new IntersectionObserver(([e]) => setCompositorALaVista(e.isIntersecting), { threshold: 0.02 });
+    io.observe(el);
+    return () => { io.disconnect(); setCompositorALaVista(false); };
+  }, []);
 
   const siguiendo = useRef(new Set());
   const montado = useRef(true);
@@ -183,7 +192,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
   // ---------- Cargar ----------
   const cargar = useCallback(async () => {
     try {
-      const [g, m] = await Promise.all([api.leerEstudio(client.id), api.leerMotores()]);
+      const [g, m] = await Promise.all([api.leerEstudio(client.id, { hasta: hastaRef.current }), api.leerMotores()]);
       if (!montado.current) return;
       setDatos(g);
       setMotores(m.motores);
@@ -195,6 +204,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
     }
   }, [client.id]);
 
+  useEffect(() => { hastaRef.current = null; }, [client.id]);
   useEffect(() => { cargar(); }, [cargar, pulso]);
   // Crear calcula con esto el semáforo del kit (el logo, las fotos del catálogo) sin pedirlo otra vez.
   useEffect(() => { if (datos) onDatos?.(datos); }, [datos, onDatos]);
@@ -210,8 +220,9 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
 
   // El formulario de partida, una vez que se sabe qué motores tienen llave.
   useEffect(() => {
-    if (motores && datos && !form) setForm(formularioInicial(motores, inicial, datos.productos ?? [], datos.kit?.modelos ?? {}));
-  }, [motores, datos, form, inicial]);
+    // En la pestaña arranca en «Post» (4:5): el formato fija la proporción. Desde una publicación, la de su formato.
+    if (motores && datos && !form) setForm(formularioInicial(motores, inicial ?? (dialogo ? null : { proporcion: PROPORCION_FORMATO.post }), datos.productos ?? [], datos.kit?.modelos ?? {}));
+  }, [motores, datos, form, inicial, dialogo]);
 
   const modelo = form ? modeloPorId(form.modelo) : null;
   const motorActivo = (m) => Boolean(motores?.[m.motor]?.activo);
@@ -280,22 +291,56 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
 
   // ---------- El compositor ----------
   const avisar = (ok, textoAviso) => setAviso({ ok, texto: textoAviso });
-  const enfocarPrompt = () => {
-    setAvanzado(true);
-    requestAnimationFrame(() => {
-      promptRef.current?.focus();
-      promptRef.current?.scrollIntoView?.({ block: "center", behavior: "smooth" });
-    });
+  // Llevar el foco a la idea. Desde fuera del compositor («Animar» en la galería, una idea, el recreador) también se baja
+  // hasta él —o se va a «A mano»—; desde dentro (la ficha del director, «Volver a mi idea») sólo el foco, sin mover la
+  // página. El compositor se carga aparte: se espera unos cuadros a que esté.
+  const [pedirFoco, setPedirFoco] = useState(null); // { desplazar } o null
+  const enfocarPrompt = ({ desplazar = true } = {}) => {
+    if (!conCompositor) onAMano?.();
+    setPedirFoco({ desplazar, n: Date.now() });
   };
+  useEffect(() => {
+    if (!pedirFoco || !conCompositor) return;
+    let vueltas = 0;
+    let id = 0;
+    const probar = () => {
+      const campo = promptRef.current;
+      if (!campo) { if (vueltas++ < 60) id = requestAnimationFrame(probar); return; }
+      campo.focus({ preventScroll: true });
+      if (pedirFoco.desplazar) campo.scrollIntoView?.({ block: "center", behavior: "smooth" });
+    };
+    id = requestAnimationFrame(probar);
+    return () => cancelAnimationFrame(id);
+  }, [pedirFoco, conCompositor]);
 
-  const cambiarTipo = (tipo) => {
+  const cambiarTipo = (tipo, proporcion = null) => {
     if (!motores || tipo === form.tipo) return;
     const m = api.modeloPreferido(activos, tipo, fijados[tipo]);
     setConfirmando(null);
     setForm((f) => {
       const medios = recortarMedios(f.medios, m);
-      return { ...f, tipo, modelo: m.id, n: 1, medios, ajustes: ajustesDe(m, { aspectRatio: f.ajustes.aspectRatio }, clavesDe(medios)) };
+      return { ...f, tipo, modelo: m.id, n: 1, medios, ajustes: ajustesDe(m, { aspectRatio: proporcion ?? f.ajustes.aspectRatio }, clavesDe(medios)) };
     });
+  };
+
+  /**
+   * «Qué crear»: Post (4:5) e Historia (9:16) son una imagen con su proporción; Carrusel, su flujo por láminas; Video,
+   * el tipo escogido debajo (el clip es el compositor de video; los demás, el reel guiado en esa forma).
+   */
+  const cambiarFormato = (formato, tipoV = tipoVideo) => {
+    setConfirmando(null);
+    if (formato === "carrusel") { setGuiado("carrusel"); return; }
+    if (formato === "video") {
+      setTipoVideo(tipoV);
+      if (tipoV !== "clip" && !dialogo) { setGuiado("reel"); return; }
+      setGuiado("");
+      cambiarTipo("video", "9:16");
+      return;
+    }
+    setGuiado("");
+    const proporcion = PROPORCION_FORMATO[formato];
+    if (form.tipo !== "imagen") { cambiarTipo("imagen", proporcion); return; }
+    setForm((f) => ({ ...f, ajustes: ajustesDe(modeloPorId(f.modelo), { ...f.ajustes, aspectRatio: proporcion }, clavesDe(f.medios)) }));
   };
 
   const cambiarModelo = (id) => {
@@ -329,6 +374,8 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
       const r = await api.mejorarIdea(client.id, {
         idea: antes, tipo: form.tipo, pieza: presetVigente ? nombreDePreset(presetVigente, kit) : "",
         proporcion: form.ajustes?.aspectRatio ?? "", productoId: inicial?.post?.productoId ?? "", productoIds: inicial?.post?.productoIds,
+        // El texto exacto escrito en su campo: el director lo pone tal cual en la ficha.
+        ...(form.tipo === "imagen" && form.texto?.trim() ? { texto: form.texto.trim() } : {}),
         // «¿Qué quieres?» de la publicación manda; y la plantilla que escoja el director va de referencia (enviar).
         indicacion: inicial?.abrir ? "" : inicial?.indicacion ?? "", plantilla: form.tipo === "imagen" ? plantillaSel : "",
       });
@@ -339,7 +386,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
       // La de al abrir desde un post se queda en él: la próxima vez sale lista (lib/promptImagen.js).
       if (alAbrir && form.tipo === "imagen") inicial?.alMejorar?.(r.idea);
       avisar(true, ["Listo: revísala antes de crear.", r.aviso ?? ""].filter(Boolean).join(" "));
-      enfocarPrompt();
+      enfocarPrompt({ desplazar: false });
     } catch (e) {
       avisar(false, e.message);
     } finally {
@@ -412,10 +459,11 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
   const usarIdeaGenerada = (idea) => {
     setConfirmando(null);
     setIdeaAnterior(form.prompt || null);
-    setForm((f) => ({ ...f, prompt: (f.tipo === "video" ? idea.escena : api.ideaAlPedido(idea)).slice(0, MAX_PROMPT) }));
+    // La escena a la idea y su texto a «Texto exacto»: cada cosa en su campo.
+    setForm((f) => ({ ...f, prompt: String(idea.escena ?? "").slice(0, MAX_PROMPT), ...(f.tipo === "video" ? {} : { texto: String(idea.texto ?? "").slice(0, 300) }) }));
     setPreset(presetDePilar(idea.tipo));
     if (form.tipo === "imagen" && idea.productoId) ponerFotosDeProducto(idea.productoId);
-    avisar(true, "Idea puesta en el pedido. Revísala (o pulsa «Diseñar con el director») y crea.");
+    avisar(true, "Idea puesta en el pedido. Revísala (o pulsa «Ver la ficha del director») y crea.");
     enfocarPrompt();
   };
 
@@ -424,7 +472,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
     if (ideaAnterior == null) return;
     setForm((f) => ({ ...f, prompt: ideaAnterior }));
     setIdeaAnterior(null);
-    enfocarPrompt();
+    enfocarPrompt({ desplazar: false });
   };
 
   const enviar = async (confirmado = false) => {
@@ -447,18 +495,25 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
       const delNombrado = fotosNombradas;
       const dePlantilla = form.tipo === "imagen" && plantillaSel ? referenciaDePlantilla(kit, plantillaSel, datos?.archivos ?? []) : null;
       const refs = [...delNombrado, ...(dePlantilla ? [dePlantilla] : []), ...deLosPersonajes, ...deLaLetra, ...form.medios.reference, ...refsTipo, ...gustos];
+      // El texto exacto de su campo, con la línea de siempre (si la idea ya es una ficha con su «Texto exacto», no se repite).
+      const textoExacto = form.tipo === "imagen" ? String(form.texto ?? "").trim() : "";
       // El MISMO camino que el lote y «Producir el mes» (lib/pieza.js); aquí la resolución la escoge la persona.
       const pieza = pedidoDePieza({
         kit, idea: form.prompt, preset: presetVigente, estilo: estiloVigente, apoyos: refs, modelo, marca: client.name, rubro: client.industry ?? "",
         usarKit: conKit, conLogo, video: form.tipo === "video", altaResolucion: false, ajustes: form.ajustes, n: form.n,
-        extra: dePlantilla ? lineaDePlantillaEnPedido(kit, plantillaSel) : "",
+        extra: [textoExacto && !/texto exacto/i.test(form.prompt) ? lineaDeTexto(textoExacto) : "", dePlantilla ? lineaDePlantillaEnPedido(kit, plantillaSel) : ""].filter(Boolean).join(" "),
       });
       const medios = { ...clavesDe(form.medios), ...pieza.medios };
       const pedido = { modelo: form.modelo, prompt: pieza.prompt, n: form.n, ajustes: ajustesDe(modelo, form.ajustes, medios), medios };
       if (form.tipo === "imagen") {
         // Por el SERVIDOR, como el lote (lib/visorEstudio.js): control, proporción y logo aunque se cierre la pantalla.
         const v = await import("../lib/visorEstudio");
-        await v.pedirDelCompositor({ clienteId: client.id, ...pedido, kit, estampar: estampa && conLogo, uso, seguir: () => montado.current, alFallo: (t) => montado.current && avisar(false, t) });
+        await v.pedirDelCompositor({
+          clienteId: client.id, ...pedido, kit, estampar: estampa && conLogo, uso, texto: textoExacto, seguir: () => montado.current,
+          alFallo: (t) => montado.current && avisar(false, t),
+          // Lo que sale se enseña ahí mismo, bajo «Crear», con su visor a un toque.
+          alListo: (nuevas) => { if (!montado.current) return; setUltimas(nuevas); cargar(); },
+        });
         cargar();
       } else {
         const { trabajo } = await api.pedirImagenes(client.id, { ...pedido, confirmado: true, ...(uso ? { calendarId: uso.calendarId, postId: uso.postId } : {}) });
@@ -507,6 +562,14 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
     });
   };
 
+  /** Tocar otra vez un producto puesto: sus fotos salen del pedido (las de los demás se quedan). */
+  const quitarFotosDeProducto = (productoId) => {
+    const p = (datos?.productos ?? []).find((x) => x.id === productoId);
+    if (!p) return;
+    setConfirmando(null);
+    setForm((f) => ({ ...f, medios: { ...f.medios, reference: f.medios.reference.filter((x) => x.producto?.nombre !== p.nombre) } }));
+  };
+
   const NOMBRE_RANURA = { start: "imagen inicial", end: "imagen final", reference: "referencia", video: "video de referencia" };
 
   /**
@@ -533,19 +596,27 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
     if (rol && !libres.includes(rol)) { avisar(false, `Ya no queda sitio en «${NOMBRE_RANURA[rol]}». Quita alguna o ponla en otro sitio.`); return; }
     if (!destino) { setEligiendoRanura({ archivo: a, opciones: libres }); return; }
     setEligiendoRanura(null);
-    setDestinoGaleria(null);
     setConfirmando(null);
     setForm((f) => ({ ...f, medios: { ...f.medios, [destino]: [...f.medios[destino], a] } }));
-    avisar(true, `Puesta como ${NOMBRE_RANURA[destino]}. Escribe qué quieres hacer con ella.`);
-    enfocarPrompt();
+    // Sin mover la página (antes subía al compositor con cada imagen): la tira de abajo dice cuántas van.
+    const max = destino === "reference" ? modelo.referencias : 1;
+    avisar(true, `Puesta como ${NOMBRE_RANURA[destino]}${destino === "reference" ? ` (${form.medios.reference.length + 1} de ${max})` : ""}.`);
   };
 
-  /** «De la galería» en un sitio del compositor: la siguiente imagen que se toque en la galería va ahí. */
-  const escogerDeLaGaleria = (rol) => {
-    setDestinoGaleria(rol);
-    setEnPapelera(false);
-    setEnDrive(false);
-    galeriaRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  /** «De la galería» en un sitio del compositor: un diálogo encima, para escoger VARIAS de una vez, sin saltos. */
+  const escogerDeLaGaleria = (rol) => setEligiendoDeGaleria(rol);
+  /** Lo escogido en ese diálogo, en su orden, al sitio (sólo las que caben). */
+  const ponerDeLaGaleria = (rol, lista) => {
+    setEligiendoDeGaleria(null);
+    if (!form || !modelo) return;
+    const max = { reference: modelo.referencias, start: modelo.inicial ? 1 : 0, end: modelo.final ? 1 : 0 }[rol] || 0;
+    setConfirmando(null);
+    setForm((f) => {
+      const ya = f.medios[rol] ?? [];
+      const nuevas = lista.filter((a) => !Object.values(f.medios).some((l) => l.some((x) => x.id === a.id)));
+      return { ...f, medios: { ...f.medios, [rol]: (max === 1 ? nuevas.slice(0, 1) : [...ya, ...nuevas]).slice(0, max) } };
+    });
+    avisar(true, lista.length === 1 ? `Puesta como ${NOMBRE_RANURA[rol]}.` : `Puestas ${lista.length} como ${NOMBRE_RANURA[rol]}s, en ese orden.`);
   };
 
   /**
@@ -560,6 +631,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
     setConfirmando(null);
     setVisor(null);
     setEnPapelera(false);
+    setGuiado("");
     // El modelo lo propone el recreador entre los que tienen llave (lib/motorRecrear.js); sin llave no se respeta.
     setForm(formularioInicial(motores, pedido, [], fijados));
     setPreset(pedido.preset ?? "anuncio");
@@ -577,6 +649,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
     setConfirmando(null);
     setVisor(null);
     setEnPapelera(false);
+    setGuiado("");
     setForm({
       tipo: "video", modelo: m.id, n: 1, medios,
       prompt: `Anima esta imagen con un movimiento suave y natural: ${a.prompt}`.slice(0, MAX_PROMPT),
@@ -612,25 +685,51 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
   const delVisor = async (que, a, extra = {}) => {
     if (versionando || !motores) return;
     const p = que === "edicion" ? null : pedidoDe(a, extra.otro ?? "");
+    // Las variaciones para anuncios son otras piezas (van a su carpeta): el visor se cierra. Lo demás (otra igual, otra
+    // versión, la corrección) es OTRA VERSIÓN de ésta: el visor se queda abierto y la nueva se abre sola al llegar.
+    const variaciones = que === "versiones" && extra.para === "anuncios";
     setVersionando(true);
     if (que === "versiones") avisar(true, "El director está mirando la pieza y diseñando…");
     try {
       if (p?.error) throw new Error(p.error);
       const v = await import("../lib/visorEstudio");
-      const comun = { clienteId: client.id, a, p, kit, uso, seguir: () => montado.current, alFallo: (t) => montado.current && avisar(false, t) };
+      const comun = {
+        clienteId: client.id, a, p, kit, uso, seguir: () => montado.current, alFallo: (t) => { if (montado.current) { setEnCamino(null); avisar(false, t); } },
+        alListo: variaciones ? null : (nuevas) => abrirLaNueva(a, nuevas),
+      };
       const r = await (que === "igual" ? v.pedirOtraIgual(comun) : que === "versiones" ? v.pedirVersiones({ ...comun, n: extra.n, para: extra.para })
         : v.pedirEdicion({ ...comun, instruccion: extra.instruccion, ejemplos: extra.ejemplos, escogido: extra.otro, activos }));
       for (const t of r.trabajos ?? []) { setDatos((d) => (d ? { ...d, trabajos: reemplazar(d.trabajos, t) } : d)); seguir(t.id); }
       setEnPapelera(false);
       avisar(true, r.texto);
+      if (variaciones || r.trabajos?.length) setVisor(null);
+      else setEnCamino({ desde: a.id, texto: que === "edicion" ? "Corrigiendo: la nueva se abre aquí cuando salga (la de ahora no se toca)." : "Creando la otra versión: se abre aquí cuando salga." });
       cargar();
     } catch (e) {
+      // Si falla, el visor sigue abierto con la pieza: el aviso está arriba y en el visor.
+      setEnCamino(null);
       avisar(false, e.message);
     } finally {
-      // El visor se cierra también si falla: el aviso está en la pantalla de detrás.
-      setVisor(null);
       setVersionando(false);
       window.dispatchEvent(new Event("ia:gasto"));
+    }
+  };
+
+  /**
+   * La pieza nueva (una corrección, otra versión) llegó: si el visor sigue en la pieza de la que salió (o en una de sus
+   * versiones), se abre ahí con las demás como versiones; si se cerró, el aviso ofrece abrirla. No queda escondida en la pila.
+   */
+  const abrirLaNueva = (a, nuevas) => {
+    if (!montado.current || !nuevas?.length) return;
+    setEnCamino(null);
+    cargar();
+    const v = visorRef.current;
+    const pila = v ? [v.id, ...(v.anteriores ?? []).map((x) => x.id)] : [];
+    if (v && pila.includes(a.id)) {
+      import("../lib/visorEstudio").then((m) => { if (montado.current) setVisor((actual) => (actual?.id === v.id ? m.conLaNueva(actual, nuevas) : actual)); });
+      avisar(true, nuevas.length === 1 ? "Lista: la tienes abierta. La de antes sigue entre sus versiones." : `Listas ${nuevas.length}: la primera está abierta y las demás, entre sus versiones.`);
+    } else {
+      setAviso({ ok: true, texto: "Lista la pieza nueva.", abrir: nuevas[0] });
     }
   };
 
@@ -656,15 +755,6 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
     } finally {
       setSubiendo(false);
     }
-  };
-
-  /** «Subir a la galería»: sueltas, sin tocar el pedido; a la carpeta que se mira. */
-  const subirRef = useRef(null);
-  const subirSueltas = async (fs) => {
-    if (!fs.length) return;
-    setSubiendo(true);
-    try { avisar(true, await api.subirALaGaleria(client.id, fs, { carpetaId: carpetaActiva?.id ?? null })); await cargar(); }
-    catch (e) { avisar(false, e.message); } finally { setSubiendo(false); }
   };
 
   /** «Desde Drive»: el archivo se baja de la carpeta del cliente y se sube a la galería como cualquier otro. */
@@ -717,51 +807,21 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
   }, "Listo: sale como una pieza nueva con el logo encima; la original se queda.");
   // Una versión de una pieza: el visor sigue con las que quedan (la principal, si no era ésa).
   const aPapelera = (a) => accion(async () => { await api.mandarAPapelera(client.id, a.id); setVisor((v) => (v?.id === a.id ? api.trasQuitarVersion(v) : v)); }, "Movida a la papelera. Puedes recuperarla 30 días.");
-  /** Varias de una vez: una por una (cada una es su fila), y se relee la galería una sola vez al terminar. */
   // Varias de una vez (lo de la marca se salta y se dice: lib/estudio.js); se relee la galería una sola vez al terminar.
+  // Seleccionar, agrupar, mover y la papelera viven en la galería (EstudioGaleria.jsx, en su chunk).
   const variasAPapelera = async (todas) => {
     try {
       avisar(true, await api.variasALaPapelera(client.id, todas, archivos));
     } catch (e) {
       avisar(false, e.message);
     } finally {
-      setSeleccion(null);
       await cargar();
     }
   };
-  /** Las escogidas, en el orden en que se tocaron, a un carrusel (una tarjeta en la galería). */
-  const agrupar = () => accion(async () => {
-    await api.agruparComoCarrusel(client.id, [...seleccion].filter((id) => archivos.some((a) => a.id === id && a.tipo === "imagen")));
-    setSeleccion(null);
-  }, "Agrupadas como carrusel, en el orden en que las tocaste.");
-  const alternarSeleccion = (a) => setSeleccion((sel) => {
-    const nueva = new Set(sel ?? []);
-    if (nueva.has(a.id)) nueva.delete(a.id); else nueva.add(a.id);
-    return nueva;
-  });
-  /** Una ficha cuyo archivo ya no está: el servidor lo comprueba en R2 antes de quitarla. */
-  const quitarPerdidas = (ids) => accion(async () => {
-    for (const id of ids) await api.quitarPerdido(client.id, id);
-    setPerdidos(new Set());
-  }, ids.length === 1 ? "Quitada de la galería." : `${ids.length} quitadas de la galería.`);
-  const recuperar = (a) => accion(() => api.recuperarArchivo(client.id, a.id), "Recuperada.");
   const moverA = (a, carpetaId) => accion(async () => {
     const { archivo } = await api.cambiarArchivo(client.id, a.id, { carpetaId: carpetaId || null });
     setVisor((v) => api.conVersiones(v, archivo));
   });
-  const borrarDeVerdad = async (a, forzar = false) => {
-    try {
-      await api.borrarDelTodo(client.id, a.id, { forzar });
-      setBorrando(null);
-      avisar(true, "Borrada del todo.");
-      await cargar();
-    } catch (e) {
-      if (e.datos?.codigo === "en_uso") setBorrando({ id: a.id, usos: e.datos.usos });
-      else avisar(false, e.message);
-    }
-  };
-  // Todo de una vez y qué se queda y por qué (lib/estudio.js).
-  const vaciar = () => accion(async () => avisar(true, await api.vaciarDelTodo(client.id)));
   const descargar = (a) => {
     const enlace = document.createElement("a");
     enlace.href = a.src;
@@ -808,7 +868,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
   const fijar = async (tipo, id) => {
     try {
       await guardarKitDeMarca({ ...(kit ?? {}), modelos: { ...(kit?.modelos ?? {}), [tipo]: id || undefined } });
-      avisar(true, id ? `Fijado para ${client.name}: arranca con él en el Estudio, el lote y «Producir el mes».` : "Ya no hay modelo fijado para este cliente.");
+      avisar(true, id ? `Fijado para ${client.name}: se usa en todo lo que se crea.` : "Ya no hay modelo fijado para este cliente.");
     } catch (e) {
       avisar(false, e.message);
     }
@@ -842,47 +902,24 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
     }
   };
 
-  // ---------- Carpetas ----------
-  const crearCarpeta = async (e) => {
-    e.preventDefault();
-    if (!carpetaNueva?.trim()) return;
-    try {
-      const { carpeta } = await api.crearCarpeta(client.id, carpetaNueva);
-      setCarpetaNueva(null);
-      setFiltro(carpeta.id);
-      await cargar();
-    } catch (err) {
-      avisar(false, err.message);
-    }
-  };
-  const guardarNombre = async (e) => {
-    e.preventDefault();
-    try {
-      await api.renombrarCarpeta(client.id, renombrando.id, renombrando.nombre);
-      setRenombrando(null);
-      await cargar();
-    } catch (err) {
-      avisar(false, err.message);
-    }
-  };
-  const quitarCarpeta = (c) => accion(async () => { await api.borrarCarpeta(client.id, c.id); setFiltro("todas"); }, `Carpeta «${c.nombre}» quitada. Sus archivos siguen en la galería.`);
-
-  // ---------- Derivados ----------
+  // ---------- Derivados (los de la galería —vistas, filtros, semanas, selección— van en EstudioGaleria.jsx) ----------
   const archivos = useMemo(() => datos?.archivos ?? [], [datos]);
   const carpetas = useMemo(() => datos?.carpetas ?? [], [datos]);
-  const papelera = datos?.papelera ?? [];
-  const cuentas = useMemo(() => contarFiltros(archivos, carpetas), [archivos, carpetas]);
-  const visibles = useMemo(() => filtrarArchivos(archivos, { filtro, texto, modelo: modeloFiltro }), [archivos, filtro, texto, modeloFiltro]);
-  // En «Todas», cada carrusel y cada reel es UNA tarjeta; en sus filtros (o en el de su carpeta), pieza a pieza.
-  // En «Todas», un carrusel o un reel es UNA tarjeta y las versiones de una pieza también (lib/estudio.js).
-  const vista = useMemo(() => (filtro === "todas" ? agruparGaleria(api.apilarVersiones(visibles, carpetas, datos?.trabajos), carpetas, archivos) : visibles), [visibles, carpetas, archivos, filtro, datos]);
   const carpetasPropias = useMemo(() => carpetas.filter((c) => !esGrupo(c)), [carpetas]);
-  const abrirPieza = (a) => (seleccion ? alternarSeleccion(a) : destinoGaleria ? usarComoMedio(a, destinoGaleria) : setVisor(a));
+  const abrirPieza = (a) => setVisor(a);
   const enCurso = useMemo(() => trabajosVisibles(datos?.trabajos ?? [], { descartados }), [datos, descartados]);
-  const carpetaActiva = carpetas.find((c) => c.id === filtro) ?? null;
   const soloPrueba = motores && !Object.entries(motores).some(([id, m]) => id !== "prueba" && m.activo);
   const llavesQueFaltan = Object.values(motores ?? {}).map((m) => m.llave).filter(Boolean);
   const enMedios = (a) => form && Object.values(form.medios).some((l) => l.some((x) => x.id === a.id));
+  // El formato de «Qué», sacado de lo que hay: el flujo guiado, el tipo y la proporción (9:16 es una historia).
+  const formato = guiado === "carrusel" ? "carrusel" : guiado === "reel" || form?.tipo === "video" ? "video" : ajustes.aspectRatio === "9:16" ? "historia" : "post";
+  const queCrear = form ? (
+    <QueCrear formato={formato} tipoVideo={guiado === "reel" ? tipoVideo : "clip"} conGuiados={!dialogo}
+      onFormato={(f) => cambiarFormato(f)} onTipoVideo={(t) => cambiarFormato("video", t)} />
+  ) : null;
+  // Lo puesto en el pedido, para la tira de abajo mientras se mira la galería.
+  const puestas = form ? [...form.medios.start, ...form.medios.end, ...form.medios.reference, ...(form.medios.video ?? [])] : [];
+  const verTira = !dialogo && !lectura && puestas.length > 0 && !compositorALaVista;
 
   if (cargando || (!form && !error)) return <p role="status" className="est-nota">Cargando el Estudio…</p>;
   if (error && !datos) return <div className="est-error" role="alert"><p>{error}</p><button type="button" className="btn btn-secondary btn-sm" onClick={cargar}>Reintentar</button></div>;
@@ -893,11 +930,12 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
     <section className={`estudio${dialogo ? " estudio-dialogo" : ""}`} aria-labelledby={`${ids}-h`}>
       <header className="est-cabecera">
         <div>
-          <TituloH id={`${ids}-h`} className="est-titulo">{dialogo ? "Crear en el Estudio" : "Estudio"}</TituloH>
+          <TituloH id={`${ids}-h`} className="est-titulo">{dialogo ? "Crear en el Estudio" : aMano ? "Crear a mano" : "Estudio"}</TituloH>
           <p className="est-sub">
             {dialogo
               ? "Crea una imagen o un video para esta publicación, o escoge uno que ya hayas hecho."
-              : `Lo creado para ${client.name}, con su pedido y lo que costó. A mano, en «Avanzado».`}
+              : aMano ? `Escoge el formato, escribe la idea y crea. Lo que salga queda en la galería de ${client.name}, debajo.`
+                : `Lo creado para ${client.name}, con su pedido y lo que costó. Para crear tú, «A mano».`}
           </p>
         </div>
         {dialogo && onCerrar && <button type="button" className="btn-icon" aria-label="Cerrar" onClick={onCerrar}><Icon name="close" size={18} /></button>}
@@ -907,6 +945,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
         {aviso && (
           <p className={aviso.ok ? "est-aviso" : "est-aviso est-aviso-mal"}>
             {aviso.texto}
+            {aviso.abrir && <>{" "}<button type="button" className="btn btn-secondary btn-sm" onClick={() => { setVisor(aviso.abrir); setAviso(null); }}><Icon name="eye" size={14} /> Abrirla</button></>}
             <button type="button" className="btn-icon est-cerrar" aria-label="Cerrar el aviso" onClick={() => setAviso(null)}><Icon name="close" size={16} /></button>
           </p>
         )}
@@ -920,79 +959,76 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
         </p>
       )}
 
-      {/* ---------- Pedir: en la pestaña, plegado en «Avanzado» ---------- */}
-      {!dialogo && !lectura && (
-        <button type="button" className="btn btn-secondary est-avanzado" aria-expanded={avanzado} aria-controls={`${ids}-av`} onClick={() => setAvanzado((v) => !v)}>
-          <Icon name={avanzado ? "chevronDown" : "chevronRight"} size={16} /> Avanzado: crear a mano (imagen, video, carrusel), varias de una vez o recrear
-        </button>
-      )}
-      <div id={`${ids}-av`} className="est-av" hidden={!dialogo && !avanzado}>
-      {!lectura && form && modelo && guiado && (
-        <Suspense fallback={<p className="hint">Cargando…</p>}>
-          {(() => {
-            const Flujo = guiado === "reel" ? FlujoReel : FlujoCarrusel;
-            return (
-              <Flujo
-                key={`${guiado}-${vueltaGuiado}`} client={client}
-                estudio={{ kit, productos: datos?.productos ?? [], archivos: datos?.archivos ?? [], activos }}
-                inicial={{ preset: presetVigente }}
-                cabecera={<QueCrear actual={guiado} guiados={GUIADOS} onCambiar={(t) => { if (GUIADOS.some(([x]) => x === t)) setGuiado(t); else { setGuiado(""); cambiarTipo(t); } }} />}
-                onCreando={(si) => { if (!si) cargar(); }}
-                // «Listo»: todo quedó en la galería; el flujo vuelve a empezar, limpio, para el siguiente.
-                onListo={() => { setVueltaGuiado((n) => n + 1); cargar(); avisar(true, guiado === "reel" ? "Reel listo: está en la galería, en su carpeta." : "Carrusel listo: está en la galería, en su carpeta."); }}
+      {/* ---------- Crear a mano: en Crear → «A mano» (arriba) y siempre en el diálogo de una publicación ---------- */}
+      {conCompositor && !lectura && form && modelo && (
+        <div className="est-av" ref={zonaCompositor}>
+          <Suspense fallback={<p role="status" className="hint">Abriendo el compositor…</p>}>
+            {guiado ? (() => {
+              const Flujo = guiado === "reel" ? FlujoReel : FlujoCarrusel;
+              return (
+                <Flujo
+                  key={`${guiado}-${guiado === "reel" ? tipoVideo : ""}-${vueltaGuiado}`} client={client}
+                  estudio={{ kit, productos: datos?.productos ?? [], archivos: datos?.archivos ?? [], activos }}
+                  inicial={{ preset: presetVigente, ...(guiado === "reel" ? { forma: tipoVideo } : {}) }}
+                  sinFormas
+                  cabecera={queCrear}
+                  onCreando={(si) => { if (!si) cargar(); }}
+                  // «Listo»: todo quedó en la galería; el flujo vuelve a empezar, limpio, para el siguiente.
+                  onListo={() => { setVueltaGuiado((n) => n + 1); cargar(); avisar(true, guiado === "reel" ? "Reel listo: está en la galería, en su carpeta." : "Carrusel listo: está en la galería, en su carpeta."); }}
+                />
+              );
+            })() : (
+              <Compositor
+                ids={ids} form={{ ...form, ajustes }} setForm={setForm} modelo={modelo} motores={motores} costo={costo}
+                confirmando={confirmando} enviando={enviando} subiendo={subiendo} promptRef={promptRef}
+                onEnviar={enviar} onConfirmar={() => enviar(true)} onNo={() => setConfirmando(null)}
+                onModelo={cambiarModelo} onQuitarMedio={quitarMedio} onMarcarReferencia={marcarReferencia} nombrado={nombrado} onSubirArchivos={subirArchivos}
+                onDrive={client.driveFolder ? (rol) => setDriveRol(rol) : null}
+                onGaleria={escogerDeLaGaleria}
+                queCrear={queCrear}
+                mejorando={mejorando} onMejorar={mejorarConIA} onVolverIdea={ideaAnterior != null ? volverAMiIdea : null}
+                estilo={{
+                  preset: presetVigente, onPreset: setPreset, kitListo, kit: limpiarKit(kit), marca: client.name, textoPreset: textoDelPreset, refsTipo, sinIdea: !form.prompt.trim(),
+                  nombrePieza: presetVigente ? nombreDePreset(presetVigente, kit) : "",
+                  bloqueMarca,
+                  estilo: estiloVigente, estiloResuelto: estiloDeEsta, nombreEstilo: nombreDeEstilo(kit, estiloDeEsta), lineaEstilo: lineaDelEstilo, onEstilo: setEstilo,
+                  fijadoTipo: limpiarKit(kit).estiloPorTipo[presetVigente.split("-")[0]] ?? "", onFijarEstilo: lectura ? null : fijarEstilo,
+                  conLogo, onConLogo: setConLogo, puedeLogo, estampa,
+                  angulos: datos?.angulos ?? [],
+                  onAngulo: (a) => { setConfirmando(null); setForm((f) => ({ ...f, prompt: ideaDesdeAngulo(a) })); },
+                  productos: modelo.referencias > 0 ? (datos?.productos ?? []).filter((p) => p.fotos?.length) : [],
+                  gustos: hayGustos && modelo.referencias > 0 ? { activo: conGustos, onCambiar: setConGustos, van: gustos.length } : null,
+                  personajes: modelo.referencias > 0 && limpiarKit(kit).personajes.length
+                    ? { lista: limpiarKit(kit).personajes, escogidos: personajesSel, onCambiar: setPersonajesSel, van: deLosPersonajes.length }
+                    : null,
+                  onProducto: ponerFotosDeProducto, onQuitarProducto: quitarFotosDeProducto,
+                  plantillas: form.tipo === "imagen" && modelo.referencias > 0 && limpiarKit(kit).plantillas.length
+                    ? { lista: limpiarKit(kit).plantillas, escogida: plantillaSel, onCambiar: setPlantillaSel }
+                    : null,
+                }}
+                fijado={fijados[form.tipo] ?? ""} onFijar={(id) => fijar(form.tipo, id)}
+                ideas={{
+                  generando: ideasGen.generando, lista: ideasGen.lista, conTema: Boolean(form.prompt.trim()),
+                  deTipo: presetVigente && !presetVigente.startsWith("propio-") ? presetVigente.split("-")[0] : "",
+                  onGenerar: generarIdeas, onUsar: usarIdeaGenerada, onCerrar: () => setIdeasGen((x) => ({ ...x, lista: [] })),
+                  nombreDeTipo: (id) => nombreDePilar(id) || nombreDePreset(id, kit),
+                  nombreDeProducto: (id) => ideasGen.productos.find((p) => p.id === id)?.nombre ?? "",
+                }}
+                guionCorto={{
+                  segundos: segundosGuion, escribiendo: escribiendoGuion, resultado: guion,
+                  onEscribir: escribirGuion, onUsar: usarGuion, onDescartar: () => setGuion(null),
+                }}
+                ultimas={ultimas} onAbrir={(a) => setVisor(a)}
               />
-            );
-          })()}
-        </Suspense>
-      )}
-      {!lectura && form && modelo && !guiado && (
-        <Compositor
-          ids={ids} form={{ ...form, ajustes }} setForm={setForm} modelo={modelo} motores={motores} costo={costo}
-          confirmando={confirmando} enviando={enviando} subiendo={subiendo} promptRef={promptRef}
-          onEnviar={enviar} onConfirmar={() => enviar(true)} onNo={() => setConfirmando(null)}
-          onModelo={cambiarModelo} onTipo={cambiarTipo} onQuitarMedio={quitarMedio} onMarcarReferencia={marcarReferencia} nombrado={nombrado} onSubirArchivos={subirArchivos}
-          onDrive={client.driveFolder ? (rol) => setDriveRol(rol) : null}
-          onGaleria={escogerDeLaGaleria}
-          mejorando={mejorando} onMejorar={mejorarConIA} onVolverIdea={ideaAnterior != null ? volverAMiIdea : null}
-          estilo={{
-            preset: presetVigente, onPreset: setPreset, kitListo, kit: limpiarKit(kit), marca: client.name, textoPreset: textoDelPreset, refsTipo, sinIdea: !form.prompt.trim(),
-            bloqueMarca,
-            estilo: estiloVigente, estiloResuelto: estiloDeEsta, nombreEstilo: nombreDeEstilo(kit, estiloDeEsta), lineaEstilo: lineaDelEstilo, onEstilo: setEstilo,
-            fijadoTipo: limpiarKit(kit).estiloPorTipo[presetVigente.split("-")[0]] ?? "", onFijarEstilo: lectura ? null : fijarEstilo,
-            conLogo, onConLogo: setConLogo, puedeLogo, estampa,
-            angulos: datos?.angulos ?? [],
-            onAngulo: (a) => { setConfirmando(null); setForm((f) => ({ ...f, prompt: ideaDesdeAngulo(a) })); },
-            productos: modelo.referencias > 0 ? datos?.productos ?? [] : [],
-            gustos: hayGustos && modelo.referencias > 0 ? { activo: conGustos, onCambiar: setConGustos, van: gustos.length } : null,
-            personajes: modelo.referencias > 0 && limpiarKit(kit).personajes.length
-              ? { lista: limpiarKit(kit).personajes, escogidos: personajesSel, onCambiar: setPersonajesSel, van: deLosPersonajes.length }
-              : null,
-            onProducto: ponerFotosDeProducto,
-            plantillas: form.tipo === "imagen" && modelo.referencias > 0 && limpiarKit(kit).plantillas.length
-              ? { lista: limpiarKit(kit).plantillas, escogida: plantillaSel, onCambiar: setPlantillaSel }
-              : null,
-          }}
-          fijado={fijados[form.tipo] ?? ""} onFijar={(id) => fijar(form.tipo, id)}
-          guiados={dialogo ? [] : GUIADOS} onGuiado={setGuiado}
-          ideas={{
-            generando: ideasGen.generando, lista: ideasGen.lista, conTema: Boolean(form.prompt.trim()),
-            deTipo: presetVigente && !presetVigente.startsWith("propio-") ? presetVigente.split("-")[0] : "",
-            onGenerar: generarIdeas, onUsar: usarIdeaGenerada, onCerrar: () => setIdeasGen((x) => ({ ...x, lista: [] })),
-            nombreDeTipo: (id) => nombreDePilar(id) || nombreDePreset(id, kit),
-            nombreDeProducto: (id) => ideasGen.productos.find((p) => p.id === id)?.nombre ?? "",
-          }}
-          guionCorto={{
-            segundos: segundosGuion, escribiendo: escribiendoGuion, resultado: guion,
-            onEscribir: escribirGuion, onUsar: usarGuion, onDescartar: () => setGuion(null),
-          }}
-        />
-      )}
+            )}
+          </Suspense>
 
-      {/* ---------- Muchas de una vez (anuncios en matriz, por tipo o el mes) y recrear un anuncio de otra cuenta ---------- */}
-      {!lectura && !dialogo && motores && (
-        <Suspense fallback={null}><EstudioMuchas onLote={() => setLoteAbierto(true)} onRecrear={() => setRecrear({ archivo: null })} /></Suspense>
+          {/* ---------- Muchas de una vez (anuncios en matriz, por tipo o el mes) y recrear un anuncio de otra cuenta ---------- */}
+          {!dialogo && motores && (
+            <Suspense fallback={null}><EstudioMuchas onLote={() => setLoteAbierto(true)} onRecrear={() => setRecrear({ archivo: null })} /></Suspense>
+          )}
+        </div>
       )}
-      </div>
       {recrear && (
         <Suspense fallback={null}>
           <EstudioRecrear
@@ -1041,218 +1077,44 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
         </ul>
       )}
 
-      {/* ---------- Galería ---------- */}
-      <div className="est-galeria-cabecera" ref={galeriaRef}>
-        {destinoGaleria && (
-          <p className="notice est-destino" role="status">
-            Toca una imagen para ponerla como <strong>{NOMBRE_RANURA[destinoGaleria]}</strong>.
-            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setDestinoGaleria(null)}>Cancelar</button>
-          </p>
-        )}
-        <h3 className="est-subtitulo">{enPapelera ? "Papelera" : enDrive ? "Drive de " + client.name : "Galería"}</h3>
-        <div className="est-filtros" role="group" aria-label="Filtrar la galería">
-          <button type="button" className="filter-chip" aria-pressed={!enPapelera && !enDrive && filtro === "todas"} onClick={() => { setEnPapelera(false); setEnDrive(false); setFiltro("todas"); }}>Todas ({cuentas.todas})</button>
-          <button type="button" className="filter-chip" aria-pressed={!enPapelera && !enDrive && filtro === "favoritas"} onClick={() => { setEnPapelera(false); setEnDrive(false); setFiltro("favoritas"); }}><Icon name="heart" size={13} /> Me gusta ({cuentas.favoritas})</button>
-          <button type="button" className="filter-chip" aria-pressed={!enPapelera && !enDrive && filtro === "subidas"} onClick={() => { setEnPapelera(false); setEnDrive(false); setFiltro("subidas"); }}>Subidas ({cuentas.subidas})</button>
-          <button type="button" className="filter-chip" aria-pressed={!enPapelera && !enDrive && filtro === "usadas"} onClick={() => { setEnPapelera(false); setEnDrive(false); setFiltro("usadas"); }} title="Las que ya están en una publicación">Usadas ({cuentas.usadas})</button>
-          <button type="button" className="filter-chip" aria-pressed={!enPapelera && !enDrive && filtro === "sin-usar"} onClick={() => { setEnPapelera(false); setEnDrive(false); setFiltro("sin-usar"); }}>Sin usar ({cuentas["sin-usar"]})</button>
-          {carpetas.filter((c) => !esGrupo(c) || filtro === c.id).map((c) => (
-            <button key={c.id} type="button" className="filter-chip" aria-pressed={!enPapelera && !enDrive && filtro === c.id} onClick={() => { setEnPapelera(false); setEnDrive(false); setFiltro(c.id); }}>
-              <Icon name={esGrupo(c) ? (c.tipo === "reel" ? "video" : "copy") : "folder"} size={13} /> {c.nombre} ({cuentas[c.id] ?? 0})
-            </button>
-          ))}
-          {!lectura && carpetaNueva === null && (
-            <button type="button" className="filter-chip est-chip-nueva" onClick={() => setCarpetaNueva("")}><Icon name="plus" size={13} /> Carpeta</button>
-          )}
-          {client.driveFolder && (
-            <button type="button" className="filter-chip" aria-pressed={!enPapelera && enDrive} onClick={() => { setEnPapelera(false); setEnDrive(true); }}><Icon name="cloud" size={13} /> Drive</button>
-          )}
-          <button type="button" className="filter-chip" aria-pressed={enPapelera} onClick={() => setEnPapelera(true)}><Icon name="trash" size={13} /> Papelera ({papelera.length})</button>
-        </div>
-        {carpetaNueva !== null && (
-          <form className="est-carpeta-form" onSubmit={crearCarpeta}>
-            <label className="est-solo-lector" htmlFor={`${ids}-cn`}>Nombre de la carpeta</label>
-            <input id={`${ids}-cn`} className="input" value={carpetaNueva} maxLength={40} autoFocus placeholder="Nombre de la carpeta" onChange={(e) => setCarpetaNueva(e.target.value)} />
-            <button type="submit" className="btn btn-primary btn-sm" disabled={!carpetaNueva.trim()}>Crear</button>
-            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setCarpetaNueva(null)}>Cancelar</button>
-          </form>
-        )}
-        {!enPapelera && !enDrive && carpetaActiva && !lectura && (
-          renombrando ? (
-            <form className="est-carpeta-form" onSubmit={guardarNombre}>
-              <label className="est-solo-lector" htmlFor={`${ids}-rn`}>Nuevo nombre</label>
-              <input id={`${ids}-rn`} className="input" value={renombrando.nombre} maxLength={40} autoFocus onChange={(e) => setRenombrando({ ...renombrando, nombre: e.target.value })} />
-              <button type="submit" className="btn btn-primary btn-sm" disabled={!renombrando.nombre.trim()}>Guardar</button>
-              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setRenombrando(null)}>Cancelar</button>
-            </form>
-          ) : (
-            <div className="est-carpeta-acciones">
-              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setRenombrando({ id: carpetaActiva.id, nombre: carpetaActiva.nombre })}><Icon name="pencil" size={14} /> Renombrar «{carpetaActiva.nombre}»</button>
-              <button type="button" className="btn btn-ghost btn-sm" onClick={() => quitarCarpeta(carpetaActiva)}><Icon name="trash" size={14} /> Quitar la carpeta</button>
-            </div>
-          )
-        )}
-        {!enPapelera && !enDrive && !lectura && (
-          <div className="est-seleccion">
-            <input ref={subirRef} type="file" accept="image/*,video/*" multiple hidden onChange={(e) => { const fs = [...e.target.files]; e.target.value = ""; subirSueltas(fs); }} />
-            <button type="button" className="btn btn-secondary btn-sm" disabled={subiendo} onClick={() => subirRef.current?.click()}>
-              <Icon name="upload" size={14} /> {subiendo ? "Subiendo…" : carpetaActiva ? `Subir a «${carpetaActiva.nombre}»` : "Subir a la galería"}
-            </button>
-          </div>
-        )}
-        {!enPapelera && !enDrive && !lectura && visibles.length > 0 && (
-          <div className="est-seleccion" role="group" aria-label="Seleccionar varias">
-            {seleccion ? (
-              <>
-                <span className="est-seleccion-cuenta">{seleccion.size} seleccionada{seleccion.size === 1 ? "" : "s"}</span>
-                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSeleccion(new Set(visibles.map((a) => a.id)))}>Todas las que se ven</button>
-                <button type="button" className="btn btn-secondary btn-sm" disabled={seleccion.size < 2 || lectura} onClick={agrupar}>Agrupar como carrusel</button>
-                {!dialogo && <button type="button" className="btn btn-secondary btn-sm" disabled={!seleccion.size} onClick={() => setPoner([...seleccion])}><Icon name="send" size={14} /> Poner en una publicación…</button>}
-                <button type="button" className="btn btn-danger btn-sm" disabled={!seleccion.size} onClick={() => variasAPapelera([...seleccion])}>
-                  <Icon name="trash" size={14} /> Mandar {seleccion.size || ""} a la papelera
-                </button>
-                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSeleccion(null)}>Cancelar</button>
-              </>
-            ) : (
-              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSeleccion(new Set())}><Icon name="checkSquare" size={14} /> Seleccionar</button>
-            )}
-          </div>
-        )}
-        {!enPapelera && !enDrive && perdidos.size > 0 && !lectura && (
-          <p className="est-aviso est-aviso-mal est-perdidos">
-            {perdidos.size === 1 ? "Una pieza de la galería ya no tiene su archivo." : `${perdidos.size} piezas de la galería ya no tienen su archivo.`}{" "}
-            <button type="button" className="btn btn-secondary btn-sm" onClick={() => quitarPerdidas([...perdidos])}>Quitarlas de la galería</button>
-          </p>
-        )}
-        {!enPapelera && !enDrive && archivos.length > 1 && (
-          <div className="est-buscar">
-            <label className="est-solo-lector" htmlFor={`${ids}-b`}>Buscar en la galería</label>
-            <input id={`${ids}-b`} type="search" className="input" placeholder="Buscar por lo que pediste o el modelo…" value={texto} onChange={(e) => setTexto(e.target.value)} />
-            <FiltroDeModelo archivos={archivos} valor={modeloFiltro} onCambiar={setModeloFiltro} />
-          </div>
-        )}
-      </div>
+      {/* ---------- Galería (en su chunk: vistas, filtros, semanas, «Cargar más», seleccionar y la papelera) ---------- */}
+      <Suspense fallback={<p className="est-vacio" role="status">Abriendo la galería…</p>}>
+        <EstudioGaleria
+          client={client} lectura={lectura} dialogo={dialogo} pulso={pulso} datos={datos} setDatos={setDatos} cargar={cargar} accion={accion} avisar={avisar}
+          hastaRef={hastaRef} filtro={filtro} setFiltro={setFiltro} enPapelera={enPapelera} setEnPapelera={setEnPapelera} enDrive={enDrive} setEnDrive={setEnDrive}
+          perdidos={perdidos} setPerdidos={setPerdidos} cabeceraRef={galeriaRef}
+          onAbrir={abrirPieza} onAbrirGrupo={setGrupoAbierto} variasAPapelera={variasAPapelera} onDrive={traerDeDriveAlPedido}
+          tarjeta={{
+            enMedios, costoDeOtra, versionando, onFavorito: alternarFavorito, onPapelera: aPapelera, onDescargar: descargar, onAnimar: animar,
+            onOtra: (a) => delVisor("versiones", a, { n: 1 }),
+            onReferencia: form ? (a) => (enMedios(a) ? quitarMedio(Object.keys(form.medios).find((rol) => form.medios[rol].some((x) => x.id === a.id)), a) : usarComoMedio(a)) : null,
+            onUsar: onUsar ? usarEnLaPublicacion : null, etiquetaUsar: inicial?.etiquetaUsar,
+          }}
+        />
+      </Suspense>
 
-      {enDrive && !enPapelera ? (
-        <div className="est-drive">
-          {!lectura && <p className="hint" style={{ marginTop: 0 }}>Toca una imagen para traerla a la galería y ponerla en el pedido (de referencia, o de imagen inicial en un video).</p>}
-          <ExploradorDrive
-            clienteId={client.dbId || client.id} raiz={idDeCarpeta(client.driveFolder)} modo="escoger" tipos={["imagen", "video"]} maximo={1} pulso={pulso}
-            onSelect={lectura ? undefined : traerDeDriveAlPedido}
-          />
+      {verTira && (
+        <div className="est-tira-pedido" role="group" aria-label="Lo que va en el pedido">
+          {puestas.slice(0, 4).map((a) => (a.tipo === "video" ? <Icon key={a.id} name="video" size={18} /> : <img key={a.id} src={a.src} alt="" />))}
+          <span className="hint">
+            En el pedido: {form.medios.reference.length > 0 && modelo?.referencias ? `${form.medios.reference.length} de ${modelo.referencias} referencias` : `${puestas.length} ${puestas.length === 1 ? "imagen" : "imágenes"}`}
+          </span>
+          <button type="button" className="btn btn-primary btn-sm" onClick={() => enfocarPrompt()}><Icon name="pencil" size={14} /> Ir al pedido</button>
         </div>
-      ) : enPapelera ? (
-        <Suspense fallback={<p className="est-vacio">Abriendo la papelera…</p>}>
-          <EstudioPapelera
-            papelera={papelera} lectura={lectura} borrando={borrando} onVaciar={vaciar}
-            onRecuperar={recuperar} onBorrar={borrarDeVerdad} onNoBorrar={() => setBorrando(null)}
-          />
-        </Suspense>
-      ) : archivos.length === 0 ? (
-        <div className="card est-vacio-grande">
-          <h3>Todavía no hay nada de {client.name}</h3>
-          <p>Escribe qué quieres arriba y pulsa «Crear». Cada pieza que salga queda aquí, y puedes usarla de referencia para la siguiente o animarla para sacar un video.</p>
-        </div>
-      ) : visibles.length === 0 ? (
-        <p className="est-vacio">No hay nada con ese filtro.</p>
-      ) : (
-        <ul className="est-rejilla">
-          {vista.map((a) => {
-            if (a.grupo) {
-              const { carpeta, piezas, portada } = a.grupo;
-              const nombre = textoDeGrupo(carpeta, piezas);
-              return (
-                <li key={a.id} className="est-tarjeta est-tarjeta-grupo">
-                  <button type="button" className="est-img" aria-label={`Abrir ${nombre}: ${carpeta.nombre}`} onClick={() => setGrupoAbierto(a.grupo)}>
-                    <Pieza archivo={portada} />
-                    <span className="est-marca-grupo"><Icon name={carpeta.tipo === "reel" ? "video" : "copy"} size={12} /> {nombre}</span>
-                    {piezas.some(estaUsado) && <span className="est-marca-usada">Usado</span>}
-                  </button>
-                  <div className="est-pie">
-                    <p className="est-prompt" title={carpeta.nombre}>{carpeta.nombre}</p>
-                    <p className="est-meta">{nombre} · {hace(portada.creado)}</p>
-                  </div>
-                </li>
-              );
-            }
-            const escena = ideaDelPedido(a.prompt);
-            const marcada = Boolean(seleccion?.has(a.id));
-            const perdida = perdidos.has(a.id);
-            return (
-            <li key={a.id} className={`est-tarjeta${marcada ? " est-tarjeta-marcada" : ""}`}>
-              <button
-                type="button" className="est-img" data-control={a.ajustes?.control?.estado}
-                aria-label={seleccion ? `${marcada ? "Quitar de" : "Añadir a"} la selección: ${escena}` : destinoGaleria ? `Poner como ${NOMBRE_RANURA[destinoGaleria]}: ${escena}` : `Abrir: ${escena}`}
-                aria-pressed={seleccion ? marcada : undefined}
-                onClick={() => abrirPieza(a)}
-              >
-                {perdida ? (
-                  <span className="est-perdida"><Icon name="alert" size={20} /> Archivo perdido</span>
-                ) : (
-                  <Pieza archivo={a} onError={() => setPerdidos((p) => (p.has(a.id) ? p : new Set(p).add(a.id)))} />
-                )}
-                {a.tipo === "video" && <span className="est-marca-video"><Icon name="video" size={12} /> Video</span>}
-                {enMedios(a) && <span className="est-marca-ref">En el pedido</span>}
-                {a.deLaMarca && <span className="est-marca-marca" title={a.deLaMarca}><Icon name="lock" size={12} /> Marca</span>}
-                {a.anteriores && <span className="est-marca-grupo">{a.anteriores.length + 1} versiones</span>}
-                {estaUsado(a) && <span className="est-marca-usada" title={`En ${a.usadoEn.length} publicación${a.usadoEn.length === 1 ? "" : "es"}`}>Usada</span>}
-                {seleccion && <span className="est-marca-check" aria-hidden="true"><Icon name={marcada ? "checkSquare" : "square"} size={18} /></span>}
-              </button>
-              {!lectura && !seleccion && !a.deLaMarca && (
-                <button type="button" className="btn-icon est-a-papelera" aria-label={`Mandar a la papelera: ${escena}`} title="Mandar a la papelera" onClick={() => aPapelera(a)}>
-                  <Icon name="trash" size={16} />
-                </button>
-              )}
-              <div className="est-pie">
-                <p className="est-prompt" title={a.prompt}>{escena}</p>
-                <p className="est-meta">{modeloDeLaPieza(a)}{a.costo > 0 ? ` · ${textoCosto(a.costo)}` : ""} · {hace(a.creado)}</p>
-                {onUsar && (
-                  <button type="button" className="btn btn-primary btn-sm est-usar" onClick={() => usarEnLaPublicacion(a)}>
-                    <Icon name="check" size={14} /> {inicial?.etiquetaUsar ?? "Usar en la publicación"}
-                  </button>
-                )}
-                <div className="est-acciones">
-                  {!lectura && (
-                    <>
-                      <button type="button" className="btn-icon est-me-gusta" aria-pressed={a.favorito} aria-label={a.favorito ? "Quitar «Me gusta»" : "Me gusta"} title="Me gusta: el cerebro aprende de lo que eliges" onClick={() => alternarFavorito(a)}>
-                        <Icon name="heart" size={18} />
-                      </button>
-                      {a.tipo !== "video" && !a.subido && a.modelo && (
-                        <button
-                          type="button" className="btn-icon" disabled={versionando}
-                          aria-label={`Otra versión: la misma información con otra escena${costoDeOtra(a) != null ? ` (${textoCosto(costoDeOtra(a))})` : ""}`}
-                          title={`Otra versión: la misma información con otra escena${costoDeOtra(a) != null ? ` · ${textoCosto(costoDeOtra(a))}` : ""}`}
-                          onClick={() => delVisor("versiones", a, { n: 1 })}
-                        >
-                          <Icon name="sparkles" size={18} />
-                        </button>
-                      )}
-                      {a.tipo !== "video" && (
-                        <>
-                          <button type="button" className="btn-icon" aria-pressed={enMedios(a)} aria-label={enMedios(a) ? "Quitar del pedido" : "Usar de referencia"} title="Usar de referencia" onClick={() => (enMedios(a) ? quitarMedio(Object.keys(form.medios).find((rol) => form.medios[rol].some((x) => x.id === a.id)), a) : usarComoMedio(a))}>
-                            <Icon name="paperclip" size={18} />
-                          </button>
-                          <button type="button" className="btn-icon" aria-label="Animar: convertirla en video" title="Animar: convertirla en video" onClick={() => animar(a)}>
-                            <Icon name="video" size={18} />
-                          </button>
-                        </>
-                      )}
-                    </>
-                  )}
-                  <OverflowMenu items={[
-                    { icon: "download", label: "Descargar", onClick: () => descargar(a) },
-                    ...(perdida && !lectura ? [{ icon: "close", label: "Quitar de la galería", danger: true, onClick: () => quitarPerdidas([a.id]) }] : []),
-                  ]} />
-                </div>
-              </div>
-            </li>
-            );
-          })}
-        </ul>
       )}
 
       <p className="est-precios">Los precios son aproximados y de {new Date(PRECIOS_AL).toLocaleDateString("es-PA", { month: "long", year: "numeric", timeZone: "UTC" })}. Lo que se gasta aquí suma al presupuesto de IA del mes.</p>
 
+      {eligiendoDeGaleria && form && modelo && (
+        <Suspense fallback={null}>
+          <EstudioElegir
+            archivos={datos?.archivos ?? []} rol={eligiendoDeGaleria}
+            caben={Math.max(1, ({ reference: modelo.referencias, start: 1, end: 1 }[eligiendoDeGaleria] || 1) - (eligiendoDeGaleria === "reference" ? form.medios.reference.length : 0))}
+            yaPuestas={puestas.map((a) => a.id)}
+            onPoner={(lista) => ponerDeLaGaleria(eligiendoDeGaleria, lista)} onCerrar={() => setEligiendoDeGaleria(null)}
+          />
+        </Suspense>
+      )}
       {eligiendoRanura && (
         <Suspense fallback={null}>
           <EleccionRanura
@@ -1290,11 +1152,6 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
           />
         </Suspense>
       )}
-      {poner && (
-        <Suspense fallback={null}>
-          <PonerEnPublicacion cliente={client} archivoIds={poner} descripcion={poner.length === 1 ? "la escogida" : `las ${poner.length} escogidas, en el orden en que las tocaste`} onCerrar={() => { setPoner(null); setSeleccion(null); }} />
-        </Suspense>
-      )}
       {visor && (
         <Visor
           archivo={visor} carpetas={carpetasPropias} lectura={lectura} cliente={client}
@@ -1325,12 +1182,9 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
           onLogo={/^image\/(png|jpeg|webp)$/.test(visor.mime ?? "") ? () => usarComoLogo(visor) : null}
           revision={revisiones[visor.id] ?? null}
           onRevisar={kitVacio(kit) || !/^image\/(png|jpeg|webp|gif)$/.test(visor.mime ?? "") ? null : () => revisar(visor)}
-          onCorregir={(sugerencia) => {
-            const a = visor;
-            setVisor(null);
-            setForm((f) => ({ ...f, prompt: `${ideaDelPedido(a.prompt)} ${sugerencia}`.trim().slice(0, MAX_PROMPT) }));
-            enfocarPrompt();
-          }}
+          // Lo que se está haciendo a partir de esta pieza (la corrección, otra versión): se abre aquí al llegar.
+          enCamino={enCamino && [visor.id, ...(visor.anteriores ?? []).map((x) => x.id)].includes(enCamino.desde) ? enCamino.texto : ""}
+          onAbrirNueva={(nueva) => abrirLaNueva(visor, [nueva])}
         />
       )}
     </section>

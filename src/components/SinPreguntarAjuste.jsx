@@ -39,7 +39,7 @@ export default function SinPreguntarAjuste({ valor, esAdmin, guardando, onGuarda
       <p id={`${ids}-nota`} style={nota}>
         Apagado, toda imagen desde 0,50 $ pide un segundo «sí». Encendido, una imagen con el modelo de cada cliente (el
         fijado en su kit o el predeterminado) que no pase del tope se crea directo: una pieza, una tanda del director, un
-        carrusel, las historias, otra versión, corregir, recrear y el lote. Pregunta igual si pasa del tope o si el
+        carrusel, las historias, otra versión, corregir, recrear y «Muchas piezas de una vez». Pregunta igual si pasa del tope o si el
         asistente sugiere otro motor. Video, voz y música preguntan siempre, y el presupuesto del mes sigue mandando.
       </p>
       <FilaInterruptor

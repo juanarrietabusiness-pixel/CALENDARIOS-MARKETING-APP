@@ -1,7 +1,10 @@
-import { useState, useEffect, useRef, useId } from "react";
+import { useState, useEffect, useRef, useId, lazy, Suspense } from "react";
 import Icon from "./Icon";
 import { navegar } from "../lib/rutas";
 import { iniciales } from "../utils";
+
+// «¿Qué es cada cosa?»: el glosario, en su chunk (sólo baja al abrirlo).
+const Glosario = lazy(() => import("./Glosario"));
 
 // ============================================================
 // La cuenta: quién soy y salir
@@ -14,6 +17,7 @@ import { iniciales } from "../utils";
 
 export default function MenuCuenta({ yo, onSalir }) {
   const [abierto, setAbierto] = useState(false);
+  const [glosario, setGlosario] = useState(false);
   const caja = useRef(null);
   const boton = useRef(null);
   const id = useId();
@@ -64,11 +68,15 @@ export default function MenuCuenta({ yo, onSalir }) {
           <button type="button" className="menu-cuenta-item" onClick={() => ir("/equipo#contrasena")}>
             <Icon name="lock" size={16} /> Cambiar contraseña
           </button>
+          <button type="button" className="menu-cuenta-item" onClick={() => { setAbierto(false); setGlosario(true); }}>
+            <Icon name="info" size={16} /> ¿Qué es cada cosa?
+          </button>
           <button type="button" className="menu-cuenta-item" data-peligro="true" onClick={onSalir}>
             <Icon name="logout" size={16} /> Salir
           </button>
         </div>
       )}
+      {glosario && <Suspense fallback={null}><Glosario onClose={() => { setGlosario(false); boton.current?.focus(); }} /></Suspense>}
     </div>
   );
 }

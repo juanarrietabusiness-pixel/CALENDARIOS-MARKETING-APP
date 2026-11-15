@@ -16,6 +16,9 @@
 //
 // Un video no tiene control ni logo: sigue pidiéndose como antes.
 //
+// La pieza nueva NO queda escondida en la pila: `alListo` avisa al visor cuando llega y la abre ahí mismo, con la de
+// antes entre sus versiones (`conLaNueva`).
+//
 // Y el «Crear» del COMPOSITOR de la pestaña Estudio (`pedirDelCompositor`): se
 // revisaba en el navegador, así que sólo había control (y logo estampado) si la
 // pantalla seguía abierta. Ahora es un encargo de una pieza como los demás.
@@ -76,10 +79,29 @@ export function pasosDeOtras(a, p, escenas, { kit = {}, uso = null, textos = [] 
 }
 
 /**
- * Manda las piezas y las sigue SIN bloquear a quien llama (el visor se cierra; las piezas aparecen en la galería).
- * `alFallo(texto)` si alguna no sale. Un video va como antes: → { trabajos } para que la pantalla los siga.
+ * La pieza NUEVA (una corrección, otra versión) puesta en el visor, con la que se estaba viendo y sus versiones como
+ * «anteriores»: la galería las enseña en una sola tarjeta y el visor las tiene a un toque. La principal (la de la
+ * tarjeta) no cambia. Pura.
  */
-async function mandar({ clienteId, a, p, escenas, kit, uso, textos, seguir, alFallo, titulo }) {
+export function conLaNueva(actual, nuevas = []) {
+  const [primera, ...resto] = nuevas.filter(Boolean);
+  if (!primera) return actual;
+  if (!actual) return primera;
+  const limpia = ({ anteriores: _a, vistaId: _v, ...x }) => x;
+  const vistos = new Set([primera.id]);
+  const anteriores = [...resto, actual, ...(actual.anteriores ?? [])].map(limpia).filter((x) => !vistos.has(x.id) && vistos.add(x.id));
+  return { ...limpia(primera), usadoEn: primera.usadoEn ?? [], anteriores, vistaId: actual.vistaId ?? actual.id };
+}
+
+/** Lo que salió de un encargo (los archivos finales, en su orden), para `alListo`. */
+const salieron = (r) => (r ?? []).map((x) => x.archivo).filter(Boolean);
+
+/**
+ * Manda las piezas y las sigue SIN bloquear a quien llama (las piezas aparecen en la galería). `alFallo(texto)` si alguna
+ * no sale; `alListo(archivos)` con las que salieron (el visor abre la nueva). Un video va como antes: → { trabajos } para
+ * que la pantalla los siga.
+ */
+async function mandar({ clienteId, a, p, escenas, kit, uso, textos, seguir, alFallo, alListo = null, titulo }) {
   if (a.tipo === "video") {
     const trabajos = [];
     for (const escena of escenas) {
@@ -95,7 +117,11 @@ async function mandar({ clienteId, a, p, escenas, kit, uso, textos, seguir, alFa
   }
   const encargo = await lanzarEnServidor({ clienteId, pasos: pasosDeOtras(a, p, escenas, { kit, uso, textos }), titulo, carpetaId: p.carpetaId ?? null });
   void esperarEnServidor({ clienteId, encargo, kit, seguir })
-    .then((r) => { const malo = r?.find((x) => x.error); if (malo) alFallo(`Una pieza nueva no salió: ${malo.error}`); })
+    .then((r) => {
+      const malo = r?.find((x) => x.error);
+      if (malo) alFallo(`Una pieza nueva no salió: ${malo.error}`);
+      if (salieron(r).length) alListo?.(salieron(r));
+    })
     .catch((e) => alFallo(e.message));
   return { encargo, trabajos: [] };
 }
@@ -105,21 +131,26 @@ async function mandar({ clienteId, a, p, escenas, kit, uso, textos, seguir, alFa
  * encargo de UNA pieza por el servidor: la proporción, el control con su corrección y el logo estampado si el kit lo
  * pide (`estampar`), aunque se cierre la pantalla. No bloquea: la pieza aparece en la galería; `alFallo` si no sale.
  */
-export async function pedirDelCompositor({ clienteId, modelo, prompt, n = 1, ajustes = {}, medios = {}, kit = {}, estampar = null, uso = null, carpetaId = null, seguir = () => true, alFallo = () => {} }) {
+export async function pedirDelCompositor({ clienteId, modelo, prompt, n = 1, ajustes = {}, medios = {}, kit = {}, estampar = null, uso = null, carpetaId = null, texto = "", seguir = () => true, alFallo = () => {}, alListo = null }) {
   const paso = pasoListo({
-    titulo: "Del compositor", kit, estampar, texto: "",
+    // `texto`: el de «Texto exacto» del compositor (el control lo compara letra por letra; vacío, lo saca del pedido).
+    titulo: "Del compositor", kit, estampar, texto,
     pedido: { modelo, prompt, n, ajustes, medios, ...(uso ? { calendarId: uso.calendarId, postId: uso.postId } : {}) },
   });
   const encargo = await lanzarEnServidor({ clienteId, pasos: [paso], titulo: ideaDelPedido(prompt).slice(0, 80) || "Del compositor", carpetaId });
   void esperarEnServidor({ clienteId, encargo, kit, seguir })
-    .then((r) => { const malo = r?.find((x) => x.error); if (malo) alFallo(`La pieza no salió: ${malo.error}`); })
+    .then((r) => {
+      const malo = r?.find((x) => x.error);
+      if (malo) alFallo(`La pieza no salió: ${malo.error}`);
+      if (salieron(r).length) alListo?.(salieron(r));
+    })
     .catch((e) => alFallo(e.message));
   return encargo;
 }
 
 /** «Otra igual»: el mismo pedido otra vez (el motor no repite la imagen: sale otra con lo mismo). */
-export async function pedirOtraIgual({ clienteId, a, p, kit = {}, uso = null, seguir = () => true, alFallo = () => {} }) {
-  const r = await mandar({ clienteId, a, p, escenas: [null], kit, uso, seguir, alFallo, titulo: "Otra igual" });
+export async function pedirOtraIgual({ clienteId, a, p, kit = {}, uso = null, seguir = () => true, alFallo = () => {}, alListo = null }) {
+  const r = await mandar({ clienteId, a, p, escenas: [null], kit, uso, seguir, alFallo, alListo, titulo: "Otra igual" });
   return { ...r, texto: `Pedida otra igual con ${p.modelo.nombre}: aparece en la galería en unos segundos, ya revisada.` };
 }
 
@@ -133,7 +164,7 @@ async function carpetaParaVariaciones(clienteId, a) {
   for (let i = 1; i <= 5; i++) {
     const nombre = carpetaDeVariaciones(titulo, i);
     try {
-      const { carpeta } = await api.crearCarpeta(clienteId, nombre);
+      const { carpeta } = await api.crearCarpeta(clienteId, nombre, { tipo: "auto" });
       if (!carpeta?.id) return null;
       if (!a.carpetaId) await api.cambiarArchivo(clienteId, a.id, { carpetaId: carpeta.id }).catch(() => null);
       return carpeta;
@@ -177,13 +208,13 @@ async function pedirVariaciones({ clienteId, a, n, p, kit, seguir, alFallo }) {
  * la original no tenía ficha); se quedan el tipo, el estilo y las referencias, y la marca va la de hoy. Con
  * `para: "anuncios"`, las variaciones de un conjunto de anuncios (`pedirVariaciones`).
  */
-export async function pedirVersiones({ clienteId, a, n = 1, p, kit = {}, uso = null, para = "", seguir = () => true, alFallo = () => {} }) {
+export async function pedirVersiones({ clienteId, a, n = 1, p, kit = {}, uso = null, para = "", seguir = () => true, alFallo = () => {}, alListo = null }) {
   if (para === "anuncios") return pedirVariaciones({ clienteId, a, n, p, kit, seguir, alFallo });
   const { escena, cola } = api.partirEscena(ideaDelPedido(a.prompt));
   const texto = a.tipo === "video" ? "" : textoDePieza(a);
   const r = await api.versionesDeIdea(clienteId, { idea: escena, n, tipo: a.tipo, original: a.src, texto });
   const escenas = r.versiones.map((v) => [v, cola].filter(Boolean).join(" "));
-  const hecho = await mandar({ clienteId, a, p, escenas, kit, uso, textos: r.versiones.map((v) => textoDeLaFicha(v) || texto), seguir, alFallo, titulo: "Otra versión" });
+  const hecho = await mandar({ clienteId, a, p, escenas, kit, uso, textos: r.versiones.map((v) => textoDeLaFicha(v) || texto), seguir, alFallo, alListo, titulo: "Otra versión" });
   const cuantas = escenas.length === 1 ? "Pedida 1 versión distinta" : `Pedidas ${escenas.length} versiones distintas`;
   return { ...hecho, texto: [`${cuantas} con ${p.modelo.nombre}: aparecen en la galería, ya revisadas.`, r.aviso ?? ""].filter(Boolean).join(" ") };
 }
@@ -192,7 +223,7 @@ export async function pedirVersiones({ clienteId, a, n = 1, p, kit = {}, uso = n
  * «Editar»: la imagen va de referencia a un modelo que edita (el escogido si edita; si no, el de editar; si no hace la
  * proporción, el que sí), con la indicación y la orden de no tocar lo demás. Los ejemplos de la galería, detrás.
  */
-export async function pedirEdicion({ clienteId, a, instruccion, ejemplos = [], escogido = "", activos = {}, kit = {}, seguir = () => true, alFallo = () => {} }) {
+export async function pedirEdicion({ clienteId, a, instruccion, ejemplos = [], escogido = "", activos = {}, kit = {}, seguir = () => true, alFallo = () => {}, alListo = null }) {
   const proporcion = a.ajustes?.aspectRatio ?? api.proporcionDeMedidas(a.ancho, a.alto);
   const m = api.modeloDeEdicion(activos, escogido, proporcion);
   const { prompt, medios } = api.pedidoDeCorreccion({ clave: a.clave, instruccion, ejemplos, modelo: m });
@@ -204,7 +235,10 @@ export async function pedirEdicion({ clienteId, a, instruccion, ejemplos = [], e
   });
   const encargo = await lanzarEnServidor({ clienteId, pasos: [paso], titulo: "Edición", carpetaId: a.carpetaId ?? null });
   void esperarEnServidor({ clienteId, encargo, kit, seguir })
-    .then((r) => { if (r?.[0]?.error) alFallo(`La edición no salió: ${r[0].error}`); })
+    .then((r) => {
+      if (r?.[0]?.error) alFallo(`La edición no salió: ${r[0].error}`);
+      if (salieron(r).length) alListo?.(salieron(r));
+    })
     .catch((e) => alFallo(e.message));
-  return { encargo, texto: `Editando con ${m.nombre}: sale como una imagen NUEVA, ya revisada, y la original no se toca.` };
+  return { encargo, texto: `Corrigiendo con ${m.nombre}: sale como una imagen NUEVA, ya revisada, y se abre aquí; la de ahora no se toca.` };
 }

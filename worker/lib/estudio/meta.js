@@ -32,6 +32,7 @@
 // se puede cambiar con `META_BASE` para un doble en las pruebas.
 // ============================================================
 
+import { seguido } from "../salud.js";
 import { ErrorMotor, aBase64, deBase64 } from "./gemini.js";
 import { tipoPorBytes } from "./archivos.js";
 import { abrirDescarga, TOPE_IMAGEN } from "./descarga.js";
@@ -194,7 +195,9 @@ function errorDeMeta(intentos) {
  * Pide UNA imagen a Muse Image. También lo usa /api/generar-imagen para
  * adaptar a 4:5 con la original de referencia. Devuelve `{ bytes, mime }`.
  */
-export async function llamarMuseImage(env, { gid = "muse-image-1.0", prompt, ajustes = {}, referencias = [], maxReferencias = 10 }) {
+export const llamarMuseImage = (env, pedido) => seguido("meta-ia", () => pedirMuseImage(env, pedido));
+
+async function pedirMuseImage(env, { gid = "muse-image-1.0", prompt, ajustes = {}, referencias = [], maxReferencias = 10 }) {
   const llave = llaveMeta(env);
   if (!llave) throw new ErrorMotor("El servidor no tiene la llave de Meta (META_API_KEY).", 503);
   const modelo = { gid, referencias: maxReferencias };

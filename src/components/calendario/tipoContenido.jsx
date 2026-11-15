@@ -1,7 +1,6 @@
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { Plegable } from "./editorPublicacion";
 import { leerMercado } from "../../lib/mercado";
-import { productosActivos, limpiarEstudio } from "../../lib/estudioMercado";
 import { NIVELES_CONSCIENCIA } from "../../lib/consciencia";
 import { PILARES, SUBTIPOS_MALETAS, pilarDe, nombreDePilar, productosDelPost, conProductos } from "../../lib/pilares";
 
@@ -16,24 +15,48 @@ import { PILARES, SUBTIPOS_MALETAS, pilarDe, nombreDePilar, productosDelPost, co
 // IA» escoge con él el estilo de la marca.
 // ============================================================
 
-// El catálogo y el estudio, una vez por cliente mientras la página está abierta.
+// El catálogo y el estudio, una vez por cliente mientras la página está abierta, y SÓLO al abrir «Tipo de contenido»:
+// lo que se necesita de ellos sale de estudioMercado.js (16,5 kB comprimidos) y el panel de una publicación se abre a
+// cada rato sin tocar esto. Se guarda ya resumido: los productos activos y lo general del estudio.
 const cache = new Map();
-function useMercado(clienteId) {
+function useMercado(clienteId, activo) {
   const [m, setM] = useState(() => cache.get(clienteId) ?? null);
   useEffect(() => {
-    if (!clienteId || cache.has(clienteId)) return undefined;
+    if (!clienteId || !activo) return undefined;
+    if (cache.has(clienteId)) { setM(cache.get(clienteId)); return undefined; }
     let vivo = true;
-    leerMercado(clienteId).then((r) => { cache.set(clienteId, r); if (vivo) setM(r); }).catch(() => {});
+    Promise.all([leerMercado(clienteId), import("../../lib/estudioMercado")])
+      .then(([r, em]) => {
+        const v = { productos: em.productosActivos(r?.catalogo ?? []), general: em.limpiarEstudio(r?.estudio)?.general ?? null, inventario: Boolean(r?.inventario) };
+        cache.set(clienteId, v);
+        if (vivo) setM(v);
+      })
+      .catch(() => {});
     return () => { vivo = false; };
-  }, [clienteId]);
+  }, [clienteId, activo]);
   return m;
+}
+
+/** ¿Se abrió alguna vez el plegable que contiene `ref`? (es un <details>: se escucha su «toggle»). */
+function useAbiertoAlgunaVez(ref) {
+  const [abierto, setAbierto] = useState(false);
+  useEffect(() => {
+    const d = ref.current?.closest("details");
+    if (!d) { setAbierto(true); return undefined; }
+    const mirar = () => { if (d.open) setAbierto(true); };
+    mirar();
+    d.addEventListener("toggle", mirar);
+    return () => d.removeEventListener("toggle", mirar);
+  }, [ref]);
+  return abierto;
 }
 
 export function TipoContenido({ form, sf, clienteId, lectura = false }) {
   const ids = useId();
-  const mercado = useMercado(clienteId);
-  const productos = productosActivos(mercado?.catalogo ?? []);
-  const general = limpiarEstudio(mercado?.estudio)?.general;
+  const cuerpo = useRef(null);
+  const mercado = useMercado(clienteId, useAbiertoAlgunaVez(cuerpo));
+  const productos = mercado?.productos ?? [];
+  const general = mercado?.general;
   const pilar = pilarDe(form.pilar);
   const resumen = pilar ? [nombreDePilar(form.pilar, form.pilarSub), form.producto].filter(Boolean).join(" · ") : "Sin tipo";
   // Varios a la vez (una pieza puede hablar de un kit o de «los tres más vendidos»): el primero que se escoge es el
@@ -49,7 +72,7 @@ export function TipoContenido({ form, sf, clienteId, lectura = false }) {
 
   return (
     <Plegable titulo="Tipo de contenido" icono="bulb" resumen={resumen}>
-      <div className="tipo-contenido">
+      <div className="tipo-contenido" ref={cuerpo}>
         <div className="field">
           <label className="label" htmlFor={`${ids}-t`}>Tipo</label>
           <select id={`${ids}-t`} className="input" value={pilar?.id ?? ""} disabled={lectura}
@@ -85,7 +108,8 @@ export function TipoContenido({ form, sf, clienteId, lectura = false }) {
           )}
           {perdido && <p className="hint">{form.producto} ya no está en el catálogo.</p>}
           {elegidos.length > 1 && <p className="hint">Salen {elegidos.length} productos en la imagen: van las fotos reales de todos.</p>}
-          {!productos.length && <p className="hint">Este cliente no tiene catálogo todavía (Cerebro → Estudio de mercado).</p>}
+          {!mercado && <p className="hint" role="status">Cargando el catálogo…</p>}
+          {mercado && !productos.length && <p className="hint">Este cliente no tiene catálogo todavía (Cerebro → Estudio de mercado).</p>}
         </div>
         <div className="field">
           <label className="label" htmlFor={`${ids}-n`}>Nivel de consciencia</label>

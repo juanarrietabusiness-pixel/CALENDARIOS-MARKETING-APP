@@ -14,6 +14,8 @@
 // con el que una ruta debe contestar.
 // ============================================================
 
+import { seguido } from "../salud.js";
+
 /** Un fallo de un motor, con lo que hay que decirle a la persona y si vale la pena reintentar. */
 export class ErrorMotor extends Error {
   constructor(mensaje, estado = 502, { reintentable = false } = {}) {
@@ -56,7 +58,12 @@ const FILTROS = /^(SAFETY|IMAGE_SAFETY|PROHIBITED_CONTENT|BLOCKLIST|SPII|RECITAT
  * `{ inlineData }`); `ratio` la proporción; `tamano` («1K»…«4K») sólo si el
  * modelo lo admite. Devuelve `{ bytes, mime, meta }` o lanza `ErrorMotor`.
  */
-export async function llamarGemini(env, { gid, partes, ratio, tamano = null, plazoMs = PLAZO_MS }) {
+export const llamarGemini = (env, pedido) => seguido("google", () => pedirImagenGemini(env, pedido), {
+  // El filtro de contenido o una respuesta sin imagen (422) es de la escena, no de la cuenta: no cuenta para Ajustes → Salud.
+  ignorar: (e) => e?.estado === 422,
+});
+
+async function pedirImagenGemini(env, { gid, partes, ratio, tamano = null, plazoMs = PLAZO_MS }) {
   if (!env.GOOGLE_AI_KEY) throw new ErrorMotor("El servidor no tiene configurada la clave de Google AI", 503);
 
   const abortar = new AbortController();

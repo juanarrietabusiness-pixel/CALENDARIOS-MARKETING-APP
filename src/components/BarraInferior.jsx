@@ -1,5 +1,6 @@
 import Icon from "./Icon";
 import ContadorAtrasadas from "./ContadorAtrasadas";
+import ContadorFallidas from "./ContadorFallidas";
 
 // ============================================================
 // La barra de abajo en el móvil
@@ -10,7 +11,8 @@ import ContadorAtrasadas from "./ContadorAtrasadas";
 // del pulgar —también «Lo mejor»: lo que mejor está funcionando para
 // recrearlo, con «Pegar un enlace» dentro (era el botón «Enlace»: guardar el
 // enlace de un video bueno en el banco de ideas)—. «Más» abre el cajón con el
-// resto de secciones y los clientes. Sólo se ve por debajo de 1024 px (index.css).
+// resto de secciones y los clientes —con el número rojo de lo que no se pudo publicar, que en el teléfono sólo se veía
+// abriéndolo—. Sólo se ve por debajo de 1024 px (index.css).
 // ============================================================
 
 export default function BarraInferior({ ruta, hayCliente, chatAbierto, pulso = 0, onMiDia, onCalendario, onChat, onSubir, onLoMejor = null, onMas }) {
@@ -45,7 +47,8 @@ export default function BarraInferior({ ruta, hayCliente, chatAbierto, pulso = 0
       })}
       {item({
         onClick: onMas,
-        children: (<><Icon name="menu" size={22} /><span>Más</span></>),
+        // Lo que no se pudo publicar vive en Producción, dentro de «Más»: el número rojo va aquí para que se vea.
+        children: (<><span className="barra-inferior-icono"><Icon name="menu" size={22} /><ContadorFallidas pulso={pulso} /></span><span>Más</span></>),
       })}
     </nav>
   );

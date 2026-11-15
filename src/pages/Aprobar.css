@@ -248,6 +248,7 @@
 .aprobar-progreso-barra span { display: block; height: 100%; background: var(--accent); border-radius: inherit; transition: width .3s; }
 .aprobar-acciones-fijas, .aprobar-confirmar { display: flex; gap: var(--sp-2); align-items: center; flex-wrap: wrap; justify-content: center; }
 .aprobar-acciones-fijas .btn, .aprobar-confirmar .btn { min-height: var(--tap); }
+.aprobar-ayuda-envio { flex-basis: 100%; margin: 0; }
 .aprobar-confirmar span { font-size: var(--fs-xs); font-weight: 600; }
 
 /* Revisión rápida */

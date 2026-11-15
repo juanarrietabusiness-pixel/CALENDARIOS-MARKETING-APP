@@ -80,7 +80,11 @@ export async function controlarPieza(env, acceso, cliente, archivoId, { texto = 
       { type: "image", source: { type: "base64", media_type: fila.mime, data: aBase64(bytes) } },
       { type: "text", text: pedidoDeControl({ marca: cliente.name, texto: esperado, precios, logo, evitar: kit.evitar, reglas: kit.reglas, sistema: lineaDeSistema(sistema), ficha: laFicha }) },
     ],
-    salida: 1300,
+    // Un veredicto, no un ensayo: respuesta corta y poco razonamiento (transcribir lo que se ve no lo necesita; la
+    // revisión del director contra su ficha, algo). Con el nivel del espacio en «alto», cada control escribía unos
+    // 3.300 tokens (la mayoría, razonamiento) para decir «Revisar».
+    salida: laFicha ? 1000 : 700,
+    esfuerzo: laFicha ? "medium" : "low",
     funcion: "control de calidad",
   });
   const control = leerControl(r.texto, { texto: esperado, logo });

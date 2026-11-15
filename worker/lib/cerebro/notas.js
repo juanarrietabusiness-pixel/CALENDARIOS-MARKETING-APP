@@ -137,6 +137,32 @@ export function editadaTrasGuardar(previa, nueva) {
 }
 
 // ------------------------------------------------------------
+// La huella de una sección de GitHub (columna `seccion_hash`, 0079)
+// ------------------------------------------------------------
+
+/** El texto de una sección como se compara: sin los finales de línea de Windows ni los blancos de los extremos. */
+export const textoComparable = (texto) => String(texto ?? "").replace(/\r\n?/g, "\n").replace(/[ \t]+$/gm, "").trim();
+
+/**
+ * La huella de una sección tal como la trae GitHub (cyrb53, 53 bits en hexadecimal). Es la BASE con la que se sabe si
+ * ESA sección cambió allí desde que se importó —el SHA de GitHub es del archivo entero, y una nota corregida aquí no
+ * tiene por qué chocar con un cambio en otra sección—. Pura y síncrona: no es criptografía, sólo una comparación.
+ */
+export function huellaSeccion(texto) {
+  const t = textoComparable(texto);
+  let h1 = 0xdeadbeef;
+  let h2 = 0x41c6ce57;
+  for (let i = 0; i < t.length; i++) {
+    const c = t.charCodeAt(i);
+    h1 = Math.imul(h1 ^ c, 2654435761);
+    h2 = Math.imul(h2 ^ c, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return `s${(4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(16)}-${t.length}`;
+}
+
+// ------------------------------------------------------------
 // De un archivo del repositorio a notas
 // ------------------------------------------------------------
 

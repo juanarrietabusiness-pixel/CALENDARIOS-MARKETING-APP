@@ -10,12 +10,19 @@ import { listarFallidas } from "../lib/db";
 // se descarta. Relee con cada `pulso`.
 // ============================================================
 
+// Hay dos montados a la vez (la barra lateral y la barra de abajo del teléfono): piden UNA vez por `pulso`.
+let ultima = null;
+const leer = (pulso) => {
+  if (!ultima || ultima.pulso !== pulso || Date.now() - ultima.t > 3000) ultima = { pulso, t: Date.now(), promesa: listarFallidas() };
+  return ultima.promesa;
+};
+
 export default function ContadorFallidas({ pulso = 0 }) {
   const [n, setN] = useState(0);
 
   useEffect(() => {
     let vivo = true;
-    listarFallidas()
+    leer(pulso)
       .then((filas) => { if (vivo) setN(filas.length); })
       .catch(() => {});
     return () => { vivo = false; };

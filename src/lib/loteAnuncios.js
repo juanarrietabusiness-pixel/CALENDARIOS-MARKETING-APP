@@ -43,13 +43,13 @@
 import { NIVELES_CONSCIENCIA, CLAVES_NIVEL, nombreDeNivel } from "./consciencia.js";
 import { lineaDeNotaDelDia } from "./notasSemana.js";
 import { PLANTILLAS_TEXTO } from "./carrusel.js";
-import { PILARES, pilarDe, nombreDePilar } from "./pilares.js";
+import { PILARES, pilarDe, nombreDePilar, COMPOSICIONES, composicionDe } from "./pilares.js";
 import { estructuraDe, estructuraPara, limpiarEstructurasRecientes, lineaDeEstructura } from "./estructurasCarrusel.js";
 import { camposDePromptListo } from "./promptImagen.js";
 import { FORMATO_FICHA, limpiarFicha, asegurarTexto, ajustarFicha } from "./director.js";
 import { llevaCaption, llevaHashtags, separarHashtags } from "./reglasFormato.js";
 import { MAX_LENGUAJE } from "./lenguajeCliente.js";
-import { formaDe, formaPara, formasParaGanchos, lineaDeForma, lineaDeGanchosUgc, cuentaDeFormas, limpiarFormasRecientes, REGLA_GANCHO } from "./formasGancho.js";
+import { formaDe, formaPara, formasParaGanchos, formasPosibles, lineaDeForma, lineaDeGanchosUgc, cuentaDeFormas, limpiarFormasRecientes, REGLA_GANCHO } from "./formasGancho.js";
 
 export const POR_NIVEL = 5;
 export const MAX_POR_NIVEL = 10;
@@ -102,24 +102,9 @@ export const MAX_GUION = 2000;
 /** Dónde va el texto en la plantilla, según el formato (en una historia, abajo tapa los botones de Instagram). */
 export const plantillaDeFormato = (formato) => (formato === "historia" ? "centro" : "banda");
 
-/**
- * Las composiciones: CÓMO se ve cada pieza. `objeto`: necesita un producto físico en cuadro (sin él, no se usa);
- * `uso`: lo enseña en uso o en su lugar; `plantilla`: dónde va el texto si lo pone la plantilla.
- */
-export const COMPOSICIONES = Object.freeze([
-  { id: "heroe", nombre: "Producto héroe", objeto: true, linea: "Composición: el producto como protagonista absoluto, en primer plano y ligeramente en ángulo, sobre un fondo limpio; plano cerrado.", plantilla: "banda" },
-  { id: "uso", nombre: "En uso", uso: true, linea: "Composición: una persona real usando el producto o el servicio en un momento cotidiano, plano medio, gesto natural.", plantilla: "arriba" },
-  { id: "ugc", nombre: "Selfie con el celular", uso: true, linea: "Composición: foto tomada con el celular por una persona real que lo prueba (estilo contenido de cliente): luz de casa, encuadre imperfecto, nada de estudio.", plantilla: "degradado" },
-  { id: "cenital", nombre: "Vista cenital", objeto: true, linea: "Composición: vista cenital (desde arriba) ordenada, el producto con pocos objetos de su entorno alrededor, mucho espacio libre.", plantilla: "degradado" },
-  { id: "macro", nombre: "Macro de textura", objeto: true, linea: "Composición: primerísimo plano de la textura o un detalle del producto (grano, tejido, brillo), fondo desenfocado, sensación táctil.", plantilla: "arriba" },
-  { id: "tipografica", nombre: "Tipográfica", linea: "Composición de diseño gráfico: un gran bloque de color de la paleta domina la pieza y la imagen ocupa sólo un tercio, recortada limpia a un lado.", plantilla: "centro" },
-  { id: "ambiente", nombre: "En su lugar", uso: true, linea: "Composición: la escena en su ambiente real (el lugar donde se usa), plano abierto, luz que entra de lado, mucho aire alrededor.", plantilla: "degradado" },
-  { id: "dividida", nombre: "Antes y después", linea: "Composición dividida en dos mitades: a un lado el problema, al otro el resultado; el cambio se entiende de un vistazo.", plantilla: "banda" },
-  { id: "emocion", nombre: "Emoción", linea: "Composición: primer plano de una cara con una emoción clara (alivio, alegría, tranquilidad, frustración según el mensaje).", plantilla: "arriba" },
-  { id: "oficio", nombre: "El oficio", uso: true, linea: "Composición: el trabajo hecho o en proceso (las manos, la herramienta, el resultado), plano medio, luz de taller u oficina real.", plantilla: "banda" },
-  { id: "unboxing", nombre: "Recién llegado", objeto: true, linea: "Composición: el producto recién sacado de su empaque sobre una mesa, manos que lo abren, sensación de estreno.", plantilla: "arriba" },
-  { id: "serie", nombre: "Serie", objeto: true, linea: "Composición editorial en cuadrícula: dos o tres tomas del producto (o de varios) en paneles ordenados, como una página de revista.", plantilla: "centro" },
-]);
+// Las composiciones viven en pilares.js (lo lee también lib/estudio.js, que carga el panel de cada publicación y no debe
+// arrastrar este archivo entero). Se reexportan: quien las importaba de aquí no cambia.
+export { COMPOSICIONES, composicionDe };
 
 /** La táctica del gancho: el ángulo con que se escribe el titular. Ninguna se inventa datos. */
 export const TACTICAS = Object.freeze([
@@ -153,7 +138,6 @@ const lineaDe = (lista, id) => lista.find(([x]) => x === id)?.[1] ?? "";
 // Las estructuras de un carrusel viven en su módulo (pequeño: lo leen también «Dame ideas» y el director).
 export { ESTRUCTURAS_CARRUSEL, estructuraDe, estructuraPara, limpiarEstructurasRecientes, estructurasDeCalendarios, lineaDeEstructura } from "./estructurasCarrusel.js";
 
-export const composicionDe = (id) => COMPOSICIONES.find((x) => x.id === id) ?? null;
 const mcd = (a, b) => (b ? mcd(b, a % b) : a);
 /** Un salto que recorre la lista entera antes de repetir y no deja dos vecinas seguidas. */
 const saltoPara = (n) => [5, 3, 7, 1].find((k) => k < n && mcd(k, n) === 1) ?? 1;
@@ -220,10 +204,58 @@ export function seVeElProducto(celda, hayProductos = true) {
   return !SIN_PRODUCTO_EN.has(celda?.nivel);
 }
 
+/** Cuántas opciones da el código por casilla para la táctica, la forma del gancho y el ángulo: la IA escoge entre ellas. */
+export const OPCIONES_POR_CASILLA = 3;
+
+/**
+ * ¿Vale esta táctica para esta casilla? Las que piden un dato REAL (el precio, una prueba) sólo si el cliente lo tiene;
+ * el precio, nunca en los niveles fríos (el producto no se ve); la urgencia, sólo con una fecha especial ese día. Pura.
+ */
+export function tacticaValida(id, celda = {}, { hayDatos = false } = {}) {
+  if (id === "precio") return hayDatos && !SIN_PRODUCTO_EN.has(celda.nivel);
+  if (id === "prueba") return hayDatos;
+  if (id === "urgencia") return Boolean(celda.especial);
+  return TACTICAS.some(([x]) => x === id);
+}
+
+/**
+ * Las OPCIONES de una casilla (lo que la IA puede escoger, todo dentro de las reglas del código): la táctica, la forma del
+ * gancho y el ángulo que el código sugiere van primero, y detrás hasta dos más que también cumplen (su nivel, la pauta,
+ * los datos reales, no la de la vecina, no las que no le rinden al cliente, las menos usadas). Lo que ya trae la casilla
+ * (una forma o un ángulo puestos) o una UGC (sus 3 ganchos dependen de su forma) no se ofrece: va fijo. Pura.
+ */
+function opcionesDe(c, { tactica, formaGancho, angulo }, { formato, hayDatos, tacticaPrevia, formaPrevia, anguloPrevio, cuenta, aprendidas, angulos, s, i }) {
+  const fuera = {};
+  // Las demás, rotando desde la sugerida (cada casilla ofrece otras), sin la de la vecina ni las que no le valen.
+  const desde = TACTICAS.findIndex(([x]) => x === tactica);
+  const tacticas = [tactica, ...TACTICAS.map((_, k) => TACTICAS[(desde + 1 + k * 4 + s + i) % TACTICAS.length][0])]
+    .filter((x, k, todas) => todas.indexOf(x) === k && (k === 0 || (x !== tacticaPrevia && tacticaValida(x, c, { hayDatos }))))
+    .slice(0, OPCIONES_POR_CASILLA);
+  if (tacticas.length > 1) fuera.tacticas = tacticas;
+  if (!formaDe(c.formaGancho) && !c.rostro) {
+    const malas = new Set(aprendidas?.malas ?? []);
+    const posibles = formasPosibles({ nivel: c.nivel, formato: c.formato ?? formato, pauta: Boolean(c.pauta), hayDatos })
+      .map((f) => f.id).filter((id) => id !== formaGancho && id !== formaPrevia);
+    const sinMalas = posibles.filter((id) => !malas.has(id));
+    const lista = (sinMalas.length >= 2 ? sinMalas : posibles).sort((a, b) => (cuenta.get(a) ?? 0) - (cuenta.get(b) ?? 0));
+    const formas = [formaGancho, ...lista].slice(0, OPCIONES_POR_CASILLA);
+    if (formas.length > 1) fuera.formas = formas;
+  }
+  const todos = Array.isArray(angulos?.[c.productoId]) ? angulos[c.productoId].filter((a) => a?.id && a?.nombre) : [];
+  if (angulo && todos.length > 1 && c.angulo !== angulo.id) {
+    const quiere = NIVELES_FRIOS.has(c.nivel) ? "frio" : c.nivel ? "tibio" : "";
+    const otros = todos.filter((a) => a.id !== angulo.id && a.id !== anguloPrevio && (!quiere || !a.publico || a.publico === quiere));
+    const lista = [angulo, ...otros].slice(0, OPCIONES_POR_CASILLA).map((a) => ({ id: a.id, nombre: a.nombre, linea: a.linea ?? "" }));
+    if (lista.length > 1) fuera.angulos = lista;
+  }
+  return Object.keys(fuera).length ? fuera : null;
+}
+
 /**
  * La FORMA de cada pieza: producto (si se ve y no lo trae), composición (sin las que necesitan objeto cuando no hay
  * producto en cuadro; en el orden `orden` si se aprendió cuáles funcionan), fondo, táctica y dónde va el texto. Dos
- * vecinas nunca comparten composición. `semilla` mueve el punto de partida. Pura.
+ * vecinas nunca comparten composición. `semilla` mueve el punto de partida. La táctica, la forma del gancho y el ángulo
+ * llevan además sus OPCIONES (`opciones`: 2–3 válidas; la IA escoge y dice por qué). Pura.
  */
 export function darForma(celdas = [], {
   productos = [], semilla = 0, formato = "post", orden = null, estructuras = [],
@@ -249,6 +281,7 @@ export function darForma(celdas = [], {
   // Los ángulos de venta de cada producto (del estudio APROBADO): sin repetir el mismo dos veces seguidas.
   const usosAngulo = new Map();
   let anguloPrevio = "";
+  let tacticaPrevia = "";
   return celdas.map((c, i) => {
     const esCarrusel = (c.formato ?? formato) === "carrusel";
     const estructura = esCarrusel ? (estructuraDe(c.estructura)?.id ?? estructuraPara(c.tipo ?? c.pilar, { usadas, semilla: s, indice: iCarrusel++ })) : "";
@@ -264,11 +297,16 @@ export function darForma(celdas = [], {
     // La FORMA del gancho: la que ya trae (una publicación que la tiene) o la que encaja con su nivel y su formato.
     const formaGancho = formaDe(c.formaGancho) ? c.formaGancho
       : formaPara({ ...c, formato: c.formato ?? formato }, { formato, hayDatos, cuenta: cuentaFormas, previa: formaPrevia, aprendidas: formasAprendidas, semilla: s, indice: i });
-    cuentaFormas.set(formaGancho, (cuentaFormas.get(formaGancho) ?? 0) + 1);
-    formaPrevia = formaGancho;
     // Una UGC: sus 3 ganchos alternativos, cada uno con una forma distinta (la primera, la suya).
     const formasGanchos = c.rostro ? formasParaGanchos({ ...c, formaGancho }, { hayDatos, semilla: s, indice: i }) : null;
     const angulo = anguloPara({ ...c, productoId }, angulos, { previo: anguloPrevio, usos: usosAngulo });
+    const tactica = TACTICAS[(s + i * 3) % TACTICAS.length][0];
+    const opciones = opcionesDe({ ...c, productoId }, { tactica, formaGancho, angulo }, {
+      formato, hayDatos, tacticaPrevia, formaPrevia, anguloPrevio, cuenta: cuentaFormas, aprendidas: formasAprendidas, angulos, s, i,
+    });
+    cuentaFormas.set(formaGancho, (cuentaFormas.get(formaGancho) ?? 0) + 1);
+    formaPrevia = formaGancho;
+    tacticaPrevia = tactica;
     if (angulo) { anguloPrevio = angulo.id; usosAngulo.set(angulo.id, (usosAngulo.get(angulo.id) ?? 0) + 1); }
     return {
       n: i + 1,
@@ -278,11 +316,12 @@ export function darForma(celdas = [], {
       composicion: comp.id,
       plantilla: (c.formato ?? formato) === "historia" && comp.plantilla === "banda" ? "centro" : comp.plantilla,
       fondo: FONDOS[(s + i) % FONDOS.length][0],
-      tactica: TACTICAS[(s + i * 3) % TACTICAS.length][0],
+      tactica,
       ...(estructura ? { estructura } : {}),
       formaGancho,
       ...(formasGanchos ? { formasGanchos } : {}),
       ...(angulo ? { angulo: angulo.id, anguloNombre: angulo.nombre, anguloLinea: angulo.linea } : {}),
+      ...(opciones ? { opciones } : {}),
     };
   });
 }
@@ -331,15 +370,23 @@ export function lineaDePieza(r, productos = {}, formato = "") {
   const nv = NIVELES_CONSCIENCIA.find((n) => n.clave === r.nivel);
   const prod = r.productoId && productos[r.productoId] ? productos[r.productoId] : "";
   const fmt = nombreDeFormato(r.formato) ? `[${nombreDeFormato(r.formato)}] ` : "";
+  // Las opciones que la IA puede escoger (darForma): sólo las que traen más de una.
+  const op = r.opciones ?? {};
   return [
     `${r.n}. ${fmt}${r.fecha ? `${fechaLegible(r.fecha)} · ` : ""}${nombreDePilar(r.tipo ?? r.pilar, r.pilarSub)}: ${p?.regla ?? ""}`,
-    `   ${nv ? `nivel: ${nv.nombre} (${nv.ayuda}; por ${nv.angulo === "dolor" ? "el DOLOR, lo que quiere evitar" : "la GANANCIA, lo que quiere lograr"})` : "nivel: —"} · gancho: ${lineaDe(TACTICAS, r.tactica)} · composición: ${composicionDe(r.composicion)?.nombre ?? ""}`,
+    `   ${nv ? `nivel: ${nv.nombre} (${nv.ayuda}; por ${nv.angulo === "dolor" ? "el DOLOR, lo que quiere evitar" : "la GANANCIA, lo que quiere lograr"})` : "nivel: —"} · gancho: ${lineaDe(TACTICAS, r.tactica)}${op.tacticas ? ` [${r.tactica}]` : ""} · composición: ${composicionDe(r.composicion)?.nombre ?? ""}`,
+    // Las OTRAS tácticas que también valen (la IA escoge y dice cuál en "tactica").
+    op.tacticas ? `   otras tácticas que también valen aquí: ${op.tacticas.filter((x) => x !== r.tactica).map((x) => `${lineaDe(TACTICAS, x)} [${x}]`).join(" · ")}` : "",
     // La forma del gancho (lib/formasGancho.js) y, en una UGC, la de cada uno de sus 3 ganchos.
-    formaDe(r.formaGancho) ? `   ${lineaDeForma(r.formaGancho, r.formato ?? formato, { rostro: Boolean(r.rostro || r.formasGanchos?.length) })}` : "",
+    formaDe(r.formaGancho) ? `   ${lineaDeForma(r.formaGancho, r.formato ?? formato, { rostro: Boolean(r.rostro || r.formasGanchos?.length) })}${op.formas ? ` [${r.formaGancho}]` : ""}` : "",
+    op.formas ? `   otras formas que también valen aquí: ${op.formas.filter((x) => x !== r.formaGancho).map((x) => `«${formaDe(x)?.nombre}» — ${formaDe(x)?.como} [${x}]`).join(" · ")}` : "",
     r.formasGanchos?.length ? `   ${lineaDeGanchosUgc(r.formasGanchos)}` : "",
     r.deseo || r.perfil ? `   le habla a: ${[r.perfil, r.deseo && `deseo de ${r.deseo}`].filter(Boolean).join(", ")}` : "",
     // El ángulo de venta del producto (del estudio de mercado aprobado): el porqué de esta pieza.
-    r.anguloLinea ? `   ángulo de venta: ${corto(r.anguloLinea, 450)}` : "",
+    r.anguloLinea ? `   ángulo de venta: ${corto(r.anguloLinea, 450)}${op.angulos ? ` [${r.angulo}]` : ""}` : "",
+    op.angulos ? `   otros ángulos que también valen aquí: ${op.angulos.filter((a) => a.id !== r.angulo).map((a) => `${corto(a.linea || a.nombre, 300)} [${a.id}]`).join(" · ")}` : "",
+    // El PLANIFICADOR del mes ya decidió qué cuenta esta pieza (lib/motorTextos.js): se desarrolla, no se cambia.
+    r.planificada?.idea ? `   EL PLAN DEL MES (lo decidió el planificador mirando el mes entero; desarróllalo, no lo cambies por otra idea): «${corto(r.planificada.idea, 300)}»${r.planificada.porque ? ` — por qué: ${corto(r.planificada.porque, 200)}` : ""}` : "",
     prod ? `   producto: ${prod}${r.conProducto ? "" : " (NO aparece en la imagen: se habla del problema)"}` : "",
     estructuraDe(r.estructura) ? `   ${lineaDeEstructura(r.estructura)}` : "",
     r.semana ? `   semana: ${corto(r.semana, 160)}` : "",
@@ -427,58 +474,166 @@ export function textoDelCliente(c = null) {
   ].filter(Boolean).join("\n");
 }
 
+// ------------------------------------------------------------
+// El contexto por BLOQUES, el papel y los ejemplos del cliente
+// ------------------------------------------------------------
+
 /**
- * Lo que se le pide a la IA: una pieza por casilla del plan, con todo ya decidido. `productos`: { id → línea del
- * catálogo (precio EXACTO) }; `estudio`: el estudio de mercado; `contexto`: el cerebro para escribir (sin lo interno);
- * `perfiles`: { nombre → quién es y su dolor }; `fechasEspeciales`: las del mes. Pura.
+ * Lo que se sabe de la marca va por BLOQUES, cada uno con su tope: antes se juntaban la ficha, las pautas, los pasajes y
+ * el saber del rubro y se cortaba TODO a 6.000 caracteres, así lo último (los pasajes, el rubro) a veces no llegaba. Lo
+ * que un bloque no usa (vacío o corto) se reparte entre los que se cortaron, en este orden (`ORDEN_CONTEXTO`), sin pasar
+ * de TOTAL_CONTEXTO.
  */
-export function pedidoDeProduccion({
-  marca = "la marca", plan = [], productos = {}, perfiles = {}, estudio = "", contexto = "", usados = [], formato = "post", fechasEspeciales = [], mes = false,
-  nota = "", estrategia = null, falta = "", ugc = "", identidad = "", cliente = "", pauta = "", lenguaje = "",
-}) {
-  const perfilesUsados = [...new Set(plan.map((r) => r.perfil).filter(Boolean))].filter((n) => perfiles[n]);
-  const cuantas = plan.length === 1 ? "UNA publicación" : `${plan.length} publicaciones`;
-  // Formatos mezclados (el plan del mes: un post, un carrusel, un reel…): cada pieza dice el suyo.
+export const TOPES_CONTEXTO = Object.freeze({ ficha: 2500, pautas: 3000, estudio: 3500, lenguaje: 1500, pasajes: 2500, rubro: 1500, ejemplos: 1500 });
+export const ORDEN_CONTEXTO = Object.freeze(["ficha", "pautas", "estudio", "lenguaje", "pasajes", "rubro", "ejemplos"]);
+export const TOTAL_CONTEXTO = 15_000;
+
+/** Un texto recortado a `max` sin partir una línea (o, si no hay, una palabra) por la mitad. Pura. */
+export function recortarBloque(texto, max) {
+  const t = String(texto ?? "").trim();
+  if (t.length <= max) return t;
+  const corte = t.slice(0, Math.max(0, max - 2));
+  const salto = corte.lastIndexOf("\n");
+  const espacio = corte.lastIndexOf(" ");
+  const hasta = salto > max * 0.5 ? salto : espacio > max * 0.5 ? espacio : corte.length;
+  return `${corte.slice(0, hasta).trimEnd()} …`;
+}
+
+/**
+ * Los bloques del contexto con su tope cada uno y lo que sobra repartido (ver TOPES_CONTEXTO). `bloques`: { ficha,
+ * pautas, estudio, lenguaje, pasajes, rubro, ejemplos } (textos; los que faltan, vacíos). → el mismo objeto, recortado.
+ * Pura.
+ */
+export function repartirContexto(bloques = {}, { total = TOTAL_CONTEXTO, topes = TOPES_CONTEXTO } = {}) {
+  const largo = Object.fromEntries(ORDEN_CONTEXTO.map((k) => [k, String(bloques?.[k] ?? "").trim().length]));
+  const da = Object.fromEntries(ORDEN_CONTEXTO.map((k) => [k, Math.min(largo[k], topes[k] ?? 0)]));
+  let sobra = Math.max(0, total - Object.values(da).reduce((a, b) => a + b, 0));
+  for (const k of ORDEN_CONTEXTO) {
+    if (!sobra) break;
+    const falta = largo[k] - da[k];
+    if (falta <= 0) continue;
+    const mas = Math.min(falta, sobra);
+    da[k] += mas;
+    sobra -= mas;
+  }
+  return Object.fromEntries(ORDEN_CONTEXTO.map((k) => [k, da[k] ? recortarBloque(bloques[k], da[k]) : ""]));
+}
+
+/**
+ * El PAPEL de quien escribe, al principio del pedido: el redactor de la agencia para ESTA marca. Sin papel, el modelo
+ * escribía como un asistente genérico (y salían frases que servían para cualquier marca). Pura.
+ */
+export const papelDelRedactor = (marca = "la marca") =>
+  `Eres el redactor de contenido de la agencia para ${marca}: escribes como su mejor copywriter, con lo concreto de ESTA marca (su producto, su gente, su lugar, las palabras de sus clientes). Una frase que serviría igual para cualquier otra marca está mal escrita.`;
+
+/**
+ * Lo que se sabe de la marca (el contexto ya repartido) dicho en el pedido, cada bloque con su título. Con `bloques` (el
+ * motor de ahora), cada uno con su tope; sin ellos (quien llama con el texto `contexto` de antes), como antes. Pura.
+ */
+export function textoDelContexto({ estudio = "", contexto = "", bloques = null, lenguaje = "", ejemplos = "" } = {}) {
+  if (!bloques) {
+    return [
+      estudio ? `ESTUDIO DE MERCADO:\n${String(estudio).slice(0, 8000)}\n` : "",
+      contexto ? `LO QUE SE SABE DE LA MARCA:\n${String(contexto).slice(0, 6000)}\n` : "",
+      bloqueDeLenguaje(lenguaje),
+      ejemplos ? `${ejemplos}\n` : "",
+    ];
+  }
+  const b = repartirContexto({ ...bloques, estudio, lenguaje, ejemplos });
+  const marca = [b.ficha, b.pautas ? `PAUTAS PARA ESCRIBIR (las reglas de la agencia para este cliente: se siguen SIEMPRE, por encima de cualquier ejemplo)\n${b.pautas}` : "", b.pasajes].filter(Boolean).join("\n\n");
+  return [
+    b.estudio ? `ESTUDIO DE MERCADO:\n${b.estudio}\n` : "",
+    marca ? `LO QUE SE SABE DE LA MARCA:\n${marca}\n` : "",
+    b.rubro ? `SABER DEL RUBRO (úsalo en el contenido educativo):\n${b.rubro}\n` : "",
+    bloqueDeLenguaje(b.lenguaje),
+    b.ejemplos ? `${b.ejemplos}\n` : "",
+  ];
+}
+
+/** Lo que hace falta para el JSON de la respuesta y las líneas de «Cada publicación tiene»: los formatos y lo que llevan. */
+function rasgosDe(plan = [], formato = "post") {
   const formatos = [...new Set(plan.map((r) => r.formato).filter((f) => FORMATOS_LOTE[f]))];
   const mixto = formatos.length > 0;
-  const guiados = mixto ? formatos.filter(esGuiado) : esGuiado(formato) ? [formato] : [];
-  const encabezado = mixto
-    ? `Escribe ${cuantas} para ${marca}${mes ? " del mes" : ""}. ${plan.length === 1 ? "Tiene" : "Cada una tiene"} YA decidido su FORMATO (entre corchetes), su tipo de contenido (lo que comunica), su nivel de consciencia, su gancho y su composición (la de la portada o el primer plano): respétalos. La idea de cada una es de SU formato, nunca de otro.`
-    : `Escribe ${cuantas} ${esGuiado(formato) ? `de formato ${FORMATOS_LOTE[formato].nombre}` : `de una imagen (${FORMATOS_LOTE[formato]?.nombre ?? "post"})`} para ${marca}${mes ? ", una por día del mes" : ""}. ${plan.length === 1 ? "Tiene" : "Cada una tiene"} YA decidido su tipo de contenido (lo que comunica), su nivel de consciencia, su gancho y su composición (la de la portada o el primer plano): respétalos.`;
-  // Las de una imagen traen además su pedido para el motor, ya listo: así «Crear con IA» desde el post no espera a
-  // «Mejorar idea» (lib/promptImagen.js).
-  const deUnaImagen = mixto ? formatos.some((f) => !esGuiado(f)) : !esGuiado(formato);
-  const guionLineas = guiados.map((f) => (mixto ? GUION_DE_FORMATO[f].replace('- "guion":', `- "guion" (SÓLO en las de formato ${FORMATOS_LOTE[f].nombre}):`) : GUION_DE_FORMATO[f]));
-  // El caption y los hashtags, sólo en los formatos que los llevan (lib/reglasFormato.js): una historia no.
-  const conCaption = mixto ? formatos.some((f) => llevaCaption(FORMATOS_LOTE[f].format)) : llevaCaption(FORMATOS_LOTE[formato]?.format ?? "post");
-  const sinCaption = mixto && formatos.some((f) => !llevaCaption(FORMATOS_LOTE[f].format)) ? " (vacía en las historias: no llevan caption)" : "";
-  return [
-    encabezado,
-    ...(mixto ? formatos.map((f) => `- ${FORMATOS_LOTE[f].nombre}: ${REGLA_FORMATO[f]}`) : [REGLA_FORMATO[formato] ?? ""]),
+  return {
+    formatos, mixto,
+    guiados: mixto ? formatos.filter(esGuiado) : esGuiado(formato) ? [formato] : [],
+    deUnaImagen: mixto ? formatos.some((f) => !esGuiado(f)) : !esGuiado(formato),
+    conCaption: mixto ? formatos.some((f) => llevaCaption(FORMATOS_LOTE[f].format)) : llevaCaption(FORMATOS_LOTE[formato]?.format ?? "post"),
+    sinCaption: mixto && formatos.some((f) => !llevaCaption(FORMATOS_LOTE[f].format)) ? " (vacía en las historias: no llevan caption)" : "",
+    rostro: plan.some((r) => r.rostro),
+    opciones: {
+      tacticas: plan.some((r) => r.opciones?.tacticas),
+      formas: plan.some((r) => r.opciones?.formas),
+      angulos: plan.some((r) => r.opciones?.angulos),
+    },
+  };
+}
+
+const limpioDeLineas = (lineas) => lineas.filter((l, i, x) => l !== "" || x[i - 1] !== "").join("\n").replace(/\n{3,}/g, "\n\n").trim();
+
+/**
+ * Lo que se le pide a la IA, en DOS partes: lo FIJO (el papel, la marca, la estrategia, el contexto, cómo es cada campo y
+ * las reglas: igual para todas las llamadas de una tanda, así la segunda lo lee de la caché) y lo de ESTAS piezas (cuáles
+ * son, lo ya usado y el JSON). `plan`: las piezas de esta llamada; `planTodo`: las de la tanda entera (lo fijo sale de
+ * ellas, para que no cambie entre llamadas). `productos`: { id → línea del catálogo (precio EXACTO) }; `estudio`: el
+ * estudio de mercado; `bloques`: { ficha, pautas, pasajes, rubro } del cerebro (cada uno con su tope; sin ellos vale
+ * `contexto`, el texto de antes); `ejemplos`: piezas del propio cliente (el tono); `arco`: el del planificador del mes;
+ * `conFicha`: pedir además la ficha de diseño «imagen» (por defecto NO: la escribe el director al diseñar). Pura.
+ */
+export function partesDeProduccion({
+  marca = "la marca", plan = [], planTodo = null, productos = {}, perfiles = {}, estudio = "", contexto = "", bloques = null, usados = [], formato = "post",
+  fechasEspeciales = [], mes = false, nota = "", estrategia = null, falta = "", ugc = "", identidad = "", cliente = "", pauta = "", lenguaje = "",
+  ejemplos = "", arco = "", conFicha = false, artes = "",
+}) {
+  const todo = Array.isArray(planTodo) && planTodo.length ? planTodo : plan;
+  const t = rasgosDe(todo, formato);
+  const g = rasgosDe(plan, formato);
+  const perfilesUsados = [...new Set(todo.map((r) => r.perfil).filter(Boolean))].filter((n) => perfiles[n]);
+  const cuantas = plan.length === 1 ? "UNA publicación" : `${plan.length} publicaciones`;
+  const escoge = g.opciones.tacticas || g.opciones.formas || g.opciones.angulos;
+  const decidido = `su tipo de contenido (lo que comunica), su nivel de consciencia, ${escoge ? "" : "su gancho y "}su composición (la de la portada o el primer plano): respétalos.`;
+  const encabezado = g.mixto
+    ? `Escribe ${cuantas} para ${marca}${mes ? " del mes" : ""}. ${plan.length === 1 ? "Tiene" : "Cada una tiene"} YA decidido su FORMATO (entre corchetes), ${decidido} La idea de cada una es de SU formato, nunca de otro.`
+    : `Escribe ${cuantas} ${esGuiado(formato) ? `de formato ${FORMATOS_LOTE[formato].nombre}` : `de una imagen (${FORMATOS_LOTE[formato]?.nombre ?? "post"})`} para ${marca}${mes ? ", una por día del mes" : ""}. ${plan.length === 1 ? "Tiene" : "Cada una tiene"} YA decidido ${decidido}`;
+  const opciones = escoge
+    ? "El GANCHO (su táctica y su forma) y el ÁNGULO traen el que sugiere el código y otros que también valen (entre corchetes, su id): escoge el que mejor sirva a ESA pieza, sin repetir el de la vecina, y explica en \"porque\" por qué funciona."
+    : "";
+  const deUnaImagen = conFicha && t.deUnaImagen;
+  const guionLineas = t.guiados.map((f) => (t.mixto ? GUION_DE_FORMATO[f].replace('- "guion":', `- "guion" (SÓLO en las de formato ${FORMATOS_LOTE[f].nombre}):`) : GUION_DE_FORMATO[f]));
+  const fijo = limpioDeLineas([
+    papelDelRedactor(marca),
+    "",
+    ...(t.mixto ? t.formatos.map((f) => `- ${FORMATOS_LOTE[f].nombre}: ${REGLA_FORMATO[f]}`) : [REGLA_FORMATO[formato] ?? ""]),
     cliente ? String(cliente).slice(0, 4000) : "",
-    nota ? `Contexto de esta publicación: ${corto(nota, 600)}` : "",
+    // Los tipos de arte de la marca (lib/tiposArte.js): de cuál sale cada pieza (sirve para la escena).
+    artes ? corto(artes, 900) : "",
     textoEstrategiaDelMes(estrategia),
+    arco ? `EL ARCO DEL MES (lo decidió el planificador mirando todas las piezas): ${corto(arco, 600)}` : "",
     // Lo que va a pauta (lib/pauta.js `bloqueDeAnuncio`, con el negocio del cliente): la regla y el campo «anuncio».
     pauta ? String(pauta).slice(0, 5000) : "",
     perfilesUsados.length ? `Los perfiles:\n${perfilesUsados.map((n) => `- ${n}: ${perfiles[n]}`).join("\n")}` : "",
     fechasEspeciales.length ? `Fechas especiales:\n${fechasEspeciales.map((f) => `- ${f}`).join("\n")}` : "",
     "",
-    ...plan.map((r) => lineaDePieza(r, productos, formato)),
-    "",
+    ...textoDelContexto({ estudio, contexto, bloques, lenguaje, ejemplos }),
+    // Las UGC: la voz de esta marca en sus videos y las fórmulas de la agencia (lib/ugc.js, lib/formulasUgc.js).
+    ugc && t.rostro ? `PARA LAS UGC:\n${String(ugc).slice(0, 7000)}\n` : "",
     "Cada publicación tiene:",
     `- "titulo": cómo la llamarías en el calendario, en pocas palabras (${MAX_TITULO} caracteres).`,
     `- "brief": qué comunica la pieza y por qué funciona para ese nivel y ese perfil, en una o dos frases (${MAX_BRIEF} caracteres).`,
+    t.opciones.tacticas ? '- "tactica": el id de la táctica del gancho que escogiste (la sugerida u otra de las que valen en su pieza).' : "",
+    t.opciones.formas ? '- "forma": el id de la forma del gancho que escogiste (la sugerida u otra de las que valen en su pieza).' : "",
+    t.opciones.angulos ? '- "angulo": el id del ángulo de venta que escogiste (el sugerido u otro de los que valen en su pieza).' : "",
     `- "porque": en UNA línea, por qué ese gancho (su forma y su táctica) funciona en ese nivel de consciencia (${MAX_PORQUE} caracteres; lo lee quien revisa, no se publica).`,
     `- "titular": el texto grande de la pieza: ${MAX_TITULAR} caracteres y 8 palabras como mucho. Empieza por un verbo o una pregunta, nunca por el nombre de la marca. Sin el signo «·».`,
     `- "apoyo": una línea corta debajo (${MAX_APOYO} caracteres), o vacía. Si el titular ya lo dice todo, vacía.`,
     `- "escena": qué se VE, en una o dos frases sencillas (sujeto, acción, lugar, luz), con su composición. SIN texto dentro. Si sale una persona, descríbela distinta de las de las demás piezas (edad, rasgos, ropa, lugar).`,
     deUnaImagen && identidad ? `- (Para la ficha «imagen») LA MARCA Y CÓMO SE DISEÑA CADA TIPO: ${String(identidad).trim().slice(0, 3000)}` : "",
-    deUnaImagen ? `- "imagen"${mixto ? " (SÓLO en las de una imagen: post o historia)" : ""}: la FICHA DE DISEÑO de la pieza, como la escribiría un director creativo y diseñador gráfico, lista para el generador de imágenes. Una línea por apartado, separadas por \\n: ${FORMATO_FICHA.split("\n").map((l) => l.split(":")[0]).join(", ")}. En «Texto», el titular y el apoyo EXACTOS entre «», tal cual los escribiste, con su tamaño y su posición; en «Fondo», los colores de la marca con su código. Concreta y completa: quien genera la imagen sólo sabe lo que dice la ficha.` : "",
-    conCaption ? `- "descripcion"${sinCaption}: el texto de la publicación (caption), de 2 a 4 frases, con un llamado a la acción si el tipo lo pide; SIN hashtags (van aparte) (${MAX_DESCRIPCION} caracteres).` : "",
-    conCaption ? `- "hashtags"${sinCaption ? " (vacíos en las historias)" : ""}: de 5 a 10 hashtags útiles para esa publicación (del tema, del rubro y de la zona; los de la marca si la ficha los trae; ninguno inventado de otra marca), separados por espacios.` : "",
+    deUnaImagen ? `- "imagen"${t.mixto ? " (SÓLO en las de una imagen: post o historia)" : ""}: la FICHA DE DISEÑO de la pieza, como la escribiría un director creativo y diseñador gráfico, lista para el generador de imágenes. Una línea por apartado, separadas por \\n: ${FORMATO_FICHA.split("\n").map((l) => l.split(":")[0]).join(", ")}. En «Texto», el titular y el apoyo EXACTOS entre «», tal cual los escribiste, con su tamaño y su posición; en «Fondo», los colores de la marca con su código. Concreta y completa: quien genera la imagen sólo sabe lo que dice la ficha.` : "",
+    t.conCaption ? `- "descripcion"${t.sinCaption}: el texto de la publicación (caption), de 2 a 4 frases, con un llamado a la acción si el tipo lo pide; SIN hashtags (van aparte) (${MAX_DESCRIPCION} caracteres).` : "",
+    t.conCaption ? `- "hashtags"${t.sinCaption ? " (vacíos en las historias)" : ""}: de 5 a 10 hashtags útiles para esa publicación (del tema, del rubro y de la zona; los de la marca si la ficha los trae; ninguno inventado de otra marca), separados por espacios.` : "",
     ...guionLineas,
-    ugc && plan.some((r) => r.rostro) ? '- "formula" (SÓLO en las UGC): el nombre exacto de la fórmula de la agencia que sigue su guion.' : "",
-    plan.some((r) => r.rostro) ? '- "ganchos" (SÓLO en las UGC): 3 ganchos alternativos para el primer tramo (lo que se dice, palabra por palabra), uno con cada forma que dice su pieza.' : "",
+    ugc && t.rostro ? '- "formula" (SÓLO en las UGC): el nombre exacto de la fórmula de la agencia que sigue su guion.' : "",
+    t.rostro ? '- "ganchos" (SÓLO en las UGC): 3 ganchos alternativos para el primer tramo (lo que se dice, palabra por palabra), uno con cada forma que dice su pieza.' : "",
     "",
     "Reglas:",
     "- Que todo el lote se sienta variado: ni dos titulares parecidos, ni dos escenas en el mismo lugar con la misma acción, ni la misma persona dos veces.",
@@ -488,15 +643,24 @@ export function pedidoDeProduccion({
     "- En la escena, lo que no es el producto real va LISO y sin marca (ropa, empaques, pantallas sin números), y nada de logos ni carteles de otros negocios.",
     "- Un día marcado «sin promociones» no vende ni da precios. No nombres a la competencia.",
     ...(falta ? [`- ${falta}`] : []),
-    usados.length ? `- Estos titulares ya salieron: no repitas ninguno ni su idea:\n${usados.slice(0, 30).map((t) => `  · ${corto(t, 80)}`).join("\n")}` : "",
+  ]);
+  const variable = limpioDeLineas([
+    encabezado,
+    opciones,
+    nota ? `Contexto de esta publicación: ${corto(nota, 600)}` : "",
     "",
-    estudio ? `ESTUDIO DE MERCADO:\n${String(estudio).slice(0, 8000)}\n` : "",
-    contexto ? `LO QUE SE SABE DE LA MARCA:\n${String(contexto).slice(0, 6000)}\n` : "",
-    bloqueDeLenguaje(lenguaje),
-    // Las UGC: la voz de esta marca en sus videos y las fórmulas de la agencia (lib/ugc.js, lib/formulasUgc.js).
-    ugc && plan.some((r) => r.rostro) ? `PARA LAS UGC:\n${String(ugc).slice(0, 7000)}\n` : "",
-    `Responde SOLO con JSON, una por número, así: {"ideas":[{"n":1,"titulo":"…","brief":"…","porque":"…","titular":"…","apoyo":"…","escena":"…"${deUnaImagen ? ',"imagen":"…"' : ""}${conCaption ? ',"descripcion":"…","hashtags":"#… #…"' : ""}${guiados.length ? ',"guion":"…"' : ""}${plan.some((r) => r.rostro) ? ',"ganchos":["…","…","…"]' : ""}}]}`,
-  ].filter((l, i, t) => l !== "" || t[i - 1] !== "").join("\n").replace(/\n{3,}/g, "\n\n");
+    ...plan.map((r) => lineaDePieza(r, productos, formato)),
+    "",
+    usados.length ? `Estos titulares ya salieron: no repitas ninguno ni su idea:\n${usados.slice(0, 30).map((u) => `  · ${corto(u, 80)}`).join("\n")}\n` : "",
+    `Responde SOLO con JSON, una por número, así: {"ideas":[{"n":1,"titulo":"…","brief":"…"${g.opciones.tacticas ? ',"tactica":"…"' : ""}${g.opciones.formas ? ',"forma":"…"' : ""}${g.opciones.angulos ? ',"angulo":"…"' : ""},"porque":"…","titular":"…","apoyo":"…","escena":"…"${conFicha && g.deUnaImagen ? ',"imagen":"…"' : ""}${g.conCaption ? ',"descripcion":"…","hashtags":"#… #…"' : ""}${g.guiados.length ? ',"guion":"…"' : ""}${g.rostro ? ',"ganchos":["…","…","…"]' : ""}}]}`,
+  ]);
+  return { fijo, variable };
+}
+
+/** El pedido entero en un texto (lo fijo y lo de estas piezas): lo que lee el conector de Claude y una sola llamada. Pura. */
+export function pedidoDeProduccion(datos = {}) {
+  const { fijo, variable } = partesDeProduccion(datos);
+  return `${fijo}\n\n${variable}`;
 }
 
 const deJSON = (texto) => {
@@ -534,14 +698,44 @@ export const limpiarGanchosIdea = (lista) => [...new Set((Array.isArray(lista) ?
 
 /** La respuesta de la IA → una idea por casilla del plan (por su número; si no lo trae, por orden). Pura. */
 export function leerProduccion(texto, plan = [], formato = "post") {
+  return leerIdeas(crudasDe(texto, plan), plan, formato);
+}
+
+/**
+ * La respuesta de la IA → Map n → lo que escribió para esa casilla (sin leer todavía). Sin número, por orden: el de la
+ * casilla del plan (en una tanda, el plan no empieza en 1). Lo usa el motor para juntar las llamadas de una tanda y lo
+ * que reescribe el revisor antes de leerlo (`leerIdeas`). Pura.
+ */
+export function crudasDe(texto, plan = [], clave = "ideas") {
   const d = deJSON(texto);
-  const lista = Array.isArray(d?.ideas) ? d.ideas : Array.isArray(d) ? d : [];
+  const lista = Array.isArray(d?.[clave]) ? d[clave] : Array.isArray(d?.ideas) ? d.ideas : Array.isArray(d) ? d : [];
   const porNumero = new Map();
   lista.forEach((x, i) => {
-    // Sin número, por orden: el de la casilla del plan (en una tanda, el plan no empieza en 1).
     const n = Number(x?.n) || plan[i]?.n || i + 1;
-    if (!porNumero.has(n)) porNumero.set(n, x);
+    if (x && typeof x === "object" && !porNumero.has(n)) porNumero.set(n, x);
   });
+  return porNumero;
+}
+
+/**
+ * Lo que ESCOGIÓ la IA entre las opciones de su casilla (la táctica, la forma del gancho y el ángulo): sólo vale una que
+ * esté entre las opciones; si no, la sugerida. → { tactica, formaGancho, angulo?, anguloNombre?, anguloLinea? }. Pura.
+ */
+export function escogidoDe(r = {}, x = {}) {
+  const op = r.opciones ?? {};
+  const tactica = op.tacticas?.includes(x?.tactica) ? x.tactica : r.tactica;
+  const formaGancho = op.formas?.includes(x?.forma) ? x.forma : r.formaGancho;
+  const ang = op.angulos?.find((a) => a.id === x?.angulo)
+    ?? (r.angulo ? { id: r.angulo, nombre: r.anguloNombre, linea: r.anguloLinea } : null);
+  return {
+    ...(tactica ? { tactica } : {}),
+    ...(formaGancho ? { formaGancho } : {}),
+    ...(ang ? { angulo: ang.id, ...(ang.nombre ? { anguloNombre: ang.nombre } : {}), ...(ang.linea ? { anguloLinea: ang.linea } : {}) } : {}),
+  };
+}
+
+/** Las crudas (`crudasDe`) → una idea por casilla del plan. Pura. */
+export function leerIdeas(porNumero = new Map(), plan = [], formato = "post") {
   const vistos = {};
   return plan.flatMap((r) => {
     const x = porNumero.get(r.n);
@@ -558,6 +752,8 @@ export function leerProduccion(texto, plan = [], formato = "post") {
     vistos[grupo] = (vistos[grupo] ?? 0) + 1;
     return [{
       id: `${grupo}-${vistos[grupo]}`, ...r, titular, escena,
+      // Lo que escogió entre las opciones de su casilla (sólo si estaba entre ellas).
+      ...escogidoDe(r, x),
       titulo: corto(x?.titulo, MAX_TITULO) || titular,
       brief: corto(x?.brief, MAX_BRIEF),
       ...(corto(x?.porque, MAX_PORQUE) ? { porque: corto(x.porque, MAX_PORQUE) } : {}),

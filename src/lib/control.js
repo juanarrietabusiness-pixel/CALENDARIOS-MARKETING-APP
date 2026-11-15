@@ -51,11 +51,28 @@ function distancia(a, b) {
 }
 
 /**
+ * Lo que el revisor ANOTA dentro de lo que leyó y no está escrito en la imagen: «Sofá cama (no debía aparecer)»,
+ * «OFERTA [sobra]», «Envío gratis — repetido». Contado como texto, la anotación se volvía un error más (D'CASA, 14 de
+ * noviembre: piezas marcadas «Revisar» por las palabras del propio revisor). Sólo se quita lo que va entre paréntesis,
+ * corchetes o tras una raya y dice algo del revisor; «(507) 6000-0000» o «(incluye envío)» se quedan.
+ */
+const NOTA_DEL_REVISOR = /\b(no deb[ií]a|no deber[ií]a|deber[ií]a|debe decir|deb[ií]a decir|sobra|de m[aá]s|no se pidi[oó]|no pedid[oa]|no solicitad[oa]|inventad[oa]|ilegible|mal escrit[oa]|error|falta|repetid[oa]|duplicad[oa]|no aparece|no corresponde|no esperad[oa]|texto extra|texto del logo|parte del logo|del logo|marca de agua)\b/i;
+
+/** El texto leído sin las anotaciones del revisor (ver NOTA_DEL_REVISOR), línea por línea. Pura. */
+export function limpiarLeido(texto) {
+  return String(texto ?? "").split("\n").map((linea) => linea
+    .replace(/\s*[([{]([^()[\]{}]*)[)\]}]/g, (todo, dentro) => (NOTA_DEL_REVISOR.test(dentro) ? "" : todo))
+    .replace(/\s+[—–-]{1,2}\s+(.*)$/, (todo, resto) => (NOTA_DEL_REVISOR.test(resto) ? "" : todo))
+    .replace(/\s+/g, " ").trim()).filter(Boolean).join("\n");
+}
+
+/**
  * Compara el texto que se pidió con el que se lee en la imagen → [{ esperado, escrito }]: cada palabra esperada que no
  * aparece tal cual, con la leída que más se le parece (o «» si falta). Mayúsculas y puntuación no cuentan; tildes y
- * eñes, sí. Pura.
+ * eñes, sí. Lo que el revisor anotó dentro de lo leído no cuenta (`limpiarLeido`). Pura.
  */
-export function compararTexto(esperado, leido) {
+export function compararTexto(esperado, leidoConNotas) {
+  const leido = limpiarLeido(leidoConNotas);
   const quiere = palabras(esperado);
   const hay = palabras(leido);
   if (!quiere.length) return [];
@@ -121,7 +138,7 @@ export function pedidoDeControl({ marca = "la marca", texto = "", precios = [], 
   return [
     `Eres el control de calidad de una agencia. Revisa esta pieza de ${marca} antes de que la vea el cliente. Sé estricto y concreto: lo que dejes pasar lo ve el cliente.`,
     "",
-    "1. Transcribe EXACTAMENTE todo el texto que se ve en la imagen, letra por letra, con sus tildes y signos, tal cual (aunque esté mal escrito). Una línea por renglón. Si no hay texto, vacío.",
+    "1. Transcribe EXACTAMENTE todo el texto que se ve en la imagen, letra por letra, con sus tildes y signos, tal cual (aunque esté mal escrito). Una línea por renglón. Si no hay texto, vacío. En \"textoLeido\" va SÓLO lo que está escrito en la imagen: ningún comentario tuyo (ni «(no debía aparecer)», ni «[sobra]»); lo que esté mal va en \"errores\".",
     texto ? `2. El texto que DEBÍA decir (exacto): "${corto(texto, 400).replace(/"/g, "'")}". Di cada palabra mal escrita, que falte o que sobre.` : "2. No se pidió texto: di si apareció texto inventado o letras sin sentido.",
     precios.length ? `3. Los únicos precios válidos son los del catálogo: ${precios.slice(0, 20).join(", ")}. Di cualquier precio, porcentaje o cifra de venta que no esté ahí.` : "3. Di cualquier precio, porcentaje o cifra de venta que aparezca (no se pidió ninguno).",
     logo ? `4. La pieza debía llevar el logo de ${marca}: di si falta, si está deformado o redibujado, o si está bien.` : "4. Di si aparece el logo de otra marca o un logo inventado.",
@@ -135,7 +152,8 @@ export function pedidoDeControl({ marca = "la marca", texto = "", precios = [], 
     // muy grande). Va en la MISMA llamada: no cuesta otra.
     ficha ? `8. Ahora mira la pieza como el DIRECTOR CREATIVO que la diseñó con esta ficha:\n${String(ficha).trim().slice(0, 2500)}\nCompara dónde está el texto y de qué tamaño (en % del alto y del ancho de la pieza) con lo que pide la ficha, y la jerarquía, el contraste, los márgenes y el producto. En "diseno", hasta 3 problemas que se noten a simple vista, cada uno con su ARREGLO como una orden de edición precisa y con números («baja el titular hasta el 10–24 % de la altura», «reduce el titular al 70 % del ancho»); si está bien, vacío. En "puntajeDiseno", del 1 al 10 como director (8 o más: se entrega así).` : "",
     "",
-    "Responde SOLO con JSON, sin texto alrededor:",
+    // Respuesta CORTA: es un veredicto. Con listas vacías y frases largas, cada revisión escribía unos 3.300 tokens.
+    "Responde SOLO con JSON compacto, sin texto alrededor: OMITE las claves que no tengan nada (listas vacías, «no aplica») y escribe cada problema en menos de 15 palabras. Así:",
     `{"textoLeido":"…","errores":[{"escrito":"lo que dice","esperado":"lo que debía decir"}],"precios":["precio que no está en el catálogo"],"logo":"bien|falta|deformado|no aplica","deformaciones":["…"],"aspecto":[{"defecto":"…","arreglo":"…"}],"otros":["…"],${sistema ? '"serie":["…"],' : ""}${ficha ? '"diseno":[{"problema":"…","arreglo":"…"}],"puntajeDiseno":1-10,' : ""}"puntaje":0-10}`,
   ].filter((l) => l !== "").join("\n");
 }
@@ -153,12 +171,18 @@ export function leerControl(respuesta, { texto = "", logo = false } = {}) {
   if (!m) return null;
   let d;
   try { d = JSON.parse(m[0]); } catch { return null; }
-  const textoLeido = String(d.textoLeido ?? "").trim().slice(0, 600);
-  // Los errores del texto: los que encuentra el CÓDIGO comparando, y los que dice la IA que el código no ve.
-  const delCodigo = texto ? compararTexto(texto, textoLeido) : [];
+  // Lo leído SIN lo que el revisor anotó dentro («(no debía aparecer)»): eso no está en la imagen.
+  const textoLeido = limpiarLeido(d.textoLeido).slice(0, 600);
+  // Los errores del texto: los que encuentra el CÓDIGO comparando, y los que dice la IA que el código no ve. De los de
+  // la IA, sin sus anotaciones; y con un texto pedido, lo que SOBRA no cuenta (como en `compararTexto`: el logo o la
+  // etiqueta del producto también traen letras; un precio inventado lo señala «precios»), ni lo que ya está bien escrito.
+  const esperadas = new Set(palabras(texto));
   const deLaIA = (Array.isArray(d.errores) ? d.errores : [])
-    .map((e) => ({ escrito: corto(e?.escrito, 80), esperado: corto(e?.esperado, 80) }))
-    .filter((e) => (e.escrito || e.esperado) && e.escrito !== e.esperado);
+    .map((e) => ({ escrito: corto(limpiarLeido(e?.escrito), 80), esperado: corto(limpiarLeido(e?.esperado), 80) }))
+    .filter((e) => (e.escrito || e.esperado) && e.escrito !== e.esperado)
+    .filter((e) => !texto || e.esperado)
+    .filter((e) => !(e.escrito && palabras(e.escrito).length && palabras(e.escrito).every((w) => esperadas.has(w)) && palabras(e.esperado).every((w) => palabras(e.escrito).includes(w))));
+  const delCodigo = texto ? compararTexto(texto, textoLeido) : [];
   const vistos = new Set(delCodigo.map((e) => e.esperado));
   const errores = [...delCodigo, ...deLaIA.filter((e) => !vistos.has(palabras(e.esperado)[0] ?? "") && !delCodigo.some((x) => x.escrito && x.escrito === palabras(e.escrito)[0]))]
     .slice(0, 8);

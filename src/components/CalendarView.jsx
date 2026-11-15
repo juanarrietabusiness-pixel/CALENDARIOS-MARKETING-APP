@@ -16,7 +16,6 @@ import { moverEnCalendario, ponerEnDia, copiaDePublicacion, tieneContenido, rell
 import { conAprobacion, resumenEnvio, estadoDelEnvio, mensajeDeEnvio } from "../lib/aprobacion";
 import { marcarEnviadas } from "../lib/trabajo";
 import { sinLoNecesario } from "../lib/completitud";
-import { programarAprobadasDe } from "../lib/programarAprobadas";
 import { useEquipo } from "../hooks/useEquipo";
 import { useBancoIdeas } from "../hooks/useBancoIdeas";
 import { filtrarBanco } from "../lib/bancoIdeas";
@@ -39,13 +38,15 @@ let vistaRecordada = "grid";
 
 const PostSidePanel = lazy(() => import("./calendario/PostSidePanel").then((m) => ({ default: m.PostSidePanel })));
 const ProgramarAprobadas = lazy(() => import("./calendario/programarAprobadas"));
+// «Enviar a cliente», en diferido: sólo hace falta al mandar el mes.
+const EnviarCliente = lazy(() => import("./calendario/EnviarCliente"));
 // «Ver el mes como se verá»: la cuadrícula del perfil, el feed, los detalles y «Programar todo lo listo». Se carga al abrirla.
 const VistaMes = lazy(() => import("./calendario/VistaMes"));
 import { MonthGrid } from "./calendario/MonthGrid";
 import { CampanaMes } from "./calendario/campanaMes";
 import { RepeticionesMes } from "./calendario/repeticionesMes";
 import { repeticionesPendientes, copiaRepetida, conRegla } from "../lib/repetir";
-// «Producir el mes»: el ASISTENTE DEL MES (fase 6), de la estrategia al envío en una pantalla. Dentro van «Revisar las
+// «Preparar el mes»: el ASISTENTE DEL MES (fase 6), de la estrategia al envío en una pantalla. Dentro van «Revisar las
 // ideas», «Diseñar las aprobadas» (también los reels), «Guiones para grabar», «Completar los textos» y «Revisar el mes»,
 // que antes eran cinco entradas del menú «⋯». Se carga al abrirlo.
 const AsistenteMes = lazy(() => import("./calendario/AsistenteMes"));
@@ -60,7 +61,7 @@ const FechasEspecialesDialog = lazy(() => import("./calendario/fechasEspeciales"
 import { BankPanel } from "./calendario/BankPanel";
 import {
   ElegirNuevaPublicacion,
-  EditMetaDialog, ApprovalDialog, AddPostDialog,
+  EditMetaDialog, AddPostDialog,
 } from "./calendario/dialogos";
 import { fmt12h } from "./calendario/formato";
 
@@ -188,7 +189,8 @@ export default function CalendarView({
 
   // Lo aprobado que aún no está en la cola, y las redes que el cliente
   // tiene de verdad: sin ninguna cuenta, la barra de publicar no sale.
-  const candidatas = useMemo(() => aprobadasSinProgramar(cal?.days ?? [], cola), [cal?.days, cola]);
+  const sinAprobar = client?.apruebaAntes === false;
+  const candidatas = useMemo(() => aprobadasSinProgramar(cal?.days ?? [], cola, undefined, { sinAprobar }), [cal?.days, cola, sinAprobar]);
   // «Programar al aprobar» es del CLIENTE (todos sus meses); un mes que lo tenía encendido antes también cuenta.
   const alAprobar = Boolean(client?.programarAlAprobar || cal?.opciones?.programarAlAprobar);
   const cambiarAlAprobar = (valor) => {
@@ -207,6 +209,8 @@ export default function CalendarView({
    * programa todas en una sola petición.
    */
   const programarAprobadas = async (lista, avisar) => {
+    // En diferido: prepara y programa en el servidor (lib/programarAprobadas.js) y no hace falta al abrir la aplicación.
+    const { programarAprobadasDe } = await import("../lib/programarAprobadas");
     const r = await programarAprobadasDe({ cal, clienteDb, colorMarca: client?.primaryColor, lista, avisar });
     if (r.cambiado) onUpdateCal(calId, { ...cal, days: r.nuevo.days });
     recargarCola();
@@ -268,7 +272,7 @@ export default function CalendarView({
   // hubiera». Añadir una capa nueva es añadir un nombre, no una
   // séptima bandera que alguien tendrá que acordarse de bajar.
   // ------------------------------------------------------------
-  // «?asistente=1» en la dirección (el botón «Planificar mes» de la cabecera del cliente, el buscador) abre el asistente
+  // «?asistente=1» en la dirección (el botón «Preparar el mes» de la cabecera del cliente, el buscador) abre el asistente
   // del mes al llegar; se quita de la dirección en cuanto se lee.
   const [capa, setCapa] = useState(() => (new URLSearchParams(window.location.search).get("asistente") ? "asistente" : null));
   // El paso con que se abre el asistente (null = el que le toca al mes): «Revisar» y «Diseñar» del envío lo fijan.
@@ -1008,11 +1012,11 @@ export default function CalendarView({
           resto agrupado. Antes eran siete botones idénticos que mezclaban
           la acción principal con un visor de registros de desarrollo. */}
       <div className="toolbar">
-        {/* «Producir el mes»: el ASISTENTE DEL MES (estrategia → plan → ideas → diseñar → revisar y enviar). Se abre en el
+        {/* «Preparar el mes»: el ASISTENTE DEL MES (estrategia → plan → ideas → diseñar → revisar y enviar). Se abre en el
             paso que le toca al mes; lo que se hizo queda en el calendario y lo retoma cualquiera del equipo. */}
         <button className="btn btn-accent" onClick={() => abrirAsistente()} disabled={Boolean(yoActual()?.soloLectura)}>
           <Icon name="sparkles" size={18} />
-          {genLoading ? genStatus : "Producir el mes"}
+          {genLoading ? genStatus : "Preparar el mes"}
         </button>
 
         <div className="segmented" role="group" aria-label="Vista del calendario" style={{ width: "auto", flexShrink: 0 }}>
@@ -1085,11 +1089,12 @@ export default function CalendarView({
             // El plan semanal y las fechas especiales son de la MARCA (fase 7): viven en Marca. Aquí quedan sus accesos
             // directos de siempre: la barra de los días (el plan) y la tarjeta de la campaña (las fechas del mes).
             // Revisar las ideas, diseñar las que ya hay, los guiones para grabar, completar los textos y revisar el mes
-            // viven en el asistente del mes («Producir el mes»): el menú se queda con lo que no es el flujo del mes.
+            // viven en el asistente del mes («Preparar el mes»): el menú se queda con lo que no es el flujo del mes.
             client?.driveFolder && !virtual && { icon: "upload", label: "Guardar el mes en Drive", onClick: () => abrirCapa("drive") },
             { icon: "copy", label: "Exportar ideas y descripciones", onClick: () => abrirCapa("exportar") },
-            { sep: true },
-            { icon: "terminal", label: capa === "diagnostico" ? "Ocultar diagnóstico" : "Ver diagnóstico", onClick: () => setCapa((c) => (c === "diagnostico" ? null : "diagnostico")) },
+            esAdmin() && { sep: true },
+            // El registro de lo que hace la IA al escribir: para quien administra (era un resto interno a la vista de todos).
+            esAdmin() && { icon: "terminal", label: capa === "diagnostico" ? "Ocultar diagnóstico" : "Ver diagnóstico", onClick: () => setCapa((c) => (c === "diagnostico" ? null : "diagnostico")) },
             // Borrar un mes entero es de quien administra (el servidor lo
             // exige). Desde el calendario se borran publicaciones, no meses.
             esAdmin() && !virtual && { icon: "trash", label: "Borrar el mes entero", danger: true, onClick: () => {
@@ -1106,18 +1111,20 @@ export default function CalendarView({
         <div className="barra-publicar">
           <span className="barra-publicar-texto">
             <Icon name="clock" size={16} />
-            {candidatas.length
-              ? `${candidatas.length} ${candidatas.length === 1 ? "aprobada" : "aprobadas"} sin programar`
-              : "Nada aprobado pendiente de programar"}
+            {sinAprobar
+              ? "Este cliente no aprueba antes de publicar"
+              : candidatas.length
+                ? `${candidatas.length} ${candidatas.length === 1 ? "aprobada" : "aprobadas"} sin programar`
+                : "Nada aprobado pendiente de programar"}
           </span>
-          {candidatas.length > 0 && (
+          {candidatas.length > 0 && !sinAprobar && (
             <button type="button" className="btn btn-primary btn-sm" onClick={() => abrirCapa("programarAprobadas")}>
               Programar lo aprobado
             </button>
           )}
           {/* Para los clientes que no revisan: lo que ya está listo (pieza, hora y texto), sin pedir la aprobación. */}
           {!virtual && (
-            <button type="button" className="btn btn-secondary btn-sm" onClick={abrirVistaMes}>
+            <button type="button" className={`btn btn-sm ${sinAprobar ? "btn-primary" : "btn-secondary"}`} onClick={abrirVistaMes}>
               Ver y programar lo listo
             </button>
           )}
@@ -1652,7 +1659,8 @@ export default function CalendarView({
 
       {/* Approval link modal */}
       {capa === "aprobacion" && (
-        <ApprovalDialog
+        <Suspense fallback={null}>
+        <EnviarCliente
           hasLink={!!cal.shareToken}
           shareEnabled={cal.shareEnabled !== false}
           working={shareWorking}
@@ -1677,11 +1685,17 @@ export default function CalendarView({
           envio={envio}
           onDisenar={() => abrirAsistente(3)}
           onEnviado={marcarEnvio}
+          whatsapp={client.whatsapp}
+          abiertoAt={cal.clienteAbrioAt}
+          apruebaAntes={!sinAprobar}
+          onCambiarApruebaAntes={onPersistClient ? (si) => onPersistClient({ ...client, apruebaAntes: si }) : null}
+          onVerMes={virtual ? null : () => { cerrarCapa(); abrirVistaMes(); }}
           onClose={cerrarCapa}
         />
+        </Suspense>
       )}
 
-      {/* El asistente del mes (fase 6): «Producir el mes». Escribe por `escribirMes`, que parte del calendario más nuevo. */}
+      {/* El asistente del mes (fase 6): «Preparar el mes». Escribe por `escribirMes`, que parte del calendario más nuevo. */}
       {capa === "asistente" && (
         <Suspense fallback={<div className="panel-cargando" role="status">Abriendo el asistente del mes…</div>}>
           <AsistenteMes

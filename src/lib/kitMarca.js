@@ -637,12 +637,8 @@ export function componerPedido({ idea, preset = "", estilo = "", acabado = "", r
     .filter(Boolean).join("\n\n");
 }
 
-/** La escena de un pedido compuesto (sin el preset, la marca ni la línea del video); si no lo es, el texto tal cual. Pura. */
-export function ideaDelPedido(prompt) {
-  const t = String(prompt ?? "");
-  const m = t.match(/(?:^|\n\n)Escena: ([\s\S]*?)(?:\n\n|$)/);
-  return m ? m[1].trim() : t.trim();
-}
+// La escena de un pedido compuesto: vive en escenaDelPedido.js (la galería la usa sin cargar el kit entero).
+export { ideaDelPedido } from "./escenaDelPedido.js";
 
 /**
  * El mismo pedido con OTRA escena: el tipo de pieza, la marca, las referencias y el logo se quedan como estaban

@@ -142,6 +142,37 @@ conCuenta("la cuenta de Cloudflare", () => {
     expect(base, "no existe la base calendarios-db").toBeTruthy();
   });
 
+  it("el cron corre y ninguna tarea lleva horas fallando (Ajustes → Salud, la tabla `salud`)", async () => {
+    // Sólo lectura, por la API de D1. Lo apunta worker/lib/salud.js: la cola escribe su latido cada 15 minutos mientras
+    // va bien, y una tarea que falla se cuenta y se salta un rato. Si esto falla, en Ajustes → Salud está el porqué.
+    const base = (await api("/d1/database")).result?.find((d) => d.name === "calendarios-db");
+    const consulta = await fetch(`https://api.cloudflare.com/client/v4/accounts/${CUENTA}/d1/database/${base?.uuid}/query`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${TOKEN}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ sql: "select id, ok_at, error, fallos, desde, updated_at from salud where tipo = 'tarea'" }),
+    }).then((r) => r.json());
+    const filas = consulta.result?.[0]?.results;
+    // Sin la tabla (0080 sin aplicar), lo dice la revisión de migraciones: aquí no hay nada que medir.
+    if (!Array.isArray(filas)) return;
+    const cola = filas.find((f) => f.id === "tarea:cola");
+    expect(
+      cola && Date.now() - Date.parse(cola.updated_at) < 60 * 60_000,
+      fallo({
+        que: "el cron no ha apuntado nada en la última hora",
+        donde: "worker/index.js (scheduled) y wrangler.jsonc (triggers)",
+        porque: "Sin cron no se publica nada a su hora, no se mide y el Estudio no avanza sin pantalla.",
+        arreglo: "Mira en Cloudflare que el Worker tenga su cron (`triggers.crons`) y sus registros; Ajustes → Salud dice desde cuándo.",
+      }),
+    ).toBe(true);
+    const viejas = filas.filter((f) => Number(f.fallos) > 0 && f.desde && Date.now() - Date.parse(f.desde) > 6 * 3600_000);
+    expect(viejas.map((f) => `${f.id}: ${f.error}`), fallo({
+      que: "hay tareas del cron que llevan más de 6 horas fallando",
+      donde: "Ajustes → Salud (tabla `salud`)",
+      porque: "Se saltan un rato y lo demás sigue, pero lo suyo (métricas, informes, historias…) no se está haciendo.",
+      arreglo: "Lee su error en Ajustes → Salud y arréglalo; vuelve a ir bien sola en cuanto la tarea no falle.",
+    })).toEqual([]);
+  });
+
   it("el bucket de R2 existe", async () => {
     const { result } = await api("/r2/buckets");
     const nombres = (result?.buckets ?? []).map((b) => b.name);
@@ -163,12 +194,22 @@ conCuenta("la cuenta de Cloudflare", () => {
     //   juancitoads-bot    el bot de atención, con su D1 juancitoads-bot-db
     //   juancitoads-bot-wa la pata de WhatsApp del bot, con su D1 de sesión
     //   nebula-*           la tienda
+    //   babycaleb-*        el sistema de Baby Caleb (catálogo, pedidos, existencias; su conector de Claude), su
+    //                      copia de pruebas y su web, en su propio repositorio
+    //   agenda-personal    la agenda personal (Agenda Kairos, con su conector de Claude), en su repositorio
+    //   gestor-de-gastos   el gestor de gastos personal, en su repositorio
+    // (Los cuatro últimos aparecieron en la cuenta en noviembre de 2026 y la revisión diaria fallaba por ellos.)
     const conocidos = [
       "calendarios",
       "juancitoads-bot",
       "juancitoads-bot-wa",
       "nebula-storefront",
       "nebula-admin",
+      "babycaleb-sistema",
+      "babycaleb-sistema-staging",
+      "babycaleb-web",
+      "agenda-personal",
+      "gestor-de-gastos",
     ];
     const desconocidos = nombres.filter((n) => !conocidos.includes(n));
 

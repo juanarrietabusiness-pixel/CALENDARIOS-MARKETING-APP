@@ -52,6 +52,25 @@ function despues(ctx, promesa) {
   return segura;
 }
 
+/** En una constante: tests/despliegue/tiempo-real.test.js lee cada «tipo» literal de este archivo como un evento. */
+const AVISO_COLA = "cola";
+
+/**
+ * Se guardó un mes y la cola de publicación NO se pudo poner al día: si una publicación cambió de día u hora, lo
+ * programado saldría a la hora de antes. Antes iba sólo a la consola; ahora se le dice a quien guardó, en su campana.
+ */
+async function avisarColaSinMover(env, ctx, acceso, cal, e) {
+  console.error("resincronizar cola:", e);
+  if (!ctx.usuario?.id) return;
+  const cliente = cal?.client_id ? await acceso.leerUno("clients", { id: cal.client_id }).catch(() => null) : null;
+  const mes = [cal?.name, cliente?.name].filter(Boolean).join(" de ") || "el mes";
+  await avisar(env, acceso, {
+    para: [ctx.usuario.id], tipo: AVISO_COLA,
+    texto: `Se guardó ${mes}, pero la cola de publicación no se pudo poner al día (${String(e?.message ?? e).slice(0, 160)}). Lo programado puede salir a la hora de antes: revísalo en Producción o vuelve a guardar.`,
+    enlace: "/produccion", por: { userId: "sistema", nombre: "Producción" },
+  });
+}
+
 /** La publicación con ese id dentro de la fila de un calendario (`days` en texto), o null. */
 function publicacionDelCalendario(cal, postId) {
   let days = [];
@@ -472,6 +491,13 @@ export async function rutasDatos(req, env, ctx) {
 
   // ---- /api/calendarios ----
   if (seccion === "calendarios") {
+    // UN mes, tal como está: lo relee la pantalla cuando le avisan de que cambió (`calendario:recargar`), en vez de
+    // releer el espacio entero en cada pestaña.
+    if (id && id !== "mes" && id !== "nuevo" && !sub && metodo === "GET") {
+      const fila = await acceso.leerUno("calendars", { id });
+      return fila ? json(salidaCalendario(fila)) : noEncontrado("Calendario");
+    }
+
     // El cajón de un mes (calendario siempre activo): el que hay, o uno
     // vacío si todavía no existe. Se pide al ESCRIBIR, no al mirar.
     if (id === "mes" && !sub && metodo === "POST") {
@@ -496,7 +522,7 @@ export async function rutasDatos(req, env, ctx) {
         const origen = salidaCalendario(r.origen);
         const destino = salidaCalendario(r.destino);
         // La cola sigue a la publicación: su hora nueva sale del mes nuevo.
-        try { await resincronizarCalendario(env, acceso, r.destino, firma(ctx.usuario, req)); } catch (e) { console.error("resincronizar cola:", e); }
+        try { await resincronizarCalendario(env, acceso, r.destino, firma(ctx.usuario, req)); } catch (e) { await despues(ctx, avisarColaSinMover(env, ctx, acceso, r.destino, e)); }
         for (const cal of [origen, destino]) {
           difundir(
             env, acceso.ownerId,
@@ -520,12 +546,15 @@ export async function rutasDatos(req, env, ctx) {
       // público cuando el cliente pulsa «Enviar mi revisión».
       const limpio = sinCamposDeServidor(datos, [
         "owner_id", "share_token", "share_enabled", "share_expires_at",
-        "revision_enviada", "revision_revisor",
+        "revision_enviada", "revision_revisor", "updated_at",
       ]);
       const fila = aTexto(limpio, JSON_CALENDARIOS, ["allow_editing"]);
       fila.id = id && id !== "nuevo" ? id : (fila.id || uuid());
       fila.created_at ??= ahora();
       fila.updated_at = ahora();
+      // La versión que se leyó (`updated_at`), si la pantalla la manda: sólo se escribe si nadie guardó después.
+      // Sin ella (pantallas de antes, lo que guarda por su cuenta), como siempre: gana la última escritura.
+      const version = req.headers.get("X-Calendario-Version");
       // Lo de antes, para el historial y los avisos (a quién se asignó qué).
       const previo = await acceso.leerUno("calendars", { id: fila.id });
       // Un mes por cliente (0023): crear uno que ya existe con otro id
@@ -537,7 +566,22 @@ export async function rutasDatos(req, env, ctx) {
           return json({ error: "Ese mes ya existe para este cliente.", calendario: salidaCalendario(mismoMes) }, 409);
         }
       }
-      await acceso.guardar("calendars", fila);
+      // Otra persona (o el Estudio, o Claude) guardó este mes después de que se leyera: no se pisa. Va lo que hay
+      // ahora, y la pantalla junta lo suyo con lo de la otra persona por publicación (src/lib/fusionMes.js).
+      const conflicto = (f) => json({ error: "Otra persona guardó este mes mientras tanto.", codigo: "version", calendario: salidaCalendario(f) }, 409);
+      let escrito = false;
+      if (previo && version) {
+        if (previo.updated_at !== version) return conflicto(previo);
+        const cambios = { ...fila };
+        for (const c of ["id", "created_at", "client_id"]) delete cambios[c];
+        // La condición va en el UPDATE: si alguien guardó entre la lectura de arriba y esta línea, no cambia ninguna fila.
+        if (await acceso.actualizar("calendars", { id: fila.id, updated_at: version }, cambios)) escrito = true;
+        else {
+          const actual = await acceso.leerUno("calendars", { id: fila.id });
+          if (actual) return conflicto(actual);
+        }
+      }
+      if (!escrito) await acceso.guardar("calendars", fila);
       const crudo = await acceso.leerUno("calendars", { id: fila.id });
       const guardado = salidaCalendario(crudo);
       if (previo) {
@@ -556,7 +600,7 @@ export async function rutasDatos(req, env, ctx) {
       }
       // Lo programado sigue al calendario: si una publicación cambió de
       // día u hora, o se quitó, la cola se entera aquí.
-      try { await resincronizarCalendario(env, acceso, crudo, firma(ctx.usuario, req)); } catch (e) { console.error("resincronizar cola:", e); }
+      try { await resincronizarCalendario(env, acceso, crudo, firma(ctx.usuario, req)); } catch (e) { await despues(ctx, avisarColaSinMover(env, ctx, acceso, crudo, e)); }
       // Un mes escrito entero puede no caber en un mensaje: por eso va
       // el aviso ligero de repuesto. Ver TOPE_EVENTO en lib/vivo.js.
       difundir(

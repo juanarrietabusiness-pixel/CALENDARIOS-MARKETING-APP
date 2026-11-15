@@ -27,6 +27,7 @@ import {
   cambiarContrasena, restablecerContrasena,
 } from "../lib/sesion.js";
 import { difundir, firma } from "../lib/vivo.js";
+import { reasignarTrabajoDe } from "../lib/equipo.js";
 
 const COLOR_VALIDO = /^#[0-9a-fA-F]{6}$/;
 const EMAIL_VALIDO = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
@@ -194,12 +195,15 @@ export async function rutasEquipo(req, env, ctx) {
     if (!esAdmin) return error("Sólo quien administra el espacio puede sacar a alguien.", 403);
     if (subId === usuario.id) return error("No puedes sacarte a ti mismo.", 400);
 
+    // Su trabajo no se queda sin dueño: sus publicaciones y tareas pasan a quien lo saca (worker/lib/equipo.js).
+    const miembro = await acceso.leerUno("memberships", { user_id: subId });
     try {
       const n = await expulsarDelEspacio(env.DB, usuario.ownerId, subId);
       if (!n) return noEncontrado("Miembro");
     } catch (e) {
       return error(e.message, 400);
     }
+    await reasignarTrabajoDe(env, acceso, { userId: subId, nombre: miembro?.nombre ?? "", a: { id: usuario.id, nombre: usuario.nombre } });
 
     difundir(env, usuario.ownerId, { tipo: "miembro:fuera", userId: subId, por: firma(usuario, req) });
     return sinContenido();

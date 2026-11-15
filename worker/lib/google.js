@@ -28,6 +28,7 @@
 // espacio de quien lo generó.
 // ============================================================
 
+import { anotar } from "./salud.js";
 import { idDeCarpeta, MIME_CARPETA } from "../../src/lib/drive.js";
 import { error } from "./respuesta.js";
 
@@ -215,7 +216,10 @@ const COMPARTIDAS = { supportsAllDrives: "true" };
  * («/drive/v3/files»). Devuelve la Response tal cual si `crudo`.
  */
 export async function drive(env, acceso, ruta, { metodo = "GET", query = {}, cuerpo, cabeceras = {}, crudo = false } = {}) {
-  const token = await tokenDeAcceso(env, acceso);
+  // Ajustes → Salud: Drive va con el token del ESPACIO. Un permiso caducado o Google caído cuenta; un archivo que no
+  // está (404) es de la carpeta, no de la conexión.
+  const espacio = { espacio: acceso?.ownerId ?? "" };
+  const token = await tokenDeAcceso(env, acceso).catch((e) => { anotar("drive", e, espacio); throw e; });
   const u = new URL(`${API}${ruta}`);
   for (const [k, v] of Object.entries({ ...COMPARTIDAS, ...query })) if (v !== undefined && v !== null) u.searchParams.set(k, String(v));
   const res = await fetch(u, {
@@ -232,6 +236,8 @@ export async function drive(env, acceso, ruta, { metodo = "GET", query = {}, cue
         ? cuerpo
         : JSON.stringify(cuerpo),
   });
+  if (res.ok) anotar("drive", null, espacio);
+  else if (res.status === 401 || res.status === 403 || res.status >= 500) anotar("drive", `Drive respondió ${res.status} (${ruta.split("?")[0].slice(0, 60)}).`, espacio);
   if (crudo) return res;
   if (!res.ok) throw await errorDe(res);
   return res.status === 204 ? null : res.json();

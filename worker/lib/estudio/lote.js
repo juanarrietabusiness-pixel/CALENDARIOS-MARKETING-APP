@@ -52,14 +52,18 @@
 // ============================================================
 
 import { llamarIA } from "../cerebro/ia.js";
-import { pedidoDeCampos, leerCampos, pideCampo, FORMATOS_CAMPOS, ORDEN_CAMPOS, MAX_ESCRITO, MAX_PUBLICACIONES_CAMPOS } from "../../../src/lib/camposTexto.js";
+import { partesDeCampos, crudasDeCampos, leerCamposDe, pideCampo, FORMATOS_CAMPOS, ORDEN_CAMPOS, MAX_ESCRITO, MAX_PUBLICACIONES_CAMPOS } from "../../../src/lib/camposTexto.js";
 import { limpiarPauta, bloqueDeAnuncio, lineaDePauta, anunciosDeRespuesta, recortarHashtags } from "../../../src/lib/pauta.js";
 import { leerNegocio } from "../negocio.js";
 import { preferenciasDelCliente } from "../enPauta.js";
 import { estrategiaDelCalendario } from "../../../src/lib/estrategiaMes.js";
+import {
+  bloqueDeEjemplos, ejemplosDelCliente, sePlanifica, planificadoVigente, conPlanificado, pedidoDelPlanificador, leerPlanificador,
+  planificadoParaGuardar, lineaPlanificada, choquesDeVariedad, pedidoDeCritica, leerCritica, claveDeCasilla, MAX_PLANIFICAR, MIN_REVISAR,
+} from "../../../src/lib/motorTextos.js";
 import { duracionUgc } from "../../../src/lib/ugc.js";
 import { aprenderComposiciones } from "../../../src/lib/loteAnuncios.js";
-import { contexto as contextoCerebro, textoParaEscribir, buscar as buscarCerebro, leerNota as leerNotaCerebro } from "../cerebro/cerebro.js";
+import { contexto as contextoCerebro, buscar as buscarCerebro, leerNota as leerNotaCerebro } from "../cerebro/cerebro.js";
 import { consultaDelPlan, materialDelPlan, conEducativo, lineaDeLoQueFalta, MATERIAL, RUTA_RUBRO, TITULO_RUBRO } from "../../../src/lib/materialTipo.js";
 import { leerMercado } from "../mercado.js";
 import { vozUgcDe } from "../cerebro/vozUgc.js";
@@ -74,8 +78,9 @@ import {
 import { rindesDePropias } from "../../../src/lib/loMejor.js";
 import { CAMPOS_GANCHO, CAMPOS_ANGULO } from "../../../src/lib/camposTexto.js";
 import {
-  pedidoDeProduccion, leerProduccion, limpiarCuantas, totalDeCuantas, celdasPorNiveles, celdasMatriz, celdasPorTipos, darForma, estructurasDeCalendarios,
-  textoDeIdea, FORMATOS_LOTE, COMPOSICIONES, TACTICAS, estructuraDe, textoDelCliente,
+  partesDeProduccion, crudasDe, leerIdeas, escogidoDe, lineaDePieza, textoDelContexto, textoEstrategiaDelMes, limpiarCuantas, totalDeCuantas,
+  celdasPorNiveles, celdasMatriz, celdasPorTipos, darForma, estructurasDeCalendarios, textoDeIdea, FORMATOS_LOTE, COMPOSICIONES, TACTICAS, estructuraDe,
+  textoDelCliente,
 } from "../../../src/lib/loteAnuncios.js";
 import { asignarMatriz, pilarDe, idDePilar } from "../../../src/lib/pilares.js";
 import { diasDelLote, planDelMes, mesDe, textoMes } from "../../../src/lib/loteMes.js";
@@ -374,12 +379,19 @@ export async function pedidoDelLote(env, acceso, cliente, datos = {}) {
       .map(({ composicionPost, tacticaPost, ...r }) => ({ ...r, ...(composicionPost ? { composicion: composicionPost } : {}), ...(tacticaPost ? { tactica: tacticaPost } : {}) }))
       // La forma del gancho sólo donde vive el gancho (el titular, el caption, el guion), los 3 ganchos sólo si se pide el
       // guion de la UGC y el ángulo sólo si se escribe lo que la pieza dice: si no, el pedido lleva líneas que nadie usa.
-      .map(({ formaGancho, formasGanchos, angulo, anguloNombre, anguloLinea, ...r }) => ({
-        ...r,
-        ...(r.campos.some((k) => CAMPOS_GANCHO.includes(k)) ? { formaGancho } : {}),
-        ...(formasGanchos && r.rostro && r.campos.includes("guion") ? { formasGanchos } : {}),
-        ...(angulo && r.campos.some((k) => CAMPOS_ANGULO.includes(k)) ? { angulo, anguloNombre, anguloLinea } : {}),
-      }));
+      .map(({ formaGancho, formasGanchos, angulo, anguloNombre, anguloLinea, opciones, ...r }) => {
+        const gancho = r.campos.some((k) => CAMPOS_GANCHO.includes(k));
+        const conAngulo = Boolean(angulo) && r.campos.some((k) => CAMPOS_ANGULO.includes(k));
+        // Las opciones que la IA puede escoger, sólo donde se escribe (la táctica no vuelve en este modo: no se ofrece).
+        const op = { ...(gancho && opciones?.formas ? { formas: opciones.formas } : {}), ...(conAngulo && opciones?.angulos ? { angulos: opciones.angulos } : {}) };
+        return {
+          ...r,
+          ...(gancho ? { formaGancho } : {}),
+          ...(formasGanchos && r.rostro && r.campos.includes("guion") ? { formasGanchos } : {}),
+          ...(conAngulo ? { angulo, anguloNombre, anguloLinea } : {}),
+          ...(Object.keys(op).length ? { opciones: op } : {}),
+        };
+      });
   } else if (modo === "publicacion") {
     // Una sola pieza con lo que la publicación ya decidió (su tipo, producto, nivel, deseo y perfil); lo que falte, lo
     // pone la forma del lote. La fecha especial del día también va.
@@ -440,8 +452,26 @@ export async function pedidoDelLote(env, acceso, cliente, datos = {}) {
   const total = plan.length;
   const desde = Math.max(0, Math.floor(Number(datos.desde) || 0));
   const tamano = Math.floor(Number(datos.tamano) || 0);
+  // El plan ENTERO (todas las tandas): lo mira el planificador del mes antes de escribir la tanda.
+  let planEntero = plan;
   if (tamano > 0) plan = plan.slice(desde, desde + Math.min(tamano, TANDA_MAX));
   if (!plan.length) return { vacio: { ideas: [], ...(modo === "campos" ? { textos: [] } : {}), total, productos: rotan.map((p) => ({ id: p.id, nombre: p.nombre })), conEstudio: Boolean(general) } };
+
+  // Lo que el PLANIFICADOR del mes ya decidió en una tanda anterior (guardado en R2): se aplica sin volver a pagarlo.
+  // Lo lee también el conector de Claude (ficha_de_textos), que no llama a ninguna IA.
+  const planificable = sePlanifica(modo, datos, total);
+  let arco = "";
+  let guardadoPlan = null;
+  if (planificable) {
+    guardadoPlan = await leerPlanGuardado(env, acceso, cliente, planEntero);
+    const vigente = planificadoVigente(guardadoPlan, planEntero);
+    if (vigente.porClave.size) {
+      arco = vigente.arco;
+      const aplicar = (r) => (vigente.porClave.has(claveDeCasilla(r)) ? conPlanificado(r, vigente.porClave.get(claveDeCasilla(r))) : r);
+      planEntero = planEntero.map(aplicar);
+      plan = plan.map(aplicar);
+    }
+  }
 
   const usadosProd = new Set(plan.map((r) => r.productoId).filter(Boolean));
   const textoEstudio = [
@@ -457,11 +487,15 @@ export async function pedidoDelLote(env, acceso, cliente, datos = {}) {
   // El cerebro, buscado con las palabras de los TIPOS de esta tanda (lib/materialTipo.js): un educativo y un testimonio
   // no necesitan los mismos pasajes. Lo que un tipo necesita de verdad (testimonios, garantía, equipo…) se busca aparte:
   // si no hay nada, se le dice a la IA que no lo invente y a la persona qué falta (`faltan`).
-  let contexto = "";
+  // Va por BLOQUES (la ficha técnica, las pautas, los pasajes, el rubro), cada uno con su tope (TOPES_CONTEXTO): antes se
+  // juntaba todo y se cortaba a 6.000 caracteres, y lo último (los pasajes, el rubro) a veces no llegaba.
+  const bloques = { ficha: "", pautas: "", pasajes: "", rubro: "" };
+  let hayCerebro = false;
   const faltan = [];
   try {
-    const c = await contextoCerebro(env, acceso, cliente.id, consultaDelPlan(plan, { producto: producto?.nombre ?? "" }), { para: "texto", presupuesto: 5000 });
-    contexto = textoParaEscribir(c);
+    const c = await contextoCerebro(env, acceso, cliente.id, consultaDelPlan(plan, { producto: producto?.nombre ?? "" }), { para: "texto", presupuesto: 6000 });
+    Object.assign(bloques, { ficha: c?.ficha ?? "", pautas: c?.pautas ?? "", pasajes: c?.pasajes ?? "" });
+    hayCerebro = Boolean(c?.ficha || c?.pautas || c?.pasajes);
     for (const k of materialDelPlan(plan)) {
       if (!MATERIAL[k]?.buscar) continue;
       const hits = c?.notas ? await buscarCerebro(env, acceso, cliente.id, MATERIAL[k].buscar, { para: "texto", n: 1, per: 1 }) : [];
@@ -473,7 +507,7 @@ export async function pedidoDelLote(env, acceso, cliente, datos = {}) {
     // Por su ruta o, si alguien la creó a mano, por su título.
     let rubro = await acceso.leerUno("cerebro_notas", { client_id: cliente.id, ruta: RUTA_RUBRO }).catch(() => null);
     if (!rubro) rubro = await leerNotaCerebro(env, acceso, cliente.id, TITULO_RUBRO, { para: "texto" }).catch(() => null);
-    if (rubro?.texto && !rubro.interna) contexto = [contexto, `SABER DEL RUBRO (úsalo en el contenido educativo):\n${String(rubro.texto).slice(0, 4000)}`].filter(Boolean).join("\n\n");
+    if (rubro?.texto && !rubro.interna) bloques.rubro = String(rubro.texto).slice(0, 4000);
     else faltan.push("rubro");
   }
 
@@ -482,9 +516,13 @@ export async function pedidoDelLote(env, acceso, cliente, datos = {}) {
   let lenguaje = "";
   try {
     let nota = await acceso.leerUno("cerebro_notas", { client_id: cliente.id, ruta: RUTA_LENGUAJE }).catch(() => null);
-    if (!nota && contexto) nota = await leerNotaCerebro(env, acceso, cliente.id, TITULO_LENGUAJE, { para: "texto" }).catch(() => null);
+    if (!nota && hayCerebro) nota = await leerNotaCerebro(env, acceso, cliente.id, TITULO_LENGUAJE, { para: "texto" }).catch(() => null);
     if (nota?.texto && !nota.interna) lenguaje = String(nota.texto).slice(0, MAX_LENGUAJE);
   } catch { /* sin la nota, como siempre */ }
+
+  // EJEMPLOS del propio cliente (lib/motorTextos.js): lo que aprobó y lo que mejor le rindió, como referencia del TONO.
+  // Dos lecturas (las aprobaciones de sus últimos meses y sus métricas), y sólo si hay.
+  const ejemplos = bloqueDeEjemplos(await ejemplosDe(acceso, cliente.id, recientes.calendarios, hoy));
 
   // Las UGC: la voz de ESTA marca en sus videos (nota «Voz UGC») y las estructuras de guion de la agencia, para que la
   // IA escoja ENTRE LAS DE UGC (`para`, lib/formulasUgc.js; las de sólo voz en off no se ofrecen aquí). La que escogió
@@ -520,70 +558,258 @@ export async function pedidoDelLote(env, acceso, cliente, datos = {}) {
     ? [bloqueDeAnuncio({ tipo: negocio?.tipo ?? "", destino: negocio?.destino ?? "", etapas: enPauta.map((r) => r.pauta.etapa), ...opciones }), aprendido?.linea ?? ""].filter(Boolean).join("\n")
     : "");
 
-  const comun = { modo, plan, formato, total, tamano, faltan, formulas, negocio, enPauta, rotan, producto, general };
-  if (modo === "campos") {
-    const pidenGuion = plan.some((r) => r.campos.includes("guion"));
-    const salida = plan.reduce((t, r) => t + r.campos.reduce((u, c) => u + ({ guion: 700, descripcion: 350, idea: 150, textoPieza: 80, hashtags: 80, titulo: 30, anuncio: 650 }[c] ?? 100), 0), 0) + 600;
-    return {
-      ...comun,
-      prompt: pedidoDeCampos({
-        marca: cliente.name, plan, contexto, estudio: textoEstudio,
-        productos: Object.fromEntries(rotan.filter((p) => usadosProd.has(p.id)).map((p) => [p.id, lineaDeProducto(p, { inventario }).slice(2)])),
-        perfiles: Object.fromEntries(perfiles.map((p) => [p.nombre, lineaDePerfil(p)])),
-        fechasEspeciales: fechas.map((f) => `${f.fecha} · ${f.nombre}${f.delicada ? " (delicada: sin promociones)" : ""}`),
-        usados: (Array.isArray(datos.usados) ? datos.usados : []).map((t) => String(t ?? "").slice(0, 80)).filter(Boolean).slice(0, 30),
-        estrategia, falta: lineaDeLoQueFalta(faltan), ugc, cliente: textoDelCliente(cliente), pauta: bloquePauta({ conCampo: false }), lenguaje,
-      }),
-      salida,
-      funcion: pidenGuion ? "guiones" : plan.length === 1 ? "publicación" : "descripciones",
-    };
-  }
+  const usados = (Array.isArray(datos.usados) ? datos.usados : []).map((t) => String(t ?? "").slice(0, 80)).filter(Boolean).slice(0, 30);
+  const productos = Object.fromEntries(rotan.filter((p) => usadosProd.has(p.id)).map((p) => [p.id, lineaDeProducto(p, { inventario }).slice(2)]));
+  const perfilesTexto = Object.fromEntries(perfiles.map((p) => [p.nombre, lineaDePerfil(p)]));
+  const fechasTexto = fechas.map((f) => `${f.fecha} · ${f.nombre}${f.delicada ? " (delicada: sin promociones)" : ""}`);
+  const kit = (() => { try { return kitDe(cliente); } catch { return null; } })();
+  // La ficha de diseño «imagen» ya NO se pide por defecto: la escribe el director de arte al diseñar cada pieza
+  // (worker/lib/estudio/fichas.js), y aquí se comía la mitad de la salida. Quien la necesite la pide con `conFicha`.
+  const conFicha = datos.conFicha === true && modo !== "campos";
+  const comunArgs = {
+    marca: cliente.name, productos, perfiles: perfilesTexto, estudio: textoEstudio, bloques, fechasEspeciales: fechasTexto, estrategia,
+    falta: lineaDeLoQueFalta(faltan), ugc, cliente: textoDelCliente(cliente), lenguaje, ejemplos,
+  };
+  const prodArgs = {
+    ...comunArgs, formato, mes: modo === "mes", nota: modo === "publicacion" ? String(datos.nota ?? "").slice(0, 600) : "",
+    pauta: bloquePauta({ conCampo: true, enJson: true }), conFicha,
+    // Los tipos de arte de la marca (de cuál sale cada pieza: sirve para la escena) y, sólo con la ficha, la identidad.
+    identidad: conFicha ? identidadParaFichas(cliente, plan, await manualDelEspacio(acceso).catch(() => null)) : "",
+    artes: lineaDeTiposArte(kit?.tiposArte),
+  };
+  const camposArgs = { ...comunArgs, pauta: bloquePauta({ conCampo: false }) };
 
+  /**
+   * El pedido de UN grupo de piezas de la tanda: lo FIJO sale de la tanda entera (`plan`) y es igual en todas las
+   * llamadas; lo de estas piezas, de `grupo`. `masUsados`: los titulares que ya escribieron las llamadas anteriores.
+   */
+  const armar = (grupo, { masUsados = [], arco: elArco = arco, planTodo = plan } = {}) => (modo === "campos"
+    ? partesDeCampos({ ...camposArgs, plan: grupo, planTodo, usados: [...masUsados, ...usados].slice(0, 30) })
+    : partesDeProduccion({ ...prodArgs, plan: grupo, planTodo, usados: [...masUsados, ...usados].slice(0, 30), arco: elArco }));
+  /** La salida de un grupo: lo que escribe cada pieza (el razonamiento va aparte). */
+  const salidaDe = (grupo) => (modo === "campos"
+    ? grupo.reduce((t, r) => t + r.campos.reduce((u, c) => u + ({ guion: 700, descripcion: 350, idea: 150, textoPieza: 80, hashtags: 80, titulo: 30, anuncio: 650 }[c] ?? 100), 0), 0) + 600
+    // Lo que va a pauta escribe además sus textos de anuncio; una UGC, sus 3 ganchos; con la ficha, unas 350 palabras más.
+    : grupo.reduce((t, r) => t + (FORMATOS_LOTE[r.formato ?? formato]?.guiado ? 850 : 450) + (conFicha && !FORMATOS_LOTE[r.formato ?? formato]?.guiado ? 500 : 0) + (r.pauta ? 650 : 0) + 60 + (r.rostro ? 120 : 0), 0) + 800);
+  const pidenGuion = plan.some((r) => r.campos?.includes("guion"));
+  const funcion = modo === "campos" ? (pidenGuion ? "guiones" : plan.length === 1 ? "publicación" : "descripciones")
+    : modo === "mes" || modo === "plan" ? "lote del mes" : modo === "publicacion" ? "publicación" : "ideas de anuncios";
+  const { fijo, variable } = armar(plan);
   return {
-    ...comun,
-    prompt: pedidoDeProduccion({
-      marca: cliente.name, plan, formato, contexto, estudio: textoEstudio, mes: modo === "mes",
-      productos: Object.fromEntries(rotan.filter((p) => usadosProd.has(p.id)).map((p) => [p.id, lineaDeProducto(p, { inventario }).slice(2)])),
-      perfiles: Object.fromEntries(perfiles.map((p) => [p.nombre, lineaDePerfil(p)])),
-      fechasEspeciales: fechas.map((f) => `${f.fecha} · ${f.nombre}${f.delicada ? " (delicada: sin promociones)" : ""}`),
-      usados: (Array.isArray(datos.usados) ? datos.usados : []).map((t) => String(t ?? "").slice(0, 80)).filter(Boolean).slice(0, 30),
-      nota: modo === "publicacion" ? String(datos.nota ?? "").slice(0, 600) : "",
-      estrategia,
-      falta: lineaDeLoQueFalta(faltan),
-      ugc,
-      identidad: identidadParaFichas(cliente, plan, await manualDelEspacio(acceso).catch(() => null)),
-      cliente: textoDelCliente(cliente),
-      pauta: bloquePauta({ conCampo: true, enJson: true }),
-      lenguaje,
-    }),
-    // Las de una imagen escriben además su ficha de diseño (unas 350 palabras más cada una); las que van a pauta, sus
-    // textos de anuncio.
-    // Y por qué funciona su gancho (`porque`, una línea) y, en una UGC, sus 3 ganchos.
-    salida: plan.reduce((t, r) => t + (FORMATOS_LOTE[r.formato ?? formato]?.guiado ? 850 : 950) + (r.pauta ? 650 : 0) + 60 + (r.rostro ? 120 : 0), 0) + 800,
-    funcion: modo === "mes" || modo === "plan" ? "lote del mes" : modo === "publicacion" ? "publicación" : "ideas de anuncios",
+    modo, plan, formato, total, tamano, faltan, formulas, negocio, enPauta, rotan, producto, general,
+    prompt: `${fijo}\n\n${variable}`,
+    salida: salidaDe(plan),
+    funcion,
+    armar, salidaDe, arco, planificable, planEntero, guardadoPlan,
+    // Lo que el planificador necesita (sólo en el mes): todo lo de la marca, la ficha del cliente y la estrategia.
+    paraPlanificar: planificable ? {
+      contexto: textoDelContexto({ estudio: textoEstudio, bloques, lenguaje, ejemplos }),
+      cliente: textoDelCliente(cliente), estrategia: textoEstrategiaDelMes(estrategia), fechas: fechasTexto,
+      perfiles: perfiles.map((p) => `- ${p.nombre}: ${lineaDePerfil(p)}`),
+      productos: Object.fromEntries(rotan.map((p) => [p.id, lineaDeProducto(p, { inventario }).slice(2)])), usados,
+    } : null,
   };
 }
 
-/** → { ideas, producto, productos, conEstudio, modelo, aviso } (en el modo «campos», { textos, total, faltan?, modelo, aviso }) */
+// ------------------------------------------------------------
+// Escribir como lo haría Claude: planificar, de pocas en pocas y revisar
+// ------------------------------------------------------------
+
+/** Cuántas piezas escribe cada llamada (antes, 6 con 9 campos cada una: cada pieza recibía muy poca atención). */
+export const PIEZAS_POR_LLAMADA = 2;
+/** En el modo «campos» (piezas que ya tienen idea: menos que escribir), 3. */
+export const PIEZAS_POR_LLAMADA_CAMPOS = 3;
+/** Cuántas llamadas a la vez (como el director de arte: más, y la cuenta empieza a decir 429). */
+export const LLAMADAS_A_LA_VEZ = 3;
+
+/** La tanda partida en grupos de `n` (el último, con lo que quede). Pura. */
+export const enGrupos = (plan = [], n = PIEZAS_POR_LLAMADA) => Array.from({ length: Math.ceil(plan.length / n) }, (_, i) => plan.slice(i * n, i * n + n));
+
+/** Dónde se guarda lo planificado del mes de un cliente (fuera de `clientes/`: /api/media no lo sirve). */
+const clavePlan = (acceso, clienteId, mes) => `planificador/${acceso.ownerId}/${clienteId}/${mes}.json`;
+const mesDeLasCasillas = (plan = []) => (plan.find((r) => r.fecha)?.fecha ?? "").slice(0, 7) || "sin-mes";
+
+async function leerPlanGuardado(env, acceso, cliente, plan) {
+  try {
+    const obj = await env.MEDIA?.get?.(clavePlan(acceso, cliente.id, mesDeLasCasillas(plan)));
+    return obj ? JSON.parse(await obj.text()) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * EL PLANIFICADOR DEL MES (lib/motorTextos.js): una llamada (función «planificador del mes», hueco del asistente: el
+ * modelo del chat) mira las casillas del mes que aún no tienen plan —hasta MAX_PLANIFICAR desde la tanda— con todo lo
+ * de la marca y decide por casilla la idea en una línea, el gancho y el ángulo (entre sus opciones) y el porqué, con un
+ * arco del mes. Se guarda en R2 por casilla (con su firma) para las tandas siguientes. → { plan (la tanda, con lo
+ * decidido), arco } o null si no hacía falta o falló (la tanda sigue sin él: el redactor escoge entre las opciones).
+ */
+async function planificarMes(env, acceso, cliente, pedido) {
+  const { plan, planEntero, paraPlanificar, guardadoPlan, formato } = pedido;
+  const vigente = planificadoVigente(guardadoPlan, planEntero);
+  const k = claveDeCasilla;
+  if (plan.every((r) => vigente.porClave.has(k(r)))) return null;
+  const desde = Math.max(0, planEntero.findIndex((r) => k(r) === k(plan[0] ?? {})));
+  const pendientes = [...planEntero.slice(desde), ...planEntero.slice(0, desde)].filter((r) => !vigente.porClave.has(k(r))).slice(0, MAX_PLANIFICAR);
+  const yaPlanificadas = planEntero.filter((r) => vigente.porClave.has(k(r))).map((r) => lineaPlanificada(r, vigente.porClave.get(k(r))));
+  const r = await llamarIA(env, acceso, cliente, {
+    prompt: pedidoDelPlanificador({
+      marca: cliente.name, lineas: pendientes.map((x) => lineaDePieza(x, paraPlanificar.productos, formato)), contexto: paraPlanificar.contexto,
+      cliente: paraPlanificar.cliente, estrategia: paraPlanificar.estrategia, fechas: paraPlanificar.fechas, perfiles: paraPlanificar.perfiles,
+      planificadas: yaPlanificadas, arco: vigente.arco, usados: paraPlanificar.usados,
+    }),
+    salida: Math.min(12_000, 400 + pendientes.length * 140),
+    funcion: "planificador del mes",
+  });
+  const leido = leerPlanificador(r.texto, pendientes);
+  if (!leido?.piezas.size) return null;
+  // Se guarda junto a lo de antes (las otras tandas del mes), cada casilla con su firma.
+  const piezas = { ...(guardadoPlan && planificadoVigente(guardadoPlan, planEntero).porClave.size ? guardadoPlan.piezas : {}) };
+  for (const x of pendientes) if (leido.piezas.has(x.n)) piezas[k(x)] = planificadoParaGuardar(x, leido.piezas.get(x.n));
+  const arco = leido.arco || vigente.arco;
+  try {
+    await env.MEDIA?.put?.(clavePlan(acceso, cliente.id, mesDeLasCasillas(planEntero)), JSON.stringify({ v: 1, at: new Date().toISOString(), arco, piezas }));
+  } catch { /* sin guardar, esta tanda lo usa igual */ }
+  const porClave = new Map(Object.entries(piezas));
+  return { plan: plan.map((x) => (porClave.has(k(x)) && !x.planificada ? conPlanificado(x, porClave.get(k(x))) : x)), arco, modelo: r.modelo };
+}
+
+/** Las aprobaciones de sus últimos meses y sus métricas → los ejemplos (lib/motorTextos.js). Vacío si falla o no hay. */
+async function ejemplosDe(acceso, clientId, calendarios = [], hoy = fechaEnZona()) {
+  try {
+    const ids = calendarios.map((c) => c.id).filter(Boolean);
+    const [aprobadas, metricas] = await Promise.all([
+      ids.length ? acceso.leerVarios("approvals", ["calendar_id", "post_id"], "calendar_id", ids, { estado: "aprobado" }).catch(() => []) : [],
+      acceso.leerColumnas("metricas_publicacion", ["cuenta_id", "red", "texto", "publicada_at", "interacciones", "guardados", "compartidos"],
+        { client_id: clientId }, "publicada_at desc", 300).catch(() => []),
+    ]);
+    return ejemplosDelCliente({ calendarios, aprobadas: new Set(aprobadas.map((a) => `${a.calendar_id}|${a.post_id}`)), metricas, hoy });
+  } catch {
+    return [];
+  }
+}
+
+/** El pedido de una llamada: en dos bloques con lo fijo en caché si se va a reusar (más de una llamada), o en un texto. */
+const comoPrompt = ({ fijo, variable }, reusa) => (reusa
+  ? [{ type: "text", text: `${fijo}\n`, cache_control: { type: "ephemeral" } }, { type: "text", text: variable }]
+  : `${fijo}\n\n${variable}`);
+
+/**
+ * El REVISOR (lib/motorTextos.js, función «crítica de textos», hueco de redacción): una llamada por tanda con lo fijo del
+ * redactor delante (lo lee de la caché) que reescribe SÓLO lo flojo, y las piezas que repiten con su vecina con la opción
+ * que les dio el código. → Map n → { cambios, motivo } (vacío si todo pasa). Si falla, vacío: la tanda sale igual.
+ */
+async function revisarTanda(env, acceso, cliente, pedido, { plan, crudas, ideasLeidas, variedad, reusa, arco = "" }) {
+  // Lo fijo EXACTO de las llamadas del redactor (la misma tanda y el mismo arco): así lo lee de la caché.
+  const { fijo } = pedido.armar(plan, { planTodo: plan, arco });
+  const productos = Object.fromEntries(pedido.rotan.map((p) => [p.id, p.nombre]));
+  const porN = new Map(ideasLeidas.map((i) => [i.n, i]));
+  const piezas = plan.filter((r) => crudas.has(r.n)).map((r) => ({ r: { ...r, ...escogidoDe(r, crudas.get(r.n)), ...(porN.get(r.n) ? { formaGancho: porN.get(r.n).formaGancho, angulo: porN.get(r.n).angulo, anguloLinea: porN.get(r.n).anguloLinea ?? r.anguloLinea } : {}) }, escrito: crudas.get(r.n) }));
+  const variable = pedidoDeCritica({ modo: pedido.modo === "campos" ? "campos" : "ideas", piezas, productos, formato: pedido.formato, variedad });
+  try {
+    const r = await llamarIA(env, acceso, cliente, { prompt: comoPrompt({ fijo, variable }, reusa), salida: 600 + piezas.length * 350, funcion: "crítica de textos" });
+    return leerCritica(r.texto, plan, pedido.modo === "campos" ? "campos" : "ideas");
+  } catch (e) {
+    console.error("motor: el revisor falló (la tanda sale sin revisar)", e?.message ?? e);
+    return new Map();
+  }
+}
+
+/**
+ * Escribe la tanda como lo haría Claude: (1) en el mes, el PLANIFICADOR decide antes el mes entero; (2) de
+ * PIEZAS_POR_LLAMADA en PIEZAS_POR_LLAMADA (la primera llamada sola: deja lo fijo en la caché y sus titulares van a las
+ * demás, que salen de LLAMADAS_A_LA_VEZ en LLAMADAS_A_LA_VEZ); (3) la VARIEDAD (vecinas que escogieron lo mismo) y (4)
+ * el REVISOR. Lo que falla en (1) o (4) no tumba la tanda. → { crudas: Map n → lo escrito, plan, modelo, aviso,
+ * revisadas }.
+ */
+async function escribirTanda(env, acceso, cliente, pedido, datos = {}) {
+  let { plan } = pedido;
+  let arco = pedido.arco;
+  if (pedido.planificable) {
+    try {
+      const p = await planificarMes(env, acceso, cliente, pedido);
+      if (p) { plan = p.plan; arco = p.arco; }
+    } catch (e) {
+      console.error("motor: el planificador falló (se escribe sin él)", e?.message ?? e);
+    }
+  }
+  const grupos = enGrupos(plan, pedido.modo === "campos" ? PIEZAS_POR_LLAMADA_CAMPOS : PIEZAS_POR_LLAMADA);
+  const revisar = datos.revisar !== false && plan.length >= MIN_REVISAR;
+  const reusa = grupos.length > 1 || revisar;
+  const crudas = new Map();
+  const errores = [];
+  let modelo = "";
+  let aviso = null;
+  const leerCrudas = pedido.modo === "campos" ? crudasDeCampos : (t, g) => crudasDe(t, g);
+  const escribir = async (grupo, masUsados) => {
+    const r = await llamarIA(env, acceso, cliente, { prompt: comoPrompt(pedido.armar(grupo, { masUsados, arco, planTodo: plan }), reusa), salida: pedido.salidaDe(grupo), funcion: pedido.funcion });
+    // Sólo las de SU grupo: una llamada que devuelva otros números no pisa lo que escribió otra.
+    const suyas = new Set(grupo.map((x) => x.n));
+    return { r, crudas: new Map([...leerCrudas(r.texto, grupo)].filter(([n]) => suyas.has(n))) };
+  };
+  const apuntar = (res) => {
+    if (res.status === "rejected") { errores.push(res.reason); return; }
+    modelo ||= res.value.r.modelo;
+    aviso ||= res.value.r.aviso ?? null;
+    for (const [n, x] of res.value.crudas) if (!crudas.has(n)) crudas.set(n, x);
+  };
+  apuntar(...(await Promise.allSettled([escribir(grupos[0], [])])));
+  // Sin presupuesto, las demás llamadas tampoco saldrían: se dice ya.
+  if (!crudas.size && errores[0]?.estado === 402) throw errores[0];
+  const titulares = [...crudas.values()].map((x) => String(x?.titular || x?.titulo || "").slice(0, 80)).filter(Boolean);
+  const resto = grupos.slice(1);
+  for (let k = 0; k < resto.length; k += LLAMADAS_A_LA_VEZ) {
+    (await Promise.allSettled(resto.slice(k, k + LLAMADAS_A_LA_VEZ).map((g) => escribir(g, titulares)))).forEach(apuntar);
+  }
+  if (!crudas.size) {
+    // Sin presupuesto, o la IA caída: el motivo de verdad, no uno genérico.
+    const e = errores.find((x) => x?.estado === 402) ?? errores[0];
+    if (e) throw e;
+    return { crudas, plan, modelo, aviso, revisadas: 0 };
+  }
+  let revisadas = 0;
+  if (revisar) {
+    // Lo leído antes de revisar (para ver qué vecinas repiten lo que escogieron).
+    const leidas = pedido.modo === "campos"
+      ? leerCamposDe(crudas, plan).map((t) => ({ ...t, productoId: plan.find((r) => r.n === t.n)?.productoId ?? "" }))
+      : leerIdeas(crudas, plan, pedido.formato);
+    const variedad = choquesDeVariedad(leidas, plan);
+    const criticas = await revisarTanda(env, acceso, cliente, { ...pedido, plan }, { plan, crudas, ideasLeidas: leidas, variedad, reusa, arco });
+    for (const [n, { cambios }] of criticas) {
+      // Lo reescrito por el revisor sobre lo de antes; si era una de las que repetían, con la opción que le dio el código.
+      const v = variedad.find((x) => x.n === n);
+      crudas.set(n, {
+        ...crudas.get(n), ...cambios,
+        ...(v?.formaGancho ? { forma: v.formaGancho } : {}), ...(v?.angulo ? { angulo: v.angulo } : {}), ...(v?.tactica ? { tactica: v.tactica } : {}),
+      });
+      revisadas += 1;
+    }
+  }
+  return { crudas, plan, modelo, aviso, revisadas, arco };
+}
+
+/** → { ideas, producto, productos, conEstudio, modelo, aviso, revisadas } (en el modo «campos», { textos, total, faltan?, modelo, aviso, revisadas }) */
 export async function produccionDeLote(env, acceso, cliente, datos = {}) {
   const pedido = await pedidoDelLote(env, acceso, cliente, datos);
   if (pedido.vacio) return pedido.vacio;
-  const { modo, plan, formato, total, tamano, faltan, formulas, negocio, enPauta, rotan, producto, general } = pedido;
-  const r = await llamarIA(env, acceso, cliente, { prompt: pedido.prompt, salida: pedido.salida, funcion: pedido.funcion });
+  const { modo, formato, total, tamano, faltan, formulas, negocio, enPauta, rotan, producto, general } = pedido;
+  const { crudas, plan, modelo, aviso, revisadas } = await escribirTanda(env, acceso, cliente, pedido, datos);
   if (modo === "campos") {
-    const textos = leerCampos(r.texto, plan, { destino: negocio?.destino ?? "" }).map(({ formula, ...t }) => {
+    const textos = leerCamposDe(crudas, plan, { destino: negocio?.destino ?? "" }).map(({ formula, ...t }) => {
       const id = formula ? formulaUsada(`FÓRMULA: ${formula}`, formulas) : "";
       return id ? { ...t, formulaUgc: id } : t;
     });
     if (!textos.length && !tamano) throw fallo("La IA no devolvió textos que se puedan leer. Inténtalo otra vez.", 502);
-    return { textos, total, ...(faltan.length ? { faltan } : {}), modelo: r.modelo, aviso: r.aviso ?? null };
+    return { textos, total, ...(faltan.length ? { faltan } : {}), modelo, aviso, ...(revisadas ? { revisadas } : {}) };
   }
   const nombres = new Map(rotan.map((p) => [p.id, p.nombre]));
   // Lo que va a pauta: sus textos de anuncio (vienen en la misma respuesta) y 3 hashtags como mucho.
-  const anuncios = enPauta.length ? anunciosDeRespuesta(r.texto, { destino: negocio?.destino ?? "" }) : new Map();
-  const ideas = leerProduccion(r.texto, plan, formato)
-    // Lo que sólo era para el pedido (la línea de la pauta, la del ángulo, las formas de los 3 ganchos) no vuelve.
-    .map(({ lineaPauta: _l, anguloLinea: _a, formasGanchos: _f, ...i }) => (i.pauta
+  const anuncios = enPauta.length ? anunciosDeCrudas(crudas, { destino: negocio?.destino ?? "" }) : new Map();
+  const ideas = leerIdeas(crudas, plan, formato)
+    // Lo que sólo era para el pedido (la línea de la pauta, la del ángulo, las formas de los 3 ganchos, las opciones y
+    // lo del planificador) no vuelve.
+    .map(({ lineaPauta: _l, anguloLinea: _a, formasGanchos: _f, opciones: _o, planificada: _p, ...i }) => (i.pauta
       ? { ...i, ...(i.hashtags ? { hashtags: recortarHashtags(i.hashtags) } : {}), ...(anuncios.get(i.n) ? { anuncio: anuncios.get(i.n) } : {}) }
       : i))
     .map((i) => (i.productoId ? { ...i, producto: nombres.get(i.productoId) ?? i.producto ?? "" } : i))
@@ -600,9 +826,12 @@ export async function produccionDeLote(env, acceso, cliente, datos = {}) {
     producto: producto ? { id: producto.id, nombre: producto.nombre, precio: producto.precio } : null,
     productos: rotan.map((p) => ({ id: p.id, nombre: p.nombre })),
     conEstudio: Boolean(general),
-    modelo: r.modelo, aviso: r.aviso ?? null,
+    modelo, aviso, ...(revisadas ? { revisadas } : {}),
   };
 }
+
+/** Los textos de anuncio de lo que va a pauta, de las crudas (lib/pauta.js `anunciosDeRespuesta` lee un texto). */
+const anunciosDeCrudas = (crudas, opciones) => anunciosDeRespuesta(JSON.stringify({ ideas: [...crudas].map(([n, x]) => ({ ...x, n })) }), opciones);
 
 /** Compatibilidad con el nombre de antes (anuncios por nivel). */
 export const ideasDeLote = (env, acceso, cliente, datos = {}) => produccionDeLote(env, acceso, cliente, { modo: "niveles", ...datos });

@@ -247,6 +247,9 @@ describe("el control de calidad de una pieza", () => {
     const g = await (await pedir("/api/estudio/c1")).json();
     expect(g.archivos.find((a) => a.id === "p1").ajustes.control.estado).toBe("revisar");
     expect(db.sqlite.prepare("select funcion from consumo_ia").get().funcion).toBe("control de calidad");
+    // Un veredicto: sin la ficha del director, sin razonar de más y con la respuesta corta.
+    expect(peticiones[0].output_config).toMatchObject({ effort: "low" });
+    expect(peticiones[0].max_tokens).toBeLessThanOrEqual(4700);
   });
 
   it("el texto que manda la pantalla gana; una pieza de otro cliente o un video no se controlan", async () => {
@@ -269,6 +272,8 @@ describe("el control de calidad de una pieza", () => {
     expect(control.ficha).not.toMatch(/Estilo: limpio/);
     expect(peticiones.length).toBe(1);
     expect(textoDe(peticiones[0])).toMatch(/como el DIRECTOR CREATIVO que la diseñó con esta ficha:\nPieza: post 4:5/);
+    // Con la ficha, el director razona algo más (medio), nunca el nivel alto del espacio.
+    expect(peticiones[0].output_config).toMatchObject({ effort: "medium" });
     // La versión corregida es una edición (su pedido no trae ficha): se revisa con la de la original.
     env.MEDIA.objetos.set("clientes/c1/estudio/p2.png", { bytes: PNG, tipo: "image/png" });
     db.sqlite.prepare("insert into estudio_archivos (id, owner_id, client_id, clave, tipo, mime, prompt) values (?,?,?,?,?,?,?)")

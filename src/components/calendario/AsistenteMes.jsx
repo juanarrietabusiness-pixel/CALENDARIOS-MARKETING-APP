@@ -117,7 +117,7 @@ export default function AsistenteMes({
       <div ref={ref} role="dialog" aria-modal="true" aria-labelledby={`${ids}-t`} className="sheet asistente-mes" tabIndex={-1}>
         <div className="sheet-header">
           <div>
-            <h2 id={`${ids}-t`} style={{ fontSize: "var(--fs-md)", margin: 0 }}>Producir {mesNombre.toLowerCase()}</h2>
+            <h2 id={`${ids}-t`} style={{ fontSize: "var(--fs-md)", margin: 0 }}>Preparar {mesNombre.toLowerCase()}</h2>
             <p className="hint" style={{ margin: 0 }}>
               De la estrategia al envío, en orden. Se guarda en el calendario: lo retoma cualquiera del equipo.
               {a.por ? ` Último paso guardado por ${a.por}.` : ""}
@@ -424,7 +424,7 @@ function PasoPlan({ client, cal, onGuardarPlan, onPoner, onPlanificarAMano, onPr
           <summary className="hint">Otras formas de planificar</summary>
           <div className="asistente-mes-acciones">
             {onPlanificarAMano && <button type="button" className="btn btn-ghost btn-sm" onClick={onPlanificarAMano}>Planificar a mano (día por día, con plantillas propias)</button>}
-            {onProducirEnLote && !pasado && <button type="button" className="btn btn-ghost btn-sm" onClick={onProducirEnLote}>Crear el mes entero en lote en el Estudio</button>}
+            {onProducirEnLote && !pasado && <button type="button" className="btn btn-ghost btn-sm" onClick={onProducirEnLote}>Crear el mes entero con «Muchas piezas de una vez» del Estudio</button>}
           </div>
         </details>
       </div>
@@ -473,11 +473,15 @@ function PasoIdeas({ client, cal, escribir, onCompletarTextos, completando, esta
     const semilla = Math.floor(Math.random() * 1000);
     const faltan = new Set();
     let escritas = 0;
+    let revisadas = 0;
     setEstado({ cargando: true, texto: "Preparando…", error: "" });
     try {
       for (let desde = 0, total = casillas.length; desde < total; desde += 6) {
-        setEstado({ cargando: true, texto: `Ideas ${desde + 1}–${Math.min(desde + 6, total)} de ${total}…`, error: "" });
-        const r = await ideasDelPlan(clienteId, { casillas, estrategia: estrategiaDelCalendario(calVivo.current), usados: usados.slice(0, 30), semilla, desde, tamano: 6 });
+        setEstado({ cargando: true, texto: desde === 0 && total > 6 ? `Planificando el mes y escribiendo 1–6 de ${total}…` : `Ideas ${desde + 1}–${Math.min(desde + 6, total)} de ${total}…`, error: "" });
+        // `planificar`: la primera tanda mira el mes entero antes de escribir (el planificador del mes, lib/motorTextos.js);
+        // las siguientes reusan lo que decidió. Cada tanda se sigue guardando al llegar.
+        const r = await ideasDelPlan(clienteId, { casillas, estrategia: estrategiaDelCalendario(calVivo.current), usados: usados.slice(0, 30), semilla, desde, tamano: 6, planificar: true });
+        revisadas += r.revisadas ?? 0;
         total = r.total ?? total;
         for (const k of r.faltan ?? []) faltan.add(k);
         const porId = Object.fromEntries((r.ideas ?? []).map((i) => [i.clave, i]));
@@ -488,7 +492,7 @@ function PasoIdeas({ client, cal, escribir, onCompletarTextos, completando, esta
         }
       }
       const falta = avisoDeLoQueFalta([...faltan]);
-      setEstado({ cargando: false, texto: escritas ? `Listo: ${escritas} ${escritas === 1 ? "idea escrita" : "ideas escritas"}. Revísalas abajo.${falta ? ` ${falta}` : ""}` : "La IA no devolvió ideas que se puedan leer. Inténtalo otra vez.", error: "" });
+      setEstado({ cargando: false, texto: escritas ? `Listo: ${escritas} ${escritas === 1 ? "idea escrita" : "ideas escritas"}${revisadas ? ` (el revisor mejoró ${revisadas})` : ""}. Revísalas abajo.${falta ? ` ${falta}` : ""}` : "La IA no devolvió ideas que se puedan leer. Inténtalo otra vez.", error: "" });
       window.dispatchEvent(new Event("ia:gasto"));
     } catch (err) {
       // Lo que llegó antes del fallo ya está guardado en el calendario.
@@ -506,8 +510,9 @@ function PasoIdeas({ client, cal, escribir, onCompletarTextos, completando, esta
         <section className="notice asistente-mes-bloque" style={{ display: "block" }}>
           <p style={{ margin: 0 }}><strong>{sinIdea.length} {sinIdea.length === 1 ? "publicación del plan sin idea" : "publicaciones del plan sin idea"}.</strong></p>
           <p className="hint" style={{ margin: 0 }}>
-            El motor de ideas escribe cada una con su formato, su tipo y la estrategia del mes: título, qué se ve, texto de la pieza o
-            guion, caption y hashtags. Es texto (céntimos). Cada tanda se guarda al llegar.
+            Primero se piensa el mes entero (qué cuenta cada una y cómo engancha, con la estrategia); después se escriben de dos
+            en dos —título, qué se ve, texto de la pieza o guion, caption y hashtags— y un revisor reescribe lo flojo. Es texto
+            (céntimos). Cada tanda se guarda al llegar.
           </p>
           <button type="button" className="btn btn-primary btn-sm" aria-disabled={estado.cargando} onClick={() => !estado.cargando && escribirIdeas()}>
             <Icon name="sparkles" size={14} /> {estado.cargando ? estado.texto : `Escribir las ${sinIdea.length} ideas`}

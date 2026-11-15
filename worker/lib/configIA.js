@@ -77,12 +77,14 @@ export const MODELOS_POR_FUNCION = Object.freeze(["sonnet", "opus", "haiku", "mu
  * `consumo_ia`) se reparten así; lo que no esté, va a «analisis».
  */
 export const FUNCIONES_IA = Object.freeze({
-  redaccion: ["calendario", "descripciones", "publicación", "ideas de anuncios", "ideas del estudio", "lote del mes", "estrategia del mes", "kit de WhatsApp"],
+  // «crítica de textos»: el revisor del motor de textos (worker/lib/estudio/lote.js), con el MISMO modelo que escribe.
+  redaccion: ["calendario", "descripciones", "publicación", "ideas de anuncios", "ideas del estudio", "lote del mes", "estrategia del mes", "kit de WhatsApp", "crítica de textos"],
   guiones: ["guiones", "guion de video", "fórmula UGC", "voz UGC", "director comercial", "director musical"],
   lectura: ["lectura de contenido"],
   // El director de arte (las fichas del lote, «Producir el mes», el post, los carruseles) diseña con el MISMO modelo que
   // el director del chat: con modelos distintos el chat daba un 8 y el lote menos.
-  asistente: ["asistente", "resumen del chat", "título de conversación", "director de arte"],
+  // «planificador del mes»: el que mira el mes entero antes de que el motor escriba (lib/motorTextos.js), con el modelo del chat.
+  asistente: ["asistente", "resumen del chat", "título de conversación", "director de arte", "planificador del mes"],
   prompts: ["prompt de imagen"],
   analisis: ["informe", "auditoria", "cerebro", "ADN de marca", "kit de marca", "kit desde imágenes", "revisión de marca", "control de calidad", "sistema de diseño", "aprendizaje visual", "estudio de mercado", "catálogo", "referencia de competencia", "revisión de textos", "estratega de campañas", "diagnóstico de campañas", "informe de anuncios", "saber del rubro", "lo que funciona en la competencia", "revisión de video", "piezas juntas", "clasificar lo mejor", "vigencia de historias", "números del negocio", "voz del cliente", "lenguaje del cliente",
     // El video: el desglose toma por toma de un video y si cada fotograma del storyboard está listo para animarse.

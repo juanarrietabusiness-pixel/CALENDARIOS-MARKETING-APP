@@ -51,6 +51,15 @@ jobs:
             exit 1
           fi
 
+      # La prueba de humo EN UN NAVEGADOR (tests/vivo/navegador.test.js, dentro de test:vivo, que corre «Verificar»):
+      # entra, abre un cliente, una publicación y /aprobar en Chromium. Playwright no es dependencia del proyecto: se
+      # instala aquí sin tocar package.json, con su Chromium y lo que éste necesita del sistema. Con CI=true la prueba
+      # FALLA si no puede correr.
+      - name: Chromium para la prueba de humo
+        run: |
+          npm install --no-save playwright@1.63.0
+          npx playwright install --with-deps chromium
+
       # EL FILTRO. Lint + tests + build + presupuesto de bundle, lo mismo
       # que exige la protección de main. Si esto falla, no se publica.
       - name: Verificar

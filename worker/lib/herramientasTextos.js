@@ -362,7 +362,8 @@ export function crearHerramientasTextos({ env, acceso, resolverCliente, usuario,
     const semilla = sel.una ? Date.now() % 997 : semillaDe(sel.fila?.id ?? sel.cliente.id);
     const estrategia = estrategiaDe(sel.mes);
     return sel.modo === "plan"
-      ? { modo: "plan", casillas: sel.candidatas, ...(estrategia ? { estrategia } : {}), usados: sel.usados, semilla, desde: 0, tamano: n }
+      // El mes entero: con el planificador del mes (lo decidido se guarda y las llamadas siguientes lo reusan).
+      ? { modo: "plan", casillas: sel.candidatas, ...(estrategia ? { estrategia } : {}), usados: sel.usados, semilla, desde: 0, tamano: n, ...(sel.una ? {} : { planificar: true }) }
       : { modo: "campos", publicaciones: sel.candidatas.slice(0, n), ...(estrategia ? { estrategia } : {}), usados: sel.usados, semilla };
   };
 
@@ -478,7 +479,12 @@ export function crearHerramientasTextos({ env, acceso, resolverCliente, usuario,
         const guarda = sel.modo === "plan"
           ? (["carrusel", "reel"].includes(p.format) ? "titulo, idea (el brief), escena, guion, descripcion, hashtags" : p.format === "historia" ? "titulo, idea (el brief), escena, texto_pieza (titular y apoyo, una línea cada uno)" : "titulo, idea (el brief), escena, texto_pieza (titular y apoyo, una línea cada uno), descripcion, hashtags")
           : r.campos.map((k) => ({ textoPieza: "texto_pieza", anuncio: "anuncio" }[k] ?? k)).join(", ");
-        return `· Pieza n.º ${r.n} = publicación ${r.clave} (${fecha ? fechaLegible(fecha) : "sin fecha"} · ${formatoLegible(p.format ? p : { format: r.formato })}): guarda ${guarda}${r.pauta ? ", y anuncio (va a pauta)" : ""}.${forma || angulo ? ` Lo escogió el código (respétalo y guárdalo con editar_publicacion): ${[forma, angulo].filter(Boolean).join(" y ")}.` : ""}`;
+        // Con opciones (el código da 2–3 válidas), Claude escoge una y guarda la que usó.
+        const otras = [
+          ...(r.opciones?.formas ?? []).filter((x) => x !== r.formaGancho).map((x) => `«${nombreDeForma(x)}» (forma_gancho: ${x})`),
+          ...(r.opciones?.angulos ?? []).filter((a) => a.id !== r.angulo).map((a) => `«${a.nombre}» (angulo: ${a.id})`),
+        ];
+        return `· Pieza n.º ${r.n} = publicación ${r.clave} (${fecha ? fechaLegible(fecha) : "sin fecha"} · ${formatoLegible(p.format ? p : { format: r.formato })}): guarda ${guarda}${r.pauta ? ", y anuncio (va a pauta)" : ""}.${forma || angulo ? ` ${otras.length ? "Lo sugiere" : "Lo escogió"} el código (${otras.length ? "o una de las otras que también valen" : "respétalo"} y guarda el que uses con editar_publicacion): ${[forma, angulo].filter(Boolean).join(" y ")}.` : ""}${otras.length ? ` También valen: ${otras.join(", ")}.` : ""}`;
       });
       const quedan = Math.max(0, sel.candidatas.length - pedido.plan.length) + (sel.otras ?? 0);
       return [

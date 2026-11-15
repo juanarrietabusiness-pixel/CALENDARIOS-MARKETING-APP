@@ -8,10 +8,10 @@ import Icon from "./components/Icon";
 import logoMark from "./assets/logo-mark.png";
 import CalendarView from "./components/CalendarView";
 import NavegadorMes from "./components/calendario/navegadorMes";
+import BarreraErrores from "./components/BarreraErrores";
 import { diasVecinos } from "./lib/meses";
 import { ponerEnDia, deIdeaAPublicacion } from "./lib/subir";
 import { deLoCompartido } from "./lib/bancoIdeas";
-import HoyInicio from "./components/HoyInicio";
 import ResumenCliente from "./components/ResumenCliente";
 import NavPrincipal from "./components/NavPrincipal";
 import MenuCuenta from "./components/MenuCuenta";
@@ -26,7 +26,7 @@ import Invitacion from "./pages/Invitacion";
 import Presencia, { PresenciaEnCliente } from "./components/Presencia";
 import { useSession, signOut } from "./lib/auth";
 import * as db from "./lib/db";
-import { rowToCalendar, rowToClient } from "./lib/filas";
+import { rowToClient } from "./lib/filas";
 import { vivo } from "./lib/vivo";
 import { fijarYo, esAdmin } from "./lib/sesionActual";
 import { leerFoco, guardarFoco } from "./lib/foco";
@@ -42,6 +42,8 @@ import {
 // la mayoría de las visitas no la abren.
 const ChatPanel = lazy(() => import("./components/ChatPanel"));
 const PanelTareas = lazy(() => import("./components/PanelTareas"));
+// «Tus tareas de hoy» del inicio: la lista de clientes se pinta sin esperarla (las tareas y su selector de fecha pesan).
+const HoyInicio = lazy(() => import("./components/HoyInicio"));
 // «Mi día» es una página aparte: no tiene por qué venir en la primera descarga.
 const Tareas = lazy(() => import("./pages/Tareas"));
 // Igual Equipo y Ajustes, que no se abren en cada visita.
@@ -282,6 +284,9 @@ function ClientDrawer({ ruta, pulso, clients, selectedClientId, onSelect, onNew,
  */
 function Inicio({ yo, clients, pulso, presentes, onAbrir, onNuevo }) {
   const hoy = fechaEnZona();
+  // Lo que respondió el cliente (approvals), como Producción: el `status` del mes no lo sabe si nadie abrió ese mes.
+  const [respuestas, setRespuestas] = useState(null);
+  useEffect(() => { db.aprobacionesDelEspacio().then(setRespuestas).catch(() => {}); }, [pulso]);
   const saludo = (() => {
     const h = Number(new Intl.DateTimeFormat("en-US", { hour: "numeric", hour12: false, timeZone: "America/Panama" }).format(new Date()));
     return h < 12 ? "Buenos días" : h < 19 ? "Buenas tardes" : "Buenas noches";
@@ -311,7 +316,7 @@ function Inicio({ yo, clients, pulso, presentes, onAbrir, onNuevo }) {
         {clients.map((c) => {
           // Lo de ESTE mes: el calendario es uno y se abre en hoy.
           const cal = (c.calendars ?? []).find((k) => esMismoMes(k, mesDeFecha(hoy))) ?? null;
-          const r = resumenCalendario(cal);
+          const r = resumenCalendario(cal, respuestas);
           return (
             <li key={c.id}>
               <button type="button" className="inicio-cliente" onClick={() => onAbrir(c.id)}>
@@ -339,7 +344,7 @@ function Inicio({ yo, clients, pulso, presentes, onAbrir, onNuevo }) {
         })}
       </ul>
 
-      <HoyInicio clients={clients} yo={yo} pulso={pulso} />
+      <Suspense fallback={null}><HoyInicio clients={clients} yo={yo} pulso={pulso} /></Suspense>
     </div>
   );
 }
@@ -415,26 +420,109 @@ function Workspace({ session, ruta }) {
   // (tareas, banco, aprobaciones). Se pasa como prop y va en las
   // dependencias de su efecto: subirlo es decirles «vuelve a leer».
   const [pulso, setPulso] = useState(0);
-  // Alguien ha guardado un calendario que yo tengo a medio escribir.
-  const [pisada, setPisada] = useState(null);
   // Qué publicación tiene abierta cada cual: postId → persona.
   const [editandoOtros, setEditandoOtros] = useState({});
   const importRef = useRef();
-  // Un temporizador por calendario: las ediciones seguidas se agrupan en
-  // una sola escritura en lugar de una por pulsación.
+
+  // ----------------------------------------------------------
+  // Guardar los meses
+  //
+  // Un temporizador por calendario: las ediciones seguidas se agrupan en una sola escritura en lugar de una por
+  // pulsación. Cada escritura lleva la VERSIÓN de la que parte (`base`, con su `updatedAt`): si otra persona, el
+  // Estudio o Claude guardaron el mismo mes entremedias, el servidor contesta 409 y db.saveCalendar junta lo mío con
+  // lo suyo POR PUBLICACIÓN (lib/fusionMes.js) antes de volver a guardar. Antes ganaba la última escritura. Las de un
+  // mismo mes van una detrás de otra (`enVuelo`): dos a la vez chocarían entre ellas.
+  // ----------------------------------------------------------
   const saveTimers = useRef(new Map());
   const pendingSaves = useRef(new Map());
+  // Lo último que se sabe que está en D1 de cada mes (con su `updatedAt`): la base de lo que se edite después.
+  const enServidor = useRef(new Map());
+  const enVuelo = useRef(new Map());
+  // Meses que cambiaron por otro lado mientras se guardaban aquí: se releen al terminar.
+  const porReleer = useRef(new Set());
 
-  const flushPendingSaves = () => {
-    const timers = saveTimers.current;
-    const pending = pendingSaves.current;
-    timers.forEach(clearTimeout);
-    timers.clear();
-    for (const [, entry] of pending) {
-      db.saveCalendar(entry.cal, entry.clientDbId, entry.ownerId).catch(() => {});
+  const conocer = useCallback((cal) => { if (cal?.id && cal.updatedAt) enServidor.current.set(cal.id, cal); }, []);
+  const ocupado = useCallback((calId) => pendingSaves.current.has(calId) || saveTimers.current.has(calId) || enVuelo.current.has(calId), []);
+
+  /** Un mes recién leído del servidor, en pantalla: en su cliente o, si no se sabe cuál, en el que ya lo tenga. */
+  const ponerMes = useCallback((cal, clientId = null) => {
+    conocer(cal);
+    setClients((prev) => prev.map((c) => {
+      const cals = c.calendars ?? [];
+      const loTiene = cals.some((x) => x.id === cal.id);
+      if (clientId ? c.id !== clientId : !loTiene) return c;
+      return { ...c, calendars: loTiene ? cals.map((x) => (x.id === cal.id ? cal : x)) : [...cals, cal] };
+    }));
+  }, [conocer]);
+
+  /**
+   * Relee UN mes (`calendario:recargar`: el Estudio puso una pieza, Claude escribió textos…). Antes se releía el
+   * espacio entero —todos los clientes y todos sus meses— en cada pestaña. Si ese mes se está guardando aquí, se relee
+   * al terminar: aplicar ahora lo de fuera borraría lo que la persona tiene a medias.
+   */
+  const recargarMes = useCallback(async (calId, clientId = null) => {
+    if (ocupado(calId)) { porReleer.current.add(calId); return; }
+    try {
+      const cal = await db.leerCalendario(calId);
+      if (ocupado(calId)) { porReleer.current.add(calId); return; }
+      ponerMes(cal, clientId);
+    } catch { /* se borró o no hay red: lo repone la próxima relectura */ }
+  }, [ocupado, ponerMes]);
+
+  /** Lo guardado es la base de lo que se siga escribiendo; si se juntó con lo de otra persona, también se ve. */
+  const trasGuardar = async (calId, entry, guardado, fusionado) => {
+    conocer(guardado);
+    const siguiente = pendingSaves.current.get(calId);
+    if (!fusionado) {
+      if (siguiente && siguiente.base === entry.base) siguiente.base = guardado;
+      return;
     }
-    pending.clear();
+    // Lo que se ve pasa a ser lo juntado más lo que se haya escrito desde que salió este guardado.
+    const { fusionarGuardado } = await import("./lib/fusionMes");
+    const aMedias = siguiente?.cal ?? null;
+    const nuevo = aMedias ? fusionarGuardado(entry.cal, aMedias, guardado) : null;
+    if (siguiente) { siguiente.cal = nuevo; siguiente.base = guardado; }
+    setClients((prev) => prev.map((c) => (!(c.calendars ?? []).some((k) => k.id === calId) ? c : {
+      ...c,
+      calendars: c.calendars.map((k) => (k.id !== calId ? k : k === entry.cal ? guardado : k === aMedias ? nuevo : fusionarGuardado(entry.cal, k, guardado))),
+    })));
+    setToast("Alguien más guardó este mes mientras escribías: se juntaron sus cambios con los tuyos, sin perder nada.");
   };
+
+  /** Guarda lo pendiente de un mes, detrás del guardado que ya esté en marcha. Rechaza si no se pudo (y lo dice). */
+  const vaciarMes = (calId) => {
+    const anterior = enVuelo.current.get(calId) ?? Promise.resolve();
+    const vuelta = anterior.catch(() => {}).then(async () => {
+      const entry = pendingSaves.current.get(calId);
+      if (!entry) return;
+      clearTimeout(saveTimers.current.get(calId));
+      saveTimers.current.delete(calId);
+      pendingSaves.current.delete(calId);
+      let fusionado = false;
+      try {
+        const guardado = await db.saveCalendar(entry.cal, entry.clientDbId, entry.ownerId, { base: entry.base, alFusionar: () => { fusionado = true; } });
+        await trasGuardar(calId, entry, guardado, fusionado);
+        setSaveError(null);
+      } catch (e) {
+        setSaveError({ calId, entry, message: e.message });
+        throw e;
+      }
+    });
+    enVuelo.current.set(calId, vuelta);
+    vuelta.catch(() => {}).finally(() => {
+      if (enVuelo.current.get(calId) !== vuelta) return;
+      enVuelo.current.delete(calId);
+      if (porReleer.current.has(calId) && !ocupado(calId)) {
+        porReleer.current.delete(calId);
+        void recargarMes(calId);
+      }
+    });
+    return vuelta;
+  };
+
+  // Lo pendiente sale ya (al cerrar o esconder la pestaña). Por una referencia: el efecto que lo usa se monta una vez.
+  const vaciarRef = useRef(vaciarMes);
+  vaciarRef.current = vaciarMes;
 
   /**
    * Relee el espacio entero.
@@ -442,18 +530,27 @@ function Workspace({ session, ruta }) {
    * Se usa al arrancar y al RECONECTAR: mientras el socket estuvo caído
    * pudo pasar cualquier cosa, y ninguno de esos eventos llegó. El
    * socket acelera; esto es lo que garantiza que lo que se ve es lo que
-   * hay.
+   * hay. Lo que se está guardando no se pisa con lo leído: se queda lo de
+   * la pantalla y ese mes se relee al terminar.
    */
   const cargar = useCallback(async () => {
     try {
       const data = await db.loadWorkspace();
-      setClients(data);
+      const enPantalla = new Map(clientsRef.current.flatMap((c) => (c.calendars ?? []).map((k) => [k.id, k])));
+      setClients(data.map((c) => ({
+        ...c,
+        calendars: c.calendars.map((k) => {
+          if (ocupado(k.id) && enPantalla.has(k.id)) { porReleer.current.add(k.id); return enPantalla.get(k.id); }
+          conocer(k);
+          return k;
+        }),
+      })));
       setLoadError("");
     } catch (e) {
       setLoadError(e.message || "No se pudieron cargar los datos.");
     }
     setLoading(false);
-  }, []);
+  }, [conocer, ocupado]);
 
   useEffect(() => { void cargar(); }, [cargar, ownerId]);
 
@@ -474,27 +571,15 @@ function Workspace({ session, ruta }) {
   //     milisegundos siguientes: el cursor salta y la última palabra
   //     desaparece.
   //
-  //  2. Un calendario con escritura PENDIENTE no se pisa. Si alguien
-  //     guarda el mismo mes que tú estás editando, aplicar su versión te
-  //     borraría lo que tienes a medias sin decir nada. Se avisa y se
-  //     deja elegir, que es lo único honesto que se puede hacer aquí.
+  //  2. Un calendario que se está GUARDANDO aquí (pendiente o en marcha)
+  //     no se pisa: aplicar la versión de otra persona te borraría lo que
+  //     tienes a medias sin decir nada. Se relee cuando termina el
+  //     guardado, que además ya juntó lo tuyo con lo suyo si chocaron
+  //     (el 409 de la versión: ver «Guardar los meses», arriba).
   // ----------------------------------------------------------
   useEffect(() => {
     let yaEstuvo = false;
     vivo.conectar();
-
-    const aplicarCalendario = (cal, clientId) => {
-      setClients((prev) => prev.map((c) => {
-        if (c.id !== clientId) return c;
-        const cals = c.calendars ?? [];
-        return {
-          ...c,
-          calendars: cals.some((x) => x.id === cal.id)
-            ? cals.map((x) => (x.id === cal.id ? cal : x))
-            : [...cals, cal],
-        };
-      }));
-    };
 
     const bajaEventos = vivo.al((ev) => {
       if (ev.tipo === "hola" || ev.tipo === "presencia") {
@@ -544,20 +629,17 @@ function Workspace({ session, ruta }) {
           break;
 
         case "calendario": {
-          const cal = rowToCalendar(ev.calendario);
+          const cal = db.calendarioDeFila(ev.calendario);
           // Filtro 2.
-          if (pendingSaves.current.has(cal.id) || saveTimers.current.has(cal.id)) {
-            setPisada({ calId: cal.id, quien: ev.por?.nombre ?? "Alguien" });
-            break;
-          }
-          aplicarCalendario(cal, ev.calendario.client_id);
+          if (ocupado(cal.id)) { porReleer.current.add(cal.id); break; }
+          ponerMes(cal, ev.calendario.client_id);
           break;
         }
 
         case "calendario:recargar":
-          // El mes no cabía en un mensaje: se relee. Ver TOPE_EVENTO en
-          // worker/lib/vivo.js.
-          if (!pendingSaves.current.size) void cargar();
+          // El mes no cabía en un mensaje (TOPE_EVENTO en worker/lib/vivo.js) o lo cambió el servidor: se relee ESE mes.
+          if (ev.id) void recargarMes(ev.id, ev.clientId ?? null);
+          else if (!pendingSaves.current.size) void cargar();
           break;
 
         case "calendario:fuera":
@@ -735,17 +817,17 @@ function Workspace({ session, ruta }) {
       bajaEstado();
       vivo.desconectar();
     };
-  }, [cargar]);
+  }, [cargar, ocupado, ponerMes, recargarMes]);
 
   useEffect(() => {
-    const flush = () => flushPendingSaves();
+    const flush = () => { for (const calId of [...pendingSaves.current.keys()]) vaciarRef.current(calId).catch(() => {}); };
     const onVisChange = () => { if (document.visibilityState === "hidden") flush(); };
     window.addEventListener("beforeunload", flush);
     document.addEventListener("visibilitychange", onVisChange);
     return () => {
       window.removeEventListener("beforeunload", flush);
       document.removeEventListener("visibilitychange", onVisChange);
-      flushPendingSaves();
+      flush();
     };
   }, []);
 
@@ -832,7 +914,7 @@ function Workspace({ session, ruta }) {
   }, [clients]);
 
   /**
-   * «Planificar mes» (y «Nuevo calendario» del buscador): el ASISTENTE DEL MES del mes que se mira, en el calendario
+   * «Preparar el mes» (y «Nuevo calendario» del buscador): el ASISTENTE DEL MES del mes que se mira, en el calendario
    * (calendario/AsistenteMes.jsx). Va por la dirección (`?asistente=1`): CalendarView lo abre al llegar o, si ya estaba
    * en ese mes, al oír el cambio de dirección. «Planificar a mano» (PlanWizard) se abre desde dentro del asistente.
    */
@@ -1020,18 +1102,13 @@ function Workspace({ session, ruta }) {
   /** Estado inmediato y escritura agrupada: la interfaz no espera a la red. */
   const updateCalendar = (calId, updatedCal) => {
     updateCalendarLocal(calId, updatedCal);
-
-    const timers = saveTimers.current;
-    const pending = pendingSaves.current;
-    const entry = { cal: updatedCal, clientDbId: selectedClientId, ownerId };
-    pending.set(calId, entry);
-    clearTimeout(timers.get(calId));
-    timers.set(calId, setTimeout(() => {
-      timers.delete(calId);
-      pending.delete(calId);
-      db.saveCalendar(updatedCal, selectedClientId, ownerId)
-        .then(() => setSaveError(null))
-        .catch((e) => setSaveError({ calId, entry, message: e.message }));
+    // La base es la versión de la que parte la PRIMERA edición de esta tanda: las siguientes salen de ella.
+    const base = pendingSaves.current.get(calId)?.base ?? enServidor.current.get(calId) ?? null;
+    pendingSaves.current.set(calId, { cal: updatedCal, clientDbId: selectedClientId, ownerId, base });
+    clearTimeout(saveTimers.current.get(calId));
+    saveTimers.current.set(calId, setTimeout(() => {
+      saveTimers.current.delete(calId);
+      vaciarMes(calId).catch(() => {});
     }, 600));
   };
 
@@ -1039,9 +1116,9 @@ function Workspace({ session, ruta }) {
     if (!saveError) return;
     const { calId: cId, entry } = saveError;
     setSaveError(null);
-    db.saveCalendar(entry.cal, entry.clientDbId, entry.ownerId)
-      .then(() => setToast("Calendario guardado correctamente."))
-      .catch((e) => setSaveError({ calId: cId, entry, message: e.message }));
+    // Si se siguió escribiendo después del fallo, lo pendiente ya lo lleva dentro.
+    if (!pendingSaves.current.has(cId)) pendingSaves.current.set(cId, entry);
+    vaciarMes(cId).then(() => setToast("Calendario guardado correctamente.")).catch(() => {});
   };
 
   const deleteCalendar = async (calId) => {
@@ -1049,6 +1126,7 @@ function Workspace({ session, ruta }) {
       clearTimeout(saveTimers.current.get(calId));
       saveTimers.current.delete(calId);
       pendingSaves.current.delete(calId);
+      enServidor.current.delete(calId);
       await db.deleteCalendar(calId);
       setClients((prev) =>
         prev.map((c) =>
@@ -1074,12 +1152,12 @@ function Workspace({ session, ruta }) {
     const clave = `${clienteId}|${year}|${month}`;
     if (!creandoMes.current.has(clave)) {
       const promesa = db.mesDeCalendario(cliente?.dbId || clienteId, year, month)
-        .then((cal) => { calendarioGuardado(clienteId, cal); return cal; })
+        .then((cal) => { ponerMes(cal, clienteId); return cal; })
         .finally(() => creandoMes.current.delete(clave));
       creandoMes.current.set(clave, promesa);
     }
     return creandoMes.current.get(clave);
-  }, []);
+  }, [ponerMes]);
 
   /**
    * Escribir en un mes que aún no tiene cajón: se crea y lo escrito se
@@ -1141,14 +1219,8 @@ function Workspace({ session, ruta }) {
     return real.id;
   };
 
-  /** Guarda YA lo pendiente de un calendario (sin esperar al agrupado). */
-  const guardarYa = async (calId) => {
-    const entry = pendingSaves.current.get(calId);
-    clearTimeout(saveTimers.current.get(calId));
-    saveTimers.current.delete(calId);
-    pendingSaves.current.delete(calId);
-    if (entry) await db.saveCalendar(entry.cal, entry.clientDbId, entry.ownerId);
-  };
+  /** Guarda YA lo pendiente de un calendario (sin esperar al agrupado), y espera al guardado que ya estuviera en marcha. */
+  const guardarYa = (calId) => vaciarMes(calId);
 
   /**
    * Llevar una publicación a otro mes. Antes se guarda lo pendiente de
@@ -1213,7 +1285,7 @@ function Workspace({ session, ruta }) {
         ...(calendarData.estrategia ? { opciones: { ...(base.opciones || {}), estrategia: calendarData.estrategia } } : {}),
         generatedAt: new Date().toISOString(),
       };
-      const guardado = await db.saveCalendar(fusion, selectedClientId, ownerId);
+      const guardado = await db.saveCalendar(fusion, selectedClientId, ownerId, { base: enServidor.current.get(real.id) ?? null });
       calendarioGuardado(selectedClientId, guardado);
       irAMes(selectedClientId, mes);
       setShowWizard(false);
@@ -1267,6 +1339,7 @@ function Workspace({ session, ruta }) {
               delete calCopia.shareToken;
               const calGuardado = await db.saveCalendar(calCopia, guardado.id, ownerId);
               guardado.calendars = [...(guardado.calendars ?? []), calGuardado];
+              conocer(calGuardado);
             }
             añadidos.push(guardado);
           }
@@ -1367,11 +1440,7 @@ function Workspace({ session, ruta }) {
   }, [selectedCalId, ruta]);
   // «Subir» guarda el calendario por su cuenta: el eco de la propia pestaña
   // se ignora, así que el estado se pone al día aquí.
-  const calendarioGuardado = (clientId, cal) => setClients((prev) => prev.map((c) => {
-    if (c.id !== clientId) return c;
-    const cals = c.calendars || [];
-    return { ...c, calendars: cals.some((k) => k.id === cal.id) ? cals.map((k) => (k.id === cal.id ? cal : k)) : [...cals, cal] };
-  }));
+  const calendarioGuardado = (clientId, cal) => ponerMes(cal, clientId);
   // Lo pendiente de ese calendario ya va dentro de lo que guarda «Subir»
   // (sale del estado); si se guardara después, pisaría la publicación nueva.
   const soltarPendiente = (calId) => {
@@ -1508,25 +1577,9 @@ function Workspace({ session, ruta }) {
               </div>
             )}
 
-            {/* Sólo sobre el calendario al que se refiere: el aviso
-                habla de «este calendario», y enseñarlo mientras miras
-                otro es peor que no enseñarlo. Al volver, reaparece. */}
-            {pisada && pisada.calId === selectedCalId && (
-              <div role="alert" className="notice notice-warn" style={{ display: "flex", alignItems: "center", gap: "var(--sp-2)", flexWrap: "wrap" }}>
-                <span style={{ flex: 1 }}>
-                  {pisada.quien} ha guardado este calendario mientras tú lo
-                  editabas. Lo que ves es lo tuyo: al guardar, tus cambios
-                  ganan. Recarga si prefieres quedarte con los suyos.
-                </span>
-                <button className="btn btn-secondary btn-sm" onClick={() => { setPisada(null); void cargar(); }}>
-                  Ver los suyos
-                </button>
-                <button className="btn btn-ghost btn-sm" onClick={() => setPisada(null)} aria-label="Descartar aviso">
-                  <Icon name="close" size={16} />
-                </button>
-              </div>
-            )}
-
+            {/* Una pantalla que falla (o un trozo que no llegó tras un despliegue) no tumba la aplicación: la barrera
+                lo dice aquí y se rearma al cambiar de pantalla. */}
+            <BarreraErrores llave={`${ruta.vista}|${ruta.cliente ?? ""}|${pestana ?? ""}|${ruta.seccion ?? ""}`}>
             {ruta.vista === "tareas" ? (
               <Suspense fallback={<p style={{ color: "var(--text-dim)", fontSize: "var(--fs-xs)" }}>Cargando Mi día…</p>}>
               <Tareas
@@ -1636,15 +1689,17 @@ function Workspace({ session, ruta }) {
                       >
                         <Icon name="pencil" />
                       </button>
-                      {/* Ya no se crea un calendario por mes: el asistente
-                          PLANIFICA el mes que se elija, dentro del mismo calendario. */}
-                      <button className="btn btn-primary" onClick={abrirAsistenteDelMes}>
-                        <Icon name="sparkles" size={18} /> Planificar mes
-                      </button>
+                      {/* «Preparar el mes»: el asistente del mes, el MISMO botón que el de la barra del calendario (por eso
+                          en esa pestaña no se repite). Ya no se crea un calendario por mes. */}
+                      {pestana !== "calendario" && (
+                        <button className="btn btn-primary" onClick={abrirAsistenteDelMes}>
+                          <Icon name="sparkles" size={18} /> Preparar el mes
+                        </button>
+                      )}
                     </div>
                   </div>
 
-                  <ResumenCliente client={client} calendar={calendar} pulso={pulso} onIr={irAPestana} />
+                  <ResumenCliente client={client} calendar={calendar} pulso={pulso} onIr={irAPestana} onPrepararMes={abrirAsistenteDelMes} />
 
                   {/* Las CINCO pestañas del cliente (lib/rutas.js). Cada una es una dirección —se recarga, se comparte,
                       atrás funciona— y además una pestaña de verdad (BarraPestanas: role="tab", flechas, foco). Las
@@ -1774,6 +1829,7 @@ function Workspace({ session, ruta }) {
                 onNuevo={openNewClient}
               />
             )}
+            </BarreraErrores>
           </div>
         </main>
       </div>
@@ -1805,6 +1861,7 @@ function Workspace({ session, ruta }) {
         />
       )}
 
+      <BarreraErrores flotante llave={`${showBuscador}|${Boolean(guardarRef)}|${showSubir}|${showWizard}|${showClientModal}`}>
       <Suspense fallback={null}>
         {showBuscador && (
           <Buscador
@@ -1861,6 +1918,7 @@ function Workspace({ session, ruta }) {
           />
         )}
       </Suspense>
+      </BarreraErrores>
 
       {/* En «Crear» el director ya está en la página: el botón flotante taparía su botón de enviar. */}
       {!showChat && pestana !== "crear" && (
@@ -1875,6 +1933,7 @@ function Workspace({ session, ruta }) {
       )}
 
       {showTareas && (
+        <BarreraErrores flotante>
         <Suspense fallback={null}>
           <PanelTareas
             clients={clients}
@@ -1889,9 +1948,11 @@ function Workspace({ session, ruta }) {
             }}
           />
         </Suspense>
+        </BarreraErrores>
       )}
 
       {showChat && (
+        <BarreraErrores flotante>
         <Suspense fallback={null}>
           <ChatPanel
             client={client}
@@ -1911,6 +1972,7 @@ function Workspace({ session, ruta }) {
             }}
           />
         </Suspense>
+        </BarreraErrores>
       )}
     </div>
   );

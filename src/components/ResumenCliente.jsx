@@ -1,17 +1,21 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import Icon from "./Icon";
-import { loadClientTasks } from "../lib/db";
+import { loadClientTasks, aprobacionesDelEspacio } from "../lib/db";
 import { contarAtrasadas, fechaEnZona } from "../lib/agenda";
 import { resumenCalendario } from "../lib/resumenCliente";
+
+// «Primeros pasos»: lo que le falta al cliente para arrancar, en su chunk (no pesa en la carga inicial).
+const PrimerosPasos = lazy(() => import("./PrimerosPasos"));
 
 // ============================================================
 // Lo que hay que atender en este cliente, en una fila
 //
 // Por aprobar, con cambios pedidos, a medias y tareas atrasadas del mes
-// abierto. Cada cifra lleva a donde se resuelve.
+// abierto. Cada cifra lleva a donde se resuelve. Debajo, «Primeros pasos»
+// mientras al cliente le falte algo para arrancar.
 // ============================================================
 
-export default function ResumenCliente({ client, calendar, pulso = 0, onIr }) {
+export default function ResumenCliente({ client, calendar, pulso = 0, onIr, onPrepararMes }) {
   const [atrasadas, setAtrasadas] = useState(0);
   const clientId = client?.dbId || client?.id;
 
@@ -23,7 +27,11 @@ export default function ResumenCliente({ client, calendar, pulso = 0, onIr }) {
     return () => { vivo = false; };
   }, [clientId, pulso]);
 
-  const r = resumenCalendario(calendar);
+  // Lo que respondió el cliente de verdad (approvals): el `status` del mes en el estado no lo sabe hasta abrirlo.
+  const [respuestas, setRespuestas] = useState(null);
+  useEffect(() => { aprobacionesDelEspacio().then(setRespuestas).catch(() => {}); }, [pulso]);
+
+  const r = resumenCalendario(calendar, respuestas);
   const cifras = [
     { clave: "aprobar", n: r.porAprobar, texto: "por aprobar", icono: "clock", ir: "calendario" },
     { clave: "cambios", n: r.conCambios, texto: "con cambios pedidos", icono: "alert", ir: "calendario", tono: "aviso" },
@@ -32,6 +40,7 @@ export default function ResumenCliente({ client, calendar, pulso = 0, onIr }) {
   ];
 
   return (
+    <>
     <ul className="resumen-cliente" aria-label={calendar ? "Resumen del mes abierto" : "Resumen del cliente"}>
       {calendar && (
         <li className="resumen-cliente-total">
@@ -50,5 +59,7 @@ export default function ResumenCliente({ client, calendar, pulso = 0, onIr }) {
         <li className="resumen-cliente-ok"><Icon name="check" size={14} /> Todo al día</li>
       )}
     </ul>
+    <Suspense fallback={null}><PrimerosPasos key={clientId} client={client} pulso={pulso} onIr={onIr} onPrepararMes={onPrepararMes} /></Suspense>
+    </>
   );
 }

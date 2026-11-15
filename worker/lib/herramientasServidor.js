@@ -37,6 +37,7 @@
 import { fechaEnZona, sumarDias } from "../../src/lib/agenda.js";
 import { vaAPauta, describirPauta, limpiarAnuncio } from "../../src/lib/pauta.js";
 import { limpiarEnPauta, lineaEnPauta, clavePublicacion } from "../../src/lib/enPauta.js";
+import { diasConRespuestas } from "../../src/lib/aprobacion.js";
 import { buscar as buscarCerebro, leerNota } from "./cerebro/cerebro.js";
 import { pack } from "./cerebro/memoria.js";
 import { lineaDeIdea, ideaDeFila as publicaIdea } from "../../src/lib/bancoIdeas.js";
@@ -230,8 +231,11 @@ export function crearEjecutor({ env, acceso, clienteActual = null, estudio = nul
           return `${c.name} no tiene calendario de ${mes}. Tiene: ${hay}.`;
         }
       }
-      const dias = JSON_SEGURO(cal.days, []) ?? [];
+      // Con lo que respondió el cliente de verdad (approvals): el `status` guardado en el mes no lo sabe hasta que alguien
+      // abre ese mes en la aplicación, y así Claude decía «no hay nada aprobado».
+      const dias = diasConRespuestas(JSON_SEGURO(cal.days, []) ?? [], await acceso.leer("approvals", { calendar_id: cal.id }).catch(() => []));
       const recorta = (t, n) => (t && t.length > n ? `${t.slice(0, n)}…` : t || "");
+      const estadoDe = (p) => ({ approved: p.aprobadaComo === "idea" ? "approved (la IDEA: falta producirla)" : "approved", rejected: "rejected (pidió cambios)" }[p.status] ?? p.status ?? "pending");
       // Lo que corre de verdad en su Ads Manager (worker/lib/enPauta.js, lo de la última revisión 3Q): sólo D1.
       const pauta = limpiarEnPauta((await acceso.leerColumnas("anuncios_clientes", ["en_pauta"], { client_id: c.id }, "created_at asc", 1).catch(() => []))[0]?.en_pauta);
       const enPautaDe = (p) => {
@@ -242,7 +246,8 @@ export function crearEjecutor({ env, acceso, clienteActual = null, estudio = nul
       for (const d of dias) {
         for (const p of d.posts ?? []) {
           lineas.push([
-            `${d.date} · ID ${p.id} · ${p.format}${p.category ? ` · ${p.category}` : ""}${p.publishTime ? ` · ${p.publishTime}` : ""} · ${p.status ?? "pending"}${vaAPauta(p) ? ` · VA A PAUTA (${describirPauta(p.pauta)}; su descripción ES el texto del anuncio${limpiarAnuncio(p.anuncio)?.textos.length ? `, con ${limpiarAnuncio(p.anuncio).textos.length} textos de anuncio aparte` : ", sin sus textos de anuncio aparte"})` : ""}${enPautaDe(p)}`,
+            `${d.date} · ID ${p.id} · ${p.format}${p.category ? ` · ${p.category}` : ""}${p.publishTime ? ` · ${p.publishTime}` : ""} · ${estadoDe(p)}${vaAPauta(p) ? ` · VA A PAUTA (${describirPauta(p.pauta)}; su descripción ES el texto del anuncio${limpiarAnuncio(p.anuncio)?.textos.length ? `, con ${limpiarAnuncio(p.anuncio).textos.length} textos de anuncio aparte` : ", sin sus textos de anuncio aparte"})` : ""}${enPautaDe(p)}`,
+            p.cambiosPedidos ? `  El cliente pidió: «${recorta(p.cambiosPedidos, 300)}»` : "",
             p.idea ? `  Idea: ${recorta(p.idea, 300)}` : "",
             (p.descripcion || p.script) ? `  Descripción: ${recorta(p.descripcion || p.script, 600)}` : "",
             p.guion ? `  Guion: ${recorta(p.guion, 600)}` : "",

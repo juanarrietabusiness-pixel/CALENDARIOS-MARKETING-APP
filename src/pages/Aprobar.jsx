@@ -8,6 +8,7 @@ import { mediosDe, textoPara, primerComentario, historiasDe } from "../lib/publi
 import { normalizarColor, textoSobre, conAlfa } from "../lib/colores";
 import { fechaEnZona } from "../lib/agenda";
 import { cuadriculaDelMes } from "../lib/vistaMes";
+import { reducida } from "../lib/reducida";
 
 // ============================================================
 // La página que ve el cliente final
@@ -176,7 +177,7 @@ export default function Aprobar() {
         }).catch(() => null);
         if (r?.comentario) setComentarios((c) => [...c, r.comentario]);
       }
-      setAviso(estado === "aprobado" ? "Aprobada. ¡Gracias!" : "Enviamos tu pedido de cambio a la agencia.");
+      setAviso(estado === "aprobado" ? "Aprobada y guardada. ¡Gracias!" : "Guardado: tu agencia ya tiene tu pedido de cambio.");
       return true;
     } catch (e) {
       setFallo(`No se pudo guardar tu respuesta (${e.message}). Revisa tu conexión e inténtalo otra vez.`);
@@ -221,12 +222,24 @@ export default function Aprobar() {
     }
   };
 
+  // «Aprobar todas» en UNA petición: se guardan todas o ninguna (antes iba una por una y decía «Aprobamos todas»
+  // aunque fallara una a la mitad).
+  const [aprobandoTodo, setAprobandoTodo] = useState(false);
   const aprobarTodo = async () => {
     setConfirmarTodo(false);
-    for (const p of porRevisar) {
-      if (!(await responder(p.id, "aprobado"))) break;
+    setFallo("");
+    const ids = porRevisar.map((p) => p.id);
+    setAprobandoTodo(true);
+    try {
+      await publico(`/${encodeURIComponent(token)}/aprobaciones`, { method: "POST", body: JSON.stringify({ postIds: ids, revisor }) });
+      const t = new Date().toISOString();
+      setApprovals((a) => ({ ...a, ...Object.fromEntries(ids.map((id) => [id, { estado: "aprobado", comentario: "", revisor, timestamp: t }])) }));
+      setAviso(ids.length === 1 ? "Aprobada y guardada. ¡Gracias!" : `Aprobamos y guardamos las ${ids.length} que faltaban. ¡Gracias!`);
+    } catch (e) {
+      setFallo(`No se pudo aprobar todo (${e.message}). No se guardó ninguna: revisa tu conexión e inténtalo otra vez.`);
+    } finally {
+      setAprobandoTodo(false);
     }
-    setAviso("Aprobamos todas las publicaciones que faltaban.");
   };
 
   const enviarRevision = async () => {
@@ -294,6 +307,7 @@ export default function Aprobar() {
           >
             <h2>¡Hola! Antes de empezar</h2>
             <p>Así tu agencia sabe quién aprobó cada publicación.</p>
+            <p className="aprobar-meta">Cada vez que apruebes o pidas un cambio, se guarda al momento: puedes dejarlo y seguir otro día.</p>
             <label htmlFor="aprobar-nombre" className="label">Tu nombre</label>
             <input
               id="aprobar-nombre"
@@ -423,20 +437,20 @@ export default function Aprobar() {
         {confirmarTodo ? (
           <div className="aprobar-confirmar" role="group" aria-label="Confirmar aprobar todas">
             <span>¿Aprobar las {porRevisar.length} que faltan?</span>
-            <button type="button" className="btn aprobar-btn-ok" onClick={aprobarTodo}>Sí, aprobar</button>
+            <button type="button" className="btn aprobar-btn-ok" onClick={aprobarTodo} disabled={aprobandoTodo}>Sí, aprobar</button>
             <button type="button" className="btn btn-secondary" onClick={() => setConfirmarTodo(false)}>Cancelar</button>
           </div>
         ) : confirmarEnvio ? (
           <div className="aprobar-confirmar" role="group" aria-label="Confirmar envío de la revisión">
-            <span>Te quedan {porRevisar.length} sin revisar. ¿Enviar igual?</span>
+            <span>Te quedan {porRevisar.length} sin revisar. Lo que ya respondiste está guardado. ¿Avisar igual a tu agencia de que terminaste?</span>
             <button type="button" className="btn aprobar-btn-marca" onClick={enviarRevision}>Enviar</button>
             <button type="button" className="btn btn-secondary" onClick={() => setConfirmarEnvio(false)}>Seguir revisando</button>
           </div>
         ) : (
           <div className="aprobar-acciones-fijas">
             {porRevisar.length > 1 && (
-              <button type="button" className="btn btn-secondary" onClick={() => setConfirmarTodo(true)}>
-                Aprobar todas
+              <button type="button" className="btn btn-secondary" onClick={() => setConfirmarTodo(true)} disabled={aprobandoTodo}>
+                {aprobandoTodo ? "Aprobando…" : "Aprobar todas"}
               </button>
             )}
             <button
@@ -446,6 +460,7 @@ export default function Aprobar() {
             >
               <Icon name="send" size={18} /> Enviar mi revisión
             </button>
+            <p className="aprobar-meta aprobar-ayuda-envio">Cada respuesta ya se guarda al tocarla. «Enviar mi revisión» sólo le avisa a tu agencia de que terminaste.</p>
           </div>
         )}
       </div>
@@ -869,7 +884,7 @@ function MesCalendario({ calendar, estados, token, onElegir }) {
                 return (
                   <button key={p.id} type="button" className="aprobar-mes-post" data-estado={estados[p.id]}
                     onClick={() => onElegir(p.id)} aria-label={`${fechaCorta(f)}, ${FORMATS[p.format]?.label ?? "publicación"}: ${ETIQUETA_ESTADO[estados[p.id]]}`}>
-                    {m?.tipo === "imagen" ? <img src={srcPublico(m.src, token)} alt="" loading="lazy" /> : <Icon name={FORMAT_ICONS[p.format] || "formatPost"} size={16} />}
+                    {m?.tipo === "imagen" ? <img src={srcPublico(reducida(m.src), token)} alt="" loading="lazy" /> : <Icon name={FORMAT_ICONS[p.format] || "formatPost"} size={16} />}
                   </button>
                 );
               })}

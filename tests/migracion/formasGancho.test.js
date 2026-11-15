@@ -157,12 +157,14 @@ describe("qué formas de gancho le rinden a este cliente", () => {
   }
   const casillas = Array.from({ length: 6 }, (_, i) => ({ clave: `c${i}`, fecha: `2030-03-0${i + 1}`, formato: "post", pilar: "educativo", nivel: "problema" }));
   const formasDelPedido = (t) => [...t.matchAll(/forma del gancho: «([^»]+)»/g)].map((m) => m[1]);
+  // De dos en dos: las formas de la tanda, juntando todas las llamadas (en orden).
+  const formasDeLaTanda = () => peticiones.flatMap((p) => formasDelPedido(textoDe(p)));
 
   it("con muestra: «Mito» (no le rinde) no sale y «Lista» (sí) va en una de cada dos", async () => {
     sembrarResultados();
     anthropic(JSON.stringify({ ideas: [] }));
     await lote({ modo: "plan", casillas });
-    const formas = formasDelPedido(textoDe(peticiones[0]));
+    const formas = formasDeLaTanda();
     expect(formas).toHaveLength(6);
     expect(formas).not.toContain("Mito o creencia falsa");
     expect(formas.filter((f) => f === "Lista con número").length).toBeGreaterThanOrEqual(3);
@@ -171,7 +173,7 @@ describe("qué formas de gancho le rinden a este cliente", () => {
   it("sin muestra (las publicaciones de antes no tienen forma), nada se aprende: cada pieza con su forma y sin repetir la vecina", async () => {
     anthropic(JSON.stringify({ ideas: [] }));
     await lote({ modo: "plan", casillas });
-    const formas = formasDelPedido(textoDe(peticiones[0]));
+    const formas = formasDeLaTanda();
     expect(formas).toHaveLength(6);
     for (let i = 1; i < formas.length; i++) expect(formas[i]).not.toBe(formas[i - 1]);
   });

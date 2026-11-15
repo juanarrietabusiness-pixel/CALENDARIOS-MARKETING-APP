@@ -44,6 +44,8 @@ export function clientToRow(client) {
     github_repo: client.githubRepo || "",
     revision_interna: client.revisionInterna ? 1 : 0,
     programar_al_aprobar: client.programarAlAprobar ? 1 : 0,
+    // ¿Aprueba antes de publicar? Sí por defecto (0081): sólo un «no» explícito lo apaga.
+    aprueba_antes: client.apruebaAntes === false ? 0 : 1,
     github_folder: client.githubFolder || "",
     github_context: client.githubContext || "",
     drive_folder: client.driveFolder || "",
@@ -90,6 +92,7 @@ export function rowToClient(row) {
     githubRepo: row.github_repo,
     revisionInterna: row.revision_interna === 1 || row.revision_interna === true,
     programarAlAprobar: row.programar_al_aprobar === 1 || row.programar_al_aprobar === true,
+    apruebaAntes: row.aprueba_antes !== 0 && row.aprueba_antes !== false,
     githubFolder: row.github_folder,
     githubContext: row.github_context,
     driveFolder: row.drive_folder || "",
@@ -163,5 +166,7 @@ export function rowToCalendar(row) {
     opciones: row.opciones || {},
     revisionEnviada: row.revision_enviada || null,
     revisionRevisor: row.revision_revisor || "",
+    // Cuándo abrió el cliente su enlace (lo apunta el enlace público; «Enviar a cliente» lo enseña).
+    clienteAbrioAt: row.cliente_abrio_at || null,
   };
 }

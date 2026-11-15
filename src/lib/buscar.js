@@ -31,7 +31,7 @@ export function buscarEnEspacio({ clients = [], client = null, texto = "", meses
     ] : []),
     { clave: "subir", titulo: "Subir contenido: publicar o programar", icono: "upload", accion: { tipo: "subir" } },
     { clave: "asistente", titulo: "Abrir el asistente", icono: "messageCircle", accion: { tipo: "asistente" } },
-    ...(client ? [{ clave: "nuevo-cal", titulo: `Nuevo calendario de ${client.name}`, icono: "plus", accion: { tipo: "nuevo-calendario" } }] : []),
+    ...(client ? [{ clave: "nuevo-cal", titulo: `Preparar el mes de ${client.name} (nuevo calendario, planificar, producir)`, icono: "plus", accion: { tipo: "nuevo-calendario" } }] : []),
     { clave: "nuevo-cliente", titulo: "Nuevo cliente", icono: "building", accion: { tipo: "nuevo-cliente" } },
     { clave: "ajustes", titulo: "Ajustes: IA, presupuesto e integraciones", icono: "settings", accion: { tipo: "ruta", ruta: "/ajustes" } },
     { clave: "equipo", titulo: "Equipo", icono: "users", accion: { tipo: "ruta", ruta: "/equipo" } },

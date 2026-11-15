@@ -469,7 +469,7 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
               placeholder={"Titular corto\nFrase de apoyo\nPrecio (si va)"} />
             <p id={`${ids}-pieza-ayuda`} className="hint" style={{ margin: 0 }}>
               {llevaTextoPieza(form.format)
-                ? "Lo que va escrito sobre la imagen. «Diseñar con el director» y «Producir el mes» lo ponen tal cual."
+                ? "Lo que va escrito sobre la imagen. «Diseñar con el director» y «Preparar el mes» lo ponen tal cual."
                 : "Este formato no lleva texto en la pieza (el video va limpio): se conserva lo que ya estaba escrito."}
             </p>
           </div>

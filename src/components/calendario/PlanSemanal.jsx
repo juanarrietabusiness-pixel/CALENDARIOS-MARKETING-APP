@@ -91,7 +91,7 @@ export function EditorSemana({ client, diaInicial = null, onGuardar, onListo = (
   return (
     <div className="editor-semana">
       <p className="hint" style={{ margin: "0 0 var(--sp-3)" }}>
-        Qué sale cada día, a qué hora y con qué tema, fijo todos los meses. Lo usan el asistente del mes, el lote del Estudio
+        Qué sale cada día, a qué hora y con qué tema, fijo todos los meses. Lo usan «Preparar el mes», «Muchas piezas de una vez»
         y la IA; lo que ya está en el calendario no cambia. La nota fija de cada día es el tema que se repite (si nombra un
         producto, ese día va con él).{!conPlan.current && dias ? " Esta empresa todavía no tiene formatos fijos: escoge el de cada día." : ""}
       </p>

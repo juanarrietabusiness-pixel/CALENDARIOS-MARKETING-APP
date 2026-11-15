@@ -39,7 +39,7 @@ const esVideoArchivo = (f) => f?.type?.startsWith("video/");
  *                       pone los suyos («Diseñar con el director», «Subir archivo», «De la galería» y «Más formas»).
  * @param abrirBancoRef  un ref donde se deja la función que abre «De Drive» / «Del banco» (para un botón de fuera).
  */
-export function EditorMedios({ post, clientId, client = null, driveFolder, onChange, onError, entradaRef = null, onPortada = null, onCrearConIA = null, onCrearCarrusel = null, onCrearReel = null, onVideoProducto = null, onVideoAnimado = null, onDeLaGaleria = null, onOtraVersion = null, onRecrear = null, onCrearAqui = null, onCorregir = null, onVerEnEstudio = null, versionando = null, botones = undefined, abrirBancoRef = null }) {
+export function EditorMedios({ post, clientId, client = null, driveFolder, onChange, onError, entradaRef = null, onPortada = null, onCrearConIA = null, onCrearCarrusel = null, onCrearReel = null, onVideoProducto = null, onVideoAnimado = null, onDeLaGaleria = null, onOtraVersion = null, onRecrear = null, onCrearAqui = null, onCorregir = null, onVerEnEstudio = null, versionando = null, botones = undefined, abrirBancoRef = null, debajo = null }) {
   const ids = useId();
   const [eligiendoPortada, setEligiendoPortada] = useState(null);
   const propia = useRef(null);
@@ -256,10 +256,10 @@ export function EditorMedios({ post, clientId, client = null, driveFolder, onCha
                     <Icon name="sparkles" size={14} /> {versionando === m.src ? "Creando…" : "Otra versión"}
                   </button>
                 )}
-                {/* La MISMA imagen con sólo lo que se pide en «¿Qué quieres?» (seccionPublicar). */}
+                {/* La MISMA imagen con sólo lo que se pide: su campo se abre justo debajo (seccionPublicar). */}
                 {m.tipo === "imagen" && onCorregir && (
                   <button type="button" className="editor-medios-portada-btn" disabled={Boolean(versionando)} onClick={() => onCorregir(m)}
-                    title="Corregir: edita esta misma imagen con lo que escribas en «¿Qué quieres?»; el resto se conserva y vuelve a este sitio">
+                    title="Corregir: edita esta misma imagen con lo que escribas; el resto se conserva y vuelve a este sitio">
                     <Icon name="pencil" size={13} /> Corregir
                   </button>
                 )}
@@ -300,6 +300,8 @@ export function EditorMedios({ post, clientId, client = null, driveFolder, onCha
           )}
         </ol>
       )}
+      {/* Lo que se abre junto a las imágenes (la pestaña Pieza: «Corregir» con su campo, en su sitio). */}
+      {debajo}
       {eligiendoPortada !== null && medios[eligiendoPortada]?.tipo === "video" && (
         <PortadaVideo
           id={`${ids}-portada`}

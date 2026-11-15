@@ -19,7 +19,9 @@
 import { crearEjecutor } from "./herramientasServidor.js";
 import { difundir } from "./vivo.js";
 import { uuid, ahora } from "./ids.js";
-import { programar, programarLote, cancelarPendientes, resincronizarCalendario, filaPublica, filaConResumen, ErrorPublicar } from "./publicador.js";
+import { programarLote, cancelarPendientes, resincronizarCalendario, filaPublica, filaConResumen, ErrorPublicar } from "./publicador.js";
+import { prepararYProgramar, crearLoteProgramar, avanzarMientras, lotePublico } from "./programarServidor.js";
+import { diasConRespuestas } from "../../src/lib/aprobacion.js";
 import { normalizarHora } from "../../src/lib/horas.js";
 import { limpiarPauta, vaAPauta, describirPauta, limpiarAnuncio } from "../../src/lib/pauta.js";
 import { formaDe } from "../../src/lib/formasGancho.js";
@@ -40,6 +42,7 @@ import { DEFINICION_KIT, crearHerramientaKit } from "./kitDescargable.js";
 import { DEFINICIONES_CEREBRO, crearHerramientasCerebro, ErrorCerebro } from "./cerebro/herramientasCerebro.js";
 import { DEFINICIONES_CAMPANAS, crearHerramientasCampanas, ErrorCampanas } from "./herramientasCampanas.js";
 import { DEFINICIONES_TEXTOS, crearHerramientasTextos, ErrorTextos, avisosAlGuardar } from "./herramientasTextos.js";
+import { DEFINICIONES_EQUIPO, crearHerramientasEquipo, ErrorEquipo } from "./herramientasEquipo.js";
 
 const FORMATOS = ["post", "reel", "carrusel", "historia", "live"];
 const REDES = ["instagram", "facebook", "tiktok", "youtube"];
@@ -120,8 +123,8 @@ export const HERRAMIENTAS_MCP = Object.freeze([
   },
   { name: "mover_publicacion", description: "Cambia una publicación de día, también a otro mes. Si estaba programada, la cola se mueve con ella; lo publicado no se mueve.", inputSchema: { type: "object", properties: { ...pubParam, fecha: { type: "string", description: "AAAA-MM-DD" } }, required: ["publicacion_id", "fecha"] }, annotations: escribe() },
   { name: "eliminar_publicacion", description: "Borra una publicación del calendario. No se puede deshacer.", inputSchema: { type: "object", properties: { ...pubParam }, required: ["publicacion_id"] }, annotations: escribe(true) },
-  { name: "programar_publicacion", description: "Pone una publicación en la cola para que salga sola a su día y hora en sus redes (y su historia, si la tiene). Las imágenes que Instagram no acepte tal cual hay que prepararlas desde la aplicación.", inputSchema: { type: "object", properties: { ...pubParam, redes: { type: "array", items: { type: "string", enum: REDES } } }, required: ["publicacion_id"] }, annotations: escribe() },
-  { name: "programar_lo_aprobado", description: "Programa de una vez todo lo que el cliente aprobó en un mes y aún no está en la cola. Devuelve lo que no se pudo y por qué.", inputSchema: { type: "object", properties: { ...clienteParam, mes: { type: "string", description: "AAAA-MM. Si se omite, el más reciente." } }, required: ["cliente"] }, annotations: escribe() },
+  { name: "programar_publicacion", description: "Pone una publicación en la cola para que salga sola a su día y hora en sus redes (y su historia, si la tiene). Antes prepara sus imágenes en el servidor como la aplicación (JPEG, las copias 4:5 / 9:16 y la de TikTok): las piezas del Estudio también salen.", inputSchema: { type: "object", properties: { ...pubParam, redes: { type: "array", items: { type: "string", enum: REDES } } }, required: ["publicacion_id"] }, annotations: escribe() },
+  { name: "programar_lo_aprobado", description: "Programa de una vez todo lo que el cliente aprobó en un mes y aún no está en la cola (con lo que respondió de verdad por su enlace; si el cliente no aprueba antes de publicar, lo que ya tiene su pieza). Prepara las imágenes en el servidor como la aplicación; lo que no quepa en esta respuesta sigue solo. Devuelve lo que no se pudo y por qué.", inputSchema: { type: "object", properties: { ...clienteParam, mes: { type: "string", description: "AAAA-MM. Si se omite, el más reciente." } }, required: ["cliente"] }, annotations: escribe() },
   { name: "cancelar_programacion", description: "Saca de la cola lo que aún no salió de una publicación.", inputSchema: { type: "object", properties: { ...pubParam }, required: ["publicacion_id"] }, annotations: escribe(true) },
   { name: "crear_tarea", description: "Crea una tarea para un cliente (o una tarea rápida sin cliente).", inputSchema: { type: "object", properties: { ...clienteParam, titulo: { type: "string" }, fecha_limite: { type: "string", description: "AAAA-MM-DD" }, para_hoy: { type: "boolean" } }, required: ["titulo"] }, annotations: escribe() },
   { name: "completar_tarea", description: "Marca una tarea como hecha. El id sale de ver_tareas.", inputSchema: { type: "object", properties: { tarea_id: { type: "string" } }, required: ["tarea_id"] }, annotations: escribe() },
@@ -152,6 +155,8 @@ export const HERRAMIENTAS_MCP = Object.freeze([
   ...DEFINICIONES_CAMPANAS,
   // Los TEXTOS y el MES por el motor de la agencia (worker/lib/herramientasTextos.js): escribir, la ficha del método, el plan, la estrategia y la revisión.
   ...DEFINICIONES_TEXTOS,
+  // Lo del EQUIPO (worker/lib/herramientasEquipo.js): el enlace y el mensaje para el cliente, la campana, la Bandeja y los informes.
+  ...DEFINICIONES_EQUIPO,
   // Las que sólo llama la VISTA PREVIA del chat (MCP Apps: `visibility: ["app"]`, ver rutas/mcp.js).
   ...DEFINICIONES_VISTA,
 ]);
@@ -174,7 +179,7 @@ export function diasFijos(valor) {
   return Array.isArray(v) ? [...new Set(v.map(Number).filter((n) => Number.isInteger(n) && n >= 1 && n <= 6))].sort((a, b) => a - b) : [];
 }
 
-export function crearHerramientasMCP({ env, acceso, usuario }) {
+export function crearHerramientasMCP({ env, acceso, usuario, origen = "" }) {
   const consultas = crearEjecutor({ env, acceso });
   const por = { userId: usuario.id, nombre: `Claude (${usuario.nombre})`, color: "#D97757", tab: null };
   let clientes = null;
@@ -369,9 +374,15 @@ export function crearHerramientasMCP({ env, acceso, usuario }) {
     async programar_publicacion({ publicacion_id: id, redes }) {
       const { cal, post, dia } = await buscar(id);
       try {
-        const filas = await programar(env, acceso, { calendarId: cal.id, postId: id, redes: Array.isArray(redes) ? redes : null, usuarioId: usuario.id });
+        // Como la aplicación: el Container la prepara antes (JPEG, las copias 4:5 / 9:16 y la de TikTok). Sin él, las
+        // piezas del Estudio (PNG) no podían salir en Instagram y había que ir al panel.
+        const r = await prepararYProgramar(env, acceso, { calendarId: cal.id, postId: id, redes: Array.isArray(redes) ? redes : null, usuarioId: usuario.id });
         difundir(env, acceso.ownerId, { tipo: "publicacion", calId: cal.id, postId: id, por });
-        return `Programada ${describir(post, dia.date)}:\n${filas.map(filaPublica).map((f) => `· ${f.red}${f.variante === "historia" ? " (historia)" : ""}: ${fechaHora(f.programadaPara)}`).join("\n")}`;
+        return [
+          `Programada ${describir(post, dia.date)}:`,
+          ...r.filas.map(filaPublica).map((f) => `· ${f.red}${f.variante === "historia" ? " (historia)" : ""}: ${fechaHora(f.programadaPara)}`),
+          r.preparada ? "Sus imágenes se prepararon para las redes (JPEG y las copias que hacían falta)." : "",
+        ].filter(Boolean).join("\n");
       } catch (e) {
         if (e instanceof ErrorPublicar) throw new ErrorHerramienta(e.message);
         throw e;
@@ -381,15 +392,38 @@ export function crearHerramientasMCP({ env, acceso, usuario }) {
     async programar_lo_aprobado({ cliente, mes }) {
       const c = await resolverCliente(cliente);
       const cal = await calendarioDe(c, mes);
-      const cola = (await acceso.leer("publicaciones_programadas", { calendar_id: cal.id })).map(filaPublica);
-      const candidatas = aprobadasSinProgramar(leerJSON(cal.days, []), cola);
-      if (!candidatas.length) return "No hay nada aprobado pendiente de programar en ese calendario.";
-      const { nuevas, fallidas } = await programarLote(env, acceso, { calendarId: cal.id, postIds: candidatas.map((x) => x.post.id), usuarioId: usuario.id });
-      if (nuevas.length) difundir(env, acceso.ownerId, { tipo: "publicacion", calId: cal.id, por });
-      const titulo = (pid) => candidatas.find((x) => x.post.id === pid)?.post;
+      const [filasCola, respuestas] = await Promise.all([
+        acceso.leer("publicaciones_programadas", { calendar_id: cal.id }),
+        acceso.leer("approvals", { calendar_id: cal.id }),
+      ]);
+      // Con lo que respondió el cliente de verdad (approvals): el `status` del mes no lo sabe hasta abrirlo. Un cliente
+      // que no aprueba antes de publicar (`aprueba_antes` = 0): lo que tiene su pieza y no tiene cambios pedidos.
+      const sinAprobar = c.aprueba_antes === 0;
+      const candidatas = aprobadasSinProgramar(diasConRespuestas(leerJSON(cal.days, []), respuestas), filasCola.map(filaPublica), undefined, { sinAprobar });
+      if (!candidatas.length) return sinAprobar ? "No hay nada listo (con su pieza) pendiente de programar en ese calendario." : "No hay nada aprobado pendiente de programar en ese calendario.";
+      const titulo = (pid) => { const p = candidatas.find((x) => x.post.id === pid)?.post; return p?.title || p?.idea || pid; };
+      const ids = candidatas.map((x) => x.post.id);
+      // Sin Container no hay nada que preparar en el servidor: se programa lo que ya puede salir, como antes.
+      if (!env.VIDEO) {
+        const { nuevas, fallidas } = await programarLote(env, acceso, { calendarId: cal.id, postIds: ids, usuarioId: usuario.id });
+        if (nuevas.length) difundir(env, acceso.ownerId, { tipo: "publicacion", calId: cal.id, por });
+        return [
+          `Programadas ${nuevas.length} piezas de ${candidatas.length} publicaciones.`,
+          ...fallidas.map((f) => `· No se pudo «${titulo(f.postId)}»: ${f.motivo}`),
+        ].join("\n");
+      }
+      // Con Container, como la aplicación: un lote del servidor que prepara cada una y la programa. Se avanza aquí lo que
+      // quepa en unos segundos y lo demás sigue solo (la bomba del espacio), aunque se cierre el chat.
+      const creado = await crearLoteProgramar(env, acceso, { calendarId: cal.id, postIds: ids, usuarioId: usuario.id, origen: "claude" });
+      if (!creado) return "Esas publicaciones ya se están programando en otro lote: mira ver_cola en unos minutos.";
+      const fila = await avanzarMientras(env, acceso, creado.id, 20_000);
+      const l = lotePublico(fila);
+      const fallidas = l?.fallidas ?? [];
       return [
-        `Programadas ${nuevas.length} piezas de ${candidatas.length} publicaciones aprobadas.`,
-        ...fallidas.map((f) => `· No se pudo «${titulo(f.postId)?.title || titulo(f.postId)?.idea || f.postId}»: ${f.motivo}`),
+        l?.estado === "en_marcha"
+          ? `Programadas ${l.hechas} de ${l.total} publicaciones; las otras ${l.pendientes} se están preparando y programando en el servidor (siguen solas aunque cierres el chat; mira ver_cola en unos minutos). Si alguna no entra, le llega el motivo a ${usuario.nombre || "quien lo pidió"} en la campana.`
+          : `Programadas ${l?.hechas ?? 0} de ${l?.total ?? candidatas.length} publicaciones (${l?.programadas ?? 0} piezas en la cola), con sus imágenes preparadas para cada red.`,
+        ...fallidas.map((f) => `· No se pudo «${titulo(f.postId)}»: ${f.motivo}`),
       ].join("\n");
     },
 
@@ -464,7 +498,7 @@ export function crearHerramientasMCP({ env, acceso, usuario }) {
       return { content: [{ type: "text", text: `Herramienta desconocida: ${nombre}` }], isError: true };
     } catch (e) {
       const delPedido = e instanceof ErrorHerramienta || e instanceof ErrorHerramientaEstudio || e instanceof ErrorDiseno || e instanceof ErrorReceta || e instanceof ErrorVista || e instanceof ErrorHerramientaLoMejor || e instanceof ErrorExportar || e instanceof ErrorSubida
-        || e instanceof ErrorCerebro || e instanceof ErrorCampanas || e instanceof ErrorTextos;
+        || e instanceof ErrorCerebro || e instanceof ErrorCampanas || e instanceof ErrorTextos || e instanceof ErrorEquipo;
       if (!delPedido) console.error("mcp:", nombre, e);
       return { content: [{ type: "text", text: delPedido ? e.message : `No se pudo: ${e?.message ?? e}` }], isError: true };
     }
@@ -483,6 +517,7 @@ export function crearHerramientasMCP({ env, acceso, usuario }) {
   Object.assign(acciones, crearHerramientasCerebro({ env, acceso, resolverCliente, usuario, por }));
   Object.assign(acciones, crearHerramientasCampanas({ env, acceso, resolverCliente, usuario, por, buscarPublicacion: buscar }));
   Object.assign(acciones, crearHerramientasTextos({ env, acceso, resolverCliente, usuario, por, buscarPublicacion: buscar }));
+  Object.assign(acciones, crearHerramientasEquipo({ env, acceso, resolverCliente, usuario, origen }));
 
   return { llamar };
 }

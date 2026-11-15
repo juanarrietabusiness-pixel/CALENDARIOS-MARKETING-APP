@@ -679,7 +679,10 @@ describe("subir a mano, carpetas y papelera", () => {
     const ahora = new Date().toISOString();
     for (let i = 0; i < 305; i++) insertar.run(`n${i}`, JEFE, `clientes/c1/estudio/n${i}.png`, ahora, ahora);
     const g = await galeria(JEFE, "c1");
-    expect(g.archivos).toHaveLength(300);
+    // Las 305 comparten el MISMO instante: la página no corta entre ellas (la siguiente empieza antes de ese instante y
+    // se saltaría las 5 de más), así que van todas en la primera (tests/migracion/galeria.paginas.test.js).
+    expect(g.archivos).toHaveLength(305);
+    expect(g.siguiente).toBeNull();
     expect(g.papelera.map((x) => x.id)).toEqual([vieja.id]);
   });
 

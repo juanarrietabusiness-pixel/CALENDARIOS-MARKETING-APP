@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   calendarioPorTestigo, perteneceAlCalendario,
-  enviarAprobacion, actualizarContenido, mediaPermitida,
+  enviarAprobacion, enviarAprobaciones, actualizarContenido, mediaPermitida, abrirToca, MAX_APROBAR_DE_UNA_VEZ,
 } from "../../worker/lib/publico.js";
 
 const TESTIGO = "a".repeat(48);
@@ -195,6 +195,8 @@ describe("enviarAprobacion", () => {
       tipo: "pieza", clientId: "c1",
       // De qué publicación habla: lo que el cerebro necesita para aprender de la respuesta.
       publicacion: expect.objectContaining({ titulo: expect.any(String), formato: expect.any(String) }),
+      // Cuándo se guardó: el aviso agrupado de la campana cuenta desde ahí.
+      fecha: expect.any(String),
     });
     expect(db.escrituras).toHaveLength(1);
   });
@@ -217,6 +219,67 @@ describe("enviarAprobacion", () => {
     const db = d1Con({ calendario: CAL() });
     await enviarAprobacion(db, { token: TESTIGO, postId: "p1", estado: "aprobado" });
     expect(db.escrituras[0].sql).toContain("on conflict (calendar_id, post_id) do update");
+  });
+});
+
+describe("enviarAprobaciones: «Aprobar todas» en una petición, todas o ninguna", () => {
+  const CAL2 = () => ({
+    ...CAL(),
+    days: JSON.stringify([{ date: "2026-08-01", posts: [
+      { id: "p1", format: "post", image: "clientes/c1/posts/a.jpg", descripcion: "Uno" },
+      { id: "p2", format: "post", idea: "Una idea sin archivo" },
+    ] }]),
+  });
+
+  it("guarda una respuesta por publicación, cada una con lo que se le pedía (pieza o idea)", async () => {
+    const db = d1Con({ calendario: CAL2() });
+    const r = await enviarAprobaciones(db, { token: TESTIGO, postIds: ["p1", "p2", "p1"], revisor: "Ana" });
+    expect(r).toMatchObject({ ok: true, estado: "aprobado", calendarId: "cal1", ownerId: "dueno1", clientId: "c1", fecha: expect.any(String) });
+    expect(r.aprobadas.map((a) => [a.postId, a.tipo])).toEqual([["p1", "pieza"], ["p2", "idea"]]);
+    // Sin repetir, todas con el mismo momento y el mismo revisor, como «aprobado».
+    expect(db.escrituras).toHaveLength(2);
+    for (const e of db.escrituras) {
+      expect(e.sql).toMatch(/insert into approvals/);
+      expect(e.binds[3]).toBe("aprobado");
+      expect(e.binds[5]).toBe("Ana");
+      expect(e.binds[10]).toBe(r.fecha);
+    }
+  });
+
+  it("una sola publicación de OTRO calendario y no se guarda ninguna", async () => {
+    const db = d1Con({ calendario: CAL2() });
+    await expect(enviarAprobaciones(db, { token: TESTIGO, postIds: ["p1", "ajena"] })).rejects.toThrow(/no pertenece/);
+    expect(db.escrituras).toHaveLength(0);
+  });
+
+  it("sin publicaciones, con ids raros o demasiadas: inválido, sin tocar la base", async () => {
+    const db = d1Con({ calendario: CAL2() });
+    await expect(enviarAprobaciones(db, { token: TESTIGO, postIds: [] })).rejects.toThrow(/inválid/);
+    await expect(enviarAprobaciones(db, { token: TESTIGO, postIds: [42] })).rejects.toThrow(/inválid/);
+    await expect(enviarAprobaciones(db, { token: TESTIGO, postIds: Array.from({ length: MAX_APROBAR_DE_UNA_VEZ + 1 }, (_, i) => `p${i}`) })).rejects.toThrow(/inválid/);
+    await expect(enviarAprobaciones(db, { token: "corto", postIds: ["p1"] })).rejects.toThrow(/inválid/);
+    expect(db.escrituras).toHaveLength(0);
+  });
+});
+
+describe("cuándo abrió el cliente su enlace", () => {
+  it("se apunta la primera vez y luego como mucho una vez por hora, sin tocar updated_at", async () => {
+    const db = d1Con({ calendario: { ...CAL(), cliente_abrio_at: null } });
+    await calendarioPorTestigo(db, TESTIGO, { registrar: true });
+    expect(db.escrituras).toHaveLength(1);
+    expect(db.escrituras[0].sql).toMatch(/update calendars set cliente_abrio_at = \? where id = \?/);
+    expect(db.escrituras[0].sql).not.toMatch(/updated_at/);
+    const reciente = d1Con({ calendario: { ...CAL(), cliente_abrio_at: new Date(Date.now() - 10 * 60_000).toISOString() } });
+    await calendarioPorTestigo(reciente, TESTIGO, { registrar: true });
+    expect(reciente.escrituras).toHaveLength(0);
+    expect(abrirToca(new Date(Date.now() - 2 * 3600_000).toISOString())).toBe(true);
+  });
+
+  it("lo que abre el equipo (registrar: false) no cuenta, y la respuesta no lo enseña", async () => {
+    const db = d1Con({ calendario: { ...CAL(), cliente_abrio_at: null } });
+    const r = await calendarioPorTestigo(db, TESTIGO);
+    expect(db.escrituras).toHaveLength(0);
+    expect(JSON.stringify(r)).not.toMatch(/abrio/);
   });
 });
 

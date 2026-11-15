@@ -368,7 +368,7 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
     try {
       // Otro punto de partida en cada lote, lo que ya salió para no repetirlo y las composiciones que funcionan.
       const comun = { formato, semilla: Math.floor(Math.random() * 1000), composiciones: aprendido.orden };
-      const cuerpo = esPlan ? { ...comun, formato: "post", modo: "plan", casillas: casillasPlan, estrategia }
+      const cuerpo = esPlan ? { ...comun, formato: "post", modo: "plan", casillas: casillasPlan, estrategia, planificar: true }
         : esMes ? { ...comun, mes, dias, omitir: ocupados, estrategia }
         : alcance === "tipos" ? { ...comun, modo: "tipos", tipos }
           : esMatriz ? { ...comun, modo: "matriz", productoId: productoId || undefined, deseos: deseosElegidos, perfiles: perfilesElegidos, niveles: nivelesSel }
@@ -428,7 +428,7 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
       }
     }
     setLlevandoIdeas(false);
-    if (n) setAviso({ ok: true, texto: `${n} ${n === 1 ? "idea llevada" : "ideas llevadas"} al calendario, cada una en su día, para que el cliente las apruebe. «Qué se ve» queda en cada una: «Diseñar con el director» (pestaña Pieza) y «Producir el mes» la usan para diseñarla después.` });
+    if (n) setAviso({ ok: true, texto: `${n} ${n === 1 ? "idea llevada" : "ideas llevadas"} al calendario, cada una en su día, para que el cliente las apruebe. «Qué se ve» queda en cada una: «Diseñar con el director» (pestaña Pieza) y «Preparar el mes» la usan para diseñarla después.` });
   };
 
   const cambiarIdea = (id, campo, valor) => setIdeas((l) => l.map((x) => (x.id === id ? { ...x, [campo]: valor } : x)));
@@ -440,7 +440,7 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
     let carpetaId = null;
     try {
       const nombre = esMes && mesElegido ? carpetaDelMes(mesElegido.year, mesElegido.month) : nombreCarpetaLote(producto?.nombre ?? "");
-      const r = await api.crearCarpeta(clienteId, nombre).catch(async (e) => {
+      const r = await api.crearCarpeta(clienteId, nombre, { tipo: "auto", reusar: true }).catch(async (e) => {
         // Ya existe (otro lote del mismo mes o del mismo día): se reusa.
         const g = await api.leerEstudio(clienteId);
         const hay = (g?.carpetas ?? []).find((c) => c.nombre.toLowerCase() === nombre.toLowerCase());
@@ -522,7 +522,7 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
     onHecho?.();
     setAviso({ ok: true, texto: [
       lanzados.length
-        ? "Las piezas siguen creándose en el servidor: puedes cerrar la aplicación. Al volver, «Producir varias piezas» → «Seguir con ellas» las enseña aquí, y te llega un aviso a la campana al terminar; también salen en la galería, en su carpeta."
+        ? "Las piezas siguen creándose en el servidor: puedes cerrar la aplicación. Al volver, «Muchas piezas de una vez» → «Seguir con ellas» las enseña aquí, y te llega un aviso a la campana al terminar; también salen en la galería, en su carpeta."
         : "Listo. Están en la galería, en su carpeta.",
       grabar ? `${grabar === 1 ? "El UGC va" : `Los ${grabar} UGC van`} al calendario como idea, con su guion para grabar.` : "",
       variantes > 1 ? "Escoge una imagen de cada pieza." : "",
@@ -581,7 +581,7 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
     <div className="overlay" onClick={(e) => { if (e.target === e.currentTarget && !creando) onCerrar(); }}>
       <div ref={ref} className="dialog lote-dialogo" role="dialog" aria-modal="true" aria-labelledby={`${ids}-t`}>
         <div className="lote-cabecera">
-          <h3 id={`${ids}-t`}>Producir varias piezas</h3>
+          <h3 id={`${ids}-t`}>Muchas piezas de una vez</h3>
           <button type="button" className="btn-icon" aria-label="Cerrar" disabled={creando} onClick={onCerrar}><Icon name="close" size={18} /></button>
         </div>
         <ol className="lote-pasos" aria-label="Pasos">
@@ -665,7 +665,7 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
                       />
                     </div>
                   ))}
-                  <p className="hint">{total} en total. Los productos, niveles, deseos, perfiles y las 7 maletas rotan como en «Planificar mes».</p>
+                  <p className="hint">{total} en total. Los productos, niveles, deseos, perfiles y las 7 maletas rotan como en «Preparar el mes».</p>
                 </fieldset>
               )}
 
@@ -690,7 +690,7 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
                     </p>
                     {saltados > 0 && (
                       <p className="hint">
-                        Se saltan {saltados} {saltados === 1 ? "día que ya tiene" : "días que ya tienen"} publicación. Para diseñar lo que ya hay, en el calendario: «Producir el mes» → «Diseñar las que ya hay».
+                        Se saltan {saltados} {saltados === 1 ? "día que ya tiene" : "días que ya tienen"} publicación. Para diseñar lo que ya hay, en el calendario: «Preparar el mes» → «Diseñar».
                       </p>
                     )}
                   </div>

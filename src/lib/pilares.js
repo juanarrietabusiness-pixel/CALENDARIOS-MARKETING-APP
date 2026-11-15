@@ -329,3 +329,33 @@ export function conProductos(ids = [], productos = []) {
     producto: elegidos.map((p) => p.nombre).join(" + "),
   };
 }
+
+// ------------------------------------------------------------
+// Las COMPOSICIONES de una pieza (CÓMO se ve)
+// ------------------------------------------------------------
+//
+// Vivían en loteAnuncios.js; lib/estudio.js —que carga el panel de cada publicación— importaba de ahí `composicionDe` y
+// arrastraba el motor de ideas entero (loteAnuncios, formasGancho, lenguajeCliente…, unos 14 kB comprimidos) a algo que
+// se abre a cada rato. Aquí y no en un módulo propio: los dos ya importan este archivo, y un trozo nuevo sumaría bytes a
+// las listas de precarga (la del Estudio está en su tope). loteAnuncios.js las reexporta.
+
+/**
+ * Las composiciones: CÓMO se ve cada pieza. `objeto`: necesita un producto físico en cuadro (sin él, no se usa);
+ * `uso`: lo enseña en uso o en su lugar; `plantilla`: dónde va el texto si lo pone la plantilla.
+ */
+export const COMPOSICIONES = Object.freeze([
+  { id: "heroe", nombre: "Producto héroe", objeto: true, linea: "Composición: el producto como protagonista absoluto, en primer plano y ligeramente en ángulo, sobre un fondo limpio; plano cerrado.", plantilla: "banda" },
+  { id: "uso", nombre: "En uso", uso: true, linea: "Composición: una persona real usando el producto o el servicio en un momento cotidiano, plano medio, gesto natural.", plantilla: "arriba" },
+  { id: "ugc", nombre: "Selfie con el celular", uso: true, linea: "Composición: foto tomada con el celular por una persona real que lo prueba (estilo contenido de cliente): luz de casa, encuadre imperfecto, nada de estudio.", plantilla: "degradado" },
+  { id: "cenital", nombre: "Vista cenital", objeto: true, linea: "Composición: vista cenital (desde arriba) ordenada, el producto con pocos objetos de su entorno alrededor, mucho espacio libre.", plantilla: "degradado" },
+  { id: "macro", nombre: "Macro de textura", objeto: true, linea: "Composición: primerísimo plano de la textura o un detalle del producto (grano, tejido, brillo), fondo desenfocado, sensación táctil.", plantilla: "arriba" },
+  { id: "tipografica", nombre: "Tipográfica", linea: "Composición de diseño gráfico: un gran bloque de color de la paleta domina la pieza y la imagen ocupa sólo un tercio, recortada limpia a un lado.", plantilla: "centro" },
+  { id: "ambiente", nombre: "En su lugar", uso: true, linea: "Composición: la escena en su ambiente real (el lugar donde se usa), plano abierto, luz que entra de lado, mucho aire alrededor.", plantilla: "degradado" },
+  { id: "dividida", nombre: "Antes y después", linea: "Composición dividida en dos mitades: a un lado el problema, al otro el resultado; el cambio se entiende de un vistazo.", plantilla: "banda" },
+  { id: "emocion", nombre: "Emoción", linea: "Composición: primer plano de una cara con una emoción clara (alivio, alegría, tranquilidad, frustración según el mensaje).", plantilla: "arriba" },
+  { id: "oficio", nombre: "El oficio", uso: true, linea: "Composición: el trabajo hecho o en proceso (las manos, la herramienta, el resultado), plano medio, luz de taller u oficina real.", plantilla: "banda" },
+  { id: "unboxing", nombre: "Recién llegado", objeto: true, linea: "Composición: el producto recién sacado de su empaque sobre una mesa, manos que lo abren, sensación de estreno.", plantilla: "arriba" },
+  { id: "serie", nombre: "Serie", objeto: true, linea: "Composición editorial en cuadrícula: dos o tres tomas del producto (o de varios) en paneles ordenados, como una página de revista.", plantilla: "centro" },
+]);
+
+export const composicionDe = (id) => COMPOSICIONES.find((x) => x.id === id) ?? null;

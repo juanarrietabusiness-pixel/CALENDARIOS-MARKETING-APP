@@ -112,6 +112,37 @@ export function conAprobacion(post, review) {
   };
 }
 
+/**
+ * Las filas de `approvals` (D1) como respuestas por publicación, con la forma que lee `conAprobacion` (la misma que arma
+ * `fetchApprovals` en la pantalla). Pura.
+ */
+export function respuestasDeFilas(filas = []) {
+  const m = new Map();
+  for (const a of filas ?? []) {
+    if (!a?.post_id) continue;
+    m.set(a.post_id, {
+      estado: a.estado, comentario: a.comentario ?? "", revisor: a.reviewer_name ?? "", timestamp: a.updated_at,
+      tipo: a.tipo || null, huella: a.huella || null,
+    });
+  }
+  return m;
+}
+
+/**
+ * Los días de un calendario con lo que respondió el cliente aplicado, como los ve la pantalla: el `status` guardado en
+ * `days` sólo se pone al día cuando alguien abre ese mes, y el enlace del cliente escribe en `approvals`. Lo leen Claude
+ * (ver_calendario, programar_lo_aprobado), el informe y el Inicio. `respuestaDe`: una función postId → respuesta, un
+ * Map postId → respuesta, o las filas de `approvals` de ESE calendario. Pura.
+ */
+export function diasConRespuestas(days = [], respuestaDe = null) {
+  const buscar = typeof respuestaDe === "function" ? respuestaDe
+    : respuestaDe instanceof Map ? (id) => respuestaDe.get(id)
+      : (() => { const m = respuestasDeFilas(respuestaDe); return (id) => m.get(id); })();
+  return (Array.isArray(days) ? days : []).map((d) => (Array.isArray(d?.posts)
+    ? { ...d, posts: d.posts.map((p) => (p?.id ? conAprobacion(p, buscar(p.id)) : p)) }
+    : d));
+}
+
 /** ¿Está aprobada como idea? Entonces falta producirla. */
 export const porProducir = (post) => post?.status === "approved" && post.aprobadaComo === "idea";
 
@@ -121,6 +152,14 @@ export const porProducir = (post) => post?.status === "approved" && post.aprobad
  */
 export const listaParaProgramar = (post) =>
   post?.status === "approved" && post.aprobadaComo !== "idea" && post.format !== "live" && !post.asistida;
+
+/**
+ * Para un cliente que NO aprueba antes de publicar (`clients.aprueba_antes` = 0): lo que tiene su pieza y no tiene
+ * cambios pedidos se programa sin esperar al cliente (la hora y el texto los comprueba la revisión de siempre). Pura.
+ */
+export const listaSinAprobar = (post) =>
+  Boolean(post) && post.status !== "rejected" && post.status !== "published" && post.format !== "live" && !post.asistida &&
+  mediosDe(post).length > 0;
 
 /**
  * Lo que cambió DESPUÉS de que el cliente aprobara la pieza, en palabras.

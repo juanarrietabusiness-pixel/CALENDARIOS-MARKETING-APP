@@ -239,7 +239,7 @@ export default function ProducirMes({ client, cal, onPoner, onClose, incrustado 
       });
       try {
         const vistas = mejorar ? await api.vistasDelCliente(clienteId).catch(() => []) : [];
-        const { encargo } = await crearEncargo(clienteId, { tipo: "lote", titulo: "Producir el mes", pasos, mejorar, controlar, paralelo: 2, vistas, poner: ponerSolas });
+        const { encargo } = await crearEncargo(clienteId, { tipo: "lote", titulo: "Diseñar el mes", pasos, mejorar, controlar, paralelo: 2, vistas, poner: ponerSolas });
         nuevas.push({ id: encargo.id, tipo: "lote" });
       } catch (e) {
         setAviso({ ok: false, texto: e.message });
@@ -303,7 +303,7 @@ export default function ProducirMes({ client, cal, onPoner, onClose, incrustado 
     <Envoltura incrustado={incrustado} refDialogo={ref} titulo={`${ids}-t`}>
         <div className="sheet-header">
           <div>
-            <h2 id={`${ids}-t`} style={{ fontSize: "var(--fs-md)", margin: 0 }}>{ponerSolas ? "Diseñar las aprobadas" : "Producir el mes con IA"}</h2>
+            <h2 id={`${ids}-t`} style={{ fontSize: "var(--fs-md)", margin: 0 }}>{ponerSolas ? "Diseñar las aprobadas" : "Diseñar las que faltan"}</h2>
             <p className="hint" style={{ margin: 0 }}>Las publicaciones sin contenido, cada una con el estilo de su tipo y su idea. Queda todo en la galería.</p>
           </div>
           {!incrustado && <button type="button" className="btn-icon" onClick={onClose} disabled={creando} aria-label="Cerrar"><Icon name="close" /></button>}

@@ -35,7 +35,7 @@ nada. Si CI ya falló, el mismo contenido está en `informe-despliegue.md`
 ## Lo que NO hay que hacer
 
 - **No relajes el test para que pase.** Cada caso corresponde a un fallo
-  que ya ocurrió en producción; están documentados en `CLAUDE.md`. Subir
+  que ya ocurrió en producción; están documentados en `docs/trampas/`. Subir
   un presupuesto, quitar una directiva de la CSP o borrar una aserción
   hace desaparecer el aviso, no el problema.
 - **No toques `tests/utils/`** para esquivar un fallo. Si crees que un

@@ -28,7 +28,7 @@ vi.mock("./estudio", async (original) => {
 const carpetas = [];
 const movidos = [];
 
-const { pedirOtraIgual, pedirVersiones, pedirEdicion, textoTrasEditar } = await import("./visorEstudio.js");
+const { pedirOtraIgual, pedirVersiones, pedirEdicion, textoTrasEditar, conLaNueva } = await import("./visorEstudio.js");
 const estudio = await import("./estudio.js");
 const { modeloPorId } = await import("./estudioCatalogo.js");
 
@@ -116,5 +116,27 @@ describe("«Variaciones para anuncios» desde el visor", () => {
     await pedirVersiones({ clienteId: "c1", a: conPlantilla, p, kit, n: 3, para: "anuncios" });
     expect(versiones[0]).toMatchObject({ texto: "", sinTexto: true });
     expect(movidos).toEqual([]);
+  });
+});
+
+describe("la pieza nueva se abre en el visor (no queda escondida en la pila)", () => {
+  it("la corrección avisa con lo que salió (`alListo`) y el visor la pone delante con la de antes entre sus versiones", async () => {
+    const llegaron = [];
+    await pedirEdicion({ clienteId: "c1", a, instruccion: "Quita la planta", activos: { prueba: true }, kit, alListo: (l) => llegaron.push(...l) });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(llegaron.map((x) => x.id)).toEqual(["n"]);
+  });
+
+  it("conLaNueva: la nueva delante, la de antes y sus versiones detrás, sin repetir; la principal no cambia", () => {
+    const actual = { id: "a", prompt: "x", anteriores: [{ id: "b" }, { id: "c" }], vistaId: "c" };
+    const v = conLaNueva(actual, [{ id: "n", prompt: "nueva" }]);
+    expect(v.id).toBe("n");
+    expect(v.anteriores.map((x) => x.id)).toEqual(["a", "b", "c"]);
+    expect(v.vistaId).toBe("c");
+    expect(v.anteriores[0].anteriores).toBeUndefined();
+    expect(v.usadoEn).toEqual([]);
+    // Sin versiones antes, la principal es la que se veía.
+    expect(conLaNueva({ id: "a" }, [{ id: "n" }, { id: "m" }])).toMatchObject({ id: "n", vistaId: "a", anteriores: [{ id: "m" }, { id: "a" }] });
+    expect(conLaNueva(actual, [])).toBe(actual);
   });
 });

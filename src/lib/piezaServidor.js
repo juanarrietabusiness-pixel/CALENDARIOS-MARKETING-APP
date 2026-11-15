@@ -32,7 +32,7 @@ const limpio = (t, max) => String(t ?? "").slice(0, max);
  * aplicación encima (entonces no se controla: el texto no lo escribió el motor). El logo se estampa si el kit lo pide
  * (`estampar` lo fuerza o lo evita). Pura.
  */
-export function pasoListo({ id = "p1", titulo = "", pedido, texto = "", kit = {}, plantilla = null, estampar = null }) {
+export function pasoListo({ id = "p1", titulo = "", pedido, texto = "", kit = {}, plantilla = null, estampar = null, sitio = null }) {
   const logo = estampar ?? estampaSola(kit);
   const { modelo, prompt, n = 1, ajustes = {}, medios = {}, calendarId = null, postId = null } = pedido ?? {};
   return {
@@ -44,14 +44,20 @@ export function pasoListo({ id = "p1", titulo = "", pedido, texto = "", kit = {}
     texto: plantilla ? "" : limpio(texto, 600),
     controlar: !plantilla,
     navegador: plantilla || logo ? { plantilla: plantilla ?? null, logo: Boolean(logo) } : null,
+    // Lo creado desde una publicación: su sitio en ella (src/lib/piezaEnSuSitio.js), para que el servidor la ponga ahí.
+    ...(sitio ? { sitio } : {}),
   };
 }
 
-/** Manda los pasos al servidor. → el encargo (lo sigue `esperarEnServidor`). */
-export async function lanzarEnServidor({ clienteId, pasos, titulo = "", carpetaId = null }) {
+/**
+ * Manda los pasos al servidor. → el encargo (lo sigue `esperarEnServidor`). `poner`: lo que sale se pone SOLO en su
+ * publicación al terminar (el pedido lleva `calendarId` y `postId`), aunque se cierre el panel.
+ */
+export async function lanzarEnServidor({ clienteId, pasos, titulo = "", carpetaId = null, poner = false }) {
   const { encargo } = await crearEncargo(clienteId, {
     // `seguido`: la pantalla lo mira mientras sale; la campana sólo avisa si falla o si tardó (worker/lib/equipo.js).
     tipo: "lote", titulo: limpio(titulo, 140), pasos, carpetaId, mejorar: false, controlar: true, paralelo: Math.min(3, Math.max(1, pasos.length)), seguido: true,
+    ...(poner ? { poner: true } : {}),
   });
   return encargo;
 }
@@ -90,8 +96,10 @@ export async function esperarEnServidor({ clienteId, encargo, kit = {}, alPaso =
  * UNA pieza por el servidor, de principio a fin. `alProgresar(texto)`: por dónde va. → el archivo final de la galería.
  * Lanza si la pieza no salió (con el motivo del servidor).
  */
-export async function crearUnaEnServidor({ clienteId, paso, kit = {}, titulo = "", carpetaId = null, alProgresar = () => {}, seguir = () => true }) {
-  const encargo = await lanzarEnServidor({ clienteId, pasos: [paso], titulo: titulo || paso.titulo, carpetaId });
+export async function crearUnaEnServidor({ clienteId, paso, kit = {}, titulo = "", carpetaId = null, alProgresar = () => {}, seguir = () => true, poner = false, alLanzar = null }) {
+  const encargo = await lanzarEnServidor({ clienteId, pasos: [paso], titulo: titulo || paso.titulo, carpetaId, poner });
+  // Quien llama apunta el encargo (la marca «se está creando» del post) antes de esperar: si se cierra, se retoma.
+  alLanzar?.(encargo);
   const r = await esperarEnServidor({
     clienteId, encargo, kit, seguir,
     alPaso: (_id, x) => { if (x?.cargando && x.paso) alProgresar(x.paso); },
