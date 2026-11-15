@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   TIPOS_VISTA, FILTROS_TIPO, nombreDeTipo, ordenarNotas, filtrarNotas, contarPorTipo, formatoCaracteres,
-  describirImportacion, describirFicha, avisoSinFicha, tituloDeDocumento, validarDocumento, leerDocumento,
+  describirImportacion, sumarImportaciones, describirSincronia, loQueNoEntro, diferenciaPorLineas, describirFicha, avisoSinFicha, tituloDeDocumento, validarDocumento, leerDocumento,
   TIPOS_PROPONIBLES, propuestaLimpia,
 } from "./cerebroVista";
 import { TIPOS } from "../../worker/lib/cerebro/notas.js";
@@ -88,7 +88,8 @@ describe("contar lo que hizo una importación", () => {
   it("avisa de lo que cambió en el repositorio y de lo que quedó para otra vuelta", () => {
     const d = describirImportacion({ archivos: { cambiados: 2, omitidos: 15, iguales: 8 }, notas: {} });
     expect(d.texto).toMatch(/8 archivos sin cambios/);
-    expect(d.texto).toMatch(/2 archivos cambiaron en el repositorio \(usa «Actualizar lo que cambió»/);
+    // El botón se llama así desde hace meses (antes nombraba «Actualizar lo que cambió», que ya no existe).
+    expect(d.texto).toMatch(/2 archivos cambiaron en el repositorio \(usa «Actualizar desde GitHub»/);
     expect(d.texto).toMatch(/15 archivos quedaron para la siguiente vuelta/);
   });
 
@@ -107,7 +108,55 @@ describe("contar lo que hizo una importación", () => {
   });
 
   it("lo corregido a mano que se conservó se cuenta, porque tranquiliza", () => {
-    expect(describirImportacion({ archivos: { actualizados: 1 }, notas: { creadas: 1, reemplazadas: 1, conservadas: 2 } }).texto).toMatch(/2 notas que corregiste aquí no se actualizaron/);
+    expect(describirImportacion({ archivos: { actualizados: 1 }, notas: { creadas: 1, reemplazadas: 1, conservadas: 2 } }).texto).toMatch(/2 notas que corregiste aquí se conservaron/);
+  });
+
+  it("dice lo que se quitó, lo que choca, lo que no se trajo y lo que no cupo", () => {
+    const t = describirImportacion({
+      archivos: { borrados: 1 }, notas: { borradas: 3, saltadas: 1 }, conflictos: { total: 2 }, sinSitio: ["a.md"], truncado: true,
+    }).texto;
+    expect(t).toMatch(/3 notas quitadas: ya no están en GitHub/);
+    expect(t).toMatch(/2 notas chocan con GitHub/);
+    expect(t).toMatch(/1 sección no se trajo porque la borraste aquí/);
+    expect(t).toMatch(/1 archivo no cupo/);
+    expect(t).toMatch(/GitHub cortó la lista/);
+  });
+
+  it("varias vueltas se suman; lo que queda es lo de la última", () => {
+    const s = sumarImportaciones(
+      { archivos: { nuevos: 40, omitidos: 15, iguales: 0 }, notas: { creadas: 80 }, internas: ["A"], trajo: true },
+      { archivos: { nuevos: 15, omitidos: 0, iguales: 40 }, notas: { creadas: 30 }, internas: [], trajo: false },
+    );
+    expect(s.archivos).toMatchObject({ nuevos: 55, omitidos: 0, iguales: 40 });
+    expect(s.notas.creadas).toBe(110);
+    expect(s.trajo).toBe(true);
+  });
+});
+
+describe("cómo va con GitHub", () => {
+  const ahora = Date.parse("2026-11-15T18:00:00Z");
+  it("cuándo se miró y cuándo se trajo algo, en hora de Panamá", () => {
+    expect(describirSincronia({ revisadoAt: "2026-11-15T14:12:00Z", sincronizadoAt: "2026-11-13T15:00:00Z", pendientes: 0 }, ahora))
+      .toMatch(/^Revisado en GitHub hoy a las 9:12 .*· último cambio traído el 13 nov/);
+    expect(describirSincronia(null)).toBe("");
+  });
+
+  it("lo que no entra se cuenta por clase y se nombra", () => {
+    const l = loQueNoEntro({ truncado: true, noTexto: { pdf: 2, word: 1, imagen: 0 }, grandes: ["X/volcado.md"], profundos: ["X/a/b/c/d.md"] });
+    expect(l.map((x) => x.texto).join(" ")).toMatch(/cortó la lista/);
+    expect(l[1].texto).toMatch(/^No se leen 2 PDF, 1 Word:/);
+    expect(l[2].lista).toEqual(["volcado"]);
+    expect(loQueNoEntro({})).toEqual([]);
+  });
+
+  it("la diferencia entre la mía y la de GitHub, línea a línea, con lo igual plegado", () => {
+    const mia = ["## Tono", "", "Cercano.", "a", "b", "c", "d", "e", "Fin."].join("\n");
+    const gh = ["## Tono", "", "Formal.", "a", "b", "c", "d", "e", "Fin."].join("\n");
+    const d = diferenciaPorLineas(mia, gh);
+    expect(d.filter((x) => x.tipo === "mia").map((x) => x.texto)).toEqual(["Cercano."]);
+    expect(d.filter((x) => x.tipo === "github").map((x) => x.texto)).toEqual(["Formal."]);
+    expect(d.some((x) => x.tipo === "plegado" && x.n >= 1)).toBe(true);
+    expect(diferenciaPorLineas("x\n".repeat(500), "y")).toBeNull();
   });
 });
 
