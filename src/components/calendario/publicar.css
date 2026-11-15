@@ -32,6 +32,15 @@
 .editor-medios-version:hover:not(:disabled) { background: var(--accent); color: #fff; }
 .otra-version-estado { padding: var(--sp-1) 0; }
 .otra-version-estado p { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
+/* «Corregir» con su campo junto a las imágenes, y la pregunta del costo (sin ventanas del navegador). */
+.corregir-en-linea, .otra-version-pregunta {
+  display: flex; flex-direction: column; gap: var(--sp-2); margin-top: var(--sp-2); padding: var(--sp-3);
+  border: 1px solid var(--accent-line); border-radius: var(--radius-sm); background: var(--accent-soft);
+}
+.corregir-en-linea-cabeza { display: flex; align-items: center; gap: var(--sp-2); }
+.corregir-en-linea-cabeza img { width: 48px; height: 48px; flex: none; object-fit: cover; border-radius: var(--radius-sm); }
+.corregir-en-linea-cabeza .label { margin: 0; }
+.corregir-en-linea-botones { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
 .editor-medios li.editor-medios-mas { border-style: dashed; background: none; }
 .editor-medios-mas button {
   flex: 1; width: 100%; min-height: 130px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;

@@ -60,6 +60,8 @@ import { cambiarPublicacion } from "./ponerEnPost.js";
 import { marcarUso } from "./galeria.js";
 import { conHistoriaEncajada } from "../redesServidor.js";
 import { postConPiezas } from "../../../src/lib/galeriaPura.js";
+import { postConPiezaEnSuSitio, limpiarSitio } from "../../../src/lib/piezaEnSuSitio.js";
+import { mediosDe } from "../../../src/lib/publicacion.js";
 import { avisarEncargo } from "../equipo.js";
 
 /**
@@ -135,6 +137,8 @@ function limpiarPaso(p, i) {
     encargo: objeto(p.encargo, 6000), mejora: objeto(p.mejora, 6000),
     escena: texto(p.escena, 4000), sinMejorar: texto(p.sinMejorar, 4000), texto: texto(p.texto, 600),
     controlar: p.controlar === true, navegador: limpiarNavegador(p.navegador),
+    // Lo que se crea DESDE una publicación (src/lib/piezaEnSuSitio.js): la imagen que reemplaza, o añadir.
+    ...(limpiarSitio(p.sitio) ? { sitio: limpiarSitio(p.sitio) } : {}),
     ...PASO_VACIO(),
   };
 }
@@ -375,8 +379,10 @@ async function ponerResultados(env, acceso, fila, pasos, datos) {
     for (const p of pasos) {
       const postId = p.pedido?.postId;
       if (!postId) continue;
-      const g = grupos.get(postId) ?? { calendarId: p.pedido.calendarId ?? null, ids: [] };
+      const g = grupos.get(postId) ?? { calendarId: p.pedido.calendarId ?? null, ids: [], sitio: null };
       g.ids.push(...finales(p).slice(0, 1));
+      // Lo creado desde el panel de la publicación va a SU sitio (la imagen que se tocó), no en lugar de todo.
+      if (p.sitio) g.sitio = p.sitio;
       grupos.set(postId, g);
     }
   }
@@ -391,6 +397,14 @@ async function ponerResultados(env, acceso, fila, pasos, datos) {
     const r = await cambiarPublicacion(env, acceso, {
       clienteId: cliente.id, calendarId: g.calendarId, postId,
       cambiar: async (post) => {
+        // Desde el panel de la publicación: en SU sitio, sin poner dos veces lo que el panel ya puso, y sin la marca de
+        // «se está creando» (src/lib/piezaEnSuSitio.js). Si el panel ya la había puesto, nada que escribir.
+        if (g.sitio && piezas.length === 1) {
+          const en = postConPiezaEnSuSitio(post, piezas[0], g.sitio, { encargoId: fila.id });
+          if (en.aviso) rechazo = en.aviso.replace(/: la nueva quedó en la galería\.$/, ".");
+          if (!en.cambio) return null;
+          return mediosDe(post).length ? en.post : conHistoriaEncajada(env, { antes: post, despues: en.post, clienteId: cliente.id, colorMarca: cliente.primary_color }).catch(() => en.post);
+        }
         const res = postConPiezas(post, piezas, "reemplazar");
         if (res.error) { rechazo = res.error; return null; }
         if (res.portada) return res.post;

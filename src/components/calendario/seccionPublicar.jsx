@@ -28,7 +28,7 @@
 // servidor al publicar: el aviso llega al escribir, no a la hora de salir.
 // ============================================================
 
-import { lazy, Suspense, useId, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useId, useMemo, useRef, useState } from "react";
 import Icon from "../Icon";
 import {
   revisarPublicacion, aplicarArreglo, REDES, mediosDe, objetivoDe, necesitaAjuste, conMedios, destinoInstagram,
@@ -44,8 +44,9 @@ import CambiosDelCliente from "./cambiosCliente";
 import DestinoRedes from "./destinoRedes";
 import { escribirDesdeContenido } from "../../api";
 import { rellenarDesdeContenido, tieneContenido, formatoDeMedios } from "../../lib/subir";
-import { medioDeArchivo, apuntarUso, AJUSTES_DE_TEXTO, archivoEnGaleria } from "../../lib/estudio";
-import { nombreDelModelo } from "../../lib/estudioCatalogo";
+import { medioDeArchivo, apuntarUso, AJUSTES_DE_TEXTO, archivoEnGaleria, archivoDesdeSrc, IGUALAR_TEXTO, ejemploParaIgualar } from "../../lib/estudio";
+import { postConPiezaEnSuSitio, piezaEnCurso, sinMarca } from "../../lib/piezaEnSuSitio";
+import { nombreDelModelo, textoCosto } from "../../lib/estudioCatalogo";
 import { SelectorModeloDelEspacio } from "../SelectorModelo";
 import { useCrearConIA } from "../../hooks/useCrearConIA";
 import { conPromptListo } from "../../lib/promptImagen";
@@ -253,18 +254,39 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
   const costoDe = (costo) => costo.toFixed(2).replace(".", ",");
   // Sólo sale si el espacio no tiene fijado «crear imágenes sin preguntar» (o el pedido pasa de su tope): dice dónde se fija.
   const SIN_PREGUNTAR = "\n\n(Para que no pregunte: «Crear imágenes sin preguntar» en Ajustes → IA, lo fija el administrador.)";
-  /** La pieza nueva ocupa el sitio de `medio` (o se añade, si no había), con «Deshacer». */
+  /**
+   * La pieza nueva ocupa el sitio de `medio` (o se añade, si no había), con «Deshacer». La misma regla que usa el
+   * servidor cuando el panel ya se cerró (src/lib/piezaEnSuSitio.js), y quita la marca de «se está creando».
+   */
   const ponerEnSuSitio = (medio, nueva) => {
     const puesto = medioDeArchivo(nueva);
     setForm((p) => {
-      const lista = mediosDe(p);
-      const medios = medio ? lista.map((m) => (m.src === medio.src ? puesto : m)) : [...lista, puesto];
-      const siguiente = { ...conMedios(p, medios), mediosCambiadosAt: new Date().toISOString() };
-      return !medio && auto.current ? { ...siguiente, format: formatoDeMedios(medios) ?? p.format } : siguiente;
+      const { post: siguiente } = postConPiezaEnSuSitio(p, nueva, medio ? { reemplaza: medio.src } : { anadir: true }, { encargoId: p.piezaEnCurso?.encargoId ?? "" });
+      return !medio && auto.current ? { ...siguiente, format: formatoDeMedios(mediosDe(siguiente)) ?? p.format } : siguiente;
     });
     setDeshacer({ antes: medio, ahora: puesto.src });
     setIndicacion("");
   };
+  // Lo que se crea desde aquí lleva `poner` en su encargo: si se cierra el panel antes de que salga, el SERVIDOR lo pone
+  // en su sitio. La marca en la publicación (`piezaEnCurso`) cubre el instante en que las dos cosas se cruzan: el panel
+  // guarda al cerrarse, y si eso pisara lo que acaba de poner el servidor, al volver a abrirla se retoma y se pone.
+  const montado = useRef(true);
+  useEffect(() => { montado.current = true; return () => { montado.current = false; }; }, []);
+  const seguir = () => montado.current;
+  const marcar = (medio) => (encargo) => {
+    if (encargo?.id && montado.current) setForm((p) => ({ ...p, piezaEnCurso: { encargoId: encargo.id, reemplaza: medio?.src ?? "", at: new Date().toISOString() } }));
+  };
+  const desmarcar = () => setForm((p) => sinMarca(p));
+  // La pregunta del costo, con la interfaz de la aplicación (no una ventana del navegador): `preguntar` devuelve una
+  // promesa que resuelven «Sí» o «No». Si el panel se cierra con la pregunta abierta, es un no.
+  const [pregunta, setPregunta] = useState(null); // { texto, resolver }
+  const siPregunta = useRef(null);
+  const preguntaViva = useRef(null);
+  preguntaViva.current = pregunta;
+  const preguntar = (texto) => new Promise((resolver) => setPregunta({ texto, resolver }));
+  const responder = (si) => { pregunta?.resolver(si); setPregunta(null); };
+  useEffect(() => { if (pregunta) siPregunta.current?.focus(); }, [pregunta]);
+  useEffect(() => () => preguntaViva.current?.resolver(false), []);
   // «Recrear con mi marca» (una referencia subida al post) va por el mismo sitio: la pieza nueva ocupa el de la referencia.
   const otraVersion = async (medio, { recrear = false } = {}) => {
     if (versionando || !client) return;
@@ -276,14 +298,16 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
       const { otraVersionDelPost, recrearConLaMarca } = await import("../../lib/otraVersion");
       const hacer = recrear ? recrearConLaMarca : otraVersionDelPost;
       const nueva = await hacer({
-        client, post, medio, indicacion, modelo: modeloAccion, calendarId: uso, alProgresar: setProgresoVersion,
-        confirmar: (costo) => window.confirm(`${recrear ? "Recrearla" : "Esta versión"} cuesta unos ${costoDe(costo)} $. ¿Sigo?${SIN_PREGUNTAR}`),
+        client, post, medio, indicacion, modelo: modeloAccion, calendarId: uso, alProgresar: setProgresoVersion, seguir, alLanzar: marcar(medio),
+        confirmar: (costo) => preguntar(`${recrear ? "Recrearla" : "Esta versión"} cuesta unos ${costoDe(costo)} $. ¿Sigo?`),
       });
+      if (!montado.current) return;
       if (nueva) {
         ponerEnSuSitio(medio, nueva);
         setEscrito(recrear ? `Lista: recreada con la marca${conModelo(nueva)}, en el sitio de la referencia.` : `Lista la versión nueva${conModelo(nueva)}, en el sitio de la anterior.`);
       }
     } catch (e) {
+      desmarcar();
       onError?.(`No se pudo ${recrear ? "recrear con la marca" : "hacer otra versión"}: ${e.message}`);
     }
     setVersionando(null);
@@ -303,45 +327,149 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
       const { crearImagenDelPost } = await import("../../lib/otraVersion");
       const nueva = await crearImagenDelPost({
         client, post, indicacion, opciones: { ...opcionesCrear, modelo: modeloAccion }, calendarId: uso, alProgresar: setProgresoVersion,
-        alMejorar: (idea) => setForm((p) => conPromptListo(p, idea)),
-        confirmar: (costo) => window.confirm(`Esta imagen cuesta unos ${costoDe(costo)} $. ¿Sigo?${SIN_PREGUNTAR}`),
+        alMejorar: (idea) => setForm((p) => conPromptListo(p, idea)), seguir, alLanzar: marcar(null),
+        confirmar: (costo) => preguntar(`Esta imagen cuesta unos ${costoDe(costo)} $. ¿Sigo?`),
       });
+      if (!montado.current) return;
       if (nueva) {
         ponerEnSuSitio(null, nueva);
         setEscrito(`Lista la imagen${conModelo(nueva)}, en la publicación (también queda en la galería del Estudio).`);
       }
     } catch (e) {
+      desmarcar();
       onError?.(`No se pudo crear la imagen: ${e.message}`);
     }
     setVersionando(null);
     setProgresoVersion("");
   };
-  /** «Corregir esta»: EDITA la misma imagen con lo que dice «¿Qué quieres?» (sólo ese cambio) y ocupa su sitio. */
-  const corregir = async (medio) => {
+  /**
+   * «Corregir»: su campo se abre EN LÍNEA, junto a las imágenes (antes era un error que mandaba a «¿Qué quieres?», más
+   * abajo). EDITA la misma imagen con sólo ese cambio y ocupa su sitio. Los atajos del texto e «Igualar a…» rellenan el
+   * campo; lo único que cobra es el botón, que dice cuánto.
+   */
+  const [corrigiendo, setCorrigiendo] = useState(null); // el medio que se corrige, o null
+  const [cambio, setCambio] = useState("");
+  const [igualarA, setIgualarA] = useState(""); // el src de la lámina que quedó bien
+  const [costoCorregir, setCostoCorregir] = useState(null); // { costo, nombre } o null
+  const campoCorregir = useRef(null);
+  const abrirCorregir = (medio) => {
     if (versionando || !clientId) return;
-    if (!indicacion.trim()) {
-      onError?.("Escribe en «¿Qué quieres?» qué hay que cambiar de la imagen y pulsa «Corregir» otra vez.");
-      campoIndicacion.current?.focus();
-      return;
-    }
+    setCorrigiendo((c) => (c?.src === medio.src ? null : medio));
+    setCambio((c) => c || indicacion);
+    setIgualarA("");
+    requestAnimationFrame(() => campoCorregir.current?.focus());
+  };
+  useEffect(() => {
+    if (!corrigiendo || !client) return undefined;
+    let vivo = true;
+    import("../../lib/otraVersion").then(({ costoDeCorregir }) => costoDeCorregir({ medio: corrigiendo, modelo: modeloAccion }))
+      .then((c) => { if (vivo) setCostoCorregir(c ? { costo: c.costo, nombre: c.modelo.nombre } : null); })
+      .catch(() => {});
+    return () => { vivo = false; };
+  }, [corrigiendo, modeloAccion, client]);
+  const corregir = async (e) => {
+    e?.preventDefault?.();
+    const medio = corrigiendo;
+    if (versionando || !client || !medio) return;
+    if (!cambio.trim()) { campoCorregir.current?.focus(); return; }
+    const otra = igualarA ? archivoDesdeSrc(igualarA, clientId) : null;
     setVersionando(medio.src);
     setDeshacer(null);
     setEscrito("");
     onError?.(""); // el aviso de un intento anterior ya no aplica
     setProgresoVersion("Corrigiendo la imagen (sólo lo que pediste)…");
     try {
-      const { rehacerConComentario } = await import("../../lib/controlEstudio");
-      const nueva = await rehacerConComentario({ clienteId: clientId, src: medio.src, indicacion, medida: medio, modelo: modeloAccion, texto: post.format === "carrusel" ? "" : post.textoPieza || "" });
-      if (uso && post.id) apuntarUso(clientId, nueva.id, { calendarId: uso, postId: post.id }).catch(() => {});
+      const { corregirEnElPost } = await import("../../lib/otraVersion");
+      const nueva = await corregirEnElPost({
+        client, post, medio, indicacion: cambio, ejemplos: otra ? [ejemploParaIgualar(otra)] : [], modelo: modeloAccion, calendarId: uso,
+        texto: post.format === "carrusel" ? "" : post.textoPieza || "", alProgresar: setProgresoVersion, seguir, alLanzar: marcar(medio),
+      });
       window.dispatchEvent(new Event("ia:gasto"));
-      ponerEnSuSitio(medio, nueva);
-      setEscrito(`Lista la imagen corregida${conModelo(nueva)}, en el sitio de la anterior (la de antes sigue en la galería).`);
-    } catch (e) {
-      onError?.(`No se pudo corregir la imagen: ${e.message}`);
+      if (!montado.current) return;
+      if (nueva) {
+        ponerEnSuSitio(medio, nueva);
+        setCorrigiendo(null);
+        setCambio("");
+        setEscrito(`Lista la imagen corregida${conModelo(nueva)}, en el sitio de la anterior (la de antes sigue en la galería).`);
+      }
+    } catch (err) {
+      desmarcar();
+      onError?.(`No se pudo corregir la imagen: ${err.message}`);
     }
     setVersionando(null);
     setProgresoVersion("");
   };
+
+  // Al abrir el panel: lo que se estaba creando para esta publicación cuando se cerró (su marca) se retoma y se pone en
+  // su sitio; si el servidor ya lo puso, sólo se quita la marca.
+  useEffect(() => {
+    const m = piezaEnCurso(post);
+    if (!m || !clientId) {
+      if (post.piezaEnCurso) desmarcar();
+      return undefined;
+    }
+    let vivo = true;
+    setVersionando(m.reemplaza || "nueva");
+    setProgresoVersion("Terminando la imagen que se estaba creando…");
+    import("../../lib/otraVersion").then(({ reanudarPieza }) => reanudarPieza({ clienteId: clientId, encargoId: m.encargoId, seguir: () => vivo, alProgresar: setProgresoVersion }))
+      .then((r) => {
+        if (!vivo || !r) return;
+        if (r.archivo) {
+          setForm((p) => (p.piezaEnCurso?.encargoId === m.encargoId ? postConPiezaEnSuSitio(p, r.archivo, m.reemplaza ? { reemplaza: m.reemplaza } : { anadir: true }, { encargoId: m.encargoId }).post : p));
+          setEscrito("Lista la imagen que se estaba creando: está en su sitio.");
+        } else {
+          setForm((p) => sinMarca(p, m.encargoId));
+          onError?.(`La imagen que se estaba creando no salió: ${r.error}`);
+        }
+      })
+      .catch(() => { /* sin red: la marca se queda y se retoma la próxima vez */ })
+      .finally(() => { if (vivo) { setVersionando(null); setProgresoVersion(""); } });
+    return () => { vivo = false; };
+    // Una vez, al abrir: la marca que se pone después la sigue quien la puso.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // El campo de «Corregir», justo debajo de las imágenes (EditorMedios lo pinta en su sitio).
+  const otrasLaminas = corrigiendo ? mediosDe(post).filter((m) => m.tipo === "imagen" && m.src !== corrigiendo.src && archivoDesdeSrc(m.src, clientId)) : [];
+  const formCorregir = corrigiendo && (
+    <form className="corregir-en-linea" onSubmit={corregir} aria-labelledby={`${ids}-corr`}>
+      <div className="corregir-en-linea-cabeza">
+        <img src={corrigiendo.src} alt="" />
+        <label id={`${ids}-corr`} className="label" htmlFor={`${ids}-corr-t`}>
+          Corregir {mediosDe(post).length > 1 ? `la imagen ${mediosDe(post).findIndex((m) => m.src === corrigiendo.src) + 1}` : "esta imagen"}: ¿qué cambio?
+        </label>
+      </div>
+      <textarea id={`${ids}-corr-t`} ref={campoCorregir} className="input" rows={2} maxLength={500} value={cambio}
+        placeholder="Ej.: el fondo más claro, quita la planta, el producto más grande" onChange={(e) => setCambio(e.target.value)} />
+      <div className="est-editar-atajos" style={{ display: "flex", flexWrap: "wrap", gap: "var(--sp-1)" }} role="group" aria-label="El texto de la imagen (rellenan el campo, no cobran)">
+        {AJUSTES_DE_TEXTO.map((x) => (
+          <button key={x.id} type="button" className="filter-chip" aria-pressed={cambio === x.instruccion} onClick={() => setCambio(x.instruccion)}>{x.etiqueta}</button>
+        ))}
+      </div>
+      {otrasLaminas.length > 0 && (
+        <div className="field" style={{ margin: 0 }}>
+          <label className="label" htmlFor={`${ids}-corr-ig`}>Igualar el texto a otra lámina</label>
+          <select id={`${ids}-corr-ig`} className="input" value={igualarA} onChange={(e) => {
+            setIgualarA(e.target.value);
+            if (e.target.value) setCambio(IGUALAR_TEXTO);
+          }}>
+            <option value="">No: sólo lo que escribo</option>
+            {otrasLaminas.map((m) => <option key={m.src} value={m.src}>La lámina {mediosDe(post).findIndex((x) => x.src === m.src) + 1}</option>)}
+          </select>
+        </div>
+      )}
+      <div className="corregir-en-linea-botones">
+        <button type="submit" className="btn btn-primary btn-sm" aria-disabled={!cambio.trim() || Boolean(versionando) || undefined}>
+          <Icon name="wand" size={14} /> {versionando === corrigiendo.src ? "Corrigiendo…" : `Corregir${costoCorregir ? ` · ${textoCosto(costoCorregir.costo)}` : ""}`}
+        </button>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setCorrigiendo(null); setIgualarA(""); }}>Cancelar</button>
+      </div>
+      <p className="hint" style={{ margin: 0 }}>
+        Edita la MISMA imagen{costoCorregir ? ` con ${costoCorregir.nombre}` : ""}: el resto se conserva, sale revisada y ocupa su sitio (con «Deshacer»). Si cierras el panel, se pone sola al terminar.
+      </p>
+    </form>
+  );
+
   /**
    * «Ver en el Estudio»: la imagen se abre en el visor de la galería (sus versiones, «Editar» con comentario y ejemplos,
    * el modelo para esa vez); lo que se escoja allí vuelve al sitio de esta imagen (en un carrusel, a su lámina). Si no
@@ -637,10 +765,11 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
             onCrearConIA={(o) => abrirCreacion({ ...o, indicacion })}
             onOtraVersion={client ? (m) => otraVersion(m) : null}
             onRecrear={client ? (m) => otraVersion(m, { recrear: true }) : null}
-            onCorregir={clientId ? (m) => corregir(m) : null}
+            onCorregir={client && clientId ? abrirCorregir : null}
             onVerEnEstudio={clientId ? verEnEstudio : null}
             versionando={versionando}
             botones={principales}
+            debajo={formCorregir}
           />
           {client && (puedeCrearAqui || conImagen) && (
             <div className="field que-quieres">
@@ -650,18 +779,22 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
                 onChange={(e) => setIndicacion(e.target.value)} aria-describedby={`${ids}-quiero-ayuda`}
                 placeholder={conImagen ? "Ej.: el fondo más claro, el producto más grande, quita la planta" : "Ej.: una mamá con su bebé en la sala, luz de mañana"}
               />
-              {conImagen && (
-                <div className="est-editar-atajos" style={{ display: "flex", flexWrap: "wrap", gap: "var(--sp-1)" }} role="group" aria-label="Ajustes del texto de la imagen, de un toque">
-                  {AJUSTES_DE_TEXTO.map((x) => (
-                    <button key={x.id} type="button" className="filter-chip" aria-pressed={indicacion === x.instruccion} onClick={() => setIndicacion(x.instruccion)}>{x.etiqueta}</button>
-                  ))}
-                </div>
-              )}
               <p id={`${ids}-quiero-ayuda`} className="hint" style={{ margin: 0 }}>
                 {!conImagen
                   ? "Manda sobre todo lo demás: el director diseña la pieza con ello."
-                  : "Manda en «Otra versión» (la misma información, otra composición) y en «Recrear con mi marca». «Corregir» cambia sólo esto en la misma imagen. Todo sale revisado y ocupa su sitio, con «Deshacer»."}
+                  : "Manda en «Otra versión» (la misma información, otra composición) y en «Recrear con mi marca». «Corregir» tiene su campo junto a cada imagen. Todo sale revisado y ocupa su sitio, con «Deshacer»."}
               </p>
+            </div>
+          )}
+          {/* La pregunta del costo, aquí y no en una ventana del navegador. */}
+          {pregunta && (
+            <div className="otra-version-pregunta" role="alertdialog" aria-labelledby={`${ids}-preg`} aria-describedby={`${ids}-preg-d`}>
+              <p id={`${ids}-preg`} style={{ margin: 0 }}><strong>{pregunta.texto}</strong></p>
+              <p id={`${ids}-preg-d`} className="hint" style={{ margin: 0 }}>{SIN_PREGUNTAR.trim()}</p>
+              <div className="corregir-en-linea-botones">
+                <button type="button" ref={siPregunta} className="btn btn-primary btn-sm" onClick={() => responder(true)}><Icon name="check" size={14} /> Sí, crear</button>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => responder(false)}>No</button>
+              </div>
             </div>
           )}
           {(progresoVersion || deshacer) && (
