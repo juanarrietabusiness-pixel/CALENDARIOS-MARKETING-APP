@@ -45,6 +45,8 @@ export const verTelefono = (d) => (d.length === 8 ? `${d.slice(0, 4)}-${d.slice(
 /** Un importe de dinero: «$50», «$ 1,250.00», «B/. 25», «25,50 USD», «30 dólares». */
 const DINERO = /(?:US\$|\$|B\/\.?|USD)\s?(\d[\d.,]*\d|\d)|(\d[\d.,]*\d|\d)\s?(?:USD|d[oó]lares|balboas)\b/gi;
 
+const ANTES = /\b(antes|era)\s*:?\s*$/i;
+
 /** «1,250.00» / «1.250,00» / «25,5» / «1.250» → céntimos (125000, 125000, 2550, 125000). null si no es un número. */
 export function centimos(numero) {
   let t = String(numero ?? "").trim();
@@ -70,6 +72,8 @@ export function preciosDeLinea(linea) {
   const salida = [];
   for (const m of String(linea ?? "").matchAll(DINERO)) {
     if (corte >= 0 && m.index > corte) continue;
+    // «antes $50, ahora $45»: el que va pegado a «antes» es el precio viejo (y el de después sí vale).
+    if (ANTES.test(String(linea).slice(Math.max(0, m.index - 14), m.index))) continue;
     const c = centimos(m[1] ?? m[2]);
     if (c !== null) salida.push(c);
   }
