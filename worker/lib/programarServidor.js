@@ -70,10 +70,15 @@ export async function prepararYProgramar(env, acceso, { calendarId, postId, rede
     const filas = await programar(env, acceso, { calendarId, postId, redes: Array.isArray(redes) && redes.length ? redes : null, usuarioId, soloPosibles });
     return { filas, ...prep };
   } catch (e) {
-    if (e instanceof ErrorPublicar && prep.problema) throw new ErrorPublicar(`${e.message} (Al prepararla en el servidor: ${prep.problema}.)`);
+    if (e instanceof ErrorPublicar && prep.problema) {
+      throw Object.assign(new ErrorPublicar(`${e.message} (Al prepararla en el servidor: ${prep.problema}.)`), { sinContainer: Boolean(prep.sinContainer) });
+    }
     throw e;
   }
 }
+
+/** La nota del lote que se cerró porque no hay Container (la pantalla prepara entonces por su camino de siempre). */
+const SIN_CONTAINER = "sin_container";
 
 /** Lo que ve la pantalla (y Claude) de un lote. */
 export function lotePublico(f) {
@@ -86,7 +91,8 @@ export function lotePublico(f) {
     total: hechas.length + fallidas.length + pendientes.length,
     hechas: hechas.length, programadas: hechas.reduce((s, h) => s + (Number(h.piezas) || 0), 0),
     pendientes: pendientes.length, fallidas, avisos: hechas.filter((h) => h.aviso).map((h) => ({ postId: h.postId, aviso: h.aviso })),
-    nota: f.nota ?? "", creado: f.created_at, terminado: f.terminado_at ?? null,
+    nota: f.nota === SIN_CONTAINER ? "" : f.nota ?? "", creado: f.created_at, terminado: f.terminado_at ?? null,
+    ...(f.nota === SIN_CONTAINER ? { sinContainer: true } : {}),
   };
 }
 
@@ -131,6 +137,7 @@ export async function avanzarLoteProgramar(env, acceso, id) {
   const hechas = leerJSON(fila.hechas, []);
   const fallidas = leerJSON(fila.fallidas, []);
   let hizo = false;
+  let sinContainer = false;
   if (t - Date.parse(fila.created_at) > PLAZO_LOTE_MS) {
     for (const postId of pendientes.splice(0)) fallidas.push({ postId, motivo: "Se acabó el tiempo para prepararla: prográmala desde su panel." });
   } else if (pendientes.length) {
@@ -142,20 +149,28 @@ export async function avanzarLoteProgramar(env, acceso, id) {
     } catch (e) {
       if (!(e instanceof ErrorPublicar)) console.error("programar en el servidor:", postId, e);
       fallidas.push({ postId, motivo: e instanceof ErrorPublicar ? e.message : "No se pudo programar por un error inesperado. Ábrela y prográmala desde su panel." });
+      // Sin Container (en local no se arranca) y pedido desde la pantalla: se cierra ya y la pantalla prepara por su camino
+      // de siempre (`sinContainer` en lo que lee). Lo de Claude o de «Programar al aprobar» sigue: no hay pantalla.
+      if (e?.sinContainer && fila.origen === "agencia" && !hechas.length) {
+        fallidas.push(...pendientes.splice(0).map((id) => ({ postId: id, motivo: "No hay Container para prepararla en el servidor." })));
+        sinContainer = true;
+      }
     }
     hizo = true;
   }
   const estado = pendientes.length ? "en_marcha" : hechas.length ? "hecho" : "fallido";
   const total = pendientes.length + hechas.length + fallidas.length;
-  const nota = estado === "en_marcha"
-    ? `Preparando y programando (${hechas.length + fallidas.length + 1} de ${total})…`
-    : `Programadas ${hechas.length} de ${total}${fallidas.length ? `; no se pudieron ${fallidas.length}` : ""}.`;
+  const nota = sinContainer ? SIN_CONTAINER
+    : estado === "en_marcha"
+      ? `Preparando y programando (${hechas.length + fallidas.length + 1} de ${total})…`
+      : `Programadas ${hechas.length} de ${total}${fallidas.length ? `; no se pudieron ${fallidas.length}` : ""}.`;
   await acceso.actualizar("programar_lotes", { id, bloqueado_hasta: permiso }, {
     pendientes: JSON.stringify(pendientes), hechas: JSON.stringify(hechas), fallidas: JSON.stringify(fallidas),
     nota, estado, bloqueado_hasta: "", updated_at: ahora(), ...(estado !== "en_marcha" ? { terminado_at: ahora() } : {}),
   });
   const actual = await acceso.leerUno("programar_lotes", { id });
-  if (actual && estado !== "en_marcha") await avisarLote(env, acceso, actual);
+  // Sin Container, la pantalla que lo pidió lo hace por su cuenta: no hay nada que avisar.
+  if (actual && estado !== "en_marcha" && !sinContainer) await avisarLote(env, acceso, actual);
   return { lote: actual, hizo, ocupado: false };
 }
 

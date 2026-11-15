@@ -49,6 +49,8 @@ async function porElServidor({ calId, lista, avisar, esperar }) {
       lote = (await pedir(`/publicar/lotes/${encodeURIComponent(lote.id)}`))?.lote ?? lote;
     } catch { /* una lectura que falla no corta: el servidor sigue */ }
   }
+  // El Container no contestó (en local no se arranca): el servidor no preparó nada y lo hace la pantalla.
+  if (lote?.sinContainer) return null;
   return {
     programadas: lote?.programadas ?? 0,
     fallidas: (lote?.fallidas ?? []).map((f) => ({ ...f, titulo: tituloDe(lista, f.postId) })),

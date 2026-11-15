@@ -83,6 +83,17 @@ describe("programar lo aprobado POR EL SERVIDOR (con Container)", () => {
     expect(avisos).toContain("Preparando y programando (2 de 3)…");
   });
 
+  it("si el lote se cierra porque el Container no contestó, la pantalla prepara por su cuenta (el camino de antes)", async () => {
+    db.pedir.mockImplementation(async (ruta) => (ruta === "/publicar/lotes"
+      ? { lote: { id: "L2", estado: "en_marcha", total: 3, hechas: 0, pendientes: 3, fallidas: [] } }
+      : { lote: { id: "L2", estado: "fallido", total: 3, hechas: 0, pendientes: 0, fallidas: [], sinContainer: true } }));
+    const preparar = vi.fn(async (p) => ({ post: p, cambio: false }));
+    const r = await programarAprobadasDe({ cal, clienteDb: "c1", lista, preparar, esperar: async () => {} });
+    expect(preparar).toHaveBeenCalledTimes(3);
+    expect(db.programarVarias).toHaveBeenCalledWith("cal1", ["a", "b", "c"]);
+    expect(r.programadas).toBe(3);
+  });
+
   it("un error del servidor que no es «sin Container» no se tapa con el camino de antes", async () => {
     db.pedir.mockRejectedValue(Object.assign(new Error("Ese calendario no existe."), { estado: 422 }));
     await expect(programarAprobadasDe({ cal, clienteDb: "c1", lista, preparar: vi.fn(), esperar: async () => {} })).rejects.toThrow(/no existe/);

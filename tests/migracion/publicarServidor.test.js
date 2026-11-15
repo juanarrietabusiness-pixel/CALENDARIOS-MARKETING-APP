@@ -158,6 +158,18 @@ describe("«Programar lo aprobado» como LOTE del servidor", () => {
     expect(lotePublico(cerrado.lote)).toMatchObject({ estado: "fallido", fallidas: [{ postId: "p1", motivo: expect.stringMatching(/tiempo/) }] });
   });
 
+  it("si el Container no contesta (en local no se arranca), el lote de la pantalla se cierra YA y ella prepara por su cuenta", async () => {
+    await sembrar({ posts: [post(), post({ id: "p2", title: "Dos" })] });
+    env.VIDEO = { idFromName: (n) => n, get: () => ({ fetch: async () => Response.json({ error: "Sin Container en local." }, { status: 503 }) }) };
+    const { lote } = await (await conSesion("/api/publicar/lotes", { method: "POST", body: JSON.stringify({ calendarId: "cal1", postIds: ["p1", "p2"] }) })).json();
+    await bombear(env, DUENO);
+    const l = lotePublico({ ...db.sqlite.prepare("select * from programar_lotes where id = ?").get(lote.id) });
+    expect(l).toMatchObject({ estado: "fallido", sinContainer: true, pendientes: 0, hechas: 0 });
+    expect(l.fallidas.map((f) => f.postId)).toEqual(["p1", "p2"]);
+    expect(filasCola()).toHaveLength(0);
+    expect(avisos()).toHaveLength(0);
+  });
+
   it("un paso a la vez: con el permiso tomado, otro no lo da", async () => {
     await sembrar();
     env.VIDEO = contenedor();

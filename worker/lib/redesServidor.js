@@ -54,7 +54,7 @@ export async function prepararPublicacion(env, { post, redes, clienteId, colorMa
   const normal = normalizacionesDe(post, redes);
   const pendientes = normal.length ? null : adaptacionesDe(post, redes, { colorMarca });
   if (!normal.length && !pendientes.length) return { post, cambio: false, problema: null };
-  if (!env.VIDEO) return { post, cambio: false, problema: "no hay Container para preparar las imágenes" };
+  if (!env.VIDEO) return { post, cambio: false, problema: "no hay Container para preparar las imágenes", sinContainer: true };
   try {
     const mapa = new Map();
     for (const n of normal) {
@@ -73,7 +73,8 @@ export async function prepararPublicacion(env, { post, redes, clienteId, colorMa
     nuevo = conAdaptados(nuevo, hechas);
     return { post: nuevo, cambio: mapa.size > 0 || hechas.length > 0, problema: null };
   } catch (e) {
-    return { post, cambio: false, problema: `no se pudieron preparar las imágenes: ${e?.message ?? e}` };
+    // `sinContainer`: el Container no contestó (en local no se arranca; o falló): quien tenga pantalla puede preparar allí.
+    return { post, cambio: false, problema: `no se pudieron preparar las imágenes: ${e?.message ?? e}`, sinContainer: e?.estado === 503 };
   }
 }
 
@@ -90,7 +91,7 @@ export async function prepararYGuardar(env, acceso, { calendarId, postId, redes,
     const i = dia.posts.findIndex((p) => p?.id === postId);
     const antes = dia.posts[i];
     const r = await prepararPublicacion(env, { post: antes, redes, clienteId, colorMarca });
-    if (!r.cambio) return { preparada: false, problema: r.problema };
+    if (!r.cambio) return { preparada: false, problema: r.problema, sinContainer: Boolean(r.sinContainer) };
     // Se vuelve a leer: preparar pudo tardar, y alguien pudo guardar el calendario entretanto.
     const fresco = await acceso.leerUno("calendars", { id: calendarId });
     const diasF = leerJSON(fresco?.days, []);
