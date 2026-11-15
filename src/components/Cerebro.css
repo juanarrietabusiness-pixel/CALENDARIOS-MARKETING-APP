@@ -260,7 +260,6 @@ details.cerebro-grupo > .cerebro-lista { margin-top: var(--sp-2); }
 /* ---------- El cerebro y GitHub (CerebroGitHub.jsx) ---------- */
 .cerebro-sync { font-size: var(--fs-sm); color: var(--text-dim); display: flex; flex-direction: column; gap: var(--sp-1); }
 .cerebro-sync p { margin: 0; line-height: var(--lh-normal); }
-.cerebro-sync p svg { vertical-align: -2px; }
 .cerebro-sync a { min-height: var(--tap-sm); display: inline-flex; align-items: center; gap: var(--sp-1); }
 .cerebro-sync-error { color: var(--text); }
 .cerebro-sync summary { cursor: pointer; min-height: var(--tap-sm); display: flex; align-items: center; }

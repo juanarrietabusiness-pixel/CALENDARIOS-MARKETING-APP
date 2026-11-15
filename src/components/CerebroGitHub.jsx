@@ -19,6 +19,9 @@ import { describirSincronia, loQueNoEntro, diferenciaPorLineas } from "../lib/ce
 //     traer».
 // ============================================================
 
+/** Un icono dentro de una frase (Icon.jsx los pinta en bloque). */
+const EN_LINEA = { display: "inline-block", verticalAlign: "-2px" };
+
 const TIPO_CONFLICTO = {
   archivo: (fuente) => `«${nombreDeArchivo(fuente)}» ya no está en GitHub (se borró, se renombró o se movió)`,
   seccion: (fuente) => `Estas secciones ya no están en «${nombreDeArchivo(fuente)}» de GitHub`,
@@ -73,11 +76,11 @@ export default function CerebroGitHub({ client, estado, conflictos = [], noTraer
       {estado?.repositorio && (linea || revisando || sync.error || fuera.length > 0) && (
         <div className="cerebro-sync">
           <p>
-            <Icon name="refresh" size={14} />{" "}
+            <Icon name="refresh" size={14} style={EN_LINEA} />{" "}
             <span role="status">{revisando ? "Revisando GitHub…" : linea || "Todavía no se ha revisado GitHub."}</span>
             {estado.repoWeb && <> {" "}<a href={estado.repoWeb} target="_blank" rel="noopener noreferrer">Abrir el repositorio<span className="sr-only"> (se abre en otra pestaña)</span></a></>}
           </p>
-          {sync.error && <p className="cerebro-sync-error"><Icon name="alert" size={14} /> {sync.error}</p>}
+          {sync.error && <p className="cerebro-sync-error"><Icon name="alert" size={14} style={EN_LINEA} /> {sync.error}</p>}
           {fuera.length > 0 && (
             <details>
               <summary>Lo que hay en GitHub y no entra en el cerebro</summary>

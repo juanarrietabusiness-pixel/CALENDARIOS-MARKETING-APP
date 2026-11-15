@@ -273,6 +273,18 @@ describe("los conflictos, sección por sección", () => {
   });
 });
 
+describe("«Editar en GitHub»", () => {
+  it("una nota del repositorio trae el enlace a su archivo, con cada tramo escapado; una escrita aquí, no", async () => {
+    db.sqlite.prepare("update clients set github_folder = 'Baby Caleb/01_ADN' where id = 'c1'").run();
+    db.sqlite.prepare("update cerebro_notas set fuente = 'Baby Caleb/01_ADN/01 guía.md' where titulo = 'Brand guidelines — Tono'").run();
+    const r = await (await pedir(`/api/cerebro/c1/nota/${nota("Brand guidelines — Tono").id}`)).json();
+    expect(r.github).toBe("https://github.com/x/y/blob/HEAD/Baby%20Caleb/01_ADN/01%20gu%C3%ADa.md");
+    const propia = await (await pedir("/api/cerebro/c1/nota", { method: "PUT", body: { titulo: "A mano", texto: "Algo.", tipo: "nota" } })).json();
+    expect((await (await pedir(`/api/cerebro/c1/nota/${propia.id}`)).json()).github).toBeUndefined();
+    expect((await (await pedir("/api/cerebro/c1")).json()).estado.repoWeb).toBe("https://github.com/x/y");
+  });
+});
+
 describe("los límites", () => {
   it("otra sincronización a la vez: 409, sin tocar nada", async () => {
     db.sqlite.prepare("update cerebro_sync set bloqueado_hasta = ? where id = 'c1'").run(new Date(Date.now() + 60_000).toISOString());
