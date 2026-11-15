@@ -53,7 +53,7 @@ export default function FiltrosGaleria({ valor, onCambiar, archivos = [], produc
         <label className="sr-only" htmlFor={`${ids}-b`}>Buscar en la galería</label>
         <input
           id={`${ids}-b`} type="search" className="input" value={valor.texto}
-          placeholder="Buscar: qué se ve, el producto, el post, el modelo o la fecha…" onChange={poner("texto")}
+          placeholder="Buscar: qué se ve, producto, post, fecha…" onChange={poner("texto")}
         />
         <button type="button" className="btn btn-secondary btn-sm est-filtros-boton" aria-expanded={abierto} aria-controls={`${ids}-p`} onClick={() => setAbierto((v) => !v)}>
           <Icon name="filter" size={14} /> Filtros{n ? ` (${n})` : ""}

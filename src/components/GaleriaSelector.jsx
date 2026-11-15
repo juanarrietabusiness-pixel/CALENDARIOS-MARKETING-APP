@@ -66,7 +66,11 @@ export default function GaleriaSelector({ clienteId, maximo = 10, yaTiene = 0, o
     if (una) return apiladas;
     return filtro === "todas" || filtro === "grupos" ? agruparGaleria(apiladas, carpetas, archivos) : visibles;
   }, [visibles, carpetas, datos, archivos, filtro, una]);
-  const cuentas = useMemo(() => contarVistas(archivos, carpetas), [archivos, carpetas]);
+  // «Lo último» cuenta TARJETAS (las versiones apiladas y cada carrusel, una), como en la galería.
+  const cuentas = useMemo(() => {
+    const deTodas = apilarVersiones(filtrarArchivos(archivos, { carpetas }), carpetas, datos?.trabajos);
+    return contarVistas(archivos, carpetas, una ? deTodas : agruparGaleria(deTodas, carpetas, archivos));
+  }, [archivos, carpetas, datos, una]);
   const semanas = useMemo(() => porSemanas(vista, fechaDeTarjeta), [vista]);
 
   const caben = una ? 1 : reemplazar || !yaTiene ? maximo : Math.max(0, maximo - yaTiene);
@@ -95,7 +99,8 @@ export default function GaleriaSelector({ clienteId, maximo = 10, yaTiene = 0, o
         {datos && (datos.archivos ?? []).length > 0 && (
           <>
             <ChipsDeVistas filtro={filtro} cuentas={cuentas} onFiltro={setFiltro} sin={una ? ["grupos"] : []} mas={Boolean(datos.siguiente)} />
-            <FiltrosGaleria valor={filtros} onCambiar={setFiltros} archivos={archivos} productos={productos} soloImagenes={una} buscando={busqueda.buscando} aviso={busqueda.aviso} />
+            <FiltrosGaleria valor={filtros} onCambiar={setFiltros} archivos={archivos} productos={productos} soloImagenes={una} buscando={busqueda.buscando}
+              aviso={busqueda.aviso || (soloSinUsar ? "Se ven sólo las que no están en ninguna publicación (cámbialo en «Filtros»)." : "")} />
           </>
         )}
         {datos && !(datos.archivos ?? []).length && <p className="hint">{una ? "La galería de este cliente no tiene imágenes todavía. Crea la portada en el Estudio o con «Portada que da clic»." : "La galería de este cliente está vacía. Crea algo en el Estudio o con «Crear con IA»."}</p>}
