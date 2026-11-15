@@ -109,9 +109,6 @@
 .est-chip-nueva { border-style: dashed; }
 .est-carpeta-form, .est-carpeta-acciones { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
 .est-carpeta-form .input { flex: 1 1 200px; min-width: 0; }
-.est-buscar { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
-.est-buscar .input { flex: 1 1 220px; max-width: 420px; min-width: 0; }
-.est-buscar select.input { flex: 0 1 240px; }
 .est-papelera-nota { margin: 0; color: var(--text-dim); font-size: var(--fs-sm); display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
 
 .est-rejilla {
@@ -124,30 +121,20 @@
 }
 /* Sin `overflow: hidden` en la tarjeta: el menú «⋯» se despliega hacia abajo y quedaría recortado. El radio de arriba lo lleva la imagen. */
 .est-img {
-  position: relative; display: block; width: 100%; aspect-ratio: 1 / 1; padding: 0; border: none; cursor: pointer;
+  position: relative; display: block; width: 100%; aspect-ratio: 4 / 5; padding: 0; border: none; cursor: pointer;
   background: var(--surface-3); overflow: hidden; border-radius: var(--radius) var(--radius) 0 0;
 }
 div.est-img { cursor: default; }
 .est-img img, .est-img video { width: 100%; height: 100%; object-fit: contain; display: block; }
 .est-img:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
-.est-marca-ref,
-.est-marca-video,
-.est-marca-grupo,
-.est-marca-marca,
-.est-marca-usada {
-  position: absolute; top: var(--sp-2);
+/* Lo que usa la marca (el logo, las fotos del catálogo…): no va a la papelera. Arriba a la derecha, donde iría la papelera.
+   Las demás marcas de la tarjeta (video, versiones, «Usada», el control) van juntas abajo: EstudioGaleria.css. */
+.est-marca-marca {
+  position: absolute; top: var(--sp-2); right: var(--sp-2);
   display: inline-flex; align-items: center; gap: var(--sp-1);
   padding: var(--sp-1) var(--sp-2); border-radius: var(--radius-pill);
-  font-size: var(--fs-3xs); font-weight: 700;
+  font-size: var(--fs-3xs); font-weight: 700; background: rgba(0, 0, 0, 0.72); color: #fff;
 }
-.est-marca-ref { left: var(--sp-2); background: var(--accent); color: #fff; }
-/* Sobre una miniatura cualquiera: placa oscura con texto claro, que se lee con cualquier imagen debajo. */
-.est-marca-video { right: var(--sp-2); background: rgba(0, 0, 0, 0.72); color: #fff; }
-/* Abajo, para no chocar con la papelera ni con «En el pedido»: qué grupo es y si ya está en una publicación. */
-.est-marca-grupo { top: auto; bottom: var(--sp-2); left: var(--sp-2); background: rgba(0, 0, 0, 0.72); color: #fff; }
-.est-marca-usada { top: auto; bottom: var(--sp-2); right: var(--sp-2); background: rgba(0, 0, 0, 0.72); color: var(--success); }
-/* Lo que usa la marca (el logo, las fotos del catálogo…): no va a la papelera. Arriba a la derecha, donde iría la papelera. */
-.est-marca-marca { right: var(--sp-2); background: rgba(0, 0, 0, 0.72); color: #fff; }
 /* Un carrusel o un reel: la tarjeta se ve como un montón de láminas. */
 .est-tarjeta-grupo { box-shadow: 4px 4px 0 -1px var(--surface-2), 4px 4px 0 0 var(--border); }
 .est-pie { display: flex; flex-direction: column; gap: var(--sp-1); padding: var(--sp-3); flex: 1; }
@@ -316,8 +303,6 @@ div.est-img { cursor: default; }
   background: rgba(0, 0, 0, 0.72); color: #fff; border-color: transparent;
 }
 .est-a-papelera:hover, .est-a-papelera:focus-visible { background: var(--danger); color: #fff; }
-/* Con la papelera arriba a la derecha, la marca de video baja a la esquina de abajo. */
-.est-marca-video { top: auto; bottom: var(--sp-2); }
 .est-perdida {
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--sp-1);
   width: 100%; height: 100%; font-size: var(--fs-2xs); color: var(--text-dim);
@@ -401,19 +386,12 @@ div.est-img { cursor: default; }
 /* «De la galería»: la siguiente imagen que se toque va a ese sitio. */
 .est-destino { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); margin: 0; position: sticky; top: 0; z-index: 2; padding: var(--sp-2) var(--sp-3); background: var(--accent-soft); border: 1px solid var(--accent-line); border-radius: var(--radius-sm); }
 
-/* El control de calidad en el visor y la marca de la tarjeta en la galería */
+/* El control de calidad en el visor (en la tarjeta de la galería es una de sus marcas: EstudioGaleria.css) */
 .est-control { display: flex; flex-direction: column; gap: var(--sp-1); padding: var(--sp-2) var(--sp-3); border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); }
 .est-control p { margin: 0; }
 .est-control-titulo { display: flex; align-items: center; gap: var(--sp-1); font-weight: 600; color: var(--success); }
 .est-control[data-estado="revisar"] .est-control-titulo { color: var(--warning, #f5a524); }
 .est-control-botones { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
-.est-img[data-control] { position: relative; }
-.est-img[data-control]::after {
-  position: absolute; left: var(--sp-1); bottom: var(--sp-1); padding: 2px var(--sp-2); border-radius: var(--radius-pill);
-  font-size: var(--fs-3xs); font-weight: 700; background: rgba(0, 0, 0, 0.72); pointer-events: none;
-}
-.est-img[data-control="ok"]::after { content: "✓ Revisada"; color: var(--success); }
-.est-img[data-control="revisar"]::after { content: "Revisar"; color: var(--warning, #f5a524); }
 /* La fuente de la marca en el kit: su muestra y los botones */
 .est-kit-fuente { display: flex; flex-direction: column; gap: var(--sp-2); }
 .est-kit-fuente-muestra { width: min(320px, 100%); border-radius: var(--radius-sm); border: 1px solid var(--border); background: #fff; }

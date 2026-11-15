@@ -10,7 +10,7 @@
 // título), el modelo y la fecha. Sin mayúsculas ni tildes, y cada palabra en cualquier orden.
 // ============================================================
 
-import { ideaDelPedido } from "./kitMarca.js";
+import { ideaDelPedido } from "./escenaDelPedido.js";
 import { nombreDelModelo } from "./estudioCatalogo.js";
 
 /** Sin mayúsculas ni tildes: «Sofá» = «sofa». Pura. */
