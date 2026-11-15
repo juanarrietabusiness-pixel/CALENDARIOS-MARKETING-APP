@@ -511,7 +511,7 @@ export function recortarBloque(texto, max) {
   const corte = t.slice(0, Math.max(0, max - 2));
   const salto = corte.lastIndexOf("\n");
   const espacio = corte.lastIndexOf(" ");
-  const hasta = salto > max * 0.7 ? salto : espacio > max * 0.7 ? espacio : corte.length;
+  const hasta = salto > max * 0.5 ? salto : espacio > max * 0.5 ? espacio : corte.length;
   return `${corte.slice(0, hasta).trimEnd()} …`;
 }
 
