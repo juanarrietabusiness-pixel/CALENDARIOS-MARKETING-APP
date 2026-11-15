@@ -18,6 +18,9 @@ import SelectorFecha from "../SelectorFecha";
 import FilaInterruptor from "../Interruptor";
 import { enlaceWhatsApp, numeroWhatsApp, cuandoLoAbrio } from "../../lib/enviarCliente";
 
+/** Con su punto final, sin repetirlo («… a las 9:12 a. m.» ya lo lleva). */
+const conPunto = (t) => (t.endsWith(".") ? t : `${t}.`);
+
 export default function EnviarCliente({
   approvalUrl, whatsappMessage, onClose, onGenerate, onRevoke, onReopen,
   hasLink, shareEnabled, working, allowEditing, onToggleEditing,
@@ -118,7 +121,7 @@ export default function EnviarCliente({
             {/* Si lo abrió y cuándo: el enlace lo apunta (como mucho una vez por hora; lo que abre el equipo no cuenta). */}
             <p className={`notice ${abierto ? "notice-ok" : ""}`} style={{ display: "block", marginBottom: "var(--sp-3)" }}>
               <Icon name={abierto ? "eye" : "clock"} size={14} />{" "}
-              {abierto ? `El cliente abrió su enlace ${abierto}.` : "El cliente todavía no ha abierto su enlace."}
+              {abierto ? conPunto(`El cliente abrió su enlace ${abierto}`) : "El cliente todavía no ha abierto su enlace."}
             </p>
 
             <p className="hint" style={{ marginBottom: "var(--sp-3)" }}>
@@ -251,8 +254,7 @@ export default function EnviarCliente({
 
             {revisionEnviada && (
               <p className="notice notice-ok" style={{ display: "block" }}>
-                {revisionRevisor || "El cliente"} envió su revisión el{" "}
-                {new Date(revisionEnviada).toLocaleString("es-PA", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" })}.
+                {conPunto(`${revisionRevisor || "El cliente"} envió su revisión ${cuandoLoAbrio(revisionEnviada)}`)}
               </p>
             )}
 
