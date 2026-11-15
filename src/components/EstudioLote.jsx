@@ -368,7 +368,7 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
     try {
       // Otro punto de partida en cada lote, lo que ya salió para no repetirlo y las composiciones que funcionan.
       const comun = { formato, semilla: Math.floor(Math.random() * 1000), composiciones: aprendido.orden };
-      const cuerpo = esPlan ? { ...comun, formato: "post", modo: "plan", casillas: casillasPlan, estrategia }
+      const cuerpo = esPlan ? { ...comun, formato: "post", modo: "plan", casillas: casillasPlan, estrategia, planificar: true }
         : esMes ? { ...comun, mes, dias, omitir: ocupados, estrategia }
         : alcance === "tipos" ? { ...comun, modo: "tipos", tipos }
           : esMatriz ? { ...comun, modo: "matriz", productoId: productoId || undefined, deseos: deseosElegidos, perfiles: perfilesElegidos, niveles: nivelesSel }

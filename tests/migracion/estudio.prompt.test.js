@@ -389,11 +389,15 @@ describe("POST /api/estudio/<cliente>/lote/mes (el mes completo)", () => {
     expect(r.ideas.map((i) => [i.fecha, i.pilar, i.productoId])).toEqual([
       ["2030-03-04", "anuncio", "sofa"], ["2030-03-11", "anuncio", "sofa"], ["2030-03-18", "anuncio", "sofa"], ["2030-03-25", "anuncio", "sofa"],
     ]);
-    const t = textoDe(peticiones[0]);
+    // El mes: primero el PLANIFICADOR mira las cuatro (aquí no devuelve plan: se escribe igual), y luego el redactor.
+    expect(textoDe(peticiones[0])).toMatch(/^Eres el PLANIFICADOR de contenido/);
+    const t = textoDe(peticiones[1]);
     expect(t).toMatch(/producto: Sofá cama \(producto\) · precio: \$399/);
     expect(t).not.toMatch(/margen|200 dólares/);
     expect(db.sqlite.prepare("select count(*) as n from estudio_trabajos").get().n).toBe(0);
-    expect(db.sqlite.prepare("select funcion from consumo_ia").get().funcion).toBe("lote del mes");
+    const funciones = db.sqlite.prepare("select funcion from consumo_ia").all().map((f) => f.funcion);
+    expect(funciones[0]).toBe("planificador del mes");
+    expect(funciones).toContain("lote del mes");
   });
 
   it("los días que ya tienen publicación no se vuelven a llenar; si no queda ninguno, lo dice sin gastar", async () => {
@@ -517,7 +521,9 @@ describe("POST /api/estudio/<cliente>/lote/ideas: el PLAN del mes («Planificar 
     const t = textoDe(peticiones[0]);
     expect(t).toMatch(/Objetivo del mes: Vender/);
     expect(t).toMatch(/Foco: Pc/);
-    expect((t.match(/producto: Pc/g) ?? []).length).toBe(4);
+    // De dos en dos: el foco se cuenta en las piezas de todas las llamadas de la tanda (lo de después de «Escribe …»).
+    const piezas = peticiones.map((p) => textoDe(p).split(/\nEscribe \d+ publicaciones/)[1] ?? "");
+    expect(piezas.reduce((n, t2) => n + (t2.match(/producto: Pc/g)?.length ?? 0), 0)).toBe(4);
   });
 
   it("un video con rostro (UGC) del plan semanal: el pedido dice que lo graba una persona y la idea vuelve marcada", async () => {

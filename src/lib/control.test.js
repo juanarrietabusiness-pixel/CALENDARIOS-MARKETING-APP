@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { palabras, compararTexto, textoDelPedido, pedidoDeControl, leerControl, correccionDeTexto, resumenControl } from "./control.js";
+import { palabras, compararTexto, limpiarLeido, textoDelPedido, pedidoDeControl, leerControl, correccionDeTexto, resumenControl } from "./control.js";
 
 describe("el control de calidad de una pieza", () => {
   it("compara palabra por palabra con tildes y eñes; mayúsculas y puntuación no cuentan", () => {
@@ -171,5 +171,40 @@ describe("la revisión del director", async () => {
     // Lo que sobra sin repetir una línea (el logo) no cuenta, ni una línea que va DENTRO de otra.
     expect(compararTexto(esperado, "Tus ojos descansan\nFiltro de luz azul en todos tus lentes\nFERIA DEL LENTE")).toEqual([]);
     expect(compararTexto("Tus lentes\nFiltro en todos tus lentes", "Tus lentes\nFiltro en todos tus lentes")).toEqual([]);
+  });
+});
+
+describe("sin falsas alarmas del propio revisor y con respuesta corta", () => {
+  it("lo que el revisor anota dentro de lo leído no cuenta (D'CASA, 14-nov)", () => {
+    expect(limpiarLeido("Sofá cama (no debía aparecer)\nOFERTA [sobra]\nEnvío gratis — repetido")).toBe("Sofá cama\nOFERTA\nEnvío gratis");
+    // Lo que va entre paréntesis y es de la pieza, se queda.
+    expect(limpiarLeido("Llámanos (507) 6000-0000\nSofá (incluye envío)")).toBe("Llámanos (507) 6000-0000\nSofá (incluye envío)");
+    expect(compararTexto("Sofá cama\nDesde $399", "Sofá cama\nDesde $399 (no debía aparecer)")).toEqual([]);
+  });
+
+  it("la anotación ya no vuelve la pieza «Revisar»: ni en lo leído ni como error de la IA", () => {
+    const c = leerControl(JSON.stringify({
+      textoLeido: "Sofá cama (no debía aparecer)\nDesde $399",
+      errores: [{ escrito: "Sofá cama (no debía aparecer)", esperado: "Sofá cama" }, { escrito: "OFERTA (no debía aparecer)", esperado: "" }],
+      logo: "bien",
+    }), { texto: "Sofá cama\nDesde $399" });
+    expect(c.textoLeido).toBe("Sofá cama\nDesde $399");
+    expect(c.errores).toEqual([]);
+    expect(c.estado).toBe("ok");
+    // Una letra mal escrita de verdad sigue contando.
+    const mal = leerControl(JSON.stringify({ textoLeido: "Sofa cama", errores: [{ escrito: "Sofa", esperado: "Sofá" }] }), { texto: "Sofá cama" });
+    expect(mal.estado).toBe("revisar");
+    expect(mal.errores[0]).toMatchObject({ esperado: "sofá", escrito: "sofa" });
+    // Sin texto pedido, el texto inventado sí cuenta (sin su anotación).
+    const inventado = leerControl(JSON.stringify({ textoLeido: "OFERTA (no debía aparecer)", errores: [{ escrito: "OFERTA (no debía aparecer)", esperado: "" }] }), { texto: "" });
+    expect(inventado.errores).toEqual([{ escrito: "OFERTA", esperado: "" }]);
+  });
+
+  it("pide un JSON compacto (sin listas vacías) y nada de comentarios dentro de lo leído; lo omitido se lee como vacío", () => {
+    const t = pedidoDeControl({ marca: "Dcasa", texto: "Sofá cama" });
+    expect(t).toMatch(/JSON compacto[^\n]*OMITE las claves que no tengan nada/);
+    expect(t).toMatch(/ningún comentario tuyo/);
+    const c = leerControl('{"textoLeido":"Sofá cama"}', { texto: "Sofá cama" });
+    expect(c).toMatchObject({ estado: "ok", errores: [], precios: [], deformaciones: [], otros: [], logo: "no aplica" });
   });
 });
