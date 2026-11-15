@@ -2,7 +2,10 @@
 // /api/estudio — el Estudio de imágenes de cada cliente
 //
 //   GET    /motores                                Qué motores tienen llave (nunca la llave)
-//   GET    /<cliente>                              La galería, la papelera, las carpetas y los trabajos
+//   GET    /<cliente>                              La galería (la primera página; ?hasta=<fecha>: todo desde ahí), la papelera,
+//                                                   las carpetas y los trabajos; `siguiente`, el cursor de «Cargar más»
+//   GET    /<cliente>/galeria?antes=<fecha>        «Cargar más»: la página siguiente → { archivos, siguiente }
+//   GET    /<cliente>/galeria?q=<texto>            Buscar en TODA la galería → { archivos, total, buscadas, completa }
 //   POST   /<cliente>/trabajos                     Pedir { modelo, prompt, n, ajustes, medios, confirmado, calendarId?, postId? }
 //   GET    /<cliente>/trabajos/<id>                Un trabajo (no lo avanza)
 //   POST   /<cliente>/trabajos/<id>/avanzar        UN paso: una imagen
@@ -61,7 +64,8 @@
 //   PUT    /<cliente>/kit/lexico                   { lexico } → el léxico de la marca (cómo se dice algo, qué nunca)
 //   POST   /<cliente>/kit/plantillas               { archivoId, nombre?, uso? }: «Guardar como plantilla» (la IA saca su sistema)
 //   DELETE /<cliente>/kit/plantillas/<id>          quita una plantilla del kit (la imagen se queda en la galería)
-//   POST   /<cliente>/carpetas                     { nombre, tipo? } (tipo «carrusel» | «reel»: la galería la agrupa)
+//   POST   /<cliente>/carpetas                     { nombre, tipo?, reusar? } (tipo «carrusel» | «reel»: la galería la agrupa;
+//                                                   «auto»: la pone la aplicación y no gasta las 30 de la persona)
 //   PUT    /<cliente>/carpetas/<id>                { nombre?, orden? } (orden: ids de sus piezas, en orden)
 //   DELETE /<cliente>/carpetas/<id>
 //
@@ -105,6 +109,7 @@ import {
 import {
   leerGaleria, subirArchivo, cambiarArchivo, marcarUso, enviarAPapelera, recuperar, borrarParaSiempre, quitarPerdido,
   vaciarPapelera, crearCarpeta, renombrarCarpeta, ordenarCarpeta, borrarCarpeta, archivoPublico, clavesPerdidas,
+  paginaDeGaleria, buscarEnGaleria,
 } from "../lib/estudio/galeria.js";
 import { crearEncargo, avanzarEncargo, cancelarEncargo, finalesDePaso, encargoPublico, encargoConArchivos, accionDeReel } from "../lib/estudio/encargos.js";
 import { ponerPiezasEnPost, ErrorPoner } from "../lib/estudio/ponerPiezas.js";
@@ -138,7 +143,8 @@ export async function rutasEstudio(req, env, { acceso, usuario, partes, metodo }
     if (!b && metodo === "GET") {
       // Los ganchos del estudio de mercado aprobado, para escoger uno con el preset de anuncio (con su precio).
       const { mercado, productos, protegidas } = await marcaDe();
-      const galeria = await leerGaleria(env, acceso, cliente.id, { protegidas });
+      // `?hasta=`: la pantalla ya cargó varias páginas («Cargar más») y relee todo desde la más vieja que tiene.
+      const galeria = await leerGaleria(env, acceso, cliente.id, { protegidas, hasta: new URL(req.url).searchParams.get("hasta") });
       // Lo de la marca cuyo archivo ya no está (lo borró una papelera de antes) no se ofrece: si no, TODA pieza que lo
       // llevaba de referencia fallaba con «Una de las imágenes ya no existe». Lo guardado no se toca; `perdidas` lo dice.
       const perdidas = await clavesPerdidas(env, protegidas, galeria);
@@ -160,6 +166,16 @@ export async function rutasEstudio(req, env, { acceso, usuario, partes, metodo }
         // mira antes de su «¿Seguimos?» (src/lib/sinPreguntar.js).
         sinPreguntar: await topeSinPreguntar(acceso),
       });
+    }
+
+    // ---------- La galería por páginas («Cargar más») y la búsqueda en TODA la galería, no sólo en lo cargado ----------
+    if (b === "galeria" && !c && metodo === "GET") {
+      const q = new URL(req.url).searchParams;
+      const { productos, protegidas } = await marcaDe();
+      const texto = String(q.get("q") ?? "").trim().slice(0, 120);
+      if (texto) return json(await buscarEnGaleria(acceso, cliente.id, texto, { protegidas, productos }));
+      if (!q.get("antes")) return error("Falta desde dónde («antes») o qué buscar («q»).", 400);
+      return json(await paginaDeGaleria(acceso, cliente.id, q.get("antes"), { protegidas }));
     }
 
     // ---------- «Revisar como director comercial»: la idea de un video, mejorada y con su porqué (no guarda) ----------
@@ -618,7 +634,7 @@ export async function rutasEstudio(req, env, { acceso, usuario, partes, metodo }
     if (b === "carpetas") {
       if (!c && metodo === "POST") {
         const datos = (await cuerpo(req)) ?? {};
-        const carpeta = await crearCarpeta(acceso, cliente.id, datos.nombre, { tipo: datos.tipo });
+        const carpeta = await crearCarpeta(acceso, cliente.id, datos.nombre, { tipo: datos.tipo, reusar: datos.reusar === true });
         avisar();
         return json({ carpeta }, 201);
       }

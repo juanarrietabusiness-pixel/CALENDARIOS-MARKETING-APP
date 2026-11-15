@@ -16,6 +16,8 @@ import { estaVivo, diasQueQuedan, modeloPorId, modeloPorDefecto, modeloQueRespet
 import { composicionDe } from "./loteAnuncios";
 import { productosDelPost } from "./pilares";
 import { piezasDeGrupo, textoDeLaPieza, fotosDeVariosProductos } from "./galeriaPura.js";
+import { coincideConBusqueda, formaDe, enFecha, esDelProducto, esCarpetaCompetencia } from "./galeriaVistas.js";
+export { coincideConBusqueda, formaDe, esCarpetaAutomatica, esCarpetaCompetencia, porSemanas, FORMAS_GALERIA, FECHAS_GALERIA, palabrasDeBusqueda } from "./galeriaVistas.js";
 export { piezasDeGrupo, textoDeLaPieza, fotosDelProducto, fotosDeVariosProductos, esVideoReal, medioDeArchivo, IGUALAR_TEXTO, ejemploParaIgualar } from "./galeriaPura.js";
 // Lo de editar una imagen vive en un módulo puro: también lo usa el Worker (los encargos del servidor).
 export { proporcionDeMedidas, promptDeEdicion, pedidoDeCorreccion, modeloParaEditar, modeloDeEdicion } from "./edicion";
@@ -26,8 +28,15 @@ const post = (cuerpo) => ({ method: "POST", body: JSON.stringify(cuerpo ?? {}) }
 /** Qué motores tienen llave en el servidor (nunca la llave). */
 export const leerMotores = () => pedir("/estudio/motores");
 
-/** La galería, la papelera, las carpetas y los trabajos de un cliente. */
-export const leerEstudio = (clienteId) => pedir(base(clienteId));
+/**
+ * La galería (la primera página; con `hasta`, todo desde esa fecha: lo ya cargado con «Cargar más»), la papelera, las
+ * carpetas y los trabajos de un cliente. `siguiente`: el cursor de la página siguiente, o null.
+ */
+export const leerEstudio = (clienteId, { hasta = null } = {}) => pedir(`${base(clienteId)}${hasta ? `?hasta=${encodeURIComponent(hasta)}` : ""}`);
+/** «Cargar más»: la página que va antes de `antes` → { archivos, siguiente }. */
+export const leerPaginaGaleria = (clienteId, antes) => pedir(`${base(clienteId)}/galeria?antes=${encodeURIComponent(antes)}`);
+/** Buscar en TODA la galería (en el servidor, con la misma regla) → { archivos, total, buscadas, completa }. */
+export const buscarEnGaleria = (clienteId, q) => pedir(`${base(clienteId)}/galeria?q=${encodeURIComponent(q)}`);
 
 /** Pide imágenes. Lanza con `e.datos.codigo === "confirmar"` si cuesta 0,50 $ o más y falta la confirmación. */
 export const pedirImagenes = (clienteId, datos) => pedir(`${base(clienteId)}/trabajos`, post(datos));
@@ -204,8 +213,12 @@ export function textoDeVaciar(borrados, quedan = []) {
   return `${hecho} Se ${quedan.length === 1 ? "queda 1" : `quedan ${quedan.length}`}: ${partes.join("; ")}.`;
 }
 
-/** `tipo` «carrusel» | «reel»: la galería la enseña como UNA tarjeta con sus piezas en orden. */
-export const crearCarpeta = (clienteId, nombre, { tipo = "" } = {}) => pedir(`${base(clienteId)}/carpetas`, post({ nombre, ...(tipo ? { tipo } : {}) }));
+/**
+ * `tipo` «carrusel» | «reel»: la galería la enseña como UNA tarjeta con sus piezas en orden; «auto»: la pone la aplicación
+ * (el lote, las variaciones) y no gasta las 30 de la persona. `reusar`: si ya hay una con ese nombre, ésa.
+ */
+export const crearCarpeta = (clienteId, nombre, { tipo = "", reusar = false } = {}) =>
+  pedir(`${base(clienteId)}/carpetas`, post({ nombre, ...(tipo ? { tipo } : {}), ...(reusar ? { reusar } : {}) }));
 /** Las piezas de un carrusel o un reel, en orden (ids de la galería que están en esa carpeta). */
 export const ordenarCarpeta = (clienteId, id, orden) => pedir(`${base(clienteId)}/carpetas/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify({ orden }) });
 
@@ -293,10 +306,69 @@ export async function subirALaGaleria(clienteId, archivos = [], { carpetaId = nu
   return fraseDeSubida(lista.length, repetidas, lista.every((f) => f.type.startsWith("video/"))) + (fuera > 0 ? ` ${fuera} no se subieron (sólo imágenes y videos, hasta 20).` : "");
 }
 
-/** Los filtros que no son una carpeta. */
-export const FILTROS_GALERIA = ["todas", "favoritas", "subidas", "usadas", "sin-usar", "sin-carpeta"];
-/** ¿Lo usa alguna publicación? */
+/**
+ * Las VISTAS de la galería y los filtros que no son una carpeta («subidas», «usadas» y «sin-usar» eran chips; siguen
+ * valiendo como filtro). «todas» se llama «Lo último»: una tarjeta por pieza, sin la competencia ni lo de la marca.
+ */
+export const FILTROS_GALERIA = ["todas", "favoritas", "subidas", "usadas", "sin-usar", "sin-carpeta", "grupos", "marca", "competencia"];
+export const VISTAS_GALERIA = [
+  ["todas", "Lo último"], ["grupos", "Carruseles y reels"], ["favoritas", "Me gusta"], ["marca", "Marca"], ["competencia", "Competencia"], ["sin-carpeta", "Sin carpeta"],
+];
+/** Los filtros del panel «Filtros» sin nada puesto (components/FiltrosGaleria.jsx). */
+export const FILTROS_VACIOS = Object.freeze({ texto: "", modelo: "", tipo: "", forma: "", producto: "", uso: "", fecha: "" });
+/** Cuántos filtros del panel están puestos (la búsqueda va aparte). Pura. */
+export const cuantosFiltros = (f) => ["modelo", "tipo", "forma", "producto", "uso", "fecha"].filter((k) => f?.[k]).length;
+/** ¿Lo usa alguna publicación? (De verdad: el servidor manda sólo los usos vivos, `usosVivos`.) */
 export const estaUsado = (a) => (a?.usadoEn?.length ?? 0) > 0;
+
+/** Una página más sumada a lo que había, sin repetir (y del más nuevo al más viejo). Pura. */
+export function conPagina(datos, pagina) {
+  if (!datos) return datos;
+  const ya = new Set((datos.archivos ?? []).map((a) => a.id));
+  return { ...datos, archivos: [...(datos.archivos ?? []), ...(pagina?.archivos ?? []).filter((a) => !ya.has(a.id))], siguiente: pagina?.siguiente ?? null };
+}
+
+/** La fecha de una tarjeta (una pieza, su pila de versiones o un carrusel): la más nueva, que es donde va en la lista. Pura. */
+export function fechaDeTarjeta(x) {
+  const todas = x?.grupo ? x.grupo.piezas : [x, ...(x?.anteriores ?? [])];
+  return todas.reduce((m, a) => (String(a?.creado ?? "") > m ? String(a.creado) : m), "");
+}
+
+/**
+ * Lo que se marca con «Seleccionar», como ids de la galería: una tarjeta de carrusel o reel (`grupo-<carpeta>`) son
+ * TODAS las piezas de su carpeta (como «Mandar el carrusel a la papelera»), y una pila de versiones, sólo la que se ve
+ * (antes, «Todas las que se ven» marcaba también lo que no se veía y la papelera se lo llevaba). `todos`: la galería
+ * cargada. Pura.
+ */
+export function idsDeLaSeleccion(seleccion, todos = []) {
+  const ids = [];
+  for (const id of seleccion ?? []) {
+    if (String(id).startsWith("grupo-")) {
+      const carpeta = String(id).slice(6);
+      ids.push(...todos.filter((a) => a.carpetaId === carpeta).map((a) => a.id));
+    } else ids.push(id);
+  }
+  return [...new Set(ids)];
+}
+
+/**
+ * Lo que se pinta encima de una miniatura, como mucho tres y sin pisarse (antes eran seis sueltas en las mismas
+ * esquinas): video, versiones o carrusel, «Usada», y lo que dijo el control. → [{ clave, texto, tono }]. Pura.
+ */
+export function insigniasDe(x, { enPedido = false } = {}) {
+  const lista = [];
+  if (enPedido) lista.push({ clave: "pedido", texto: "En el pedido", tono: "acento" });
+  if (x?.grupo) lista.push({ clave: "grupo", texto: textoDeGrupo(x.grupo.carpeta, x.grupo.piezas), tono: "" });
+  else {
+    if (x?.tipo === "video") lista.push({ clave: "video", texto: "Video", tono: "" });
+    if (x?.anteriores?.length) lista.push({ clave: "versiones", texto: `${x.anteriores.length + 1} versiones`, tono: "" });
+  }
+  if (x?.grupo ? x.grupo.piezas.some(estaUsado) : estaUsado(x)) lista.push({ clave: "usada", texto: x?.grupo ? "Usado" : "Usada", tono: "bien" });
+  const control = x?.ajustes?.control?.estado;
+  if (control === "ok") lista.push({ clave: "control", texto: "Revisada", tono: "bien" });
+  else if (control === "revisar") lista.push({ clave: "control", texto: "Revisar", tono: "aviso" });
+  return lista.slice(0, 3);
+}
 
 /**
  * El modelo escogido en el visor para «Otra igual» u «Otra versión distinta» de la pieza `a` (sólo esa vez): del mismo
@@ -319,24 +391,70 @@ export function modelosDeLaGaleria(archivos = []) {
   return [...cuentas].map(([nombre, n]) => ({ nombre, n })).sort((x, y) => y.n - x.n || x.nombre.localeCompare(y.nombre));
 }
 
+/** Los ids de las carpetas de la competencia y de los carruseles y reels. Pura. */
+const idsDeCarpetas = (carpetas = []) => ({
+  competencia: new Set(carpetas.filter(esCarpetaCompetencia).map((c) => c.id)),
+  grupos: new Set(carpetas.filter(esGrupo).map((c) => c.id)),
+});
+
 /**
- * Filtros de la galería: los de `FILTROS_GALERIA` o el id de una carpeta; `modelo`, el NOMBRE de uno de
- * `modelosDeLaGaleria` («Nano Banana» junta lo del Estudio y lo de «Ampliar con IA», que se apunta con otro id). El
- * texto busca también por el nombre del modelo.
+ * Filtros de la galería: `filtro`, una vista de `FILTROS_GALERIA` o el id de una carpeta; `modelo`, el NOMBRE de uno de
+ * `modelosDeLaGaleria` («Nano Banana» junta lo del Estudio y lo de «Ampliar con IA», que se apunta con otro id); `texto`,
+ * la búsqueda (src/lib/galeriaVistas.js: la escena, el título, el producto, la publicación, el modelo y la fecha, sin
+ * tildes). Lo del panel de filtros: `tipo` (imagen | video | subida), `forma` (`FORMAS_GALERIA`), `producto` ({ id,
+ * nombre, fotos }), `uso` (sin-usar | usadas) y `fecha` (`FECHAS_GALERIA`). «Lo último» (`todas`) deja fuera la
+ * competencia y lo de la marca, que tienen su vista; con `carpetas` sin pasar, todo. Pura.
  */
-export function filtrarArchivos(archivos = [], { filtro = "todas", texto = "", modelo = "" } = {}) {
-  const t = String(texto ?? "").trim().toLowerCase();
+export function filtrarArchivos(archivos = [], {
+  filtro = "todas", texto = "", modelo = "", tipo = "", forma = "", producto = null, uso = "", fecha = "", carpetas = [], productos = [], ahora = Date.now(),
+} = {}) {
+  const ids = idsDeCarpetas(carpetas);
+  const vista = (a) => {
+    if (filtro === "todas") return !a.deLaMarca && !ids.competencia.has(a.carpetaId);
+    if (filtro === "favoritas") return a.favorito;
+    if (filtro === "subidas") return a.subido;
+    if (filtro === "usadas") return estaUsado(a);
+    if (filtro === "sin-usar") return !estaUsado(a);
+    if (filtro === "sin-carpeta") return !a.carpetaId;
+    if (filtro === "grupos") return ids.grupos.has(a.carpetaId);
+    if (filtro === "marca") return Boolean(a.deLaMarca);
+    if (filtro === "competencia") return ids.competencia.has(a.carpetaId);
+    return a.carpetaId === filtro;
+  };
   return archivos.filter((a) => {
+    if (!vista(a)) return false;
     if (modelo && modeloDeLaPieza(a) !== modelo) return false;
-    if (filtro === "favoritas" && !a.favorito) return false;
-    if (filtro === "subidas" && !a.subido) return false;
-    if (filtro === "usadas" && !estaUsado(a)) return false;
-    if (filtro === "sin-usar" && estaUsado(a)) return false;
-    if (filtro === "sin-carpeta" && a.carpetaId) return false;
-    if (!FILTROS_GALERIA.includes(filtro) && a.carpetaId !== filtro) return false;
-    if (t && !`${a.prompt} ${a.modelo} ${modeloDeLaPieza(a)}`.toLowerCase().includes(t)) return false;
-    return true;
+    if (tipo === "subida" ? !a.subido : tipo && a.tipo !== tipo) return false;
+    if (forma && formaDe(a) !== forma) return false;
+    if (uso === "sin-usar" && estaUsado(a)) return false;
+    if (uso === "usadas" && !estaUsado(a)) return false;
+    if (fecha && !enFecha(a, fecha, ahora)) return false;
+    if (producto && !esDelProducto(a, producto)) return false;
+    return coincideConBusqueda(a, texto, { productos });
   });
+}
+
+/**
+ * Lo que dice cada chip de las vistas: «Lo último» y «Carruseles y reels» cuentan TARJETAS (antes «Todas» contaba
+ * archivos: 3 versiones de una pieza eran 3); las demás enseñan pieza a pieza, así que piezas. `vistaDeTodas`: las
+ * tarjetas de «Lo último» ya armadas. Pura.
+ */
+export function contarVistas(archivos = [], carpetas = [], vistaDeTodas = null) {
+  const ids = idsDeCarpetas(carpetas);
+  const cuentas = { todas: 0, grupos: 0, favoritas: 0, marca: 0, competencia: 0, "sin-carpeta": 0 };
+  for (const c of carpetas) cuentas[c.id] = 0;
+  const grupos = new Set();
+  for (const a of archivos) {
+    if (a.favorito) cuentas.favoritas++;
+    if (a.deLaMarca) cuentas.marca++;
+    if (ids.competencia.has(a.carpetaId)) cuentas.competencia++;
+    if (ids.grupos.has(a.carpetaId)) grupos.add(a.carpetaId);
+    if (!a.carpetaId) cuentas["sin-carpeta"]++;
+    else if (a.carpetaId in cuentas) cuentas[a.carpetaId]++;
+  }
+  cuentas.grupos = grupos.size;
+  cuentas.todas = vistaDeTodas ? vistaDeTodas.length : filtrarArchivos(archivos, { carpetas }).length;
+  return cuentas;
 }
 
 /** Cuántos archivos hay en cada filtro, para los números de los chips. */

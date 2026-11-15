@@ -440,7 +440,7 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
     let carpetaId = null;
     try {
       const nombre = esMes && mesElegido ? carpetaDelMes(mesElegido.year, mesElegido.month) : nombreCarpetaLote(producto?.nombre ?? "");
-      const r = await api.crearCarpeta(clienteId, nombre).catch(async (e) => {
+      const r = await api.crearCarpeta(clienteId, nombre, { tipo: "auto", reusar: true }).catch(async (e) => {
         // Ya existe (otro lote del mismo mes o del mismo día): se reusa.
         const g = await api.leerEstudio(clienteId);
         const hay = (g?.carpetas ?? []).find((c) => c.nombre.toLowerCase() === nombre.toLowerCase());

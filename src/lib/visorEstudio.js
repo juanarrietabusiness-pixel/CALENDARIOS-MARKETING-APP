@@ -133,7 +133,7 @@ async function carpetaParaVariaciones(clienteId, a) {
   for (let i = 1; i <= 5; i++) {
     const nombre = carpetaDeVariaciones(titulo, i);
     try {
-      const { carpeta } = await api.crearCarpeta(clienteId, nombre);
+      const { carpeta } = await api.crearCarpeta(clienteId, nombre, { tipo: "auto" });
       if (!carpeta?.id) return null;
       if (!a.carpetaId) await api.cambiarArchivo(clienteId, a.id, { carpetaId: carpeta.id }).catch(() => null);
       return carpeta;

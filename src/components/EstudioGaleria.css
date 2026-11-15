@@ -1,0 +1,61 @@
+/* ============================================================
+   La galería del Estudio: buscador y filtros, semanas, tarjetas y «Cargar más».
+   Va con su chunk (EstudioGaleria.jsx y FiltrosGaleria.jsx, también en «De la galería» de una publicación).
+   ============================================================ */
+
+/* Buscar y el panel «Filtros» */
+.est-buscador { display: flex; flex-direction: column; gap: var(--sp-2); }
+.est-buscar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
+.est-buscar .input { flex: 1 1 220px; max-width: 480px; min-width: 0; }
+.est-filtros-boton { min-height: var(--tap-sm); }
+.est-buscar-estado { margin: 0; font-size: var(--fs-2xs); color: var(--text-dim); min-height: 1em; }
+.est-buscar-estado:empty { display: none; }
+.est-filtros-panel {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 160px), 1fr)); gap: var(--sp-2) var(--sp-3); align-items: end;
+  padding: var(--sp-3); border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-2);
+}
+.est-filtros-panel[hidden] { display: none; }
+.est-filtro { display: flex; flex-direction: column; gap: var(--sp-1); min-width: 0; }
+.est-filtro .label { margin: 0; }
+.est-filtro .input { width: 100%; }
+/* Las carpetas que no van como chip: un desplegable del alto de un chip. */
+.est-carpetas-select { width: auto; max-width: 220px; min-height: var(--tap-sm); padding-top: 0; padding-bottom: 0; font-size: var(--fs-2xs); }
+
+/* Por semanas */
+.est-semana { display: flex; flex-direction: column; gap: var(--sp-2); }
+.est-semana + .est-semana { margin-top: var(--sp-3); }
+.est-semana-titulo { margin: 0; font-size: var(--fs-sm); font-weight: 700; }
+.est-semana-titulo span { font-weight: 400; color: var(--text-dim); }
+
+/* La tarjeta: la miniatura en 4:5 (Estudio.css); lo vertical y lo del feed la llenan, lo demás entero. */
+.est-img[data-forma="vertical"] img, .est-img[data-forma="vertical"] video,
+.est-img[data-forma="4:5"] img, .est-img[data-forma="4:5"] video { object-fit: cover; }
+/* Como mucho tres marcas, abajo y en fila: antes eran seis sueltas en las mismas esquinas y se pisaban. */
+.est-insignias {
+  position: absolute; left: var(--sp-2); right: var(--sp-2); bottom: var(--sp-2);
+  display: flex; flex-wrap: wrap; gap: var(--sp-1); pointer-events: none;
+}
+.est-insignia {
+  display: inline-flex; align-items: center; gap: 2px; padding: 2px var(--sp-2); border-radius: var(--radius-pill);
+  font-size: var(--fs-3xs); font-weight: 700; line-height: 1.4; background: rgba(0, 0, 0, 0.72); color: #fff; white-space: nowrap;
+}
+.est-insignia-bien { color: var(--success); }
+.est-insignia-aviso { color: var(--warning, #f5a524); }
+.est-insignia-acento { background: var(--accent); color: #fff; }
+/* Seleccionando: la casilla arriba a la izquierda (abajo van las marcas). */
+.est-tarjeta .est-marca-check { top: var(--sp-2); bottom: auto; }
+
+.est-cargar-mas { display: flex; flex-direction: column; align-items: center; gap: var(--sp-1); margin-top: var(--sp-4); }
+.est-cargar-mas .hint { margin: 0; }
+
+@media (max-width: 599px) {
+  .est-carpetas-select { max-width: 100%; flex: 1 1 100%; }
+  .est-filtros-panel { grid-template-columns: 1fr 1fr; }
+}
+
+/* «De la galería» de una publicación (GaleriaSelector.jsx): las semanas desplazan juntas dentro del diálogo. */
+.galeria-selector-cuerpo { display: flex; flex-direction: column; gap: var(--sp-2); max-height: 56vh; overflow-y: auto; }
+.galeria-selector-cuerpo .visor-grupo-piezas { max-height: none; overflow: visible; }
+@media (max-width: 599px) {
+  .galeria-selector-cuerpo { max-height: none; overflow: visible; }
+}
