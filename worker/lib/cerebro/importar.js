@@ -165,6 +165,8 @@ async function sincronizar(env, acceso, cliente, estado, { carpeta, actualizar, 
   // ---------- Lo que ya no está en GitHub ----------
   // Las notas corregidas de lo que se fue, por título: si el archivo reaparece en otra ruta (se movió), lo siguen.
   const huerfanas = new Map();
+  // Las corregidas que ya encontraron su sección en esta vuelta: una nota no puede seguir a dos archivos.
+  const consumidas = new Set();
   for (const n of delRepositorio) if (conflictoDe.get(n.id)?.tipo === "archivo" && textoEditado(n)) apuntar(huerfanas, n.titulo, n);
   // Si la carpeta de la ficha cambió, la revisión automática no quita lo de la anterior (podría ser un error al
   // escribirla): lo hace «Actualizar desde GitHub», que pulsa una persona.
@@ -221,8 +223,8 @@ async function sincronizar(env, acceso, cliente, estado, { carpeta, actualizar, 
 
     // Las secciones con sus rutas «naturales» dentro del archivo (sin mirar las del resto del cerebro).
     const secciones = dividirEnNotas(archivo.ruta, archivo.texto, new Set()).map((s) => ({ ...s, hash: huellaSeccion(s.texto) }));
-    const corregidas = propias.filter((n) => textoEditado(n) && !aPisar.has(n.id));
-    const sinTocar = propias.filter((n) => !corregidas.includes(n));
+    const corregidas = propias.filter((n) => textoEditado(n) && !aPisar.has(n.id) && !consumidas.has(n.id));
+    const sinTocar = propias.filter((n) => !corregidas.includes(n) && !consumidas.has(n.id));
     const porTitulo = { c: new Map(), u: new Map() };
     for (const n of corregidas) apuntar(porTitulo.c, n.titulo, n);
     for (const n of sinTocar) apuntar(porTitulo.u, n.titulo, n);
@@ -240,12 +242,14 @@ async function sincronizar(env, acceso, cliente, estado, { carpeta, actualizar, 
     const plan = [];
     for (const s of secciones) {
       const c = buscar(porTitulo.c, corregidas, s);
-      if (c) { tomada.add(c.id); plan.push({ s, corregida: c }); continue; }
+      if (c) { tomada.add(c.id); consumidas.add(c.id); plan.push({ s, corregida: c }); continue; }
       const u = buscar(porTitulo.u, sinTocar, s);
       if (u) { tomada.add(u.id); plan.push({ s, sinTocar: u }); continue; }
       if (marcadas.has(claveMarca(archivo.ruta, s.titulo))) { notas.saltadas++; continue; }
       // Una corregida de un archivo que se fue y que aquí reaparece con su título: se movió de carpeta.
-      const h = !yaEstaba ? sacar(huerfanas, s.titulo) : null;
+      let h = !yaEstaba ? sacar(huerfanas, s.titulo) : null;
+      while (h && consumidas.has(h.id)) h = sacar(huerfanas, s.titulo);
+      if (h) consumidas.add(h.id);
       if (h) { plan.push({ s, corregida: h, movida: true }); continue; }
       plan.push({ s, nueva: true });
     }

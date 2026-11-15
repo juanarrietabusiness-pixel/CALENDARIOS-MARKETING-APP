@@ -45,7 +45,8 @@ export function describirSincronia(sync, ahora = Date.now()) {
   const partes = [`Revisado en GitHub ${fechaCorta(sync.revisadoAt, ahora)}`];
   if (sync.sincronizadoAt) partes.push(`último cambio traído ${fechaCorta(sync.sincronizadoAt, ahora)}`);
   if (sync.pendientes) partes.push(`${plural(sync.pendientes, "archivo espera", "archivos esperan")} la siguiente vuelta`);
-  return `${partes.join(" · ")}.`;
+  const t = partes.join(" · ");
+  return t.endsWith(".") ? t : `${t}.`;
 }
 
 const NO_TEXTO = { pdf: ["PDF", "PDF"], word: ["Word", "Word"], hoja: ["hoja de cálculo", "hojas de cálculo"], imagen: ["imagen", "imágenes"], otro: ["archivo de otro tipo", "archivos de otro tipo"] };
@@ -81,8 +82,8 @@ export function diferenciaPorLineas(mia, github, { contexto = 2 } = {}) {
   let j = 0;
   while (i < n || j < m) {
     if (i < n && j < m && a[i] === b[j]) { lineas.push({ tipo: "igual", texto: a[i] }); i++; j++; }
-    else if (j < m && (i >= n || largo[i][j + 1] >= largo[i + 1][j])) { lineas.push({ tipo: "github", texto: b[j] }); j++; }
-    else { lineas.push({ tipo: "mia", texto: a[i] }); i++; }
+    else if (i < n && (j >= m || largo[i + 1][j] >= largo[i][j + 1])) { lineas.push({ tipo: "mia", texto: a[i] }); i++; }
+    else { lineas.push({ tipo: "github", texto: b[j] }); j++; }
   }
   // Plegar lo igual que queda lejos de un cambio.
   const cerca = lineas.map((_, k) => lineas.slice(Math.max(0, k - contexto), k + contexto + 1).some((x) => x.tipo !== "igual"));
