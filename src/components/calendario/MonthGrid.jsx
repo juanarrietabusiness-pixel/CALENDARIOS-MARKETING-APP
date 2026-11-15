@@ -14,7 +14,7 @@ import { completitud, resumenCompletitud } from "../../lib/completitud";
 import Icon from "../Icon";
 import { fmt12h } from "./formato";
 import { resumenCola } from "../../lib/cola";
-import { estadoDelChip, miniaturaDe, enPauta, ESTADOS_CHIP } from "../../lib/estadoChip";
+import { estadoDelChip, miniaturaDe, enPauta, ESTADOS_CHIP, reducida } from "../../lib/estadoChip";
 
 /**
  * `vecinos`: los días de los meses de al lado que asoman en la rejilla
@@ -177,7 +177,7 @@ export function MonthGrid({ cal, cola = [], miembros = [], onPostClick, onMove, 
                   {lleva && <span className="cal-post-quien" style={{ background: lleva.color }} aria-hidden="true" />}
                   {mini && (
                     <span className="cal-post-mini" aria-hidden="true">
-                      {mini.src ? <img src={mini.src} alt="" loading="lazy" decoding="async" /> : <Icon name="play" size={14} />}
+                      {mini.src ? <img src={reducida(mini.src)} alt="" loading="lazy" decoding="async" /> : <Icon name="play" size={14} />}
                     </span>
                   )}
                   <Icon name={FORMAT_ICONS[post.format] || "formatPost"} size={13} />

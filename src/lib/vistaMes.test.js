@@ -42,7 +42,7 @@ describe("la cuadrícula del perfil", () => {
   it("de un reel se ve su portada; sin portada, el video en su fotograma", () => {
     const video = { src: "/api/media/clientes/c1/v.mp4", tipo: "video" };
     expect(miniaturaDeCuadricula({ format: "reel", medios: [video], portada: "/api/media/clientes/c1/p.jpg" }))
-      .toEqual({ src: "/api/media/clientes/c1/p.jpg", tipo: "imagen" });
+      .toEqual({ src: "/api/media/clientes/c1/p.jpg?mini=1", tipo: "imagen" });
     expect(miniaturaDeCuadricula({ format: "reel", medios: [video], portadaMs: 1500 }))
       .toEqual({ src: video.src, tipo: "video", segundo: 1.5 });
     expect(miniaturaDeCuadricula({ format: "post", medios: [] })).toBeNull();
@@ -51,7 +51,7 @@ describe("la cuadrícula del perfil", () => {
   it("de una imagen se ve la copia que sale en el feed (4:5) si la hay", () => {
     const src = "/api/media/clientes/c1/flow.png";
     const post = { format: "post", medios: [{ src, tipo: "imagen", ancho: 768, alto: 1024 }], adaptados: { [`feed|${src}`]: { src: "/api/media/clientes/c1/feed.jpg", ancho: 1080, alto: 1350 } } };
-    expect(miniaturaDeCuadricula(post)).toEqual({ src: "/api/media/clientes/c1/feed.jpg", tipo: "imagen", ancho: 1080, alto: 1350 });
+    expect(miniaturaDeCuadricula(post)).toEqual({ src: "/api/media/clientes/c1/feed.jpg?mini=1", tipo: "imagen", ancho: 1080, alto: 1350 });
   });
 
   it("dice lo que ya está programado o salió", () => {

@@ -31,6 +31,26 @@
 /
   Cache-Control: public, max-age=0, must-revalidate
 
+# Las páginas del cliente final tienen su propio HTML (aprobar.html…, ver vite.publico.config.js): como index.html,
+# siempre el último, o tras un despliegue pediría trozos que ya no existen.
+/aprobar
+  Cache-Control: public, max-age=0, must-revalidate
+
+/informe
+  Cache-Control: public, max-age=0, must-revalidate
+
+/informe-anuncios
+  Cache-Control: public, max-age=0, must-revalidate
+
+/ventas
+  Cache-Control: public, max-age=0, must-revalidate
+
+/voz
+  Cache-Control: public, max-age=0, must-revalidate
+
+/auditoria
+  Cache-Control: public, max-age=0, must-revalidate
+
 # El service worker de «Compartir»: siempre el último (si se cacheara, un arreglo tardaría en llegar).
 /sw.js
   Cache-Control: public, max-age=0, must-revalidate

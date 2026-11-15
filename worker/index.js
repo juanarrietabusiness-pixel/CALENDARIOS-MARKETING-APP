@@ -78,6 +78,7 @@ import { rutasHistoriasAuto } from "./rutas/historiasAuto.js";
 import { rutasVentas, rutaVentasPublica } from "./rutas/ventas.js";
 import { rutasWhatsApp, rutaVozPublica } from "./rutas/whatsapp.js";
 import { rutasTrozos } from "./rutas/trozos.js";
+import { sirveReducida, crearReducida, claveReducida } from "./lib/estudio/miniaturas.js";
 import { avanzarPendientes } from "./lib/estudio/trabajos.js";
 import { rutasMCP, rutasMCPPublicas } from "./rutas/mcp.js";
 import { informePendiente } from "./lib/informes.js";
@@ -272,6 +273,8 @@ const trabajador = {
         if (partes[2] === "media" && metodo === "GET") {
           const clave = partes.slice(3).join("/");
           if (!(await mediaPermitida(env.DB, testigo, clave))) return noEncontrado("Archivo");
+          // `?mini=1`: su copia reducida (worker/lib/estudio/miniaturas.js), con el permiso del original.
+          if (url.searchParams.has("mini")) return sirveReducida(env, clave, { original: url.pathname, exec: ctx });
           return sirveMedia(env, clave, true, req);
         }
 
@@ -556,6 +559,8 @@ const trabajador = {
           await env.MEDIA.put(clave, archivo.stream(), {
             httpMetadata: { contentType: archivo.type || "image/jpeg" },
           });
+          // Su copia reducida, ya (la pintan el chip del mes y la página del cliente): detrás de la respuesta.
+          if (/^image\/(jpeg|png|webp|gif)$/i.test(archivo.type ?? "")) ctx?.waitUntil?.(crearReducida(env, clave));
           return json({ clave }, 201);
         }
 
@@ -567,8 +572,16 @@ const trabajador = {
         const m = /^clientes\/([^/]+)\//.exec(clave);
         if (!m) return noEncontrado("Archivo");
         if (!(await acceso.leerUno("clients", { id: m[1] }))) return noEncontrado("Archivo");
-        if (metodo === "GET") return sirveMedia(env, clave, true, req);
-        if (metodo === "DELETE") { await env.MEDIA.delete(clave); return json({ ok: true }); }
+        if (metodo === "GET") {
+          // `?mini=1`: su copia reducida (worker/lib/estudio/miniaturas.js).
+          if (url.searchParams.has("mini")) return sirveReducida(env, clave, { original: url.pathname, exec: ctx });
+          return sirveMedia(env, clave, true, req);
+        }
+        if (metodo === "DELETE") {
+          await env.MEDIA.delete(clave);
+          try { await env.MEDIA.delete(claveReducida(clave)); } catch { /* no tenía copia */ }
+          return json({ ok: true });
+        }
         return error(`Método ${metodo} no permitido aquí`, 405);
       }
 

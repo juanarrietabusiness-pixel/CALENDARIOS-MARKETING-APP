@@ -68,6 +68,12 @@ export async function pedir(ruta, opciones = {}) {
 
 const conCuerpo = (metodo, datos) => ({ method: metodo, body: JSON.stringify(datos) });
 
+/**
+ * Un mes de la base con la forma de la aplicación y su VERSIÓN (`updatedAt`): es lo que el guardado manda como
+ * condición para no pisar lo que otra persona guardó entremedias (ver `saveCalendar`).
+ */
+export const calendarioDeFila = (row) => ({ ...rowToCalendar(row), updatedAt: row?.updated_at ?? null });
+
 /** Carga clientes y calendarios y los devuelve con la forma que usa la aplicación. */
 export async function loadWorkspace() {
   const { clients = [], calendars = [] } = await pedir("/espacio");
@@ -75,7 +81,7 @@ export async function loadWorkspace() {
   const byClient = new Map();
   for (const row of calendars) {
     const list = byClient.get(row.client_id) ?? [];
-    list.push(rowToCalendar(row));
+    list.push(calendarioDeFila(row));
     byClient.set(row.client_id, list);
   }
 
@@ -96,10 +102,43 @@ export async function deleteClient(clientDbId) {
   await pedir(`/clientes/${clientDbId}`, { method: "DELETE" });
 }
 
-export async function saveCalendar(cal, clientDbId, _ownerId) {
-  const row = calendarToRow(cal, clientDbId);
+/**
+ * Guarda un mes entero.
+ *
+ * Con `base` —la versión de la que parte lo que se guarda, con su `updatedAt`— el servidor sólo escribe si nadie guardó
+ * después (cabecera `X-Calendario-Version`). Si alguien lo hizo, contesta 409 con lo que hay ahora, y aquí se junta lo
+ * mío con lo suyo POR PUBLICACIÓN (lib/fusionMes.js) y se vuelve a guardar, sin perder nada de nadie. `alFusionar(mes)`
+ * avisa a quien llama de que lo guardado ya no es sólo lo suyo. Sin `base` (las pantallas que guardan por su cuenta, un
+ * mes nuevo) se guarda como siempre: gana la última escritura.
+ */
+export async function saveCalendar(cal, clientDbId, _ownerId, { base = null, alFusionar = null } = {}) {
   const id = cal.dbId || "nuevo";
-  return rowToCalendar(await pedir(`/calendarios/${id}`, conCuerpo("PUT", row)));
+  const guardar = (mes, version) => pedir(`/calendarios/${id}`, {
+    ...conCuerpo("PUT", calendarToRow(mes, clientDbId)),
+    ...(version ? { headers: { "X-Calendario-Version": version } } : {}),
+  });
+  if (id === "nuevo" || !base?.updatedAt) return calendarioDeFila(await guardar(cal, null));
+  let mio = cal;
+  let antes = base;
+  for (let vuelta = 0; vuelta < 3; vuelta++) {
+    try {
+      const guardado = calendarioDeFila(await guardar(mio, antes.updatedAt));
+      if (vuelta) alFusionar?.(guardado);
+      return guardado;
+    } catch (e) {
+      if (e?.estado !== 409 || e?.datos?.codigo !== "version" || !e.datos.calendario) throw e;
+      const suyo = calendarioDeFila(e.datos.calendario);
+      const { fusionarGuardado } = await import("./fusionMes.js");
+      mio = fusionarGuardado(antes, mio, suyo);
+      antes = suyo;
+    }
+  }
+  throw new Error("Otra persona está guardando este mes a la vez: vuelve a intentarlo en un momento.");
+}
+
+/** Un mes, tal como está ahora en la base (lo que relee la pantalla al llegar un `calendario:recargar`). */
+export async function leerCalendario(calendarDbId) {
+  return calendarioDeFila(await pedir(`/calendarios/${encodeURIComponent(calendarDbId)}`));
 }
 
 /**
@@ -107,7 +146,7 @@ export async function saveCalendar(cal, clientDbId, _ownerId) {
  * Se pide al ESCRIBIR la primera publicación del mes, nunca al mirarlo.
  */
 export async function mesDeCalendario(clientDbId, year, month) {
-  return rowToCalendar(await pedir("/calendarios/mes", conCuerpo("POST", { clientId: clientDbId, year, month })));
+  return calendarioDeFila(await pedir("/calendarios/mes", conCuerpo("POST", { clientId: clientDbId, year, month })));
 }
 
 /**
@@ -117,7 +156,7 @@ export async function mesDeCalendario(clientDbId, year, month) {
  */
 export async function moverDeMes(calendarDbId, postId, fecha) {
   const { origen, destino } = await pedir(`/calendarios/${calendarDbId}/mover`, conCuerpo("POST", { postId, fecha }));
-  return { origen: rowToCalendar(origen), destino: rowToCalendar(destino) };
+  return { origen: calendarioDeFila(origen), destino: calendarioDeFila(destino) };
 }
 
 export async function deleteCalendar(calendarDbId) {
