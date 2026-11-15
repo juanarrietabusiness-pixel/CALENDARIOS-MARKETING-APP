@@ -14,9 +14,17 @@
 //                     puede depender de que la búsqueda la encuentre.
 //
 // QUÉ NO LEE LA IA: las notas internas (costos, márgenes, proveedores),
-// la maquetación de Meta AI, los informes de otros sistemas y su propia
-// ficha anterior (se citaría a sí misma). Una ficha se escribe para lo que
-// se PUBLICA: lo que la IA no ve, no lo puede filtrar.
+// la maquetación y el prompt maestro de Meta AI (`fueraDeUso`, como en todo
+// lo demás), los informes de otros sistemas, las «decisiones» que la
+// aplicación apunta sola con cada respuesta del cliente (son de UNA
+// publicación, no de la marca) y su propia ficha anterior (se citaría a sí
+// misma). Una ficha se escribe para lo que se PUBLICA: lo que la IA no ve, no
+// lo puede filtrar. Va primero el canon de GitHub; las decisiones, al final.
+//
+// LOS PRECIOS LOS MANDA EL CATÁLOGO del estudio de mercado (la nota de
+// cifras «Productos y servicios»). La IA lo recibe aparte y no los repite en
+// las cifras: así «Cifras vigentes» no puede contradecirlo, y la primera
+// línea de las cifras lo dice.
 //
 // LO QUE CORRIGE UNA PERSONA MANDA. Si alguien editó a mano la ficha, esta
 // llamada no la pisa (`forzar` sí). Se reconoce por sus fechas: una nota
@@ -34,9 +42,10 @@
 import { uuid } from "../ids.js";
 import { ErrorIA, llamarIA } from "./ia.js";
 import { parseBloques } from "../../../src/lib/parse.js";
-import { leerNotas, reindexar } from "./cerebro.js";
+import { leerNotas, reindexar, fueraDeUso } from "./cerebro.js";
 import { derivados, rutaUnica, textoEditado } from "./notas.js";
 import { sinIADeTexto } from "../configIA.js";
+import { marcarFicha } from "./estadoSync.js";
 
 const SALIDA = 6000;               // lo que se pide para escribir; el razonamiento va aparte
 const PRESUPUESTO_NOTAS = 60_000;  // caracteres de notas que entran en la llamada
@@ -50,12 +59,29 @@ const MAX_CIFRAS = 3000;
 /** Un fallo de esta llamada que se le puede decir a la persona, con el estado que le toca. */
 export const ErrorPreparar = ErrorIA;
 
+/** El orden en que la IA lee las notas de las que sale la ficha: el canon primero, las decisiones al final. */
+const ORDEN_FICHA = Object.freeze({ marca: 0, documento: 1, nota: 2, decision: 3 });
+
+/** Las «decisiones» que la aplicación apunta sola con cada respuesta del cliente (aprender.js): son de una publicación. */
+export const esDecisionAutomatica = (n) => n?.origen === "app" && String(n?.fuente ?? "").startsWith("respuesta:");
+
+/**
+ * ¿Esta nota alimenta la ficha técnica? La MISMA regla para escribirla y para decir que quedó vieja: si no, el aviso
+ * saltaba con cosas que la ficha nunca lee (cada respuesta de un cliente dejaba una «decisión» que lo encendía). Pura.
+ */
+export function alimentaLaFicha(n) {
+  return Boolean(n) && !n.interna && n.tipo in ORDEN_FICHA && !esDecisionAutomatica(n)
+    && !fueraDeUso({ t: n.tipo, i: n.interna ? 1 : 0, ti: n.titulo }, "texto");
+}
+
+/** ¿Es la nota del catálogo (la escribe el estudio de mercado, tipo cifras)? Es la que manda en los precios. */
+export const esNotaDelCatalogo = (n) => n?.tipo === "cifras" && n?.origen === "mercado";
+
 /** Lo que se le enseña a la IA, por orden: primero el canon. Lo que no cabe se nombra, no se manda. */
 export function notasParaLaFicha(notas, { presupuesto = PRESUPUESTO_NOTAS, maxPorNota = MAX_POR_NOTA } = {}) {
-  const orden = { marca: 0, decision: 1, documento: 2, nota: 3 };
   const validas = notas
-    .filter((n) => !n.interna && n.tipo in orden)
-    .sort((a, b) => orden[a.tipo] - orden[b.tipo] || a.ruta.localeCompare(b.ruta));
+    .filter(alimentaLaFicha)
+    .sort((a, b) => ORDEN_FICHA[a.tipo] - ORDEN_FICHA[b.tipo] || a.ruta.localeCompare(b.ruta));
   const dentro = [];
   const fuera = [];
   let usado = 0;
@@ -70,22 +96,25 @@ export function notasParaLaFicha(notas, { presupuesto = PRESUPUESTO_NOTAS, maxPo
 
 /**
  * ¿La ficha o las cifras son de antes de la última nota de la que salen? `null` si están al día (o no hay).
- * Cuentan las notas que lee la ficha (`notasParaLaFicha`: marca, decisión, documento y nota, no internas) y no
- * las escritas por la IA. Puro: recibe las filas ligeras.
- * @returns {{ desde: string, cambiadas: string[] } | null}
+ * Cuentan SÓLO las notas que la alimentan (`alimentaLaFicha`): ni las internas, ni el prompt maestro, ni las
+ * decisiones que la aplicación apunta sola con cada respuesta del cliente. Puro: recibe las filas ligeras.
+ * @returns {{ desde: string, cambiadas: string[], total: number } | null}
  */
 export function fichaDesactualizada(notas) {
   const deLaIA = notas.filter((n) => n.origen === "ia" && (n.tipo === "ficha" || n.tipo === "cifras"));
   if (!deLaIA.length) return null;
   const desde = deLaIA.reduce((m, n) => (!m || n.updated_at < m ? n.updated_at : m), "");
-  const tipos = new Set(["marca", "decision", "documento", "nota"]);
-  const cambiadas = notas.filter((n) => n.origen !== "ia" && !n.interna && tipos.has(n.tipo) && String(n.updated_at) > String(desde));
+  const cambiadas = notas.filter((n) => alimentaLaFicha(n) && String(n.updated_at) > String(desde));
   return cambiadas.length ? { desde, cambiadas: cambiadas.map((n) => n.titulo).slice(0, 12), total: cambiadas.length } : null;
 }
 
+/** La primera línea de las cifras cuando hay catálogo: quién manda en los precios. */
+export const LINEA_PRECIOS = "- Precios de venta: los del catálogo «Productos y servicios» (si algo aquí no coincide, manda el catálogo).";
+
 /** El prompt. Puro. */
-export function promptDeLaFicha(cliente, { dentro, fuera }) {
+export function promptDeLaFicha(cliente, { dentro, fuera }, { catalogo = "" } = {}) {
   const notas = dentro.map((n) => `--- ${n.titulo} [${n.ruta}] ---\n${n.texto}`).join("\n\n");
+  const conCatalogo = Boolean(String(catalogo).trim());
   return `Eres el archivista de la agencia Juancito Ads. Vas a escribir la FICHA TÉCNICA y las CIFRAS VIGENTES de ${cliente.name}, a partir de SUS notas —que van al final— y de nada más.
 
 REGLAS, que no se negocian:
@@ -96,15 +125,15 @@ REGLAS, que no se negocian:
 
 FICHA (hasta 3 500 caracteres), con estos apartados en este orden: «Quién es», «Qué vende», «Cómo habla» (y cómo NO habla), «A quién le habla», «Límites: lo que nunca se dice ni se hace», «Contacto y redes», «Falta por definir».
 
-CIFRAS (hasta 1 500 caracteres): una lista, una cifra por línea, «- Nombre: valor [[ruta]]». Precios de venta, plazos, garantías, horarios, teléfonos, medidas de las piezas. Sólo las que están escritas y son públicas.
-
+CIFRAS (hasta 1 500 caracteres): una lista, una cifra por línea, «- Nombre: valor [[ruta]]». ${conCatalogo ? "Plazos, garantías, horarios, teléfonos, medidas de las piezas, costos de envío: NO pongas precios de venta de productos o servicios, que los manda el CATÁLOGO de abajo." : "Precios de venta, plazos, garantías, horarios, teléfonos, medidas de las piezas."} Sólo las que están escritas y son públicas.
+${conCatalogo ? "\nLOS PRECIOS MANDAN LOS DEL CATÁLOGO. Si una nota dice otro precio para un producto del catálogo, ese precio está viejo: no lo copies; en «Falta por definir» escribe «El precio de <producto> en [[ruta]] no coincide con el catálogo».\n" : ""}
 Responde EXACTAMENTE con este formato, sin nada antes ni después:
 FICHA:
 (la ficha)
 CIFRAS:
 (la lista)
 
-NOTAS DE ${cliente.name.toUpperCase()}:
+${conCatalogo ? `CATÁLOGO DE ${cliente.name.toUpperCase()} (manda en los precios; no se cita con corchetes):\n${String(catalogo).trim().slice(0, 6000)}\n\n` : ""}NOTAS DE ${cliente.name.toUpperCase()}:
 ${notas}${fuera.length ? `\n\n(No caben aquí, pero existen: ${fuera.slice(0, 20).join("; ")}. Si hace falta algo de ellas, ponlo en «Falta por definir».)` : ""}`;
 }
 
@@ -143,12 +172,18 @@ export async function prepararFicha(env, acceso, cliente, { forzar = false } = {
   const conservaFicha = !forzar && editada("ficha");
   const conservaCifras = !forzar && editada("cifras");
   if (conservaFicha && conservaCifras) {
+    await marcarFicha(acceso, cliente.id, false);
     return { ficha: "conservada", cifras: "conservada", modelo: "", aviso: null, leidas: 0, fuera: [], segundos: 0 };
   }
 
-  const { texto, modelo, aviso, segundos } = await llamarIA(env, acceso, cliente, { prompt: promptDeLaFicha(cliente, paraLaIA), salida: SALIDA });
+  const catalogo = notas.find(esNotaDelCatalogo)?.texto ?? "";
+  const { texto, modelo, aviso, segundos } = await llamarIA(env, acceso, cliente, { prompt: promptDeLaFicha(cliente, paraLaIA, { catalogo }), salida: SALIDA });
   const respuesta = leerRespuesta(texto);
   if (!respuesta) throw new ErrorPreparar("La IA no devolvió la ficha con el formato esperado. Inténtalo otra vez.", 502);
+  // Con catálogo, las cifras lo dicen arriba: quien las lea (la IA que escribe, una persona) sabe quién manda.
+  if (catalogo.trim() && respuesta.cifras && !respuesta.cifras.includes("catálogo «Productos y servicios»")) {
+    respuesta.cifras = `${LINEA_PRECIOS}\n${respuesta.cifras}`.slice(0, MAX_CIFRAS);
+  }
 
   const usadas = new Set(notas.map((n) => n.ruta));
   const reemplazar = async (rutaBase, titulo, tipo, texto, conserva) => {
@@ -166,6 +201,8 @@ export async function prepararFicha(env, acceso, cliente, { forzar = false } = {
   const ficha = await reemplazar(RUTA_FICHA, "Ficha técnica", "ficha", respuesta.ficha, conservaFicha);
   const cifras = await reemplazar(RUTA_CIFRAS, "Cifras vigentes", "cifras", respuesta.cifras, conservaCifras);
   await reindexar(env, acceso, cliente.id);
+  // Lo que traiga GitHub ya llegó a la ficha: la revisión del cron no tiene que renovarla otra vez.
+  await marcarFicha(acceso, cliente.id, false);
 
   return {
     ficha, cifras, modelo, aviso,

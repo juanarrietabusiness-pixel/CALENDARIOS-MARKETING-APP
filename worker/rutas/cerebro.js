@@ -19,7 +19,11 @@
 //   POST   /<cliente>/propuestas/<id>/aceptar   Aceptarla, con los cambios { titulo?, texto?, interna? }
 //   POST   /<cliente>/propuestas/<id>/descartar Descartarla: no se vuelve a proponer
 //   POST   /<cliente>/reindexar          Reconstruir el índice desde las notas
-//   POST   /<cliente>/importar           Llenar el cerebro desde el repositorio { carpeta?, actualizar? }
+//   POST   /<cliente>/importar           Llenar el cerebro desde el repositorio, o ponerlo al día { carpeta?, actualizar?, pisar?,
+//                                        auto? } (`auto`: la revisión al abrir la pestaña; no vuelve a GitHub si miró hace poco)
+//   GET    /<cliente>/conflictos/<id>    Un conflicto con GitHub con los dos textos (la nota de aquí y la sección de allí)
+//   POST   /<cliente>/conflictos         Resolverlos { ids, usar: "mia" | "github" }
+//   DELETE /<cliente>/no-traer/<id>      Volver a traer de GitHub una sección que se había borrado aquí
 //   POST   /<cliente>/preparar           La IA escribe la ficha técnica y las cifras { forzar? }
 //   POST   /<cliente>/rubro              La IA PROPONE la nota «Saber del rubro» (no guarda; se guarda con PUT /nota)
 //   POST   /<cliente>/lenguaje           La IA PROPONE la nota «Lenguaje del cliente» { texto?, competencia?, marcas? }: las
@@ -42,11 +46,14 @@ import { guardarNota, ErrorNota } from "../lib/cerebro/guardar.js";
 import {
   USOS, leerNotas, leerNotasLigeras, reindexar, actualizarIndice, buscar, contexto, notasViejas, grafo,
 } from "../lib/cerebro/cerebro.js";
-import { importarDelRepositorio } from "../lib/cerebro/importar.js";
+import {
+  sincronizarCerebro, listarConflictos, leerConflicto, resolverConflictos, listarNoTraer, marcarNoTraer, volverATraer,
+} from "../lib/cerebro/sincronizar.js";
+import { leerEstadoSync } from "../lib/cerebro/estadoSync.js";
 import { registrarUsos, marcarTextoDeIA, leerSenales, aprenderDelHistorial, aprenderDeLasMetricas } from "../lib/cerebro/aprender.js";
 import { proponerReglas, propuestasPendientes, aceptarPropuesta, descartarPropuesta } from "../lib/cerebro/proponer.js";
 import { ErrorIA } from "../lib/cerebro/ia.js";
-import { ErrorRepositorio } from "../lib/cerebro/repositorio.js";
+import { ErrorRepositorio, enlaceDeArchivo, webDelRepositorio } from "../lib/cerebro/repositorio.js";
 import { prepararFicha, ErrorPreparar, fichaDesactualizada } from "../lib/cerebro/preparar.js";
 import { proponerRubro } from "../lib/cerebro/rubro.js";
 import { proponerLenguaje } from "../lib/cerebro/lenguaje.js";
@@ -74,7 +81,16 @@ const publica = (n, { conTexto = false } = {}) => ({
 
 const uso = (v) => (USOS.includes(v) ? v : "texto");
 
-export async function rutasCerebro(req, env, { acceso, partes, metodo }) {
+/** Lo que la pantalla enseña de cómo va el cerebro con GitHub (sin el manifiesto entero). */
+const sincronia = (e) => ({
+  revisadoAt: e.revisadoAt, sincronizadoAt: e.sincronizadoAt, pendientes: e.pendientes, error: e.error,
+  fichaPendiente: e.fichaPendiente, fuera: e.fuera, archivos: Object.keys(e.archivos).length,
+});
+
+/** Un fallo de GitHub con su estado: 409 si otra sincronización está en marcha, 502 si no. */
+const deGitHub = (e) => error(e.message, e.estado ?? 502, e.cause);
+
+export async function rutasCerebro(req, env, { acceso, usuario, partes, metodo }) {
   const [, clienteId, sub, notaId] = partes;
   const cliente = await clienteDe(acceso, clienteId);
   if (!cliente) return noEncontrado("Cliente");
@@ -82,9 +98,14 @@ export async function rutasCerebro(req, env, { acceso, partes, metodo }) {
 
   // ---------- Las notas y el estado ----------
   if (!sub && metodo === "GET") {
-    const notas = await leerNotasLigeras(acceso, clienteId);
+    const [notas, sync, conflictos, noTraer] = await Promise.all([
+      leerNotasLigeras(acceso, clienteId), leerEstadoSync(acceso, clienteId), listarConflictos(acceso, clienteId), listarNoTraer(acceso, clienteId),
+    ]);
     return json({
       notas: notas.map((n) => publica(n)),
+      // Lo que choca con GitHub y lo que no se trae: GUARDADO, para que no dependa de quién pulsó el botón ni de recargar.
+      conflictos,
+      noTraer: noTraer.map((m) => ({ id: m.id, fuente: m.fuente, titulo: m.titulo, por: m.por, fecha: m.created_at })),
       estado: {
         notas: notas.length,
         caracteres: notas.reduce((s, n) => s + n.caracteres, 0),
@@ -98,6 +119,9 @@ export async function rutasCerebro(req, env, { acceso, partes, metodo }) {
         ultima: notas.reduce((m, n) => (n.updated_at > m ? n.updated_at : m), ""),
         // Para que la pantalla sepa si el cliente tiene de dónde llenarlo.
         repositorio: Boolean(cliente.github_repo),
+        repoWeb: webDelRepositorio(cliente.github_repo),
+        delRepositorio: notas.filter((n) => n.origen === "repositorio").length,
+        sync: sincronia(sync),
       },
     });
   }
@@ -106,7 +130,9 @@ export async function rutasCerebro(req, env, { acceso, partes, metodo }) {
 
   // ---------- «Datos que no cuadran» ----------
   // Sin IA: lo que va SIEMPRE (ficha técnica, cifras, ficha del cliente, memorias del asistente) contra lo que dicen
-  // las notas. Las notas internas no cuentan (un teléfono de un proveedor no es el del cliente).
+  // las notas. Las notas internas no cuentan (un teléfono de un proveedor no es el del cliente). El catálogo del estudio
+  // de mercado (la nota de cifras que escribe) es la fuente de los precios: un precio de la ficha o de las cifras que no
+  // dice no cuadra.
   if (sub === "datos" && metodo === "GET") {
     const [notas, memorias] = await Promise.all([
       leerNotas(acceso, clienteId),
@@ -114,7 +140,7 @@ export async function rutasCerebro(req, env, { acceso, partes, metodo }) {
     ]);
     const fuentes = [
       ...notas.filter((n) => !n.interna).map((n) => ({
-        fuente: n.tipo === "ficha" ? "ficha" : n.tipo === "cifras" ? "cifras" : "nota", titulo: n.titulo, texto: n.texto, id: n.id,
+        fuente: n.tipo === "ficha" ? "ficha" : n.tipo === "cifras" ? (n.origen === "mercado" ? "catalogo" : "cifras") : "nota", titulo: n.titulo, texto: n.texto, id: n.id,
       })),
       { fuente: "cliente", titulo: "", texto: [cliente.phone, cliente.whatsapp].filter(Boolean).join("\n") },
       ...memorias.map((m) => ({ fuente: "memoria", titulo: "", texto: m.content, id: m.id })),
@@ -124,7 +150,10 @@ export async function rutasCerebro(req, env, { acceso, partes, metodo }) {
 
   if (sub === "nota" && notaId && metodo === "GET") {
     const nota = await acceso.leerUno("cerebro_notas", { id: notaId, client_id: clienteId });
-    return nota ? json(publica(nota, { conTexto: true })) : noEncontrado("Nota");
+    if (!nota) return noEncontrado("Nota");
+    // «Editar en GitHub»: el canon se cambia allí; lo corregido aquí queda como corrección local y se vigila.
+    const github = nota.origen === "repositorio" ? enlaceDeArchivo(cliente.github_repo, nota.fuente) : "";
+    return json({ ...publica(nota, { conTexto: true }), ...(github ? { github } : {}) });
   }
 
   // Crear o editar una nota: la MISMA función que `guardar_en_cerebro` de Claude (worker/lib/cerebro/guardar.js).
@@ -142,9 +171,11 @@ export async function rutasCerebro(req, env, { acceso, partes, metodo }) {
   if (sub === "nota" && notaId && metodo === "DELETE") {
     const nota = await acceso.leerUno("cerebro_notas", { id: notaId, client_id: clienteId });
     if (!nota) return noEncontrado("Nota");
+    // Si viene de GitHub, no se vuelve a traer al actualizar (se deshace en «No se traen de GitHub»): antes volvía sola.
+    const noTraer = await marcarNoTraer(acceso, clienteId, nota, usuario?.nombre ?? "");
     await acceso.borrar("cerebro_notas", { id: notaId, client_id: clienteId });
     await actualizarIndice(env, acceso, clienteId, nota.ruta, null);
-    return json({ ok: true });
+    return json({ ok: true, noTraer });
   }
 
   // ---------- Buscar y dar contexto ----------
@@ -223,17 +254,42 @@ export async function rutasCerebro(req, env, { acceso, partes, metodo }) {
     return json({ ok: true, pasajes: r.ix.N, generado: r.generado });
   }
 
-  // ---------- Llenarlo desde el repositorio ----------
+  // ---------- Llenarlo desde el repositorio y tenerlo al día ----------
   if (sub === "importar" && metodo === "POST") {
     if (!cliente.github_repo) return error("Este cliente no tiene un repositorio de GitHub en su ficha.");
     const b = (await cuerpo(req)) ?? {};
+    const pisar = Array.isArray(b.pisar) ? b.pisar.slice(0, 200).map(String) : [];
     try {
-      return json(await importarDelRepositorio(env, acceso, cliente, {
-        carpeta: String(b.carpeta ?? ""), actualizar: Boolean(b.actualizar || (Array.isArray(b.pisar) && b.pisar.length)),
-        pisar: Array.isArray(b.pisar) ? b.pisar.slice(0, 200).map(String) : [],
+      return json(await sincronizarCerebro(env, acceso, cliente, {
+        carpeta: String(b.carpeta ?? ""), actualizar: Boolean(b.actualizar || pisar.length || b.auto), pisar, auto: Boolean(b.auto),
+        por: usuario ? { userId: usuario.id, nombre: usuario.nombre } : null,
       }));
     } catch (e) {
-      if (e instanceof ErrorRepositorio) return error(e.message, 502, e.cause);
+      if (e instanceof ErrorRepositorio) return deGitHub(e);
+      throw e;
+    }
+  }
+
+  // ---------- Los conflictos con GitHub ----------
+  if (sub === "conflictos" && notaId && metodo === "GET") {
+    const c = await leerConflicto(acceso, clienteId, notaId);
+    if (!c) return noEncontrado("Conflicto");
+    return json({ ...c, enlace: enlaceDeArchivo(cliente.github_repo, c.fuente) });
+  }
+  if (sub === "conflictos" && !notaId && metodo === "POST") {
+    const b = (await cuerpo(req)) ?? {};
+    if (!["mia", "github"].includes(b.usar)) return error("Di qué versión se queda: «mia» o «github».");
+    if (!Array.isArray(b.ids) || !b.ids.length) return error("Faltan los conflictos que resolver.");
+    return json(await resolverConflictos(env, acceso, clienteId, b.ids, b.usar));
+  }
+
+  // ---------- Lo que no se trae de GitHub ----------
+  if (sub === "no-traer" && notaId && metodo === "DELETE") {
+    try {
+      const r = await volverATraer(env, acceso, cliente, notaId, { por: usuario ? { userId: usuario.id, nombre: usuario.nombre } : null });
+      return r ? json(r) : noEncontrado("Marca");
+    } catch (e) {
+      if (e instanceof ErrorRepositorio) return deGitHub(e);
       throw e;
     }
   }

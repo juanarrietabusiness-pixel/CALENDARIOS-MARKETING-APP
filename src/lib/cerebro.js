@@ -110,9 +110,23 @@ export const avisarTextoDeIA = (clienteId, postIds) =>
 export const buscarEnCerebro = (clienteId, q, { para = "chat", n = 8 } = {}) =>
   llamar(`${base(clienteId)}/buscar?q=${encodeURIComponent(q)}&para=${para}&n=${n}`);
 
-/** Llenar el cerebro desde el repositorio del cliente. */
-export const importarAlCerebro = (clienteId, { actualizar = false, pisar = [] } = {}) =>
-  cambiando(clienteId, () => llamar(`${base(clienteId)}/importar`, { metodo: "POST", cuerpo: { actualizar, pisar } }));
+/**
+ * Llenar el cerebro desde el repositorio del cliente, o ponerlo al día. `auto`: la revisión al abrir la pestaña (no
+ * vuelve a GitHub si se miró hace poco).
+ */
+export const importarAlCerebro = (clienteId, { actualizar = false, pisar = [], auto = false } = {}) =>
+  cambiando(clienteId, () => llamar(`${base(clienteId)}/importar`, { metodo: "POST", cuerpo: { actualizar, pisar, auto } }));
+
+/** Un conflicto con GitHub con los dos textos → { id, notaId, titulo, tipo, fuente, mia, github, enlace }. */
+export const leerConflicto = (clienteId, id) => llamar(`${base(clienteId)}/conflictos/${encodeURIComponent(id)}`);
+
+/** Resolver conflictos con GitHub: `usar` «mia» o «github» → { resueltos, cambiadas, quitadas }. */
+export const resolverConflictos = (clienteId, ids, usar) =>
+  cambiando(clienteId, () => llamar(`${base(clienteId)}/conflictos`, { metodo: "POST", cuerpo: { ids, usar } }));
+
+/** Volver a traer de GitHub una sección que se había borrado aquí (y la trae ya). */
+export const volverATraer = (clienteId, id) =>
+  cambiando(clienteId, () => llamar(`${base(clienteId)}/no-traer/${encodeURIComponent(id)}`, { metodo: "DELETE" }));
 
 /** «Datos que no cuadran»: teléfonos y correos de lo que va siempre a la IA que ninguna nota dice. */
 export const leerDatosQueNoCuadran = (clienteId) => llamar(`${base(clienteId)}/datos`);

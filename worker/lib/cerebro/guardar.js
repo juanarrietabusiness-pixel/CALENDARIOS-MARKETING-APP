@@ -8,7 +8,7 @@
 // ============================================================
 
 import { uuid, ahora } from "../ids.js";
-import { limpiarNota, derivados, slug, rutaUnica, editadaTrasGuardar, MAX_NOTAS_POR_CLIENTE } from "./notas.js";
+import { limpiarNota, derivados, slug, rutaUnica, editadaTrasGuardar, textoEditado, huellaSeccion, MAX_NOTAS_POR_CLIENTE } from "./notas.js";
 import { actualizarIndice } from "./cerebro.js";
 
 /** Lo que no se puede guardar, con su estado (400 lo pedido, 404 la nota no está, 409 el tope de notas). */
@@ -60,6 +60,9 @@ export async function guardarNota(env, acceso, clienteId, entrada = {}) {
     fuente_sha: previa?.fuente_sha ?? "",
     // Qué le cambió la persona: el texto (no se pisa al importar) o sólo el tipo o el candado (se conservan).
     editada: editadaTrasGuardar(previa, { ...nota }),
+    // La base de la sección de GitHub (0079): una nota importada antes de que existiera, y que nadie había tocado, TIENE
+    // todavía el texto de GitHub; su huella es la que dirá después si esa sección cambió allí o sólo aquí.
+    ...(previa?.origen === "repositorio" && !previa.seccion_hash && !textoEditado(previa) ? { seccion_hash: huellaSeccion(previa.texto) } : {}),
     created_at: previa?.created_at ?? t, updated_at: t,
   };
   // Que una nota está «editada a mano» se sabe porque su `updated_at` ya no es su `created_at` (importar.js, preparar.js

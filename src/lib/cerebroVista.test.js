@@ -88,7 +88,8 @@ describe("contar lo que hizo una importación", () => {
   it("avisa de lo que cambió en el repositorio y de lo que quedó para otra vuelta", () => {
     const d = describirImportacion({ archivos: { cambiados: 2, omitidos: 15, iguales: 8 }, notas: {} });
     expect(d.texto).toMatch(/8 archivos sin cambios/);
-    expect(d.texto).toMatch(/2 archivos cambiaron en el repositorio \(usa «Actualizar lo que cambió»/);
+    // El botón se llama así desde hace meses (antes nombraba «Actualizar lo que cambió», que ya no existe).
+    expect(d.texto).toMatch(/2 archivos cambiaron en el repositorio \(usa «Actualizar desde GitHub»/);
     expect(d.texto).toMatch(/15 archivos quedaron para la siguiente vuelta/);
   });
 
@@ -107,9 +108,22 @@ describe("contar lo que hizo una importación", () => {
   });
 
   it("lo corregido a mano que se conservó se cuenta, porque tranquiliza", () => {
-    expect(describirImportacion({ archivos: { actualizados: 1 }, notas: { creadas: 1, reemplazadas: 1, conservadas: 2 } }).texto).toMatch(/2 notas que corregiste aquí no se actualizaron/);
+    expect(describirImportacion({ archivos: { actualizados: 1 }, notas: { creadas: 1, reemplazadas: 1, conservadas: 2 } }).texto).toMatch(/2 notas que corregiste aquí se conservaron/);
   });
+
+  it("dice lo que se quitó, lo que choca, lo que no se trajo y lo que no cupo", () => {
+    const t = describirImportacion({
+      archivos: { borrados: 1 }, notas: { borradas: 3, saltadas: 1 }, conflictos: { total: 2 }, sinSitio: ["a.md"], truncado: true,
+    }).texto;
+    expect(t).toMatch(/3 notas quitadas: ya no están en GitHub/);
+    expect(t).toMatch(/2 notas chocan con GitHub/);
+    expect(t).toMatch(/1 sección no se trajo porque la borraste aquí/);
+    expect(t).toMatch(/1 archivo no cupo/);
+    expect(t).toMatch(/GitHub cortó la lista/);
+  });
+
 });
+
 
 describe("contar lo que hizo la IA", () => {
   it("la ficha y las cifras, y qué leyó", () => {
