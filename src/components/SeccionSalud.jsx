@@ -37,6 +37,8 @@ function hace(iso, ahora = Date.now()) {
   if (a < 86_400) return relativo.format(Math.round(s / 3600), "hour");
   return relativo.format(Math.round(s / 86_400), "day");
 }
+/** Un saldo que se puede leer y está bajo cuenta como «sin saldo» aunque nada haya fallado todavía. */
+const estadoDeProveedor = (p, saldos) => (saldos?.[p.id]?.bajo && p.estado === "bien" ? "sin-saldo" : p.estado);
 const hora = (iso) => (iso ? new Date(iso).toLocaleTimeString("es-PA", { hour: "numeric", minute: "2-digit" }) : "");
 
 function Estado({ estado }) {
@@ -55,11 +57,30 @@ function Fila({ nombre, que, estado, okAt, errorAt, error, extra }) {
       </div>
       {que && <p className="hint salud-que">{que}</p>}
       <p className="salud-detalle">
-        {okAt ? <>Último éxito: {hace(okAt)}.</> : estado === "sin-configurar" ? null : <>Sin éxitos apuntados todavía.</>}
+        {okAt ? <>Último éxito: {hace(okAt)}.</> : estado === "sin-configurar" ? null : estado === "sin-datos" ? <>Aún no hay nada apuntado: se apunta la primera vez que corre.</> : <>Sin éxitos apuntados todavía.</>}
         {extra ? <> {extra}</> : null}
       </p>
       {conError && <p className="salud-error"><Icon name="alert" size={13} /> {hace(errorAt)}: {error}</p>}
     </li>
+  );
+}
+
+const PROBLEMA = new Set(["falla", "en-pausa", "sin-saldo"]);
+
+/** Un grupo plegable: abierto si algo de dentro falla (si todo va bien, no ocupa la pantalla del teléfono). */
+function Grupo({ titulo, estados, children }) {
+  const mal = estados.filter((e) => PROBLEMA.has(e)).length;
+  return (
+    <details className="salud-grupo-det" open={mal > 0}>
+      <summary className="salud-grupo">
+        <Icon name="chevronDown" size={14} className="salud-flecha" />
+        <span className="salud-grupo-titulo">
+          {titulo}{" "}
+          <span className="salud-grupo-resumen">· {mal ? `${mal} ${mal === 1 ? "falla" : "fallan"}` : "sin fallos"}</span>
+        </span>
+      </summary>
+      <ul className="salud-lista">{children}</ul>
+    </details>
   );
 }
 
@@ -172,7 +193,8 @@ function SaludDelSistema({ pulso }) {
   useEffect(() => { cargar(); }, [cargar, pulso]);
 
   const enProblemas = datos
-    ? [...datos.tareas, ...datos.proveedores, ...datos.integraciones].filter((x) => ["falla", "en-pausa", "sin-saldo"].includes(x.estado)).length
+    ? [...datos.tareas.map((t) => t.estado), ...datos.proveedores.map((p) => estadoDeProveedor(p, saldos)), ...datos.integraciones.map((i) => i.estado)]
+      .filter((e) => PROBLEMA.has(e)).length
     : 0;
 
   return (
@@ -195,37 +217,34 @@ function SaludDelSistema({ pulso }) {
                 : "Todo funciona: el cron corre y nada está fallando."}
           </p>
 
-          <h4 className="salud-grupo">Tareas automáticas (cada minuto)</h4>
-          <ul className="salud-lista">
+          <Grupo titulo="Tareas automáticas (cada minuto)" estados={datos.tareas.map((t) => t.estado)}>
             {datos.tareas.map((t) => (
               <Fila key={t.id} nombre={t.nombre} que={t.que} estado={t.estado} okAt={t.okAt} errorAt={t.errorAt} error={t.error}
                 extra={t.estado === "en-pausa"
                   ? `${t.fallos} fallos seguidos: se salta hasta las ${hora(t.saltarHasta)} y lo demás sigue.`
                   : t.trabajoAt ? `Con trabajo por última vez ${hace(t.trabajoAt)}.` : ""} />
             ))}
-          </ul>
+          </Grupo>
 
-          <h4 className="salud-grupo">Proveedores (con la llave del servidor)</h4>
-          <ul className="salud-lista">
+          <Grupo titulo="Proveedores (con la llave del servidor)" estados={datos.proveedores.map((p) => estadoDeProveedor(p, saldos))}>
             {datos.proveedores.map((p) => {
               const s = saldos?.[p.id];
               const saldo = !p.configurado ? `Falta la llave ${p.llave} en los secretos del Worker.`
                 : p.leeSaldo ? (s ? `Saldo: ${s.texto}` : "") : "Saldo: sin consulta; se sabe cuando un pedido falla por saldo (y se avisa).";
               return (
-                <Fila key={p.id} nombre={p.nombre} estado={s?.bajo && p.estado === "bien" ? "sin-saldo" : p.estado}
+                <Fila key={p.id} nombre={p.nombre} estado={estadoDeProveedor(p, saldos)}
                   okAt={p.okAt} errorAt={p.errorAt} error={p.error}
                   extra={[saldo, p.estado === "sin-saldo" && p.recargar ? `Recárgalo en ${p.recargar}.` : ""].filter(Boolean).join(" ")} />
               );
             })}
-          </ul>
+          </Grupo>
 
-          <h4 className="salud-grupo">Integraciones de este espacio</h4>
-          <ul className="salud-lista">
+          <Grupo titulo="Integraciones de este espacio" estados={datos.integraciones.map((i) => i.estado)}>
             {datos.integraciones.map((i) => (
               <Fila key={i.id} nombre={i.nombre} estado={i.estado} okAt={i.okAt} errorAt={i.errorAt} error={i.error}
                 extra={i.conectado ? "" : "No está conectado (Ajustes → Integraciones)."} />
             ))}
-          </ul>
+          </Grupo>
         </>
       )}
     </div>
