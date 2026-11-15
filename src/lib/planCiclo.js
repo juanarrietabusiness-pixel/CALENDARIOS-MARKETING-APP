@@ -1309,8 +1309,12 @@ export function hojaDeTextos(plan) {
 // En texto
 // ------------------------------------------------------------
 
-/** El plan entero en texto: para copiarlo y lo que lee Claude (`plan_de_campanas`). Pura. */
-export function planATextoCiclo(plan) {
+/**
+ * El plan entero en texto: para copiarlo y lo que lee Claude (`plan_de_campanas`). Con `ids` (lo que lee Claude, nunca
+ * lo que se copia) cada anuncio dice su HUECO («[hueco presentacion:a2]», el que nombran `ajustar_plan_campanas` y
+ * `escribir_textos_anuncios`), el ID de su publicación, y cada ángulo su clave «producto:ángulo». Pura.
+ */
+export function planATextoCiclo(plan, { ids = false } = {}) {
   if (!plan) return "";
   const l = [];
   const moneda = plan.moneda;
@@ -1320,7 +1324,7 @@ export function planATextoCiclo(plan) {
   if (textoDelTotal(plan)) l.push(`Total del mes: ${textoDelTotal(plan)}.`);
   if (plan.productos?.length) l.push(`Productos: ${plan.productos.map((p) => `${p.nombre}${p.precio ? ` (${p.precio})` : ""}`).join(", ")}`);
   if (plan.que?.logro) l.push(`Lo que se quiere lograr: ${plan.que.logro}`);
-  if (plan.angulos?.length) l.push(`Ángulos de venta que se prueban: ${plan.angulos.map((a) => textoAngulo(a)).join(", ")}`);
+  if (plan.angulos?.length) l.push(`Ángulos de venta que se prueban: ${plan.angulos.map((a) => `${textoAngulo(a)}${ids && claveAngulo(a) ? ` [${claveAngulo(a)}]` : ""}`).join(", ")}`);
   if (plan.avisos.length) l.push("", "AVISOS", ...plan.avisos.map((a) => `- ${a.grave ? "[!] " : ""}${a.texto}`));
   if (plan.publicos.length) l.push("", "PÚBLICOS PERSONALIZADOS A CREAR", ...plan.publicos.map((p) => `- ${p.nombre}: ${p.que}`));
   for (const c of plan.campanas) {
@@ -1335,7 +1339,9 @@ export function planATextoCiclo(plan) {
     for (let i = 0; i < c.anunciosPorConjunto; i++) {
       const a = anuncioEn(c, i + 1);
       const ang = a?.angulo ?? c.angulosHuecos?.[i];
-      l.push(`    ${i + 1}. ${a ? `${a.nombre} — ${textoDeLaPieza(a)} · nivel ${nombreDeNivel(a.nivel).toLowerCase()}` : "por producir"}${ang ? ` · ángulo ${textoAngulo(conProducto(ang, plan))}` : ""}`);
+      const hueco = ids ? `[hueco ${idDeHueco(c.id, i + 1)}] ` : "";
+      const publicacion = ids && a?.pieza?.postId ? ` · publicación ${a.pieza.postId}` : "";
+      l.push(`    ${i + 1}. ${hueco}${a ? `${a.nombre} — ${textoDeLaPieza(a)}${publicacion} · nivel ${nombreDeNivel(a.nivel).toLowerCase()}` : "por producir"}${ang ? ` · ángulo ${textoAngulo(conProducto(ang, plan))}` : ""}`);
       if (a) {
         const t = textosATexto(a.textos, { conCaption: a.como === "publicacion" ? a.caption || "(el de la publicación)" : "" });
         if (t) l.push(t.split("\n").map((x) => `       ${x}`).join("\n"));

@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   PASO_MES, limpiarAsistente, conAsistente, estadoDelMes, pasoQueToca, casillasDelMes, publicacionDeCasilla, conCasillas, horasEnBloque,
-  avanceDelMes, paraDisenar,
+  avanceDelMes, paraDisenar, planDelAsistente, matrizDelPlan, pautaDelPlan, publicacionesDelPlan,
 } from "./asistenteMes.js";
 import { ritmoDelMes } from "./pilares.js";
 import { fusionarEnMes } from "./meses.js";
@@ -111,5 +111,28 @@ describe("las horas en bloque", () => {
     expect(r.cambiadas).toBe(3);
     // Sin plan ni hora por defecto, nada.
     expect(horasEnBloque(days, {}).cambiadas).toBe(0);
+  });
+});
+
+describe("el paso del Plan sin pantalla (lo comparten AsistenteMes.jsx y preparar_mes del conector)", () => {
+  const cliente = { name: "Dcasa", planSemanal: { v: 1, dias: { 1: [{ format: "post", pilar: "anuncio", hora: "09:00" }] } } };
+  const cal = { year: 2030, month: 2, days: [{ date: "2030-03-11", posts: [{ id: "ya", format: "post" }] }] };
+  const mercado = { catalogo: [{ id: "sofa", nombre: "Sofá cama", precio: "$399", activo: true }], estudio: null, inventario: false };
+
+  it("las casillas en los días libres, la matriz con el producto y lo que va a pauta solo (o quitado)", () => {
+    const plan = planDelAsistente({ cliente, cal, hoy: "2030-01-01" });
+    expect(plan.pasado).toBe(false);
+    expect(plan.casillas.map((c) => c.fecha)).toEqual(["2030-03-04", "2030-03-18", "2030-03-25"]);
+    expect(planDelAsistente({ cliente, cal, hoy: "2030-01-01", llenarOcupados: true }).casillas).toHaveLength(4);
+    expect(planDelAsistente({ cliente, cal, hoy: "2030-04-01" }).pasado).toBe(true);
+    const matriz = matrizDelPlan(plan.casillas, { mercado, notas: plan.notas });
+    expect(matriz.get(plan.casillas[0].clave)).toMatchObject({ productoId: "sofa", producto: "Sofá cama" });
+    const sugeridas = pautaDelPlan(plan.casillas, matriz, {});
+    expect(sugeridas).toHaveLength(3);
+    let n = 0;
+    const pubs = publicacionesDelPlan(plan.casillas, { matriz, sugeridas, sinPauta: new Set([plan.casillas[1].clave]), nuevoId: () => `id${n++}` });
+    expect(pubs.map((x) => x.post.id)).toEqual(["id0", "id1", "id2"]);
+    expect(pubs[0].post).toMatchObject({ delPlan: true, publishTime: "09:00", productoId: "sofa", pauta: { auto: true } });
+    expect(pubs[1].post.pauta).toBe(false);
   });
 });

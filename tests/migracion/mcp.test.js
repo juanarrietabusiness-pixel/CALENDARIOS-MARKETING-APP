@@ -142,6 +142,11 @@ describe("el protocolo y las herramientas", () => {
     const { access_token: tk } = await conectar();
     const ini = await (await mcp(tk, "initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "claude" } })).json();
     expect(ini.result).toMatchObject({ protocolVersion: "2025-06-18", capabilities: { tools: {} }, serverInfo: { name: "juancito-ads" } });
+    // El método de la agencia (el curso) vive en el calendario: las instrucciones mandan los textos por su motor o su ficha.
+    expect(ini.result.instructions).toMatch(/escribir_textos/);
+    expect(ini.result.instructions).toMatch(/ficha_de_textos/);
+    expect(ini.result.instructions).toMatch(/numeros_del_negocio/);
+    expect(ini.result.instructions).toMatch(/guia_de_diseno/);
     const notif = await pedir("/mcp", { method: "POST", headers: { Authorization: `Bearer ${tk}` }, body: JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }) });
     expect(notif.status).toBe(202);
     const { result } = await (await mcp(tk, "tools/list")).json();

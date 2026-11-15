@@ -334,9 +334,14 @@ src/
     reglasFormato.js      QUÉ LLEVA CADA FORMATO, una sola regla (historia: ni guion, ni caption, ni hashtags; reel: sin texto en
                           la pieza; hashtags siempre aparte): la leen el motor, la completitud y el panel (puro, carga inicial)
     camposTexto.js        Lo que le FALTA a una publicación por el motor (modo «campos»): la casilla, el pedido, su lectura y
-                          ponerlo (sólo rellena; el campo de su botón se reescribe) (puro; también el Worker)
+                          ponerlo (sólo rellena; el campo de su botón se reescribe); lo que le falta (`camposQueFaltan`,
+                          `textosQueFaltan`), los campos de su botón (`camposConSuBoton`) y el concepto de su semana
+                          (`conceptoDelDia`) (puro; también el Worker)
     escribirTextos.js     El cliente del modo «campos»: un campo («IA» del panel y del banco), lo que falta del mes
                           («Completar», «Generar con IA» de la lista, «Planificar mes») (en diferido)
+    ideaPublicacionPura.js  Lo PURO de la idea de una publicación (ideaPublicacion.js lo reexporta: importa ./db): las casillas
+                          sin idea, lo que ya hay en el mes, `rellenarConIdea` y `conIdea` (la idea del motor en su
+                          publicación, como el paso de las ideas del asistente del mes) (puro; también el Worker)
     planMes.js            «Planificar mes» sin trampas: semanas = filas de la rejilla, el borrador por cliente y mes, los días
                           ocupados y la publicación que sale del plan con la ficha de diseño ya pagada (puro)
     cicloVentas.js        El CICLO DE VENTAS del curso de campañas: las 4 etapas (presentación, evaluación, conversión, ascensión)
@@ -883,6 +888,16 @@ worker/
                           recrear para un cliente (la publicación en su próximo día libre + el encargo, el guion animado o para
                           grabar) y su paso del cron
     herramientasLoMejor.js  `ver_lo_mejor` y `recrear` para Claude (MCP), con la vista previa del chat
+    herramientasTextos.js Los TEXTOS y el MES por MCP: escribir_textos (el motor escribe y guarda), ficha_de_textos (el pedido del
+                          motor para que Claude escriba con el método; sólo lee), preparar_mes (el plan semanal en los días libres),
+                          estrategia_del_mes (leer, proponer, guardar con confirmación) y revisar_mes (las reglas); y la revisión
+                          de lo que guardan crear_publicacion y editar_publicacion (`avisosAlGuardar`)
+    herramientasCampanas.js  Campañas y números por MCP: numeros_del_negocio (la ficha con EL número mágico, cada dato con su
+                          origen, el equilibrio, cuánto invertir y la tasa medida; con `proponer`, lo que propone la IA SIN
+                          guardar), guardar_numeros_negocio (de → a y el número mágico; con confirmado), escribir_textos_anuncios
+                          (los textos del plan por el motor, de 8 en 8 con «Quedan N») y ajustar_plan_campanas («¿Qué vas a
+                          hacer?», un hueco de anuncio y el reparto a mano, éste con confirmado)
+    plantillasPlan.js     Las plantillas de plan del espacio leídas de D1 (la ruta /api/plantillas-plan y preparar_mes)
     mercado.js            El estudio de mercado: catálogo (y su nota de cifras), el estudio por pasos con búsqueda
                           web, aprobar (notas del cerebro + documento en Drive), referencias de la competencia
     estudio/              El Estudio: meta.js (Muse Image: generar y editar, 0,01 $), prompt.js («Mejorar
@@ -916,7 +931,11 @@ worker/
                           reglas y una persona las decide); rubro.js y vozUgc.js (la IA propone
                           «Saber del rubro» y la «Voz UGC»; se guardan como nota); lenguaje.js (la IA propone
                           «Lenguaje del cliente» con lo pegado, la Bandeja —sólo lo de otros— y la encuesta; el código
-                          descarta toda frase que no esté tal cual; no guarda)
+                          descarta toda frase que no esté tal cual; no guarda); guardar.js (guardar UNA nota: lo que hacía en
+                          línea el PUT de /api/cerebro/<c>/nota —ruta única, derivados, `editada`, fechas e índice—, compartido
+                          con Claude; `prepararNota` comprueba sin escribir); herramientasCerebro.js (por MCP: guardar_en_cerebro
+                          con su confirmación, proponer_nota_cerebro —lenguaje del cliente, saber del rubro, voz UGC—,
+                          ver_estudio_mercado y proponer_angulos al borrador)
     herramientasServidor.js  Lo que el asistente consulta sin el navegador:
                           web, el cerebro (notas cortas enteras), calendarios, tareas, ideas
     equipo.js             Avisos (guardar y anunciar), historial y asignaciones
@@ -6278,6 +6297,114 @@ son del servidor.
   video, a propósito.
   · Funciones nuevas en el hueco «análisis»: «desglose de video» y «fotograma listo para animar». **Nada de esto se ha
   probado contra Gemini, Meta ni Anthropic reales**: los tests usan `fetch` de mentira.
+- **El MÉTODO de la agencia también por el conector de Claude: las INSTRUCCIONES lo mandan por las herramientas del
+  calendario** (`METODO` en worker/rutas/mcp.js, delante de `guia_de_diseno` y de `REGLA_RECETAS`; decisión de la agencia:
+  «sacarle provecho a todo lo del curso» trabajando casi siempre desde Claude). Lo del curso vive en el CÓDIGO y sólo se
+  aplica si el trabajo pasa por sus motores: los textos por `escribir_textos` (escribe el calendario) o `ficha_de_textos`
+  (escribe Claude con el MISMO pedido, sin gastar la IA del calendario, y lo guardado vuelve con los avisos); el mes por
+  estrategia → plan → textos → revisión; los números y las campañas por sus herramientas, no por calculadoras de otros
+  skills. Lo que pide `confirmado` se enseña antes a la persona. `editar_publicacion` acepta además `referencia` (el
+  `referenceLink`, limpio con `enlaceLimpio`: lo pide «falta para enviar»). Un test exige que `initialize` nombre
+  escribir_textos, ficha_de_textos y numeros_del_negocio.
+- **Por el conector, los textos van por el MOTOR o con su MÉTODO, nunca a pelo** (`worker/lib/herramientasTextos.js`). Claude
+  escribía los textos él mismo y los guardaba con crear_publicacion/editar_publicacion: el calendario los guardaba tal cual y se
+  saltaba el estudio de mercado, el precio exacto, los ángulos, la forma del gancho, el lenguaje del cliente y la regla del
+  anuncio. Cosas que no se ven:
+  · **`produccionDeLote` está partido en dos** (worker/lib/estudio/lote.js): `pedidoDelLote` ARMA el pedido (lecturas, darForma,
+  el texto) sin llamar a la IA ni escribir, y `produccionDeLote` lo manda y lee la respuesta. El comportamiento de la ruta no
+  cambió (un test lo compara). escribir_textos usa las dos; **ficha_de_textos sólo la primera** y devuelve el pedido ENTERO
+  (con su JSON del final, que es para la IA del calendario: la ficha le dice a Claude que guarde cada campo con
+  editar_publicacion). Si pasa de `MAX_FICHA` (25.000 caracteres), la tanda baja una vez.
+  · **Qué se escribe es UNA selección** (`seleccionar`): con una publicación y `campos`, el botón «IA» (`camposConSuBoton`: con el
+  caption, los hashtags y los textos de anuncio si faltan; esos campos se REESCRIBEN y la respuesta trae lo que había); vacía
+  (sin idea), el modo «plan» entero, como el paso de las ideas del asistente del mes (`casillasSinIdea` + `conIdea`); si no,
+  `textosQueFaltan` por el modo «campos». Con un mes, primero las vacías del plan y luego lo que les falta a las demás, una
+  tanda de 6 por llamada y «Quedan N» (cuenta también los textos de anuncio de lo que va a pauta). Lo publicado no se toca.
+  La semilla es estable por mes (la misma forma en cada tanda) y la estrategia viaja como en la pantalla (`estrategiaDe`).
+  · **Se escribe sin pisar a nadie** con `cambiarCalendario` (ponerEnPost.js): el `updated_at` leído como condición, dos vueltas
+  releyendo, sólo las columnas que cambiaron, `resincronizarCalendario` y `calendario:recargar`. Sobre lo releído: una vacía
+  que otra persona escribió mientras la IA pensaba ya no se rellena. Si no se puede escribir, la tanda ya se cobró (se dice).
+  · **preparar_mes NO pide confirmación** (como crear_publicacion): sólo pone casillas vacías en días LIBRES; los ajustes de
+  temporada se aplican por defecto (como el lote del mes); con `llenar_ocupados` no pone dos veces lo que el plan ya puso
+  (días con `delPlan`). Lo que va a pauta solo sale con `auto` y se quita con editar_publicacion (`pauta: false`).
+  `planDelAsistente`/`matrizDelPlan`/`pautaDelPlan`/`publicacionesDelPlan` (lib/asistenteMes.js) son lo que antes vivía dentro
+  de PasoPlan de AsistenteMes.jsx: la pantalla y el conector los llaman igual. El paso del asistente que se guarda no
+  retrocede (`Math.max`): guardar la estrategia en un mes ya escrito no lo devuelve al «Plan».
+  · **estrategia_del_mes guarda SÓLO con `confirmado: true`** («NO SE GUARDÓ NADA» y lo que se guardaría); lo que no se pasa se
+  queda como estaba. Proponer es `estrategiaDelMes` (la misma de POST /api/estudio/<c>/estrategia) y no guarda nada.
+  · **La revisión al guardar es la de «Revisar el mes»** (`contextoDeRevision` + `revisionDelMes`: una regla, un sitio, también
+  para revisar_mes): crear_publicacion y editar_publicacion, si cambió algún texto (o la pauta o el anuncio), devuelven «AVISOS
+  DEL CALENDARIO» con cómo arreglarlo o «Revisado: sin avisos». Sin lo que falta para enviar sin contenido (eso es de
+  revisar_mes). Lee el catálogo y el estudio una vez, y los números del negocio sólo si va a pauta; si falla, una línea.
+  · **«Revisar el mes» avisa ahora de los hashtags al FINAL del caption** (lib/revisionMes.js, código «hashtags»): salían dos veces
+  al publicar. En lo que va a pauta lo dice su revisión de anuncio (no se repite).
+  · **El motor escribía «la que había y NO sirvió: «[object Object]»» en TODO pedido del modo «campos»**: el `antes` de
+  casillaDeCampos es un objeto (lo que tiene cada campo) y lineaDePieza lo leía como el texto de «Otra». pedidoDeCampos lo
+  pasa vacío; un test lo vigila.
+  · **editar_publicacion acepta `forma_gancho` y `angulo`** (validados: `formaDe`, id corto), `escena` y `anuncio`
+  (`limpiarAnuncio`): son los ids que da ficha_de_textos y, sin ellos, el aprendizaje de qué forma le rinde a cada cliente no
+  tendría con qué contar lo que escribió Claude.
+  · **En el navegador, ideaPublicacionPura.js sólo lo importa ideaPublicacion.js** (las pantallas siguen importando de
+  ideaPublicacion.js, que lo reexporta): con un segundo importador, rollup lo saca a un chunk propio que entra en la lista de
+  precarga del chunk del Estudio, y eso solo (unos 25 bytes) lo pasaba de su tope de 20 kB (está en 20,49). El Worker sí
+  lo importa directo.
+  · **Nada de esto se ha probado contra Anthropic real**: tests/migracion/textos.mcp.test.js usa un `fetch` de mentira y la D1 de
+  verdad.
+- **Por el conector, Claude guarda en el cerebro y lee el estudio de mercado con las MISMAS funciones que la pantalla**
+  (`worker/lib/cerebro/herramientasCerebro.js`, `worker/lib/cerebro/guardar.js`). Antes no podía guardar nada en el cerebro,
+  ni ver el catálogo con sus precios, las 7 maletas o los ángulos: escribía con lo que encontraba buscando. Cosas que no se ven:
+  · **Guardar una nota salió de la ruta** (`guardarNota` en guardar.js): el PUT de `/api/cerebro/<c>/nota` y
+  `guardar_en_cerebro` escriben igual —la ruta única, los derivados, `editada` (lo de Claude es «editado a mano» como lo de
+  la pantalla), una nota nueva con `insertar` y fechas iguales, una edición estrictamente después de su creación, el índice—.
+  La ruta responde exactamente igual que antes (404 «Nota no encontrado», 400, 409 del tope). `prepararNota` hace todas las
+  comprobaciones SIN escribir: lo que la vista previa dice que se guardaría es lo que se guarda.
+  · **`guardar_en_cerebro` confirma siempre** (sin `confirmado: true`, «NO SE GUARDÓ NADA.» con el texto entero y, si
+  reemplaza, qué nota, cuántos caracteres tenía y cómo empieza). Con `nota` (ruta exacta, título exacto, o UNA sola que lo
+  contenga; varias es error) la REEMPLAZA y conserva su ruta, su tipo y su candado si no se dicen; sin `nota` crea otra (y
+  avisa si ya hay una con ese título: saldría «-2» y el motor no la leería por su ruta). Los tipos son los del asistente
+  (`TIPOS_PROPONIBLES`); una pauta nunca es interna (`limpiarNota`). Avisa si la nota la escribe el estudio de mercado (se
+  reescribe al guardar el catálogo o aprobar), si viene del repositorio o de «Preparar ficha» (queda corregida a mano), y
+  tras guardar, si la ficha técnica quedó atrás (`fichaDesactualizada`): NO la renueva (sería otra llamada de IA).
+  · **`proponer_nota_cerebro` no guarda**: `proponerLenguaje`, `proponerRubro` o `proponerVozUgc`, y dice el título y la
+  ruta con que guardarla (`RUTA_LENGUAJE`, `RUTA_RUBRO`, `RUTA_VOZ_UGC`: el motor las lee por ella). El lenguaje del cliente
+  sigue comprobando frase a frase en el código.
+  · **`ver_estudio_mercado` sólo lee** (`leerMercado`): el catálogo con `lineaDeProducto` y su id, `resumenGeneral`, el
+  semáforo de `semaforoMaletas` y los ángulos con `lineaDeAngulo`; lo que trae el borrador frente a lo aprobado (también un
+  producto que, aprobado así, se quitaría). Pasado `MAX_RESUMEN` los ángulos de los demás productos van sólo por su nombre.
+  · **`proponer_angulos` escribe en el BORRADOR, sin confirmación** (es lo que hace el botón), y lo dice. **Aprobar el
+  estudio NO se hace por el conector**, a propósito: aprobarlo reescribe las notas del estudio en el cerebro y deja el
+  documento en Drive, y la persona tiene que revisarlo entero en la pantalla.
+  · Nada de esto se ha probado contra Anthropic real: `tests/migracion/cerebro.mcp.test.js` usa un `fetch` de mentira.
+- **Las campañas y los números por MCP usan LAS MISMAS cuentas y el MISMO plan que la pantalla** (`worker/lib/herramientasCampanas.js`;
+  sin migración). Antes, por el conector, Claude calculaba el presupuesto con las calculadoras de otros skills y escribía los textos
+  de los anuncios a mano: se saltaba el número mágico, los niveles de cada hueco y la regla del anuncio. Lo que no se ve:
+  · **`numeros_del_negocio` es la ficha de la pantalla** (`fichaDeNegocio`, lo que era el GET de la ruta, sacado a función): el
+  número mágico es `numeroMagicoDelCliente` con lo GUARDADO. La tasa de cierre MEDIDA por el enlace de ventas (`ventasDelCliente`,
+  sólo si el cliente apuntó alguna semana: una llamada más a Meta) se dice como «sería X», no se aplica: la revisión 3Q y el plan
+  leen la guardada, y la pantalla la mete en el formulario hasta «Guardar». Lo de Meta nunca tumba la ficha. Con `proponer`, la
+  propuesta de la IA (`proponerNegocio`) se devuelve con el pedido listo para `guardar_numeros_negocio` y NO se guarda; quien es de
+  sólo lectura no la pide (la herramienta es de lectura, así que el MCP no la corta: lo hace ella).
+  · **`guardar_numeros_negocio` sólo cambia lo que se nombra** (null lo quita, los costos reemplazan la lista). Un valor que no se
+  entiende es un ERROR: `limpiarNegocio` lo quitaría en silencio y el dato de antes desaparecería. Sin `confirmado: true` devuelve
+  «NO SE GUARDÓ NADA.», cada cambio de → a, el número mágico antes y después y el `antes` (el `actualizado` leído; "" si no había
+  nada), que con el sí se compara en `guardarNegocioSinPisar` (la misma función del PUT de la pantalla): si otra persona guardó, no
+  se pisa. Firma «Claude (persona)» en `negocio.por` y avisa `anuncios`.
+  · **`escribir_textos_anuncios` es `escribirTextosDelPlan`** (una llamada de IA, hasta `MAX_TEXTOS_POR_LLAMADA` = 8). Sin hueco,
+  escribe lo que FALTA (`faltanTextos`) sin los de una persona, y dice «Quedan N»: converge porque lo escrito ya no falta. Por eso
+  `reescribir` sólo vale con hueco o con campaña (como mucho 6 anuncios): sin eso, «vuelve a llamar con lo mismo» reescribiría
+  siempre los mismos 8. Lo que la IA no devolvió se dice aparte.
+  · **`ajustar_plan_campanas` guarda `que` y los huecos al momento (`guardarCiclo`) y el reparto sólo con `confirmado`**: con un
+  reparto sin confirmar NO se guarda nada de la llamada (tampoco el `que` que viniera con él). `que` se funde campo a campo sobre
+  lo guardado (la pantalla manda el objeto entero); `producto_ids` acepta el id o el nombre del catálogo. Cambiar sólo `como` fija
+  la pieza que tiene el hueco (como la pantalla); un `como: "publicacion"` que el plan no puede usar (la publicación no salió ni
+  tiene día) se avisa. El reparto se valida con `errorDeReparto`, que ahora usa también la ruta (PUT …/ciclo).
+  · **`plan_de_campanas` dice el HUECO de cada anuncio, el ID de su publicación y la clave de cada ángulo**
+  (`planATextoCiclo(plan, { ids: true })` en `textoDelPlan`): es lo que nombran las dos herramientas que lo cambian. «Copiar el
+  plan» de la pantalla va SIN ids (`planATextoCiclo(plan)`): un test lo vigila.
+  · **Los módulos del Worker se importan en el momento** (negocio.js, planCampanas.js, ventas.js, anuncios.js): llegan a mercado.js,
+  que importa herramientasServidor.js (el ciclo de siempre si mcp.js los cargara de una vez). Nada toca Meta ni crea campañas.
+  · **Nada de esto se ha probado contra la IA ni Meta reales**: tests/migracion/campanas.mcp.test.js usa una D1 de verdad y `fetch`
+  de mentira.
 
 ## Documentos relacionados
 

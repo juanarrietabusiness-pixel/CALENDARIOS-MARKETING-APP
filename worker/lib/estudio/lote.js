@@ -272,8 +272,15 @@ const FECHA = /^\d{4}-\d{2}-\d{2}$/;
 /** Cuántas piezas por llamada como mucho (lo que pide la pantalla es 6). */
 export const TANDA_MAX = 10;
 
-/** → { ideas, producto, productos, conEstudio, modelo, aviso } */
-export async function produccionDeLote(env, acceso, cliente, datos = {}) {
+/**
+ * ARMA el pedido del motor (todo lo de antes de llamar a la IA): lee el catálogo, el estudio, el cerebro, el lenguaje
+ * del cliente, la estrategia, las fórmulas UGC y los números del negocio, decide la forma de cada pieza (darForma) y
+ * escribe el pedido. No llama a la IA ni escribe nada: lo usan `produccionDeLote` (que después lo manda y lee la
+ * respuesta) y el conector de Claude (`ficha_de_textos`, worker/lib/herramientasTextos.js: Claude escribe con el MISMO
+ * método). → { vacio } (la respuesta sin piezas, cuando la tanda no trae ninguna) o { modo, prompt, salida, funcion,
+ * plan, formato, total, tamano, faltan, formulas, negocio, enPauta, rotan, producto, general }.
+ */
+export async function pedidoDelLote(env, acceso, cliente, datos = {}) {
   const modo = MODOS.includes(datos.modo) ? datos.modo : "niveles";
   const formato = FORMATOS_LOTE[datos.formato] ? datos.formato : "post";
   let orden = (Array.isArray(datos.composiciones) ? datos.composiciones : []).map(String).filter((id) => COMPOSICIONES.some((c) => c.id === id)).slice(0, 30);
@@ -434,7 +441,7 @@ export async function produccionDeLote(env, acceso, cliente, datos = {}) {
   const desde = Math.max(0, Math.floor(Number(datos.desde) || 0));
   const tamano = Math.floor(Number(datos.tamano) || 0);
   if (tamano > 0) plan = plan.slice(desde, desde + Math.min(tamano, TANDA_MAX));
-  if (!plan.length) return { ideas: [], ...(modo === "campos" ? { textos: [] } : {}), total, productos: rotan.map((p) => ({ id: p.id, nombre: p.nombre })), conEstudio: Boolean(general) };
+  if (!plan.length) return { vacio: { ideas: [], ...(modo === "campos" ? { textos: [] } : {}), total, productos: rotan.map((p) => ({ id: p.id, nombre: p.nombre })), conEstudio: Boolean(general) } };
 
   const usadosProd = new Set(plan.map((r) => r.productoId).filter(Boolean));
   const textoEstudio = [
@@ -513,10 +520,12 @@ export async function produccionDeLote(env, acceso, cliente, datos = {}) {
     ? [bloqueDeAnuncio({ tipo: negocio?.tipo ?? "", destino: negocio?.destino ?? "", etapas: enPauta.map((r) => r.pauta.etapa), ...opciones }), aprendido?.linea ?? ""].filter(Boolean).join("\n")
     : "");
 
+  const comun = { modo, plan, formato, total, tamano, faltan, formulas, negocio, enPauta, rotan, producto, general };
   if (modo === "campos") {
     const pidenGuion = plan.some((r) => r.campos.includes("guion"));
     const salida = plan.reduce((t, r) => t + r.campos.reduce((u, c) => u + ({ guion: 700, descripcion: 350, idea: 150, textoPieza: 80, hashtags: 80, titulo: 30, anuncio: 650 }[c] ?? 100), 0), 0) + 600;
-    const r = await llamarIA(env, acceso, cliente, {
+    return {
+      ...comun,
       prompt: pedidoDeCampos({
         marca: cliente.name, plan, contexto, estudio: textoEstudio,
         productos: Object.fromEntries(rotan.filter((p) => usadosProd.has(p.id)).map((p) => [p.id, lineaDeProducto(p, { inventario }).slice(2)])),
@@ -527,16 +536,11 @@ export async function produccionDeLote(env, acceso, cliente, datos = {}) {
       }),
       salida,
       funcion: pidenGuion ? "guiones" : plan.length === 1 ? "publicación" : "descripciones",
-    });
-    const textos = leerCampos(r.texto, plan, { destino: negocio?.destino ?? "" }).map(({ formula, ...t }) => {
-      const id = formula ? formulaUsada(`FÓRMULA: ${formula}`, formulas) : "";
-      return id ? { ...t, formulaUgc: id } : t;
-    });
-    if (!textos.length && !tamano) throw fallo("La IA no devolvió textos que se puedan leer. Inténtalo otra vez.", 502);
-    return { textos, total, ...(faltan.length ? { faltan } : {}), modelo: r.modelo, aviso: r.aviso ?? null };
+    };
   }
 
-  const r = await llamarIA(env, acceso, cliente, {
+  return {
+    ...comun,
     prompt: pedidoDeProduccion({
       marca: cliente.name, plan, formato, contexto, estudio: textoEstudio, mes: modo === "mes",
       productos: Object.fromEntries(rotan.filter((p) => usadosProd.has(p.id)).map((p) => [p.id, lineaDeProducto(p, { inventario }).slice(2)])),
@@ -557,7 +561,23 @@ export async function produccionDeLote(env, acceso, cliente, datos = {}) {
     // Y por qué funciona su gancho (`porque`, una línea) y, en una UGC, sus 3 ganchos.
     salida: plan.reduce((t, r) => t + (FORMATOS_LOTE[r.formato ?? formato]?.guiado ? 850 : 950) + (r.pauta ? 650 : 0) + 60 + (r.rostro ? 120 : 0), 0) + 800,
     funcion: modo === "mes" || modo === "plan" ? "lote del mes" : modo === "publicacion" ? "publicación" : "ideas de anuncios",
-  });
+  };
+}
+
+/** → { ideas, producto, productos, conEstudio, modelo, aviso } (en el modo «campos», { textos, total, faltan?, modelo, aviso }) */
+export async function produccionDeLote(env, acceso, cliente, datos = {}) {
+  const pedido = await pedidoDelLote(env, acceso, cliente, datos);
+  if (pedido.vacio) return pedido.vacio;
+  const { modo, plan, formato, total, tamano, faltan, formulas, negocio, enPauta, rotan, producto, general } = pedido;
+  const r = await llamarIA(env, acceso, cliente, { prompt: pedido.prompt, salida: pedido.salida, funcion: pedido.funcion });
+  if (modo === "campos") {
+    const textos = leerCampos(r.texto, plan, { destino: negocio?.destino ?? "" }).map(({ formula, ...t }) => {
+      const id = formula ? formulaUsada(`FÓRMULA: ${formula}`, formulas) : "";
+      return id ? { ...t, formulaUgc: id } : t;
+    });
+    if (!textos.length && !tamano) throw fallo("La IA no devolvió textos que se puedan leer. Inténtalo otra vez.", 502);
+    return { textos, total, ...(faltan.length ? { faltan } : {}), modelo: r.modelo, aviso: r.aviso ?? null };
+  }
   const nombres = new Map(rotan.map((p) => [p.id, p.nombre]));
   // Lo que va a pauta: sus textos de anuncio (vienen en la misma respuesta) y 3 hashtags como mucho.
   const anuncios = enPauta.length ? anunciosDeRespuesta(r.texto, { destino: negocio?.destino ?? "" }) : new Map();

@@ -205,6 +205,17 @@ export async function guardarCiclo(acceso, cliente, mes, { marcar = null, ajuste
 }
 
 /**
+ * Por qué no vale un reparto a mano ("" si vale): tiene que sumar 100 y darle algo a presentación. null («Volver al
+ * estándar») siempre vale. La usan la ruta (PUT …/ciclo { reparto }) y `ajustar_plan_campanas` por MCP.
+ */
+export function errorDeReparto(reparto) {
+  if (reparto === null) return "";
+  if (!reparto || typeof reparto !== "object") return "El reparto va por etapa: { presentacion, evaluacion, conversion, ascension }, en % que suman 100.";
+  const fallo = errorDelCiclo({ reparto });
+  return fallo || (sumaDelReparto(reparto) !== 100 ? "El reparto tiene que sumar 100." : "");
+}
+
+/**
  * El reparto A MANO del cliente (`anuncios_clientes.reparto`, 0078): uno que suma 100 o null («Volver al estándar»).
  * Con `actualizar` y sólo esa columna (la fila tiene muchos dueños); si el cliente no tiene fila, se crea.
  */
@@ -356,11 +367,20 @@ async function textosDePersonaAlPost(env, acceso, cliente, plan, cambios, por) {
   return lista.length ? cambiarPublicaciones(env, acceso, cliente.id, lista, por) : 0;
 }
 
-/** El plan en texto, para el asistente y Claude (`plan_de_campanas`), con cuánto de la guía va marcado. */
+/**
+ * El plan en texto, para el asistente y Claude (`plan_de_campanas`, y lo que devuelve `ajustar_plan_campanas`), con
+ * cuánto de la guía va marcado. Lleva el HUECO de cada anuncio y el ID de su publicación (`ids`): es lo que nombran las
+ * herramientas que lo cambian (worker/lib/herramientasCampanas.js). Lo que se COPIA en la pantalla va sin ellos.
+ */
 export async function planDeCampanasEnTexto(env, acceso, cliente, mes) {
   const { cuenta } = await clienteYCuenta(acceso, cliente.id, { exigirCuenta: false });
   const { plan, avance } = await cicloDelCliente(env, acceso, cliente, mesPedido(mes), { cuenta });
-  return `${planATextoCiclo(plan)}\n\nGuía de montaje: ${avance.hechos} de ${avance.total} pasos marcados (Anuncios → Plan de campañas). ` +
+  return textoDelPlan(plan, avance);
+}
+
+/** El texto de `planDeCampanasEnTexto` de un plan ya armado (con sus huecos e IDs) y su avance. Pura. */
+export function textoDelPlan(plan, avance) {
+  return `${planATextoCiclo(plan, { ids: true })}\n\nGuía de montaje: ${avance.hechos} de ${avance.total} pasos marcados (Anuncios → Plan de campañas). ` +
     "Las campañas se montan en el Ads Manager: esta aplicación no las crea.";
 }
 
@@ -396,9 +416,9 @@ export async function rutasCiclo(req, env, { acceso, usuario, clientId, metodo }
     const conAnuncios = b.anuncios && typeof b.anuncios === "object";
     const conReparto = b.reparto !== undefined;
     if (!conAjustes && !conAnuncios && !conReparto && !(b.marcar && typeof b.marcar === "object")) return error("No hay nada que guardar.");
-    if (conReparto && b.reparto !== null) {
-      const fallo = errorDelCiclo({ reparto: b.reparto });
-      if (fallo || sumaDelReparto(b.reparto) !== 100) return error(fallo || "El reparto tiene que sumar 100.");
+    if (conReparto) {
+      const fallo = errorDeReparto(b.reparto);
+      if (fallo) return error(fallo);
     }
     if (conReparto) await guardarReparto(acceso, cliente.id, b.reparto);
     const guardado = conAjustes || conAnuncios || b.marcar

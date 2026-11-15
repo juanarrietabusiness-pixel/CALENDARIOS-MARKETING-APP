@@ -37,8 +37,8 @@
 // ============================================================
 
 import { json, error, cuerpo, noEncontrado } from "../lib/respuesta.js";
-import { uuid, ahora } from "../lib/ids.js";
-import { limpiarNota, derivados, slug, rutaUnica, editadaTrasGuardar, textoEditado, MAX_NOTAS_POR_CLIENTE } from "../lib/cerebro/notas.js";
+import { textoEditado } from "../lib/cerebro/notas.js";
+import { guardarNota, ErrorNota } from "../lib/cerebro/guardar.js";
 import {
   USOS, leerNotas, leerNotasLigeras, reindexar, actualizarIndice, buscar, contexto, notasViejas, grafo,
 } from "../lib/cerebro/cerebro.js";
@@ -127,59 +127,16 @@ export async function rutasCerebro(req, env, { acceso, partes, metodo }) {
     return nota ? json(publica(nota, { conTexto: true })) : noEncontrado("Nota");
   }
 
+  // Crear o editar una nota: la MISMA función que `guardar_en_cerebro` de Claude (worker/lib/cerebro/guardar.js).
   if (sub === "nota" && !notaId && metodo === "PUT") {
     const b = (await cuerpo(req)) ?? {};
-    const { nota, error: motivo } = limpiarNota(b);
-    if (motivo) return error(motivo);
-
-    let previa = null;
-    let ruta;
-    if (b.id) {
-      previa = await acceso.leerUno("cerebro_notas", { id: String(b.id), client_id: clienteId });
-      if (!previa) return noEncontrado("Nota");
-      ruta = previa.ruta; // los [[enlaces]] de otras notas dependen de ella: no cambia al editar
-    } else {
-      // Sólo las rutas: para repartir una libre y contar. El texto de cada nota no hace falta para eso.
-      const existentes = await acceso.leerColumnas("cerebro_notas", ["ruta"], { client_id: clienteId });
-      if (existentes.length >= MAX_NOTAS_POR_CLIENTE) {
-        return error(`Este cliente ya tiene ${MAX_NOTAS_POR_CLIENTE} notas. Borra las que no sirvan antes de añadir más.`, 409);
-      }
-      ruta = rutaUnica(slug(nota.titulo), new Set(existentes.map((n) => n.ruta)));
+    try {
+      const { guardada, previa } = await guardarNota(env, acceso, clienteId, b);
+      return json(publica(guardada, { conTexto: true }), previa ? 200 : 201);
+    } catch (e) {
+      if (e instanceof ErrorNota) return e.estado === 404 ? noEncontrado("Nota") : error(e.message, e.estado);
+      throw e;
     }
-
-    const t = ahora();
-    const fila = {
-      id: previa?.id ?? uuid(), client_id: clienteId, ruta, ...nota, ...derivados(nota.texto),
-      // De dónde salió una nota no lo cambia quien la edita: sin esto, corregir una nota importada le borraba el
-      // origen y el archivo, y una nueva importación ya no la reconocía como suya.
-      origen: previa?.origen ?? nota.origen,
-      fuente: previa?.fuente ?? nota.fuente,
-      // De qué versión del archivo salió (si salió de uno): no cambia al editar. Que la nota se tocó lo dice
-      // su `updated_at`, y es lo que mira una nueva importación para no pisarla.
-      fuente_sha: previa?.fuente_sha ?? "",
-      // Qué le cambió la persona: el texto (no se pisa al importar) o sólo el tipo o el candado (se conservan).
-      editada: editadaTrasGuardar(previa, { ...nota }),
-      created_at: previa?.created_at ?? t, updated_at: t,
-    };
-    // Que una nota está «editada a mano» se sabe porque su `updated_at` ya no es su `created_at` (importar.js, preparar.js
-    // y las notas automáticas lo miran para no pisarla). Por eso:
-    //   · una nota NUEVA entra con `insertar`, que respeta las dos fechas, iguales: con `guardar`, `updated_at` salía un
-    //     milisegundo después y una nota sin tocar parecía editada;
-    //   · una EDICIÓN queda siempre ESTRICTAMENTE después de la creación, aunque caiga en el mismo milisegundo: sin eso,
-    //     corregir una nota recién escrita la dejaba «sin tocar» y la siguiente importación la pisaba. Se escribe con
-    //     `actualizar`, que no vuelve a fechar (`guardar` sí).
-    // Lo que se indexa es lo que quedó en D1: por eso `guardada` lleva la fecha que se escribió, no `t`.
-    let guardada;
-    if (previa) {
-      const editada = new Date(Math.max(Date.now(), Date.parse(previa.created_at) + 1)).toJSON();
-      const { id: _id, client_id: _cliente, created_at: _creada, ...cambios } = { ...fila, updated_at: editada };
-      await acceso.actualizar("cerebro_notas", { id: previa.id, client_id: clienteId }, cambios);
-      guardada = { ...fila, updated_at: editada };
-    } else {
-      guardada = await acceso.insertar("cerebro_notas", fila);
-    }
-    await actualizarIndice(env, acceso, clienteId, ruta, guardada);
-    return json(publica(guardada, { conTexto: true }), previa ? 200 : 201);
   }
 
   if (sub === "nota" && notaId && metodo === "DELETE") {

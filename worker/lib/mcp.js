@@ -21,8 +21,9 @@ import { difundir } from "./vivo.js";
 import { uuid, ahora } from "./ids.js";
 import { programar, programarLote, cancelarPendientes, resincronizarCalendario, filaPublica, filaConResumen, ErrorPublicar } from "./publicador.js";
 import { normalizarHora } from "../../src/lib/horas.js";
-import { limpiarPauta, vaAPauta, describirPauta } from "../../src/lib/pauta.js";
-import { nuevaIdea } from "../../src/lib/bancoIdeas.js";
+import { limpiarPauta, vaAPauta, describirPauta, limpiarAnuncio } from "../../src/lib/pauta.js";
+import { formaDe } from "../../src/lib/formasGancho.js";
+import { nuevaIdea, enlaceLimpio } from "../../src/lib/bancoIdeas.js";
 import { aprobadasSinProgramar, fechaHora } from "../../src/lib/cola.js";
 import { fechaEnZona, sumarDias } from "../../src/lib/agenda.js";
 import { obtenerOCrearMes, moverDeMes, ErrorMes } from "./meses.js";
@@ -36,6 +37,9 @@ import { DEFINICIONES_REEL_MCP, crearHerramientasReel } from "./estudio/herramie
 import { DEFINICION_EXPORTAR, crearHerramientaExportar, ErrorExportar } from "./exportarPiezas.js";
 import { DEFINICIONES_SUBIDA, crearHerramientasSubida, ErrorSubida } from "./estudio/subidaClaude.js";
 import { DEFINICION_KIT, crearHerramientaKit } from "./kitDescargable.js";
+import { DEFINICIONES_CEREBRO, crearHerramientasCerebro, ErrorCerebro } from "./cerebro/herramientasCerebro.js";
+import { DEFINICIONES_CAMPANAS, crearHerramientasCampanas, ErrorCampanas } from "./herramientasCampanas.js";
+import { DEFINICIONES_TEXTOS, crearHerramientasTextos, ErrorTextos, avisosAlGuardar } from "./herramientasTextos.js";
 
 const FORMATOS = ["post", "reel", "carrusel", "historia", "live"];
 const REDES = ["instagram", "facebook", "tiktok", "youtube"];
@@ -63,12 +67,12 @@ export const HERRAMIENTAS_MCP = Object.freeze([
   { name: "buscar_cerebro", description: "Busca en el cerebro de un cliente —su ficha técnica, marca, precios, personas, límites y los documentos que se le subieron— y devuelve los pasajes que responden. Úsala antes de escribir para un cliente o de decir que no sabes algo de él. Incluye notas internas: es para el equipo, no las uses en textos que se publican.", inputSchema: { type: "object", properties: { ...clienteParam, consulta: { type: "string", description: "Qué buscar, en palabras del tema." } }, required: ["cliente", "consulta"] }, annotations: soloLectura },
   { name: "leer_nota_cerebro", description: "Lee ENTERA una nota del cerebro de un cliente, por su ruta (la que da buscar_cerebro entre corchetes) o por su título. Para cuando buscar_cerebro dio sólo pasajes de una nota larga.", inputSchema: { type: "object", properties: { ...clienteParam, nota: { type: "string", description: "La ruta de la nota o su título." } }, required: ["cliente", "nota"] }, annotations: soloLectura },
   { name: "ver_resultados", description: "Cómo le va en redes a un cliente: seguidores, alcance, interacción, mejores publicaciones, formatos, horarios y competencia.", inputSchema: { type: "object", properties: { ...clienteParam, dias: { type: "integer", description: "7 a 90. Por defecto 30." } }, required: ["cliente"] }, annotations: soloLectura },
-  { name: "plan_de_campanas", description: "El plan de campañas de un cliente para un mes, para montarlo en el Ads Manager: las campañas del ciclo de ventas (y la de temporada si el mes trae oferta o fecha comercial), su presupuesto, los conjuntos con públicos y exclusiones, qué pieza va en cada anuncio y los avisos. Sólo lectura: la aplicación no crea campañas.", inputSchema: { type: "object", properties: { ...clienteParam, mes: { type: "string", description: "AAAA-MM. Si se omite, el de este mes." } }, required: ["cliente"] }, annotations: soloLectura },
+  { name: "plan_de_campanas", description: "El plan de campañas de un cliente para un mes, para montarlo en el Ads Manager: las campañas del ciclo de ventas (y la de temporada si el mes trae oferta o fecha comercial), su presupuesto, los conjuntos con públicos y exclusiones, qué pieza va en cada anuncio (con su HUECO, «[hueco presentacion:a2]», y el ID de su publicación: así se nombran en ajustar_plan_campanas y escribir_textos_anuncios) y los avisos. Sólo lectura: la aplicación no crea campañas.", inputSchema: { type: "object", properties: { ...clienteParam, mes: { type: "string", description: "AAAA-MM. Si se omite, el de este mes." } }, required: ["cliente"] }, annotations: soloLectura },
   { name: "kit_whatsapp", description: "El kit de WhatsApp Business de un cliente tal como lo guardó la agencia: bienvenida, ausencia, respuestas rápidas con su atajo (con las objeciones del estudio de mercado), etiquetas por etapa del ciclo de ventas y un guion de ventas por producto. Úsala antes de escribir mensajes de WhatsApp para un cliente.", inputSchema: { type: "object", properties: { ...clienteParam }, required: ["cliente"] }, annotations: soloLectura },
   { name: "revisar_campanas", description: "La revisión 3Q de los anuncios que corren en el Ads Manager de un cliente: su número mágico, lo real en 30, 14 y 7 días y cada campaña activa con su etapa, qué hacer con cada conjunto y anuncio (qué pasó, por qué, qué cambiar) y qué publicación del calendario es cada anuncio (o si es un anuncio nuevo). Sólo lee de Meta: no cambia nada ni gasta.", inputSchema: { type: "object", properties: { ...clienteParam }, required: ["cliente"] }, annotations: { readOnlyHint: true, openWorldHint: true } },
   {
     name: "crear_publicacion",
-    description: "Añade una publicación al calendario del cliente para ese día (el calendario de ese mes tiene que existir). Queda pendiente de aprobación.",
+    description: "Añade una publicación al calendario del cliente para ese día (si ese mes aún no tenía calendario, se crea). Queda pendiente de aprobación. Si lleva texto, el calendario lo revisa con sus reglas y devuelve sus avisos. Para que los textos salgan con el método de la agencia, mejor escribir_textos (o ficha_de_textos) después de crearla.",
     inputSchema: {
       type: "object",
       properties: {
@@ -85,13 +89,21 @@ export const HERRAMIENTAS_MCP = Object.freeze([
   },
   {
     name: "editar_publicacion",
-    description: "Cambia campos de una publicación: sólo los que se pasen. Para cambiarla de día, mover_publicacion.",
+    description: "Cambia campos de una publicación: sólo los que se pasen. Para cambiarla de día, mover_publicacion. Si cambia algún texto, el calendario lo revisa con sus reglas (precio del catálogo, gancho, voseo, llamado, hashtags, lo que va a pauta…) y devuelve sus avisos: corrígelos. Para que el texto salga con el método de la agencia, escribir_textos (el motor escribe) o ficha_de_textos (escribes tú con el método).",
     inputSchema: {
       type: "object",
       properties: {
         ...pubParam,
         titulo: { type: "string" }, idea: { type: "string" }, descripcion: { type: "string" }, guion: { type: "string" },
         texto_pieza: { type: "string", description: "Lo que va escrito encima del diseño (no el caption): titular, apoyo y precio, una línea cada uno." },
+        escena: { type: "string", description: "Qué se ve en la pieza (lo lee el director al diseñarla)." },
+        referencia: { type: "string", description: "El enlace de la referencia (un video o post de Instagram, TikTok, YouTube… que inspira la pieza; lo ve el cliente). Empieza por https://. \"\" lo quita." },
+        forma_gancho: { type: "string", description: "El id de la forma del gancho que dio ficha_de_textos (así el calendario aprende qué forma le rinde al cliente). \"\" la quita." },
+        angulo: { type: "string", description: "El id del ángulo de venta que dio ficha_de_textos. \"\" lo quita." },
+        anuncio: {
+          type: "object", description: "Los textos de anuncio aparte, para lo que va a pauta: de 3 a 5 textos, títulos (40 caracteres), descripción (30) y botón (p. ej. WHATSAPP_MESSAGE).",
+          properties: { textos: { type: "array", items: { type: "string" } }, titulos: { type: "array", items: { type: "string" } }, descripcion: { type: "string" }, boton: { type: "string" } },
+        },
         hashtags: { type: "string" }, hora: { type: "string" }, formato: { type: "string", enum: FORMATOS },
         redes: { type: "array", items: { type: "string", enum: REDES } }, nota_interna: { type: "string" },
         pauta: {
@@ -134,6 +146,12 @@ export const HERRAMIENTAS_MCP = Object.freeze([
   ...DEFINICIONES_SUBIDA,
   // Todo lo de la marca en un ZIP (worker/lib/kitDescargable.js), con el mismo enlace de 15 minutos que exportar_piezas.
   DEFINICION_KIT,
+  // El cerebro y el estudio de mercado (worker/lib/cerebro/herramientasCerebro.js): guardar con confirmación, proponer notas y ángulos, ver el estudio.
+  ...DEFINICIONES_CEREBRO,
+  // Campañas y números (worker/lib/herramientasCampanas.js): los números del negocio, el plan de campañas y sus textos.
+  ...DEFINICIONES_CAMPANAS,
+  // Los TEXTOS y el MES por el motor de la agencia (worker/lib/herramientasTextos.js): escribir, la ficha del método, el plan, la estrategia y la revisión.
+  ...DEFINICIONES_TEXTOS,
   // Las que sólo llama la VISTA PREVIA del chat (MCP Apps: `visibility: ["app"]`, ver rutas/mcp.js).
   ...DEFINICIONES_VISTA,
 ]);
@@ -277,23 +295,41 @@ export function crearHerramientasMCP({ env, acceso, usuario }) {
       };
       dia.posts = [...(dia.posts ?? []), post];
       await guardarDias(cal, days);
-      return `Creada: ${describir(post, fecha)} en el calendario de ${c.name}.`;
+      // Lo escrito se revisa con las reglas de «Revisar el mes» (las mismas de revisar_mes): sólo si trae texto.
+      const conTexto = [titulo, idea, descripcion, guion, hashtags].some((t) => String(t ?? "").trim());
+      const avisos = conTexto ? await avisosAlGuardar({ acceso, cliente: c, cal, days, postId: post.id }) : "";
+      return [`Creada: ${describir(post, fecha)} en el calendario de ${c.name}.`, avisos].filter(Boolean).join("\n\n");
     },
 
-    async editar_publicacion({ publicacion_id: id, titulo, idea, descripcion, guion, texto_pieza: textoPieza, hashtags, hora: h, formato, redes, nota_interna: nota, pauta: p }) {
+    async editar_publicacion({
+      publicacion_id: id, titulo, idea, descripcion, guion, texto_pieza: textoPieza, hashtags, hora: h, formato, redes, nota_interna: nota, pauta: p,
+      escena, forma_gancho: formaGancho, angulo, anuncio: a, referencia,
+    }) {
       const { cal, days, dia, indice, post } = await buscar(id);
       if (formato !== undefined && !FORMATOS.includes(formato)) throw new ErrorHerramienta(`Formato no válido: ${formato}.`);
+      // La forma del gancho y el ángulo que dio ficha_de_textos: con ellos el calendario aprende qué forma le rinde.
+      if (formaGancho !== undefined && formaGancho !== "" && !formaDe(formaGancho)) throw new ErrorHerramienta(`No existe la forma de gancho «${formaGancho}»: usa el id que dio ficha_de_textos.`);
+      if (angulo !== undefined && angulo !== "" && !/^[\w-]{1,60}$/.test(String(angulo))) throw new ErrorHerramienta("El ángulo es su id (el que dio ficha_de_textos): letras, números y guiones.");
+      // El enlace de la referencia (lo pide «falta para enviar» de lo que va al cliente sin contenido): limpio como el banco.
+      const referenceLink = referencia === undefined ? undefined : referencia === "" ? "" : enlaceLimpio(referencia);
+      if (referencia && !referenceLink) throw new ErrorHerramienta("La referencia tiene que ser un enlace que empiece por https://.");
+      const anuncio = a === undefined ? undefined : limpiarAnuncio(a);
+      if (a !== undefined && !anuncio) throw new ErrorHerramienta("«anuncio» lleva al menos un texto: { textos: [..], titulos: [..], descripcion, boton }.");
       // «Va a pauta» (src/lib/pauta.js): { etapa, como } limpio, o false para quitarla (y que no se vuelva a proponer).
       const pauta = p === undefined ? undefined : p === false ? false : limpiarPauta(p);
       if (pauta === null) throw new ErrorHerramienta("«pauta» es { etapa, como } (etapa: presentacion, evaluacion, conversion o ascension) o false para quitarla.");
       const cambios = Object.fromEntries(Object.entries({
         title: titulo, idea, descripcion, guion, textoPieza, hashtagsFinales: hashtags, publishTime: hora(h), format: formato,
         redes: Array.isArray(redes) ? redes.filter((r) => REDES.includes(r)) : undefined, comment: nota, pauta,
+        escena, formaGancho, angulo: angulo === undefined ? undefined : String(angulo), anuncio, referenceLink,
       }).filter(([, v]) => v !== undefined));
       if (!Object.keys(cambios).length) throw new ErrorHerramienta("No indicaste nada que cambiar.");
       dia.posts[indice] = { ...post, ...cambios };
       await guardarDias(cal, days);
-      return `Actualizada: ${describir(dia.posts[indice], dia.date)}. Cambió: ${Object.keys(cambios).join(", ")}.`;
+      // Si cambió algún texto, se revisa con las reglas de «Revisar el mes» (las mismas de revisar_mes).
+      const conTexto = ["title", "idea", "descripcion", "guion", "textoPieza", "hashtagsFinales", "pauta", "anuncio"].some((k) => Object.hasOwn(cambios, k));
+      const avisos = conTexto ? await avisosAlGuardar({ acceso, cal, days, postId: id }) : "";
+      return [`Actualizada: ${describir(dia.posts[indice], dia.date)}. Cambió: ${Object.keys(cambios).join(", ")}.`, avisos].filter(Boolean).join("\n\n");
     },
 
     async mover_publicacion({ publicacion_id: id, fecha }) {
@@ -427,7 +463,8 @@ export function crearHerramientasMCP({ env, acceso, usuario }) {
       }
       return { content: [{ type: "text", text: `Herramienta desconocida: ${nombre}` }], isError: true };
     } catch (e) {
-      const delPedido = e instanceof ErrorHerramienta || e instanceof ErrorHerramientaEstudio || e instanceof ErrorDiseno || e instanceof ErrorReceta || e instanceof ErrorVista || e instanceof ErrorHerramientaLoMejor || e instanceof ErrorExportar || e instanceof ErrorSubida;
+      const delPedido = e instanceof ErrorHerramienta || e instanceof ErrorHerramientaEstudio || e instanceof ErrorDiseno || e instanceof ErrorReceta || e instanceof ErrorVista || e instanceof ErrorHerramientaLoMejor || e instanceof ErrorExportar || e instanceof ErrorSubida
+        || e instanceof ErrorCerebro || e instanceof ErrorCampanas || e instanceof ErrorTextos;
       if (!delPedido) console.error("mcp:", nombre, e);
       return { content: [{ type: "text", text: delPedido ? e.message : `No se pudo: ${e?.message ?? e}` }], isError: true };
     }
@@ -443,6 +480,9 @@ export function crearHerramientasMCP({ env, acceso, usuario }) {
   Object.assign(acciones, crearHerramientaExportar({ env, acceso, resolverCliente, usuario }));
   Object.assign(acciones, crearHerramientasSubida({ env, acceso, resolverCliente, usuario, por }));
   Object.assign(acciones, crearHerramientaKit({ env, acceso, resolverCliente, usuario }));
+  Object.assign(acciones, crearHerramientasCerebro({ env, acceso, resolverCliente, usuario, por }));
+  Object.assign(acciones, crearHerramientasCampanas({ env, acceso, resolverCliente, usuario, por, buscarPublicacion: buscar }));
+  Object.assign(acciones, crearHerramientasTextos({ env, acceso, resolverCliente, usuario, por, buscarPublicacion: buscar }));
 
   return { llamar };
 }

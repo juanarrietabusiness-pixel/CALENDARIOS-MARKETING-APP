@@ -7,7 +7,7 @@
 //   · REGLAS que no cuestan nada y salen al instante: un precio que no está
 //     en el catálogo, la competencia nombrada, una promoción en una fecha
 //     delicada, voseo («vení», «tenés»), un texto sin llamado a la acción,
-//     más de 30 hashtags. El voseo se arregla con un botón. Y las del GANCHO
+//     más de 30 hashtags o al final del caption (van aparte). El voseo se arregla con un botón. Y las del GANCHO
 //     (lib/formasGancho.js): una cifra que no está escrita en el catálogo, el estudio ni la idea, y el gancho de miedo
 //     o sensacionalista. Se dicen; no se reescribe ni se bloquea nada.
 //   · Lo que hace falta para ENVIAR: una publicación sin su contenido
@@ -28,6 +28,7 @@ import { faltaParaEnviar } from "./completitud";
 import { cantidadesDe } from "./fidelidad.js";
 import { vaAPauta, revisarPauta, resumenPauta, aplicarArregloPauta } from "./pauta.js";
 import { problemasDelGancho, numerosDe } from "./formasGancho.js";
+import { separarHashtags } from "./reglasFormato.js";
 
 export { faltaParaEnviar, revisarPauta, resumenPauta, aplicarArregloPauta };
 
@@ -86,6 +87,8 @@ export function problemasDeTexto(post, { precios = new Set(), competidores = [],
   if (descripcion.trim() && post?.format !== "historia" && !CTA.test(descripcion)) salida.push({ codigo: "cta", texto: "La descripción no dice qué hacer (escribir, agendar, comprar…)." });
   const hashtags = (texto.match(/#[\p{L}\p{N}_]+/gu) ?? []).length;
   if (hashtags > MAX_HASHTAGS) salida.push({ codigo: "hashtags", texto: `Lleva ${hashtags} hashtags; Instagram admite ${MAX_HASHTAGS}.` });
+  // Los hashtags van SIEMPRE aparte (lib/reglasFormato.js): al final del caption, al publicar salen dos veces.
+  else if (separarHashtags(descripcion).hashtags) salida.push({ codigo: "hashtags", texto: "Lleva hashtags al final del caption: van aparte (en «hashtags»); si no, al publicar salen dos veces." });
   return salida;
 }
 
@@ -130,8 +133,8 @@ export function revisarMes(days = [], { catalogo = [], competidores = [], delica
         ...problemasDeTexto(post, { precios, competidores, delicada: delicadas[d.date] ?? null }),
         ...problemasDeGancho(post, { precios, permitidos }),
       ]
-        // Lo que va a pauta revisa su llamado en la revisión de anuncio (a WhatsApp o a la web, no cualquiera).
-        .filter((p) => !(p.codigo === "cta" && vaAPauta(post)));
+        // Lo que va a pauta revisa su llamado y sus hashtags en la revisión de anuncio (a WhatsApp o a la web; 3 como mucho).
+        .filter((p) => !((p.codigo === "cta" || p.codigo === "hashtags") && vaAPauta(post)));
       const falta = faltaParaEnviar(post);
       if (problemas.length || falta.length) salida.push({ date: d.date, post, problemas, falta });
     }

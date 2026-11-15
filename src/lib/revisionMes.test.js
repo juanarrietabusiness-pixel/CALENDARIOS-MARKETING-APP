@@ -35,6 +35,12 @@ describe("lo demás de los textos", () => {
     const p = { descripcion: `Mejor que LimpiaYa: 2x1 hoy ${Array.from({ length: 31 }, (_, i) => `#h${i}`).join(" ")}` };
     const codigos = problemasDeTexto(p, { competidores: ["LimpiaYa", "AB"], delicada: "Día de los Difuntos" }).map((x) => x.codigo);
     expect(codigos).toEqual(["competencia", "delicada", "cta", "hashtags"]);
+    // Los hashtags al FINAL del caption: van aparte (si no, al publicar salen dos veces); en lo que va a pauta lo dice su
+    // revisión de anuncio y aquí no se repite.
+    expect(problemasDeTexto({ descripcion: "Ven hoy. Escríbenos\n\n#sofa #panama" }).map((x) => x.codigo)).toEqual(["hashtags"]);
+    expect(problemasDeTexto({ descripcion: "Ven hoy. Escríbenos", hashtagsFinales: "#sofa" })).toEqual([]);
+    const enPauta = [{ date: "2030-03-04", posts: [{ id: "p", format: "post", descripcion: "Ven. Escríbenos\n#a", pauta: { etapa: "presentacion" } }] }];
+    expect(revisarMes(enPauta, {}).flatMap((x) => x.problemas).map((x) => x.codigo)).not.toContain("hashtags");
     // Una historia no necesita llamado a la acción en el texto.
     expect(problemasDeTexto({ format: "historia", descripcion: "Buenos días" }).map((x) => x.codigo)).toEqual([]);
   });

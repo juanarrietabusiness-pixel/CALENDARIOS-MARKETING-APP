@@ -13,19 +13,10 @@
 
 import { json, error, cuerpo, noEncontrado } from "../lib/respuesta.js";
 import { uuid, ahora } from "../lib/ids.js";
-import { plantillasDisponibles, limpiarPlantilla, esDeArranque, MAX_PLANTILLAS } from "../../src/lib/plantillasPlan.js";
+import { limpiarPlantilla, esDeArranque, MAX_PLANTILLAS } from "../../src/lib/plantillasPlan.js";
+import { plantillasDelEspacio as lista } from "../lib/plantillasPlan.js";
 
 const ID = /^[\w-]{1,60}$/;
-
-const deFila = (f) => {
-  let d = {};
-  try { d = JSON.parse(f.datos); } catch { /* fila rota: se queda sin datos y la limpieza la descarta */ }
-  return { ...d, id: f.plantilla_id };
-};
-
-async function lista(acceso) {
-  return plantillasDisponibles((await acceso.leer("plantillas_plan", {})).map(deFila));
-}
 
 export async function rutasPlantillas(req, env, { acceso, usuario, partes, metodo }) {
   const [, id] = partes;
