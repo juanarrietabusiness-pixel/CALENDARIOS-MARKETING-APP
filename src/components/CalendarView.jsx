@@ -16,7 +16,6 @@ import { moverEnCalendario, ponerEnDia, copiaDePublicacion, tieneContenido, rell
 import { conAprobacion, resumenEnvio, estadoDelEnvio, mensajeDeEnvio } from "../lib/aprobacion";
 import { marcarEnviadas } from "../lib/trabajo";
 import { sinLoNecesario } from "../lib/completitud";
-import { programarAprobadasDe } from "../lib/programarAprobadas";
 import { useEquipo } from "../hooks/useEquipo";
 import { useBancoIdeas } from "../hooks/useBancoIdeas";
 import { filtrarBanco } from "../lib/bancoIdeas";
@@ -207,6 +206,8 @@ export default function CalendarView({
    * programa todas en una sola petición.
    */
   const programarAprobadas = async (lista, avisar) => {
+    // En diferido: prepara y programa en el servidor (lib/programarAprobadas.js) y no hace falta al abrir la aplicación.
+    const { programarAprobadasDe } = await import("../lib/programarAprobadas");
     const r = await programarAprobadasDe({ cal, clienteDb, colorMarca: client?.primaryColor, lista, avisar });
     if (r.cambiado) onUpdateCal(calId, { ...cal, days: r.nuevo.days });
     recargarCola();

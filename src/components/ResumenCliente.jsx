@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import Icon from "./Icon";
-import { loadClientTasks } from "../lib/db";
+import { loadClientTasks, aprobacionesDelEspacio } from "../lib/db";
 import { contarAtrasadas, fechaEnZona } from "../lib/agenda";
 import { resumenCalendario } from "../lib/resumenCliente";
 
@@ -23,7 +23,11 @@ export default function ResumenCliente({ client, calendar, pulso = 0, onIr }) {
     return () => { vivo = false; };
   }, [clientId, pulso]);
 
-  const r = resumenCalendario(calendar);
+  // Lo que respondió el cliente de verdad (approvals): el `status` del mes en el estado no lo sabe hasta abrirlo.
+  const [respuestas, setRespuestas] = useState(null);
+  useEffect(() => { aprobacionesDelEspacio().then(setRespuestas).catch(() => {}); }, [pulso]);
+
+  const r = resumenCalendario(calendar, respuestas);
   const cifras = [
     { clave: "aprobar", n: r.porAprobar, texto: "por aprobar", icono: "clock", ir: "calendario" },
     { clave: "cambios", n: r.conCambios, texto: "con cambios pedidos", icono: "alert", ir: "calendario", tono: "aviso" },

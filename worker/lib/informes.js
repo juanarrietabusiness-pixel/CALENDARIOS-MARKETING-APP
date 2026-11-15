@@ -24,6 +24,7 @@
 import { crearAcceso, clientesSinInforme } from "./acceso.js";
 import { abrirFlujo, leerFlujo, textoDe, esRechazoDeModelo, mensajeDeRechazo } from "./anthropic.js";
 import { limpiarSeleccion, entraRed } from "../../src/lib/informeRedes.js";
+import { diasConRespuestas } from "../../src/lib/aprobacion.js";
 import { prepararIA, registrarConsumo, MARGEN_RAZONAMIENTO, MODELO_SONNET, sinIADeTexto } from "./configIA.js";
 import { difundir } from "./vivo.js";
 import { fechaEnZona, sumarDias } from "../../src/lib/agenda.js";
@@ -91,7 +92,11 @@ export async function cifrasDelMes(acceso, clientId, mes, seleccion = null) {
   // Lo planificado: los calendarios de ese mes y lo que salió desde la app.
   const [a, m] = mes.split("-").map(Number);
   const delCalendario = calendarios.filter((c) => c.year === a && c.month === m - 1);
-  const posts = delCalendario.flatMap((c) => leerJSON(c.days, []).flatMap((d) => d?.posts ?? []));
+  // Con lo que respondió el cliente (approvals): el `status` del mes no lo sabe si nadie abrió ese mes después.
+  const respuestas = delCalendario.length
+    ? await acceso.leerVarios("approvals", ["calendar_id", "post_id", "estado", "comentario", "updated_at", "tipo", "huella"], "calendar_id", delCalendario.map((c) => c.id)).catch(() => [])
+    : [];
+  const posts = delCalendario.flatMap((c) => diasConRespuestas(leerJSON(c.days, []), respuestas.filter((x) => x.calendar_id === c.id)).flatMap((d) => d?.posts ?? []));
 
   let audiencia = null;
   for (const f of serieBruta) {

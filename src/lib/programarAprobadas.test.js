@@ -1,9 +1,18 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
+// Sin Container (en local) el servidor contesta 409 `sin_container` y la pantalla prepara por su cuenta, como antes.
+const sinContainer = async () => {
+  const e = new Error("No hay Container para preparar las imágenes en el servidor.");
+  e.estado = 409;
+  e.datos = { codigo: "sin_container" };
+  throw e;
+};
 vi.mock("./db.js", () => ({
   saveCalendar: vi.fn(async (cal) => cal),
   programarVarias: vi.fn(async (_cal, ids) => ({ programadas: ids.map((postId) => ({ postId, red: "instagram" })), fallidas: [] })),
   subirImagenPublicacion: vi.fn(),
+  pedir: vi.fn(),
+  mesDeCalendario: vi.fn(),
 }));
 
 const db = await import("./db.js");
@@ -16,8 +25,8 @@ const cal = {
 };
 const lista = cal.days[0].posts.map((post) => ({ post, redes: ["instagram"] }));
 
-describe("programar lo aprobado de una vez", () => {
-  beforeEach(() => vi.clearAllMocks());
+describe("programar lo aprobado de una vez (sin Container: el navegador prepara)", () => {
+  beforeEach(() => { vi.clearAllMocks(); db.pedir.mockImplementation(sinContainer); });
 
   it("una publicación que no se puede preparar NO para a las demás: vuelve con su motivo", async () => {
     const preparar = vi.fn(async (post) => {
@@ -28,8 +37,8 @@ describe("programar lo aprobado de una vez", () => {
     expect(db.programarVarias).toHaveBeenCalledWith("cal1", ["a", "c"]);
     expect(r.programadas).toBe(2);
     expect(r.fallidas).toEqual([{ postId: "b", titulo: "Rota", motivo: expect.stringMatching(/No se pudieron preparar sus archivos: No se pudo leer «foto\.png»/) }]);
-    // El calendario se guarda con las que sí se prepararon.
-    const guardado = db.saveCalendar.mock.calls[0][0];
+    // El calendario se guarda con las que sí se prepararon (antes, una vez tal cual: para preguntar al servidor).
+    const guardado = db.saveCalendar.mock.calls.at(-1)[0];
     expect(guardado.days[0].posts.map((p) => Boolean(p.preparada))).toEqual([true, false, true]);
   });
 
@@ -39,6 +48,45 @@ describe("programar lo aprobado de una vez", () => {
     expect(db.programarVarias).not.toHaveBeenCalled();
     expect(r.programadas).toBe(0);
     expect(r.fallidas).toHaveLength(3);
+  });
+});
+
+describe("programar lo aprobado POR EL SERVIDOR (con Container)", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("guarda el mes YA, crea el lote, lo sigue hasta que termina y vuelve con el mes de ahora (imágenes preparadas)", async () => {
+    const lotes = [
+      { id: "L1", estado: "en_marcha", total: 3, hechas: 0, programadas: 0, pendientes: 3, fallidas: [], nota: "En cola" },
+      { id: "L1", estado: "en_marcha", total: 3, hechas: 1, programadas: 2, pendientes: 2, fallidas: [], nota: "Preparando y programando (2 de 3)…" },
+      { id: "L1", estado: "hecho", total: 3, hechas: 2, programadas: 4, pendientes: 0, fallidas: [{ postId: "b", motivo: "Le falta la hora." }], nota: "" },
+    ];
+    let i = 0;
+    db.pedir.mockImplementation(async (ruta, op) => {
+      if (ruta === "/publicar/lotes") {
+        expect(JSON.parse(op.body)).toEqual({ calendarId: "cal1", postIds: ["a", "b", "c"] });
+        return { lote: lotes[0] };
+      }
+      i += 1;
+      return { lote: lotes[Math.min(i, 2)] };
+    });
+    const fresco = { ...cal, days: [{ date: "2030-01-02", posts: [{ id: "a", image: "a.jpg" }] }] };
+    db.mesDeCalendario.mockResolvedValue(fresco);
+    const avisos = [];
+    const preparar = vi.fn();
+    const r = await programarAprobadasDe({ cal: { ...cal, year: 2030, month: 0 }, clienteDb: "c1", lista, preparar, avisar: (t) => avisos.push(t), esperar: async () => {} });
+    expect(db.saveCalendar).toHaveBeenCalledTimes(1);
+    expect(preparar).not.toHaveBeenCalled();
+    expect(db.programarVarias).not.toHaveBeenCalled();
+    expect(db.mesDeCalendario).toHaveBeenCalledWith("c1", 2030, 0);
+    expect(r).toMatchObject({ programadas: 4, cambiado: true, nuevo: fresco, sigue: false });
+    expect(r.fallidas).toEqual([{ postId: "b", motivo: "Le falta la hora.", titulo: "Rota" }]);
+    expect(avisos).toContain("Preparando y programando (2 de 3)…");
+  });
+
+  it("un error del servidor que no es «sin Container» no se tapa con el camino de antes", async () => {
+    db.pedir.mockRejectedValue(Object.assign(new Error("Ese calendario no existe."), { estado: 422 }));
+    await expect(programarAprobadasDe({ cal, clienteDb: "c1", lista, preparar: vi.fn(), esperar: async () => {} })).rejects.toThrow(/no existe/);
+    expect(db.programarVarias).not.toHaveBeenCalled();
   });
 });
 

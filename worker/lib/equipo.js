@@ -14,6 +14,8 @@
 import { uuid, ahora } from "./ids.js";
 import { difundir } from "./vivo.js";
 import { cambiosEntre, mencionesEn } from "../../src/lib/trabajo.js";
+import { diasConRespuestas } from "../../src/lib/aprobacion.js";
+import { NULO } from "./acceso.js";
 
 /** Los miembros del espacio, con la forma del navegador. */
 export async function miembrosDe(acceso) {
@@ -131,33 +133,160 @@ function buscar(cal, postId) {
 }
 
 /**
- * Lo que el cliente responde le llega a quien lleva la publicación; si
- * nadie la lleva, a todo el equipo (en una agencia pequeña, alguien
- * tiene que enterarse).
+ * A quién le llega lo de una publicación: a quien la lleva si SIGUE en el equipo; si nadie la lleva, o quien la llevaba
+ * ya no está (lo sacaron), a todo el equipo. Antes, sacar a alguien dejaba sus publicaciones avisando a nadie. Pura.
  */
-export async function avisarRespuestaCliente(env, acceso, { calendarId, postId, estado, revisor }) {
-  const cal = await acceso.leerUno("calendars", { id: calendarId });
-  if (!cal) return;
-  const post = buscar(cal, postId);
-  const cliente = await acceso.leerUno("clients", { id: cal.client_id });
-  const titulo = post?.title || String(post?.idea || post?.descripcion || "").split(/[.\n]/)[0].slice(0, 50) || "una publicación";
-  const quien = revisor || cliente?.name || "El cliente";
-  const para = post?.responsableId ? [post.responsableId] : (await miembrosDe(acceso)).map((m) => m.userId);
-  await avisar(env, acceso, {
-    para, tipo: estado === "aprobado" ? "aprobada" : "cambios",
-    texto: estado === "aprobado" ? `${quien} aprobó «${titulo}».` : `${quien} pidió cambios en «${titulo}».`,
-    enlace: enlacePublicacion(cal.client_id, calendarId, postId), por: { userId: "cliente", nombre: quien },
-  });
+export function destinatariosDe(miembros = [], ...candidatos) {
+  const ids = new Set(miembros.map((m) => m.userId));
+  const dentro = candidatos.find((id) => id && ids.has(id));
+  return dentro ? [dentro] : [...ids];
 }
 
-/** Algo que no se pudo publicar: a quien la lleva, a quien la programó, o a todos. */
+/** En cuánto tiempo las respuestas del cliente a un mismo mes se juntan en UN aviso. */
+export const VENTANA_RESPUESTAS_MS = 3 * 60 * 60_000;
+
+const tituloCorto = (post) => post?.title || String(post?.idea || post?.descripcion || "").split(/[.\n]/)[0].slice(0, 50) || "una publicación";
+const nombreDelMes = (cal) => String(cal?.name || "").trim() || "el calendario";
+const enlaceDelMes = (cal) => `/cliente/${encodeURIComponent(cal.client_id)}/${encodeURIComponent(cal.id)}`;
+
+/**
+ * El texto del aviso de lo que respondió el cliente en un mes (lo aprobado, junto). Pura.
+ * `n`: aprobadas; `c`: con cambios pedidos; `titulo`: la publicación, si es una sola.
+ */
+export function textoDeRespuestas({ quien = "El cliente", n = 0, c = 0, titulo = "", mes = "", cliente = "" } = {}) {
+  if (n === 1 && !c && titulo) return `${quien} aprobó «${titulo}».`;
+  const aprobo = n ? `aprobó ${n === 1 ? "1 publicación" : `${n} publicaciones`}` : "";
+  const cambios = c ? `pidió cambios en ${c}` : "";
+  return `${quien} ${[aprobo, cambios].filter(Boolean).join(" y ")} de ${mes || "el calendario"}${cliente ? ` (${cliente})` : ""}.`;
+}
+
+/**
+ * Lo que el cliente responde. Los CAMBIOS pedidos van siempre en su propio aviso, con lo que pidió: es lo que hay que
+ * hacer. Lo APROBADO se junta: las respuestas a un mismo mes dentro de `VENTANA_RESPUESTAS_MS` actualizan el aviso sin
+ * leer de ese mes («Ana aprobó 12 publicaciones y pidió cambios en 2 de Noviembre 2026») en vez de sumar uno por
+ * publicación —«Aprobar todas» con 25 eran 25 avisos, y la campana sólo enseña 60—. Le llega a quien lleva cada
+ * publicación si sigue en el equipo o, si no, a todo el equipo. `postIds`: varias de una vez (todas aprobadas).
+ * `fecha`: cuándo se guardó la respuesta. Nunca lanza.
+ */
+export async function avisarRespuestaCliente(env, acceso, { calendarId, postId = null, postIds = null, estado, revisor = "", comentario = "", fecha = null }) {
+  try {
+    const cal = await acceso.leerUno("calendars", { id: calendarId });
+    if (!cal) return;
+    const [cliente, miembros] = await Promise.all([acceso.leerUno("clients", { id: cal.client_id }), miembrosDe(acceso)]);
+    const quien = String(revisor || "").trim() || cliente?.name || "El cliente";
+    const por = { userId: "cliente", nombre: quien };
+    const ids = postIds?.length ? postIds : [postId].filter(Boolean);
+    const posts = ids.map((id) => buscar(cal, id));
+    if (estado !== "aprobado") {
+      const pide = String(comentario ?? "").replace(/\s+/g, " ").trim().slice(0, 200);
+      await avisar(env, acceso, {
+        para: destinatariosDe(miembros, posts[0]?.responsableId), tipo: "cambios",
+        texto: `${quien} pidió cambios en «${tituloCorto(posts[0])}»${pide ? `: «${pide}»` : "."}`,
+        enlace: enlacePublicacion(cal.client_id, calendarId, ids[0]), por,
+      });
+      // El resumen del mes que ya estaba sin leer también lo cuenta (no se crea uno nuevo por un cambio).
+      await avisarAgrupado(env, acceso, { cal, cliente, para: miembros.map((m) => m.userId), quien, por, ids, posts, fecha, soloActualizar: true });
+      return;
+    }
+    const para = [...new Set(posts.flatMap((p) => destinatariosDe(miembros, p?.responsableId)))];
+    await avisarAgrupado(env, acceso, { cal, cliente, para, quien, por, ids, posts, fecha });
+  } catch (e) {
+    console.error("aviso de la respuesta del cliente:", e);
+  }
+}
+
+/** El aviso de lo aprobado en un mes: actualiza el que sigue sin leer dentro de la ventana, o crea uno. */
+async function avisarAgrupado(env, acceso, { cal, cliente, para, quien, por, ids, posts, fecha, soloActualizar = false }) {
+  const base = enlaceDelMes(cal);
+  const ahoraMs = Date.now();
+  const delMes = (a) => a.enlace === base || String(a.enlace ?? "").startsWith(`${base}?`);
+  const abiertos = (await acceso.leer("avisos", { tipo: "aprobada", leido_at: NULO }, "created_at desc", 200))
+    .filter((a) => delMes(a) && Date.parse(a.created_at) > ahoraMs - VENTANA_RESPUESTAS_MS);
+  const respuestas = await acceso.leer("approvals", { calendar_id: cal.id });
+  // Lo que respondió desde que empezó el aviso (con un minuto de margen: la respuesta se guarda antes que el aviso).
+  const contar = (desde) => {
+    const d = Date.parse(desde) - 60_000;
+    const recientes = respuestas.filter((r) => Date.parse(r.updated_at) >= d);
+    return { n: recientes.filter((r) => r.estado === "aprobado").length, c: recientes.filter((r) => r.estado === "cambios").length };
+  };
+  const mes = nombreDelMes(cal);
+  const nuevos = [];
+  const cambiados = [];
+  for (const userId of para) {
+    const suyo = abiertos.find((a) => a.user_id === userId);
+    if (!suyo) { if (!soloActualizar) nuevos.push(userId); continue; }
+    const { n, c } = contar(suyo.created_at);
+    await acceso.actualizar("avisos", { id: suyo.id, leido_at: NULO }, {
+      texto: textoDeRespuestas({ quien, n: Math.max(n, 1), c, mes, cliente: cliente?.name ?? "" }).slice(0, 500),
+      enlace: base, por_nombre: String(quien).slice(0, 80),
+    });
+    cambiados.push(userId);
+  }
+  if (nuevos.length) {
+    const { n, c } = contar(fecha ?? new Date(ahoraMs).toISOString());
+    const total = Math.max(n, ids.length);
+    const una = total === 1 && !c;
+    await avisar(env, acceso, {
+      para: nuevos, tipo: "aprobada",
+      texto: textoDeRespuestas({ quien, n: total, c, titulo: una ? tituloCorto(posts[0]) : "", mes, cliente: cliente?.name ?? "" }),
+      enlace: una ? enlacePublicacion(cal.client_id, cal.id, ids[0]) : base, por,
+    });
+  }
+  if (cambiados.length) difundir(env, acceso.ownerId, { tipo: "avisos", para: cambiados });
+}
+
+/**
+ * «Enviar mi revisión»: el cliente terminó. Antes sólo se anunciaba por el socket y, si nadie estaba conectado, se
+ * perdía. Ahora queda en la campana de quien lleva algo de ese mes (o de todo el equipo), con quién la envió, cuántas
+ * aprobó, en cuántas pidió cambios y cuántas dejó sin revisar. Nunca lanza.
+ */
+export async function avisarRevisionCliente(env, acceso, { calendarId, revisor = "" }) {
+  try {
+    const cal = await acceso.leerUno("calendars", { id: calendarId });
+    if (!cal) return;
+    const [cliente, miembros, filas] = await Promise.all([
+      acceso.leerUno("clients", { id: cal.client_id }), miembrosDe(acceso), acceso.leer("approvals", { calendar_id: calendarId }),
+    ]);
+    const quien = String(revisor || "").trim() || cliente?.name || "El cliente";
+    const r = { aprobadas: 0, cambios: 0, sin: 0 };
+    const llevan = new Set();
+    for (const d of diasConRespuestas(leerSiTexto(cal.days, []), filas)) {
+      for (const p of d?.posts ?? []) {
+        if (!p || p.status === "published") continue;
+        if (p.status === "approved") r.aprobadas += 1;
+        else if (p.status === "rejected") r.cambios += 1;
+        else r.sin += 1;
+        if (p.responsableId) llevan.add(p.responsableId);
+      }
+    }
+    const equipo = new Set(miembros.map((m) => m.userId));
+    const suyos = [...llevan].filter((id) => equipo.has(id));
+    await avisar(env, acceso, {
+      // Con algo sin dueño (o nadie que lleve nada), a todos: alguien tiene que enterarse.
+      para: suyos.length && suyos.length === llevan.size ? suyos : [...equipo], tipo: "revision-cliente",
+      texto: textoDeRevision({ quien, ...r, mes: nombreDelMes(cal), cliente: cliente?.name ?? "" }),
+      enlace: enlaceDelMes(cal), por: { userId: "cliente", nombre: quien },
+    });
+  } catch (e) {
+    console.error("aviso de la revisión del cliente:", e);
+  }
+}
+
+/** «Ana terminó de revisar Noviembre 2026 (Dcasa): aprobó 12, pidió cambios en 2 y dejó 1 sin revisar.» Pura. */
+export function textoDeRevision({ quien = "El cliente", aprobadas = 0, cambios = 0, sin = 0, mes = "", cliente = "" } = {}) {
+  const partes = [`aprobó ${aprobadas}`, cambios ? `pidió cambios en ${cambios}` : "", sin ? `dejó ${sin} sin revisar` : ""].filter(Boolean);
+  const ultima = partes.length > 1 ? ` y ${partes.pop()}` : "";
+  return `${quien} terminó de revisar ${mes || "el calendario"}${cliente ? ` (${cliente})` : ""}: ${partes.join(", ")}${ultima}.`;
+}
+
+/** Algo que no se pudo publicar: a quien la lleva o a quien la programó (si siguen en el equipo), o a todos. */
 export async function avisarFallo(env, acceso, fila, mensaje) {
   try {
     // Una historia automática no tiene calendario: su publicación va en la carga.
     const cal = fila.calendar_id ? await acceso.leerUno("calendars", { id: fila.calendar_id }) : null;
     let post = cal ? buscar(cal, fila.post_id) : null;
     if (!fila.calendar_id) { try { post = JSON.parse(fila.carga ?? "{}").post ?? null; } catch { post = null; } }
-    const para = post?.responsableId ? [post.responsableId] : fila.creado_por ? [fila.creado_por] : (await miembrosDe(acceso)).map((m) => m.userId);
+    const para = destinatariosDe(await miembrosDe(acceso), post?.responsableId, fila.creado_por);
     const titulo = post?.title || String(post?.idea || "").split(/[.\n]/)[0].slice(0, 50) || "Una publicación";
     await avisar(env, acceso, {
       para, tipo: "fallo",
@@ -167,6 +296,62 @@ export async function avisarFallo(env, acceso, fila, mensaje) {
   } catch (e) {
     console.error("aviso de fallo:", e);
   }
+}
+
+/**
+ * Al SACAR a alguien del equipo su trabajo no se queda sin dueño: las publicaciones que llevaba (o cuya revisión se le
+ * pidió) y sus tareas pasan a quien lo saca, y a esa persona le queda un aviso con cuántas. Cada mes se escribe con su
+ * `updated_at` como condición (si alguien lo guardaba a la vez, se relee una vez) y se avisa a las pantallas abiertas.
+ * Se llama ANTES de borrar la cuenta (lo que se reasigna se ve en el historial de quien lo hizo). → { publicaciones,
+ * tareas }. Nunca lanza: sacar a alguien no puede fallar por esto.
+ */
+export async function reasignarTrabajoDe(env, acceso, { userId, nombre = "", a }) {
+  const r = { publicaciones: 0, tareas: 0 };
+  if (!userId || !a?.id || userId === a.id) return r;
+  const firma = { userId: "sistema", nombre: "Equipo", color: "", tab: null };
+  try {
+    const calendarios = await acceso.leerColumnas("calendars", ["id", "client_id", "days", "updated_at"], {});
+    for (const fila of calendarios) {
+      if (!String(fila.days ?? "").includes(userId)) continue;
+      for (let vuelta = 0; vuelta < 2; vuelta++) {
+        const cal = vuelta ? await acceso.leerUno("calendars", { id: fila.id }) : fila;
+        if (!cal) break;
+        let n = 0;
+        const dias = (leerSiTexto(cal.days, []) ?? []).map((d) => (Array.isArray(d?.posts) ? {
+          ...d,
+          posts: d.posts.map((p) => {
+            if (!p || (p.responsableId !== userId && p.revisorId !== userId)) return p;
+            n += 1;
+            return { ...p, ...(p.responsableId === userId ? { responsableId: a.id } : {}), ...(p.revisorId === userId ? { revisorId: a.id } : {}) };
+          }),
+        } : d));
+        if (!n) break;
+        const hecho = await acceso.actualizar("calendars", { id: cal.id, updated_at: cal.updated_at }, { days: JSON.stringify(dias), updated_at: ahora() });
+        if (!hecho) continue;
+        r.publicaciones += n;
+        difundir(env, acceso.ownerId, { tipo: "calendario:recargar", id: cal.id, clientId: cal.client_id, por: firma });
+        break;
+      }
+    }
+    for (const tabla of ["client_tasks", "quick_tasks"]) {
+      r.tareas += await acceso.actualizar(tabla, { asignado_id: userId }, { asignado_id: a.id, assigned_to: String(a.nombre ?? "").slice(0, 120) });
+    }
+    if (r.tareas) difundir(env, acceso.ownerId, { tipo: "tarea", por: firma });
+    if (r.publicaciones || r.tareas) {
+      const cosas = [
+        r.publicaciones ? `${r.publicaciones} ${r.publicaciones === 1 ? "publicación" : "publicaciones"}` : "",
+        r.tareas ? `${r.tareas} ${r.tareas === 1 ? "tarea" : "tareas"}` : "",
+      ].filter(Boolean).join(" y ");
+      await avisar(env, acceso, {
+        para: [a.id], tipo: "equipo",
+        texto: `Al sacar a ${nombre || "una persona"} del equipo pasaron a ti ${cosas} que llevaba. Repártelas si hace falta.`,
+        enlace: "/tareas", por: firma,
+      });
+    }
+  } catch (e) {
+    console.error("reasignar al sacar del equipo:", e);
+  }
+  return r;
 }
 
 /** Las menciones de una nota del hilo interno, más quien lleva la publicación. */

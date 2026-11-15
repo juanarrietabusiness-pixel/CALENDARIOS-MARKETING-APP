@@ -6,11 +6,18 @@
 // ============================================================
 
 import { completitud } from "./completitud.js";
+import { diasConRespuestas } from "./aprobacion.js";
 
-/** Cuántas publicaciones hay en cada estado y cuántas están a medias. */
-export function resumenCalendario(cal) {
+/**
+ * Cuántas publicaciones hay en cada estado y cuántas están a medias. `respuestas` (opcional): las del cliente de todo el
+ * espacio, Map «calendario:publicación» → respuesta (`aprobacionesDelEspacio`, lo mismo que lee Producción). Sin ellas
+ * se cuenta con el `status` guardado en el mes, que no sabe lo que el cliente respondió si nadie abrió ese mes.
+ */
+export function resumenCalendario(cal, respuestas = null) {
   const r = { publicaciones: 0, porAprobar: 0, conCambios: 0, aprobadas: 0, publicadas: 0, incompletas: 0 };
-  for (const day of cal?.days ?? []) {
+  const calId = cal?.dbId || cal?.id;
+  const dias = respuestas ? diasConRespuestas(cal?.days, (id) => respuestas.get(`${calId}:${id}`)) : cal?.days;
+  for (const day of dias ?? []) {
     for (const post of day.posts ?? []) {
       r.publicaciones += 1;
       if (post.status === "approved") r.aprobadas += 1;

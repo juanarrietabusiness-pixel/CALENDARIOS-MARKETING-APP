@@ -7,7 +7,7 @@
 
 import { fechaEnZona, sumarDias } from "./agenda.js";
 import { revisarPublicacion, momentoPublicacion, REDES, redesDe } from "./publicacion.js";
-import { listaParaProgramar } from "./aprobacion.js";
+import { listaParaProgramar, listaSinAprobar } from "./aprobacion.js";
 
 const ZONA = "America/Panama";
 
@@ -118,15 +118,16 @@ export function ordenarProgramacion(filas = [], hoy = fechaEnZona(new Date(), ZO
  * «Programar todo lo aprobado»: las publicaciones que el cliente aprobó
  * COMO PIEZA FINAL (una idea aprobada está por producir, no por
  * programar), que no están en la cola (ni programadas, ni publicadas) y
- * cuyo día no ha pasado. Un directo no se programa: se hace en vivo.
+ * cuyo día no ha pasado. Un directo no se programa: se hace en vivo. `sinAprobar`: el cliente no aprueba antes de
+ * publicar (`apruebaAntes` = false): cuenta lo que tiene su pieza y no tiene cambios pedidos.
  */
-export function aprobadasSinProgramar(days = [], filas = [], hoy = fechaEnZona(new Date(), ZONA)) {
+export function aprobadasSinProgramar(days = [], filas = [], hoy = fechaEnZona(new Date(), ZONA), { sinAprobar = false } = {}) {
   const enCola = new Set(filas.filter((f) => f.estado !== "cancelada" && f.estado !== "error").map((f) => f.postId));
   const salida = [];
   for (const d of days) {
     if (!d?.date || d.date < hoy) continue;
     for (const p of d.posts ?? []) {
-      if (listaParaProgramar(p) && !enCola.has(p.id)) salida.push({ post: p, fecha: d.date });
+      if ((sinAprobar ? listaSinAprobar(p) : listaParaProgramar(p)) && !enCola.has(p.id)) salida.push({ post: p, fecha: d.date });
     }
   }
   return salida;

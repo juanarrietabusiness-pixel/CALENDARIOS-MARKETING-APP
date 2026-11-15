@@ -145,6 +145,8 @@ export const TABLAS_CON_DUENO = Object.freeze([
   "historias_auto_piezas",
   // El aviso a la hora de lo que se publica a mano (worker/lib/avisosAMano.js): una fila por publicación «La publico yo».
   "avisos_a_mano",
+  // «Programar lo aprobado» como encargo del servidor (worker/lib/programarServidor.js): lo que falta preparar y programar.
+  "programar_lotes",
   // Del equipo. Tienen dueño como las demás: la lista de miembros de un
   // espacio es un dato del espacio, y pedirla sin acotar devolvería la
   // plantilla de otra agencia. Quien resuelve «este usuario, ¿de qué
@@ -185,6 +187,7 @@ export const TABLAS_CON_CLIENTE = Object.freeze([
   "planes_campana", "informes_anuncios", "anuncios_clientes", "ventas_semana",
   "historias_auto", "historias_auto_piezas",
   "avisos_a_mano",
+  "programar_lotes",
   "handoffs",
   "lo_mejor_anuncios",
   "tendencias_palabras", "tendencias_videos",
@@ -706,6 +709,22 @@ export async function encargosPendientes(db, ahoraISO, antesDe, limite = 1) {
   const { results } = await db
     .prepare(
       `select id, owner_id from estudio_encargos
+        where estado = 'en_marcha' and updated_at <= ? and bloqueado_hasta <= ?
+        order by updated_at asc limit ?`,
+    )
+    .bind(antesDe, ahoraISO, limite)
+    .all();
+  return results ?? [];
+}
+
+/**
+ * Los lotes de «Programar lo aprobado» sin terminar de TODOS los espacios que nadie avanza (el respaldo del cron, por si
+ * la bomba del espacio se durmió). Sólo ids y dueño, como `encargosPendientes`.
+ */
+export async function lotesProgramarPendientes(db, ahoraISO, antesDe, limite = 1) {
+  const { results } = await db
+    .prepare(
+      `select id, owner_id from programar_lotes
         where estado = 'en_marcha' and updated_at <= ? and bloqueado_hasta <= ?
         order by updated_at asc limit ?`,
     )
