@@ -1,7 +1,8 @@
 import { useId, useState } from "react";
 import Icon from "./Icon";
 import { leerConflicto, resolverConflictos, volverATraer } from "../lib/cerebro";
-import { describirSincronia, loQueNoEntro, diferenciaPorLineas, nombreDeArchivo } from "../lib/cerebroVista";
+import { nombreDeArchivo } from "../lib/cerebroVista";
+import { describirSincronia, loQueNoEntro, diferenciaPorLineas } from "../lib/cerebroGitHub";
 
 // ============================================================
 // El cerebro y GitHub, en la pestaña Cerebro

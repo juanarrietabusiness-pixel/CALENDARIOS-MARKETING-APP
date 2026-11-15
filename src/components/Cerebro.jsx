@@ -9,8 +9,9 @@ import {
 import { describirLenguaje } from "../lib/lenguajeCliente";
 import {
   TIPOS_VISTA, FILTROS_TIPO, nombreDeTipo, ordenarNotas, filtrarNotas, contarPorTipo, agruparNotas,
-  formatoCaracteres, describirImportacion, sumarImportaciones, describirFicha, avisoSinFicha, leerDocumento,
+  formatoCaracteres, describirImportacion, describirFicha, avisoSinFicha, leerDocumento,
 } from "../lib/cerebroVista";
+import { sumarImportaciones } from "../lib/cerebroGitHub";
 import CerebroGitHub from "./CerebroGitHub";
 import { deleteClientMemory } from "../lib/db";
 import CerebroAprendizaje from "./CerebroAprendizaje";
