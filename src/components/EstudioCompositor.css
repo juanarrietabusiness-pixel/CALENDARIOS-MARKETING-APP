@@ -3,7 +3,8 @@
    Va con su chunk (lazy). Lo de siempre del compositor sigue en Estudio.css.
    ============================================================ */
 
-.est-compositor { gap: var(--sp-4); }
+/* Sin el overflow: hidden de .card: con él, el pie con «Crear» no se queda pegado abajo (sticky necesita ver la página). */
+.est-compositor { gap: var(--sp-4); overflow: visible; }
 .est-bloque { display: flex; flex-direction: column; gap: var(--sp-2); min-width: 0; }
 .est-bloque + .est-bloque { border-top: 1px solid var(--border-light); padding-top: var(--sp-4); }
 .est-bloque-titulo { display: inline-flex; align-items: center; gap: var(--sp-2); margin: 0; font-size: var(--fs-md); font-weight: 700; }
