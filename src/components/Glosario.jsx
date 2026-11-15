@@ -31,7 +31,7 @@ export default function Glosario({ onClose }) {
         </div>
         <div className="sheet-body" style={{ display: "flex", flexDirection: "column", gap: "var(--sp-4)" }}>
           <div className="field" style={{ margin: 0 }}>
-            <label className="label" htmlFor={`${ids}-q`}>Buscar</label>
+            <label className="label" htmlFor={`${ids}-q`}>Buscar en el glosario</label>
             <input
               id={`${ids}-q`} className="input" type="search" value={texto} autoComplete="off"
               placeholder="Por ejemplo: corregir, número mágico, cerebro…" onChange={(e) => setTexto(e.target.value)}
@@ -48,7 +48,7 @@ export default function Glosario({ onClose }) {
                     <dt style={{ fontWeight: 700, fontSize: "var(--fs-sm)" }}>{t.termino}</dt>
                     <dd style={{ margin: "var(--sp-1) 0 0", fontSize: "var(--fs-sm)", lineHeight: 1.5 }}>
                       {t.que}
-                      {t.donde && <span className="hint" style={{ display: "block", marginTop: 2 }}><Icon name="chevronRight" size={12} /> {t.donde}</span>}
+                      {t.donde && <span className="hint" style={{ display: "block", marginTop: 2 }}>Dónde: {t.donde}</span>}
                     </dd>
                   </div>
                 ))}
