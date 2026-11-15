@@ -84,6 +84,11 @@ export const TABLAS_CON_DUENO = Object.freeze([
   "cerebro_usos",
   "cerebro_memoria",
   "cerebro_propuestas",
+  // Cómo va cada cerebro con GitHub (la última revisión, lo traído, lo que no entró), lo que choca entre lo corregido
+  // aquí y lo nuevo de GitHub, y lo que se borró aquí y no debe volver (worker/lib/cerebro/importar.js, sincronizar.js).
+  "cerebro_sync",
+  "cerebro_conflictos",
+  "cerebro_no_traer",
   // El estudio de mercado de cada cliente: catálogo, estudio, borrador y
   // referencias de la competencia (worker/lib/mercado.js).
   "mercado_clientes",
@@ -177,6 +182,7 @@ export const TABLAS_CON_CLIENTE = Object.freeze([
   "metricas_competencia", "metricas_cuenta", "metricas_publicacion", "publicaciones_programadas",
   "inspiracion_cuentas", "inspiracion_publicaciones",
   "cerebro_notas", "cerebro_senales", "cerebro_usos", "cerebro_memoria", "cerebro_propuestas",
+  "cerebro_sync", "cerebro_conflictos", "cerebro_no_traer",
   "mercado_clientes",
   "estudio_trabajos", "estudio_archivos", "estudio_carpetas", "estudio_encargos", "videos_proyectos", "videos_versiones",
   "bandeja_clientes", "bandeja_comentarios", "bandeja_hilos", "bandeja_mensajes",
@@ -396,6 +402,25 @@ export function crearAcceso(db, ownerId, { clientes = null } = {}) {
         .bind(...cols.map((c) => fila[c]), ownerId, ...guarda.valores)
         .run();
       return fila;
+    },
+
+    /**
+     * Varios `actualizar` de la misma tabla en UN lote de D1 (`lista`: [{ where, cambios }]): la sincronización del
+     * cerebro pone al día la versión de muchas notas a la vez y el cron cuenta las consultas por invocación. Como
+     * `actualizar`, no toca `updated_at` si no viene en `cambios`. → cuántas filas cambiaron en total.
+     */
+    async actualizarVarios(tabla, lista) {
+      if (!lista.length) return 0;
+      const sentencias = lista.map(({ where, cambios }) => {
+        const { sql, valores } = acotar(tabla, where);
+        const cols = exigirColumnas(Object.keys(cambios ?? {}));
+        if (!cols.length) throw new Error("actualizarVarios sin cambios");
+        return db
+          .prepare(`update ${tabla} set ${cols.map((c) => `${c} = ?`).join(", ")} where ${sql}`)
+          .bind(...cols.map((c) => cambios[c]), ...valores);
+      });
+      const resultados = db.batch ? await db.batch(sentencias) : await Promise.all(sentencias.map((x) => x.run()));
+      return resultados.reduce((s, r) => s + Number(r?.meta?.changes ?? 0), 0);
     },
 
     async actualizar(tabla, where, cambios) {
@@ -870,6 +895,34 @@ export async function clientesPorAlertar(db, hoy, limite = 1) {
         limit ?`,
     )
     .bind(hoy, limite)
+    .all();
+  return results ?? [];
+}
+
+/**
+ * Los cerebros que toca mirar en GitHub, de TODOS los espacios, uno por vuelta del cron: los clientes con repositorio
+ * cuyo cerebro ya tiene notas de él (el primer llenado lo decide una persona) y que (1) dejaron archivos para la
+ * siguiente vuelta, (2) trajeron cambios y su ficha espera renovarse desde antes de `fichaAntes` (la pantalla que los
+ * trajo tuvo tiempo de hacerlo), o (3) no se revisaron desde `revisadoAntes` (el comienzo del día en Panamá). Sin
+ * los que otra sincronización tiene tomados (`bloqueado_hasta` > `ahoraISO`). Igual que `colaPendiente`: sólo ids y
+ * dueño; lo demás se lee después con `crearAcceso(db, owner_id)`.
+ */
+export async function cerebrosPorRevisar(db, { ahoraISO, revisadoAntes, fichaAntes }, limite = 1) {
+  const { results } = await db
+    .prepare(
+      `select c.id as client_id, c.owner_id,
+              coalesce(s.pendientes, 0) as pendientes, coalesce(s.ficha_pendiente, 0) as ficha_pendiente
+         from clients c
+         left join cerebro_sync s on s.client_id = c.id
+        where coalesce(c.github_repo, '') != ''
+          and exists (select 1 from cerebro_notas n where n.client_id = c.id and n.origen = 'repositorio')
+          and coalesce(s.bloqueado_hasta, '') <= ?
+          and (s.id is null or s.revisado_at is null or s.revisado_at < ? or s.pendientes > 0
+               or (s.ficha_pendiente = 1 and s.updated_at < ?))
+        order by (coalesce(s.pendientes, 0) > 0) desc, coalesce(s.revisado_at, '') asc
+        limit ?`,
+    )
+    .bind(ahoraISO, revisadoAntes, fichaAntes, limite)
     .all();
   return results ?? [];
 }

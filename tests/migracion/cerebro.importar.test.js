@@ -171,16 +171,18 @@ describe("volver a importar", () => {
   });
 
   it("actualizar varios archivos borra lo viejo en una sola tanda, no una consulta por archivo", async () => {
+    // Las secciones que desaparecen (una por archivo) se borran juntas; las que cambian se reescriben en su sitio.
     github({
-      "Dcasa/01_ADN_y_Memoria/01_brand_guidelines.md": GUIAS.replace("Cercano", "Muy cercano"),
-      "Dcasa/01_ADN_y_Memoria/02_buyer_personas.md": PERSONAS.replace("suave", "hipoalergénico"),
+      "Dcasa/01_ADN_y_Memoria/01_brand_guidelines.md": GUIAS.replace("## Límites\n\nNo mencionar la competencia.\n", "").replace("Cercano", "Muy cercano"),
+      "Dcasa/01_ADN_y_Memoria/02_buyer_personas.md": PERSONAS.replace("## Mamá primeriza\n\nBusca algo suave para la piel del bebé.\n", "## Papá\n\nBusca algo práctico.\n"),
     });
     const sqls = [];
     const original = db.prepare.bind(db);
     db.prepare = (sql) => { sqls.push(sql); return original(sql); };
     const r = await (await importar({ actualizar: true })).json();
     expect(r.archivos.actualizados).toBe(2);
-    expect(sqls.filter((q) => /^delete from cerebro_notas/.test(q)), "8 notas caben en un solo borrado de 50 ids").toHaveLength(1);
+    expect(r.notas.borradas).toBe(2);
+    expect(sqls.filter((q) => /^delete from cerebro_notas/.test(q)), "las notas que se van caben en un solo borrado de 50 ids").toHaveLength(1);
   });
 
   it("guarda con cada nota su resumen y su tamaño, para listarlas sin leer el texto", async () => {
@@ -194,7 +196,8 @@ describe("volver a importar", () => {
     github({ ...repo, "Dcasa/01_ADN_y_Memoria/01_brand_guidelines.md": GUIAS.replace("Cercano, de tú.", "Formal, de usted.") });
     const r = await (await importar({ actualizar: true })).json();
     expect(r.archivos).toMatchObject({ cambiados: 0, actualizados: 1 });
-    expect(r.notas.reemplazadas).toBe(3);
+    // Sólo cambió la sección del tono: las otras dos se quedan tal cual (ni se reescriben ni cambian de fecha).
+    expect(r.notas).toMatchObject({ reemplazadas: 1, iguales: 2, creadas: 0 });
     expect(notas().find((n) => n.titulo === "Brand guidelines — Tono").texto).toContain("Formal, de usted.");
     expect(notas().map((n) => n.ruta).sort(), "los [[enlaces]] de otras notas dependen de las rutas").toEqual(rutasAntes);
   });
@@ -208,9 +211,10 @@ describe("volver a importar", () => {
 
     github({ ...repo, "Dcasa/01_ADN_y_Memoria/01_brand_guidelines.md": GUIAS.replace("No mencionar la competencia.", "Nada de política.") });
     const r = await (await importar({ actualizar: true })).json();
-    // La introducción y los límites se renuevan; sólo la de texto corregido se queda, y su sección no se crea al lado.
-    expect(r.notas).toEqual({ creadas: 2, reemplazadas: 2, conservadas: 1 });
-    expect(r.sinActualizar.map((n) => n.id), "la pantalla ofrece «Usar la versión de GitHub» en ésta").toEqual([tono.id]);
+    // Sólo cambiaron los límites: se renuevan. La de texto corregido se queda, su sección no se crea al lado y, como su
+    // sección NO cambió en GitHub, no hay conflicto (antes salía igual entre las que «no se actualizaron»).
+    expect(r.notas).toMatchObject({ creadas: 0, reemplazadas: 1, iguales: 1, conservadas: 1 });
+    expect(r.conflictos).toMatchObject({ nuevos: 0, total: 0 });
     const despues = notas();
     expect(despues.find((n) => n.id === tono.id).texto).toBe("Tono corregido por la agencia.");
     // Antes se quedaba con el texto viejo para siempre (así siguió ROFER con su WhatsApp viejo).

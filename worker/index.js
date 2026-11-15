@@ -45,6 +45,7 @@ import { inspiracionPendiente } from "./lib/inspiracion.js";
 import { rutasLoMejor } from "./rutas/loMejor.js";
 import { loMejorPendiente } from "./lib/loMejor.js";
 import { revision3qPendiente } from "./lib/revision3q.js";
+import { cerebroPendiente } from "./lib/cerebro/sincronizar.js";
 import { rutaModelos, rutaConsumo, rutaGasto } from "./rutas/iaEspacio.js";
 import { rutaADN, rutaImagenADN } from "./rutas/adn.js";
 import { rutaGenerarImagen } from "./rutas/imagen.js";
@@ -604,6 +605,7 @@ export default {
       // pocas piezas sin clasificar (una llamada barata a la IA). Sólo si nada de lo de arriba tuvo trabajo.
       const loMejor = await loMejorPendiente(env, cuando).catch((e) => { console.error("cron lo mejor:", e); return 1; });
       if (loMejor) return;
+      if (await cerebroPendiente(env, cuando).catch((e) => { console.error("cron cerebro:", e); return 1; })) return; // el cerebro de UN cliente al día con GitHub
       // La revisión 3Q: lo GRAVE de las campañas de UN cliente al día (no gasta, anuncio rechazado, el doble del número
       // mágico sin una conversación) a la campana. Lo último: tres lecturas de Meta y sólo si nada más tuvo trabajo.
       await revision3qPendiente(env, cuando).catch((e) => console.error("cron revisión 3Q:", e));
