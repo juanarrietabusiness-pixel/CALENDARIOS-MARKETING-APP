@@ -144,6 +144,30 @@ describe.skipIf(!disponible.playwright)("la aplicación abierta en Chromium", ()
     }
   }, 120_000);
 
+  it("Crear → «A mano» (el compositor) y la galería abren sin errores, también en el teléfono", async () => {
+    // Aquí se juntaron el compositor en su chunk y la galería en el suyo (EstudioCompositor, EstudioGaleria): una
+    // importación que falte sólo revienta al pintarlos.
+    const contexto = await navegador.newContext({ viewport: { width: 390, height: 844 }, locale: "es-PA" });
+    const pagina = await contexto.newPage();
+    const errores = vigilar(pagina);
+    try {
+      await pagina.goto(`${espacio.base}/`);
+      await pagina.getByLabel("Correo").fill(ANA.email);
+      await pagina.getByLabel("Contraseña").fill("contrasena-de-prueba-larga");
+      await pagina.getByRole("button", { name: /Entrar/ }).click();
+      await pagina.getByRole("navigation").first().waitFor({ timeout: 20_000 });
+
+      await pagina.goto(`${espacio.base}/cliente/${CLIENTE.slug}/crear/a-mano`);
+      await pagina.getByRole("heading", { name: "Crear a mano" }).waitFor({ timeout: 30_000 });
+      await pagina.getByRole("heading", { name: "Galería" }).waitFor({ timeout: 30_000 });
+      await noEnBlanco(pagina);
+      await pagina.waitForTimeout(500);
+      expect(errores, errores.join("\n")).toEqual([]);
+    } finally {
+      await contexto.close();
+    }
+  }, 120_000);
+
   it("/aprobar abre el mes del cliente final sin sesión", async () => {
     const contexto = await navegador.newContext({ viewport: { width: 390, height: 844 }, locale: "es-PA" });
     const pagina = await contexto.newPage();
