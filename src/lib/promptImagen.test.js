@@ -27,11 +27,12 @@ describe("el pedido de la imagen, listo", () => {
 
 describe("el motor de ideas lo escribe", () => {
   const plan = [{ n: 1, formato: "post", tipo: "beneficios" }, { n: 2, formato: "carrusel", tipo: "educativo" }];
-  it("se le pide sólo a las de una imagen", () => {
-    const pedido = pedidoDeProduccion({ plan });
+  it("por defecto NO se pide (la escribe el director al diseñar); con `conFicha`, sólo a las de una imagen", () => {
+    expect(pedidoDeProduccion({ plan })).not.toMatch(/"imagen"|FICHA DE DISEÑO/);
+    const pedido = pedidoDeProduccion({ plan, conFicha: true });
     expect(pedido).toMatch(/"imagen" \(SÓLO en las de una imagen[^\n]*FICHA DE DISEÑO/);
     expect(pedido).toContain('"imagen":"…"');
-    expect(pedidoDeProduccion({ plan: [{ n: 1 }], formato: "reel" })).not.toContain('"imagen"');
+    expect(pedidoDeProduccion({ plan: [{ n: 1 }], formato: "reel", conFicha: true })).not.toContain('"imagen"');
   });
   it("se lee con el texto EXACTO (repuesto si hace falta), y nunca en un carrusel", () => {
     const respuesta = JSON.stringify({ ideas: [

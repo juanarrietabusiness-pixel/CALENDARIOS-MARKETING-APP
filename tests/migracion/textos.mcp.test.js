@@ -180,8 +180,11 @@ describe("escribir_textos", () => {
     anthropic(() => JSON.stringify({ ideas: Array.from({ length: 8 }, (_, i) => ({ n: i + 1, titulo: `Idea ${i + 1}`, titular: `Titular ${i + 1}`, apoyo: "Escríbenos", escena: `Una sala ${i + 1}`, brief: `Brief ${i + 1}`, descripcion: `Caption ${i + 1}. Escríbenos por WhatsApp.`, hashtags: "#sofa #panama", guion: "Plano 1: algo", anuncio: { textos: [`Texto ${i + 1}. Escríbenos por WhatsApp.`], titulos: ["Sofá cama"], descripcion: "A buen precio", boton: "WHATSAPP_MESSAGE" } })) }));
     const r = await llamar("escribir_textos", { cliente: "Dcasa", mes: "2030-03" });
     expect(r.error).toBe(false);
-    expect(peticiones).toHaveLength(1);
-    const pedido = textoPedido(peticiones[0]);
+    // El mes por el conector: el planificador (aquí no devuelve plan), el redactor de dos en dos (3 llamadas) y el revisor.
+    expect(peticiones).toHaveLength(5);
+    expect(textoPedido(peticiones[0])).toMatch(/^Eres el PLANIFICADOR/);
+    expect(textoPedido(peticiones[4])).toMatch(/EDITOR JEFE/);
+    const pedido = textoPedido(peticiones[1]);
     expect(pedido).toMatch(/forma del gancho: «/);
     expect(pedido).toMatch(/Sofá cama/);
     const conIdea = posts().filter((p) => p.idea);

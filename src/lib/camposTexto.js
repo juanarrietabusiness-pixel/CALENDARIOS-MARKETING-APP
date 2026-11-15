@@ -31,7 +31,8 @@
 // ============================================================
 
 import {
-  lineaDePieza, REGLA_FORMATO, GUION_DE_FORMATO, textoEstrategiaDelMes, captionYHashtags, bloqueDeLenguaje, MAX_TITULO, MAX_GUION, MAX_BRIEF,
+  lineaDePieza, REGLA_FORMATO, GUION_DE_FORMATO, textoEstrategiaDelMes, captionYHashtags, MAX_TITULO, MAX_GUION, MAX_BRIEF,
+  papelDelRedactor, textoDelContexto, escogidoDe,
 } from "./loteAnuncios.js";
 import { formaDe, REGLA_GANCHO } from "./formasGancho.js";
 import { CAMPOS_TEXTO, llevaCampo, camposQueFaltan as camposQueFaltanDelFormato, llevaHashtags, tieneHashtags } from "./reglasFormato.js";
@@ -161,22 +162,28 @@ function comoEsCadaCampo(pedidos, plan) {
 }
 
 /**
- * El pedido del modo «campos»: cada publicación con lo ya decidido (`lineaDePieza`), lo que ya tiene escrito y lo que
- * se le pide. `plan`: las casillas con su forma (worker: darForma) y `campos`; lo demás, como `pedidoDeProduccion`.
- * Una UGC lleva su duración y, si la agencia la escogió, su fórmula (`formulaLinea`, la pone el Worker). Pura.
+ * El pedido del modo «campos», en DOS partes como el del lote (`partesDeProduccion`): lo FIJO (el papel, la marca, el
+ * contexto por bloques, cómo es cada campo y las reglas, sacado de `planTodo`: igual en todas las llamadas de una tanda)
+ * y lo de ESTAS publicaciones (cada una con lo ya decidido —`lineaDePieza`—, lo que ya tiene escrito y lo que se le
+ * pide, y el JSON). `plan`: las casillas con su forma (worker: darForma) y `campos`; lo demás, como el lote. Una UGC
+ * lleva su duración y, si la agencia la escogió, su fórmula (`formulaLinea`, la pone el Worker). Pura.
  */
-export function pedidoDeCampos({
-  marca = "la marca", plan = [], productos = {}, perfiles = {}, estudio = "", contexto = "", usados = [], fechasEspeciales = [],
-  estrategia = null, falta = "", ugc = "", cliente = "", pauta = "", lenguaje = "",
+export function partesDeCampos({
+  marca = "la marca", plan = [], planTodo = null, productos = {}, perfiles = {}, estudio = "", contexto = "", bloques = null, usados = [], fechasEspeciales = [],
+  estrategia = null, falta = "", ugc = "", cliente = "", pauta = "", lenguaje = "", ejemplos = "",
 }) {
-  const pedidos = new Set(plan.flatMap((r) => r.campos ?? []));
+  const todo = Array.isArray(planTodo) && planTodo.length ? planTodo : plan;
+  const pedidos = new Set(todo.flatMap((r) => r.campos ?? []));
+  const pedidosAqui = new Set(plan.flatMap((r) => r.campos ?? []));
   // Lo que va a pauta: la regla del anuncio con el tipo de negocio y el destino del cliente (lo pone el Worker con sus
   // números del negocio; sin él, la regla sola). El campo «anuncio» se explica en «Cada campo».
-  const conPauta = plan.filter((r) => r.pauta);
+  const conPauta = todo.filter((r) => r.pauta);
   const bloquePauta = conPauta.length ? String(pauta || bloqueDeAnuncio({ etapas: conPauta.map((r) => r.pauta.etapa), conCampo: false })) : "";
-  const formatos = [...new Set(plan.map((r) => r.formato))].filter((f) => REGLA_FORMATO[f]);
-  const perfilesUsados = [...new Set(plan.map((r) => r.perfil).filter(Boolean))].filter((n) => perfiles[n]);
-  const ugcs = plan.filter((r) => r.rostro && r.campos.includes("guion"));
+  const formatos = [...new Set(todo.map((r) => r.formato))].filter((f) => REGLA_FORMATO[f]);
+  const perfilesUsados = [...new Set(todo.map((r) => r.perfil).filter(Boolean))].filter((n) => perfiles[n]);
+  const ugcs = todo.filter((r) => r.rostro && r.campos.includes("guion"));
+  const escogeForma = todo.some((r) => r.opciones?.formas);
+  const escogeAngulo = todo.some((r) => r.opciones?.angulos);
   const lineaDe = (r) => {
     const escrito = Object.entries(r.escrito ?? {}).map(([k, v]) => `     ${NOMBRE[k] ?? k}: «${conLineas(v, MAX_ESCRITO)}»`);
     const antes = Object.entries(r.antes ?? {}).map(([k, v]) => `   lo que tiene ahora en «${NOMBRE[k] ?? k}» (escribe una versión mejor que conserve su intención; lo que va entre comillas se dice TAL CUAL): «${conLineas(v, MAX_ESCRITO)}»`);
@@ -192,8 +199,10 @@ export function pedidoDeCampos({
     ].filter(Boolean).join("\n");
   };
   const duraciones = [...new Set(ugcs.map((r) => r.duracionUgc))];
-  return [
-    `Escribe lo que les falta a ${plan.length === 1 ? "UNA publicación" : `${plan.length} publicaciones`} del calendario de ${marca}. ${plan.length === 1 ? "Tiene" : "Cada una tiene"} YA decidido su FORMATO (entre corchetes), su tipo de contenido, su nivel de consciencia, su gancho y su composición: respétalos. Lo que ya tiene escrito es de la agencia y MANDA. Escribe SÓLO los campos que pide cada una.`,
+  const limpio = (lineas) => lineas.filter((l, i, t) => l !== "" || t[i - 1] !== "").join("\n").replace(/\n{3,}/g, "\n\n").trim();
+  const fijo = limpio([
+    papelDelRedactor(marca),
+    "",
     ...formatos.map((f) => `- ${f === "live" ? "Directo" : f[0].toUpperCase() + f.slice(1)}: ${REGLA_FORMATO[f]}`),
     cliente ? String(cliente).slice(0, 4000) : "",
     textoEstrategiaDelMes(estrategia),
@@ -201,26 +210,37 @@ export function pedidoDeCampos({
     perfilesUsados.length ? `Los perfiles:\n${perfilesUsados.map((n) => `- ${n}: ${perfiles[n]}`).join("\n")}` : "",
     fechasEspeciales.length ? `Fechas especiales:\n${fechasEspeciales.map((f) => `- ${f}`).join("\n")}` : "",
     "",
-    ...plan.map(lineaDe),
-    "",
+    ...textoDelContexto({ estudio, contexto, bloques, lenguaje, ejemplos }),
+    ugcs.length ? `PARA LAS UGC:\n${[...duraciones.map((d) => `${duraciones.length > 1 ? `De ${d} s:\n` : ""}${reglaUgc(d)}`), String(ugc ?? "").slice(0, 7000)].filter(Boolean).join("\n\n")}\n` : "",
     "Cada campo:",
-    ...comoEsCadaCampo(pedidos, plan),
+    ...comoEsCadaCampo(pedidos, todo),
+    escogeForma ? '- "forma": el id de la forma del gancho que escogiste (la sugerida u otra de las que valen en su publicación).' : "",
+    escogeAngulo ? '- "angulo": el id del ángulo de venta que escogiste (el sugerido u otro de los que valen en su publicación).' : "",
     ugcs.some((r) => !r.formulaLinea) && /FÓRMULAS DE LA AGENCIA/.test(ugc) ? '- "formula" (en las UGC sin fórmula escogida): el nombre exacto de la fórmula de la agencia que sigue su guion.' : "",
     "",
     "Reglas:",
     "- Precios, ofertas, garantías y cifras: sólo los del catálogo y EXACTOS como allí. No inventes reseñas, testimonios, seguidores, porcentajes ni plazos; una urgencia sólo con una fecha real.",
     "- Un día marcado «sin promociones» no vende ni da precios. No nombres a la competencia.",
     "- Que dos publicaciones no se parezcan: ni el mismo gancho ni el mismo llamado a la acción.",
-    plan.some((r) => formaDe(r.formaGancho)) ? REGLA_GANCHO : "",
+    todo.some((r) => formaDe(r.formaGancho)) ? REGLA_GANCHO : "",
     ...(falta ? [`- ${falta}`] : []),
-    usados.length ? `- Estos títulos ya están en el mes: no repitas ninguno ni su idea:\n${usados.slice(0, 30).map((t) => `  · ${corto(t, 80)}`).join("\n")}` : "",
+  ]);
+  const variable = limpio([
+    `Escribe lo que les falta a ${plan.length === 1 ? "UNA publicación" : `${plan.length} publicaciones`} del calendario de ${marca}. ${plan.length === 1 ? "Tiene" : "Cada una tiene"} YA decidido su FORMATO (entre corchetes), su tipo de contenido, su nivel de consciencia, su gancho y su composición: respétalos. Lo que ya tiene escrito es de la agencia y MANDA. Escribe SÓLO los campos que pide cada una.`,
+    plan.some((r) => r.opciones?.formas || r.opciones?.angulos) ? "Donde la forma del gancho o el ángulo traen otras opciones que también valen (entre corchetes, su id), escoge la que mejor sirva a esa publicación y dila." : "",
     "",
-    estudio ? `ESTUDIO DE MERCADO:\n${String(estudio).slice(0, 8000)}\n` : "",
-    contexto ? `LO QUE SE SABE DE LA MARCA:\n${String(contexto).slice(0, 6000)}\n` : "",
-    bloqueDeLenguaje(lenguaje),
-    ugcs.length ? `PARA LAS UGC:\n${[...duraciones.map((d) => `${duraciones.length > 1 ? `De ${d} s:\n` : ""}${reglaUgc(d)}`), String(ugc ?? "").slice(0, 7000)].filter(Boolean).join("\n\n")}\n` : "",
-    `Responde SOLO con JSON, una por número y sólo con los campos que pide cada una, así: {"textos":[{"n":1,"descripcion":"…","hashtags":"#… #…"${pedidos.has("anuncio") ? ',"anuncio":{"textos":["…","…","…"],"titulos":["…"],"descripcion":"…","boton":"WHATSAPP_MESSAGE"}' : ""}}]}`,
-  ].filter((l, i, t) => l !== "" || t[i - 1] !== "").join("\n").replace(/\n{3,}/g, "\n\n");
+    ...plan.map(lineaDe),
+    "",
+    usados.length ? `Estos títulos ya están en el mes: no repitas ninguno ni su idea:\n${usados.slice(0, 30).map((t) => `  · ${corto(t, 80)}`).join("\n")}\n` : "",
+    `Responde SOLO con JSON, una por número y sólo con los campos que pide cada una, así: {"textos":[{"n":1,"descripcion":"…","hashtags":"#… #…"${pedidosAqui.has("anuncio") ? ',"anuncio":{"textos":["…","…","…"],"titulos":["…"],"descripcion":"…","boton":"WHATSAPP_MESSAGE"}' : ""}${plan.some((r) => r.opciones?.formas) ? ',"forma":"…"' : ""}${plan.some((r) => r.opciones?.angulos) ? ',"angulo":"…"' : ""}}]}`,
+  ]);
+  return { fijo, variable };
+}
+
+/** El pedido del modo «campos» en un texto (lo fijo y lo de estas publicaciones). Pura. */
+export function pedidoDeCampos(datos = {}) {
+  const { fijo, variable } = partesDeCampos(datos);
+  return `${fijo}\n\n${variable}`;
 }
 
 const deJSON = (texto) => {
@@ -231,20 +251,30 @@ const deJSON = (texto) => {
   try { return JSON.parse(t.slice(i, j + 1)); } catch { return null; }
 };
 
+/** La respuesta del modo «campos» → Map n → lo que escribió (sin leer todavía): el motor junta las llamadas y el revisor. Pura. */
+export function crudasDeCampos(texto, plan = []) {
+  const d = deJSON(texto);
+  const lista = Array.isArray(d?.textos) ? d.textos : Array.isArray(d?.ideas) ? d.ideas : Array.isArray(d) ? d : [];
+  const porNumero = new Map();
+  lista.forEach((x, i) => {
+    const n = Number(x?.n) || plan[i]?.n || i + 1;
+    if (x && typeof x === "object" && !porNumero.has(n)) porNumero.set(n, x);
+  });
+  return porNumero;
+}
+
 /**
  * La respuesta → [{ clave, n, campos: { campo → texto }, ganchos?, formula? }], una por casilla que trajo algo, con
  * la regla de su formato: sólo los campos pedidos, el caption sin hashtags (los del final se pasan a «hashtags» si se
  * pidieron; si no, se quitan: saldrían dos veces), el guion de una UGC por tramos. Lo que va a pauta, con 3 hashtags
  * como mucho y su «anuncio» (un objeto, no un texto: `limpiarAnuncio`). Pura.
  */
-export function leerCampos(texto, plan = [], { destino = "" } = {}) {
-  const d = deJSON(texto);
-  const lista = Array.isArray(d?.textos) ? d.textos : Array.isArray(d?.ideas) ? d.ideas : Array.isArray(d) ? d : [];
-  const porNumero = new Map();
-  lista.forEach((x, i) => {
-    const n = Number(x?.n) || plan[i]?.n || i + 1;
-    if (!porNumero.has(n)) porNumero.set(n, x);
-  });
+export function leerCampos(texto, plan = [], opciones = {}) {
+  return leerCamposDe(crudasDeCampos(texto, plan), plan, opciones);
+}
+
+/** Las crudas (`crudasDeCampos`) → lo de `leerCampos`. Pura. */
+export function leerCamposDe(porNumero = new Map(), plan = [], { destino = "" } = {}) {
   return plan.flatMap((r) => {
     const x = porNumero.get(r.n);
     if (!x || typeof x !== "object") return [];
@@ -277,14 +307,16 @@ export function leerCampos(texto, plan = [], { destino = "" } = {}) {
     if (!Object.keys(campos).length) return [];
     // La forma del gancho y el ángulo con que se escribió (los decidió el motor): la publicación los recuerda si no
     // los tenía (`aplicarCampos`), y sólo si se escribió algo donde viven.
-    const conGancho = formaDe(r.formaGancho) && Object.keys(campos).some((k) => CAMPOS_GANCHO.includes(k));
-    const conAngulo = r.angulo && Object.keys(campos).some((k) => CAMPOS_ANGULO.includes(k));
+    // Lo que escogió entre las opciones de su casilla (sólo si estaba entre ellas; si no, la sugerida).
+    const escogido = escogidoDe(r, x);
+    const conGancho = formaDe(escogido.formaGancho) && Object.keys(campos).some((k) => CAMPOS_GANCHO.includes(k));
+    const conAngulo = escogido.angulo && Object.keys(campos).some((k) => CAMPOS_ANGULO.includes(k));
     return [{
       clave: r.clave, n: r.n, campos,
       ...(ganchos.length ? { ganchos } : {}),
       ...(r.rostro && corto(x.formula, 60) ? { formula: corto(x.formula, 60) } : {}),
-      ...(conGancho ? { formaGancho: r.formaGancho } : {}),
-      ...(conAngulo ? { angulo: r.angulo } : {}),
+      ...(conGancho ? { formaGancho: escogido.formaGancho } : {}),
+      ...(conAngulo ? { angulo: escogido.angulo } : {}),
     }];
   });
 }
