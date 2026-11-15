@@ -12,6 +12,10 @@
 // ============================================================
 
 import { mediosDe } from "./publicacion.js";
+
+// La copia reducida de la miniatura (~480 px): lo que PINTA el chip (MonthGrid). `miniaturaDe` sigue dando el original:
+// lo guardan otros (lo que está en pauta) y lo comparan con lo de la publicación.
+export { reducida } from "./reducida.js";
 import { porProducir } from "./aprobacion.js";
 
 /** Cada estado, con su icono (de Icon.jsx) y su nombre. En orden de la leyenda. */

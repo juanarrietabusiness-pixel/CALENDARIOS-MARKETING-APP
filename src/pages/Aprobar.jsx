@@ -8,6 +8,7 @@ import { mediosDe, textoPara, primerComentario, historiasDe } from "../lib/publi
 import { normalizarColor, textoSobre, conAlfa } from "../lib/colores";
 import { fechaEnZona } from "../lib/agenda";
 import { cuadriculaDelMes } from "../lib/vistaMes";
+import { reducida } from "../lib/reducida";
 
 // ============================================================
 // La página que ve el cliente final
@@ -869,7 +870,7 @@ function MesCalendario({ calendar, estados, token, onElegir }) {
                 return (
                   <button key={p.id} type="button" className="aprobar-mes-post" data-estado={estados[p.id]}
                     onClick={() => onElegir(p.id)} aria-label={`${fechaCorta(f)}, ${FORMATS[p.format]?.label ?? "publicación"}: ${ETIQUETA_ESTADO[estados[p.id]]}`}>
-                    {m?.tipo === "imagen" ? <img src={srcPublico(m.src, token)} alt="" loading="lazy" /> : <Icon name={FORMAT_ICONS[p.format] || "formatPost"} size={16} />}
+                    {m?.tipo === "imagen" ? <img src={srcPublico(reducida(m.src), token)} alt="" loading="lazy" /> : <Icon name={FORMAT_ICONS[p.format] || "formatPost"} size={16} />}
                   </button>
                 );
               })}

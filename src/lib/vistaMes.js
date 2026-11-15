@@ -28,6 +28,7 @@ import {
   mediosDe, mediosParaRed, destinoInstagram, redesDe, revisarPublicacion, momentoPublicacion, REDES, conHistoria,
 } from "./publicacion.js";
 import { colaDe } from "./cola.js";
+import { reducida } from "./reducida.js";
 import { faltaParaEnviar } from "./completitud.js";
 import { llevaCaption, llevaHashtags, tieneHashtags } from "./reglasFormato.js";
 
@@ -60,14 +61,14 @@ export function entraEnLaCuadricula(post, conectadas = []) {
 
 /**
  * Lo que enseña el perfil de una publicación: la portada de un reel (o su video, en el fotograma escogido), y de lo
- * demás el primer medio TAL COMO SALE en Instagram (la copia 4:5 si la hay). null si aún no tiene pieza. El recorte 3:4
- * del centro lo hace la pantalla (Instagram lo saca siempre del centro: `ventanaCuadricula` en medios.js). Pura.
+ * demás el primer medio TAL COMO SALE en Instagram (la copia 4:5 si la hay), la imagen en su copia reducida
+ * (lib/reducida.js: una celda no necesita la pieza de 2K). null si aún no tiene pieza. El recorte 3:4 del centro lo hace la pantalla (Instagram lo saca siempre del centro: `ventanaCuadricula` en medios.js). Pura.
  */
 export function miniaturaDeCuadricula(post) {
   const medios = mediosParaRed(post, "instagram");
   if (destinoInstagram(post) === "reel") {
     const portada = typeof post?.portada === "string" ? post.portada : "";
-    if (portada) return { src: portada, tipo: "imagen" };
+    if (portada) return { src: reducida(portada), tipo: "imagen" };
     const video = medios.find((m) => m.tipo === "video");
     if (video) return { src: video.src, tipo: "video", segundo: Number.isFinite(post?.portadaMs) ? post.portadaMs / 1000 : 0 };
   }
@@ -75,7 +76,7 @@ export function miniaturaDeCuadricula(post) {
   if (!m) return null;
   return m.tipo === "video"
     ? { src: m.src, tipo: "video", segundo: 0 }
-    : { src: m.src, tipo: "imagen", ...(m.ancho && m.alto ? { ancho: m.ancho, alto: m.alto } : {}) };
+    : { src: reducida(m.src), tipo: "imagen", ...(m.ancho && m.alto ? { ancho: m.ancho, alto: m.alto } : {}) };
 }
 
 /** En qué quedó una publicación para la cuadrícula: publicada, programada o nada (sin cola, pendiente). */
