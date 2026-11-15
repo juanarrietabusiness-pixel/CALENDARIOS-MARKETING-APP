@@ -183,6 +183,70 @@ describe("presupuesto de descarga", () => {
   });
 });
 
+describe("la página del cliente (/aprobar) no descarga la aplicación de la agencia", () => {
+  // Quien abre su calendario desde WhatsApp descargaba la aplicación entera (unos 177 kB comprimidos) antes de ver
+  // nada. Ahora tiene su propia entrada (src/publico.js, construida por vite.publico.config.js en el mismo dist/) y
+  // Cloudflare contesta /aprobar con aprobar.html. Lo que se mide: el HTML, su entrada y lo que esa entrada precarga
+  // para la página de aprobación y para montarla (sus `__vite__mapDeps`), que es lo que de verdad se descarga.
+  const PAGINAS = ["aprobar", "informe", "informe-anuncios", "ventas", "voz", "auditoria"];
+  const TOPE_APROBAR = 100; // hoy ~92
+
+  /** Lo que descarga /aprobar antes de pintar: el HTML, lo que referencia y las dependencias de sus dos import(). */
+  const loDeAprobar = () => {
+    const html = readFileSync(join(DIST, "aprobar.html"), "utf8");
+    const nombres = new Set([...html.matchAll(/(?:src|href)="\/assets\/([^"]+)"/g)].map((m) => m[1]));
+    const entrada = [...nombres].find((n) => n.startsWith("publico-") && n.endsWith(".js"));
+    const texto = entrada ? readFileSync(join(ASSETS, entrada), "utf8") : "";
+    const lista = JSON.parse(`[${(/m\.f=\[([^\]]*)\]/.exec(texto)?.[1] ?? "")}]`);
+    for (const pieza of ["Aprobar-", "publicoMontar-"]) {
+      const m = new RegExp(`import\\(.\\.\\/(${pieza}[^"'\`]+\\.js).\\)\\s*,\\s*__vite__mapDeps\\(\\[([\\d,]*)\\]\\)`).exec(texto);
+      if (!m) return { entrada, faltan: pieza };
+      nombres.add(m[1]);
+      for (const i of m[2].split(",").filter(Boolean)) nombres.add(String(lista[Number(i)]).replace(/^assets\//, ""));
+    }
+    return { entrada, nombres: [...nombres], html };
+  };
+
+  it("cada página del cliente tiene su HTML y lo que pide existe", () => {
+    for (const p of PAGINAS) {
+      const ruta = join(DIST, `${p}.html`);
+      expect(existsSync(ruta), `falta dist/${p}.html: vite.publico.config.js no copió publico.html`).toBe(true);
+      const html = readFileSync(ruta, "utf8");
+      const rutas = [...html.matchAll(/(?:src|href)="(\/[^"]+\.(?:js|css|png|svg|ico))"/g)].map((m) => m[1]);
+      expect(rutas.filter((r) => !existsSync(join(DIST, r.replace(/^\//, "")))), `dist/${p}.html pide recursos que no están`).toEqual([]);
+      expect(html, `dist/${p}.html no carga la entrada del cliente`).toMatch(/\/assets\/publico-[^"]+\.js/);
+    }
+    // publico.html es sólo el molde: /publico no es ninguna página.
+    expect(existsSync(join(DIST, "publico.html"))).toBe(false);
+  });
+
+  it("no lleva el trozo de la agencia y cabe en su tope", () => {
+    const { entrada, nombres, faltan } = loDeAprobar();
+    expect(entrada, "aprobar.html no carga src/publico.js").toBeTruthy();
+    expect(
+      faltan,
+      fallo({
+        que: `no se encuentra el import() de ${faltan} en la entrada ${entrada}`,
+        donde: "src/publico.js y este test (loDeAprobar)",
+        porque: "Sin él no se puede medir lo que descarga /aprobar: o cambió la forma del build o la página ya no se carga así.",
+        arreglo: "Mira cómo quedó el import() en dist/assets/publico-*.js y ajusta la expresión de este test.",
+      }),
+    ).toBeUndefined();
+    const agencia = readFileSync(join(DIST, "index.html"), "utf8").match(/\/assets\/(index-[^"]+\.js)/)?.[1];
+    expect(nombres, "/aprobar descarga el trozo principal de la agencia").not.toContain(agencia);
+    const total = Math.round(nombres.reduce((s, n) => s + (existsSync(join(ASSETS, n)) ? gz(readFileSync(join(ASSETS, n))) : 0), 0) / 1024);
+    expect(
+      total,
+      fallo({
+        que: `/aprobar descarga ${total} kB comprimidos antes de pintar, por encima de ${TOPE_APROBAR}`,
+        donde: nombres.join(", "),
+        porque: "Es lo que abre el cliente desde WhatsApp, casi siempre en el teléfono. Antes eran ~190 kB porque se descargaba la aplicación de la agencia entera.",
+        arreglo: "Mira qué entró nuevo en src/pages/Aprobar.jsx o en src/publico.js; lo que no hace falta para pintar, con import().",
+      }),
+    ).toBeLessThanOrEqual(TOPE_APROBAR);
+  });
+});
+
 describe("el curso de campañas no pesa en el arranque", () => {
   // El embudo del mes (carga inicial) lee las etapas de src/lib/cicloVentas.js; la tabla de qué pieza va en cada
   // etapa según el negocio es texto largo que sólo usan las pantallas de anuncios y el Worker, y vive aparte

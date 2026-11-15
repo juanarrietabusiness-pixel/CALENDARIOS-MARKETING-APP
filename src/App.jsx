@@ -12,7 +12,6 @@ import BarreraErrores from "./components/BarreraErrores";
 import { diasVecinos } from "./lib/meses";
 import { ponerEnDia, deIdeaAPublicacion } from "./lib/subir";
 import { deLoCompartido } from "./lib/bancoIdeas";
-import HoyInicio from "./components/HoyInicio";
 import ResumenCliente from "./components/ResumenCliente";
 import NavPrincipal from "./components/NavPrincipal";
 import MenuCuenta from "./components/MenuCuenta";
@@ -43,6 +42,8 @@ import {
 // la mayoría de las visitas no la abren.
 const ChatPanel = lazy(() => import("./components/ChatPanel"));
 const PanelTareas = lazy(() => import("./components/PanelTareas"));
+// «Tus tareas de hoy» del inicio: la lista de clientes se pinta sin esperarla (las tareas y su selector de fecha pesan).
+const HoyInicio = lazy(() => import("./components/HoyInicio"));
 // «Mi día» es una página aparte: no tiene por qué venir en la primera descarga.
 const Tareas = lazy(() => import("./pages/Tareas"));
 // Igual Equipo y Ajustes, que no se abren en cada visita.
@@ -340,7 +341,7 @@ function Inicio({ yo, clients, pulso, presentes, onAbrir, onNuevo }) {
         })}
       </ul>
 
-      <HoyInicio clients={clients} yo={yo} pulso={pulso} />
+      <Suspense fallback={null}><HoyInicio clients={clients} yo={yo} pulso={pulso} /></Suspense>
     </div>
   );
 }
