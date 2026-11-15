@@ -37,7 +37,7 @@ import { textoDeLaFicha } from "./director";
 import { promptListo } from "./promptImagen";
 import { esperarArchivos } from "./carruselEstudio";
 import { conMarcaDeHoy } from "./marcaDeHoy";
-import { crearUnaEnServidor, pasoListo } from "./piezaServidor";
+import { crearUnaEnServidor, pasoListo, esperarEnServidor } from "./piezaServidor";
 import { decidir } from "./sinPreguntarApi";
 
 /**
@@ -126,13 +126,21 @@ export function plantillaDelPedido(kit, archivos = [], id = "") {
 
 /**
  * Crea la pieza por el SERVIDOR (proporción, control con su corrección, logo estampado si toca) y apunta su uso en la
- * publicación. `texto`: lo que tiene que decir (el control lo compara). → el archivo final.
+ * publicación. `texto`: lo que tiene que decir (el control lo compara). → el archivo final, o null si se dejó de mirar.
+ *
+ * Desde una publicación (`sitio`: la imagen que reemplaza, o añadir; src/lib/piezaEnSuSitio.js) el encargo lleva
+ * `poner`: si se cierra el panel antes de que salga, el SERVIDOR la pone en su sitio. `alLanzar(encargo)` deja que el
+ * panel apunte la marca «se está creando» en la publicación (al volver a abrirla, la retoma).
  */
-async function crearPorElServidor({ clienteId, pedido, texto = "", kit, post, calendarId, alProgresar, titulo = "" }) {
-  const paso = pasoListo({ titulo, pedido: { ...pedido, ...(calendarId && post?.id ? { calendarId, postId: post.id } : {}) }, texto, kit });
-  const nueva = await crearUnaEnServidor({ clienteId, paso, kit, alProgresar });
-  if (!nueva) throw new Error("La imagen nueva no llegó. Prueba otra vez.");
-  if (calendarId && post?.id) await api.apuntarUso(clienteId, nueva.id, { calendarId, postId: post.id }).catch(() => null);
+async function crearPorElServidor({ clienteId, pedido, texto = "", kit, post, calendarId, alProgresar, titulo = "", sitio = null, alLanzar = null, seguir = () => true, estampar = null }) {
+  const enPost = Boolean(calendarId && post?.id);
+  const paso = pasoListo({ titulo, pedido: { ...pedido, ...(enPost ? { calendarId, postId: post.id } : {}) }, texto, kit, estampar, sitio: enPost ? sitio : null });
+  const nueva = await crearUnaEnServidor({ clienteId, paso, kit, alProgresar, seguir, poner: enPost && Boolean(sitio), alLanzar });
+  if (!nueva) {
+    if (!seguir()) return null;
+    throw new Error("La imagen nueva no llegó. Prueba otra vez.");
+  }
+  if (enPost) await api.apuntarUso(clienteId, nueva.id, { calendarId, postId: post.id }).catch(() => null);
   return nueva;
 }
 
@@ -204,14 +212,14 @@ async function prepararVersion({ clienteId, client, post, medio, g, activos, ind
  * Crea la otra versión y espera a que salga. `confirmar(costo)` se llama si cuesta desde 0,50 $ y el espacio no lo tiene fijado «sin preguntar» (devuelve si sigue; puede ser async).
  * → el archivo nuevo de la galería, o null si no se confirmó.
  */
-export async function otraVersionDelPost({ client, post, medio, indicacion = "", modelo = "", calendarId = null, confirmar = () => true, alProgresar = () => {} }) {
+export async function otraVersionDelPost({ client, post, medio, indicacion = "", modelo = "", calendarId = null, confirmar = () => true, alProgresar = () => {}, alLanzar = null, seguir = () => true }) {
   const clienteId = client.dbId || client.id;
   alProgresar("Escribiendo otra escena con la misma información…");
   const { g, activos } = await leerTodo(clienteId);
   const { pedido, costo, texto } = await prepararVersion({ clienteId, client, post, medio, g, activos, indicacion, modeloId: modelo });
   if (!(await sigue(confirmar, costo))) return null;
   alProgresar(`Creando la imagen nueva con ${modeloPorId(pedido.modelo)?.nombre ?? "el modelo"}…`);
-  return crearPorElServidor({ clienteId, pedido, texto, kit: g?.kit ?? {}, post, calendarId, alProgresar, titulo: "Otra versión" });
+  return crearPorElServidor({ clienteId, pedido, texto, kit: g?.kit ?? {}, post, calendarId, alProgresar, titulo: "Otra versión", sitio: { reemplaza: medio.src }, alLanzar, seguir });
 }
 
 // ------------------------------------------------------------
@@ -226,7 +234,7 @@ export async function otraVersionDelPost({ client, post, medio, indicacion = "",
  * plantilla } escogidos a mano (vacío: los de la publicación y el cliente). `confirmar(costo)` se llama si cuesta desde
  * 0,50 $, como «Otra versión». → el archivo nuevo, o null si no se confirmó.
  */
-export async function crearImagenDelPost({ client, post, indicacion = "", opciones = {}, calendarId = null, confirmar = () => true, alProgresar = () => {}, alMejorar = () => {} }) {
+export async function crearImagenDelPost({ client, post, indicacion = "", opciones = {}, calendarId = null, confirmar = () => true, alProgresar = () => {}, alMejorar = () => {}, alLanzar = null, seguir = () => true }) {
   const clienteId = client.dbId || client.id;
   alProgresar("Preparando la imagen…");
   const { g, activos } = await leerTodo(clienteId);
@@ -266,7 +274,7 @@ export async function crearImagenDelPost({ client, post, indicacion = "", opcion
   if (!(await sigue(confirmar, costo))) return null;
   alProgresar(`Creando la imagen con ${usado.nombre}…`);
   const texto = post.format === "carrusel" ? "" : (post.textoPieza || textoDeLaFicha(idea) || "");
-  return crearPorElServidor({ clienteId, pedido, texto, kit, post, calendarId, alProgresar, titulo: post.title || "Imagen de la publicación" });
+  return crearPorElServidor({ clienteId, pedido, texto, kit, post, calendarId, alProgresar, titulo: post.title || "Imagen de la publicación", sitio: { anadir: true }, alLanzar, seguir });
 }
 
 // ------------------------------------------------------------
@@ -330,7 +338,7 @@ async function pedidoDeRecrear({ clienteId, client, post, refSrc, g, activos, in
  * de la referencia. Una imagen, por el director y el servidor (`pedidoDeRecrear`); un video, por el camino de video de
  * siempre. → el archivo nuevo, o null si no se confirmó el costo.
  */
-export async function recrearConLaMarca({ client, post, medio, indicacion = "", modelo: modeloId = "", calendarId = null, confirmar = () => true, alProgresar = () => {} }) {
+export async function recrearConLaMarca({ client, post, medio, indicacion = "", modelo: modeloId = "", calendarId = null, confirmar = () => true, alProgresar = () => {}, alLanzar = null, seguir = () => true }) {
   const clienteId = client.dbId || client.id;
   const ref = api.archivoDesdeSrc(medio.src, clienteId);
   if (!ref) throw new Error("Esa referencia no está en el almacén de este cliente: súbela otra vez a la publicación.");
@@ -342,7 +350,7 @@ export async function recrearConLaMarca({ client, post, medio, indicacion = "", 
     const { pedido, costo, texto, modelo } = await pedidoDeRecrear({ clienteId, client, post, refSrc: medio.src, g, activos, indicacion, modeloId, deseada, alProgresar });
     if (!(await sigue(confirmar, costo))) return null;
     alProgresar(`Creando la imagen con ${modelo.nombre}…`);
-    return crearPorElServidor({ clienteId, pedido, texto, kit, post, calendarId, alProgresar, titulo: "Recreada con la marca" });
+    return crearPorElServidor({ clienteId, pedido, texto, kit, post, calendarId, alProgresar, titulo: "Recreada con la marca", sitio: { reemplaza: medio.src }, alLanzar, seguir });
   }
   // Un VIDEO sigue el camino de video de siempre: la referencia va como video a seguir, con un modelo que tenga llave.
   const fotos = api.fotosDelPost(g?.productos ?? [], post);
@@ -380,6 +388,64 @@ export async function recrearAnuncioConLaMarca({ client, archivo, version = {}, 
   if (!(await sigue(confirmar, costo))) return null;
   alProgresar(`Creando la imagen con ${modelo.nombre}…`);
   return crearPorElServidor({ clienteId, pedido, texto, kit: g?.kit ?? {}, post, calendarId: null, alProgresar, titulo: "Anuncio recreado con la marca" });
+}
+
+// ------------------------------------------------------------
+// «Corregir» una imagen del post: la MISMA imagen con sólo lo que se pide, en su sitio
+// ------------------------------------------------------------
+
+/** Con qué se corrige y cuánto cuesta (lo dice el botón: ESA es la confirmación). → { modelo, costo } o null. */
+export async function costoDeCorregir({ medio, modelo = "" }) {
+  const m = await api.leerMotores().catch(() => null);
+  const activos = Object.fromEntries(Object.entries(m?.motores ?? {}).map(([k, v]) => [k, Boolean(v.activo)]));
+  const prop = api.proporcionDeMedidas(medio?.ancho, medio?.alto) || "";
+  const usar = modelo ? api.modeloDeEdicion(activos, modelo, prop) : modeloParaCorregir(activos, "", prop);
+  return usar ? { modelo: usar, costo: estimar(usar, 1, { aspectRatio: prop }), activos, proporcion: prop } : null;
+}
+
+/**
+ * «Corregir» de una imagen de la publicación: la edita con `indicacion` (y los `ejemplos` de la galería, como «Igualar
+ * el texto a otra lámina») por el servidor, con el control, y la nueva ocupa SU sitio —aunque se cierre el panel—.
+ * `texto`: lo que tiene que seguir diciendo. → el archivo nuevo, o null si se dejó de mirar.
+ */
+export async function corregirEnElPost({ client, post, medio, indicacion, ejemplos = [], modelo = "", texto = "", calendarId = null, alProgresar = () => {}, alLanzar = null, seguir = () => true }) {
+  const clienteId = client.dbId || client.id;
+  const archivo = api.archivoDesdeSrc(medio.src, clienteId);
+  if (!archivo) throw new Error("Esa imagen no está en el almacén de este cliente: súbela de nuevo y prueba otra vez.");
+  if (!String(indicacion ?? "").trim()) throw new Error("Escribe qué hay que cambiar.");
+  const c = await costoDeCorregir({ medio, modelo });
+  if (!c) throw new Error("No hay ningún modelo que edite imágenes con llave puesta (Ajustes → IA).");
+  const { prompt, medios } = api.pedidoDeCorreccion({ clave: archivo.clave, instruccion: indicacion, ejemplos, modelo: c.modelo });
+  alProgresar("Corrigiendo la imagen (sólo lo que pediste)…");
+  return crearPorElServidor({
+    clienteId, kit: {}, post, calendarId, alProgresar, titulo: "Corrección", texto, estampar: false, alLanzar, seguir,
+    pedido: { modelo: c.modelo.id, prompt, n: 1, ajustes: ajustesDe(c.modelo, { aspectRatio: c.proporcion }, medios), medios },
+    sitio: { reemplaza: medio.src },
+  });
+}
+
+/**
+ * Retoma lo que se estaba creando para una publicación (su marca `piezaEnCurso`, src/lib/piezaEnSuSitio.js) al volver a
+ * abrir su panel: lo sigue hasta que termine. → { archivo } | { error } | null (se dejó de mirar).
+ */
+export async function reanudarPieza({ clienteId, encargoId, seguir = () => true, alProgresar = () => {} }) {
+  const { leerEncargo } = await import("./encargosApi");
+  let encargo;
+  try {
+    encargo = (await leerEncargo(clienteId, encargoId))?.encargo;
+  } catch (e) {
+    if (e?.estado === 404) return { error: "Lo que se estaba creando ya no está." };
+    throw e;
+  }
+  if (!encargo) return { error: "Lo que se estaba creando ya no está." };
+  if (encargo.estado === "cancelado") return { error: "Se canceló lo que se estaba creando." };
+  const { g } = await leerTodo(clienteId).catch(() => ({ g: null }));
+  const r = await esperarEnServidor({
+    clienteId, encargo, kit: g?.kit ?? {}, seguir,
+    alPaso: (_id, x) => { if (x?.cargando && x.paso) alProgresar(x.paso); },
+  });
+  if (!r) return null;
+  return r[0]?.archivo ? { archivo: r[0].archivo } : { error: r[0]?.error || "La pieza no salió." };
 }
 
 // ------------------------------------------------------------

@@ -97,9 +97,13 @@ export const PESTANAS_DEL_CLIENTE = Object.freeze([
   ["resultados", "Resultados", "chart"],
 ]);
 
-/** Las sub-secciones de cada pestaña que las tiene; la primera es la de entrada. Van detrás: `/cliente/x/marca/kit`. */
+/**
+ * Las sub-secciones de cada pestaña que las tiene; la primera es la de entrada. Van detrás: `/cliente/x/marca/kit`.
+ * Crear → «A mano» (`/crear/a-mano`) es el compositor abierto arriba y el director plegado: lo que la agencia hace casi
+ * siempre. La pestaña recuerda la última que se usó (cliente/Crear.jsx), así que la de entrada sólo manda la primera vez.
+ */
 export const SECCIONES_DEL_CLIENTE = Object.freeze({
-  crear: ["director", "galeria"],
+  crear: ["director", "a-mano", "galeria"],
   referencias: ["ideas", "inspiracion", "competencia"],
   marca: ["ficha", "kit", "sonido", "negocio", "whatsapp", "cerebro", "plan", "fechas", "drive"],
   resultados: ["redes", "anuncios"],
@@ -199,10 +203,9 @@ export function analizarRuta(url = window.location) {
   if (partes[0] === "tareas") return { vista: "tareas" };
   if (partes[0] === "ajustes") return { vista: "ajustes" };
   if (partes[0] === "resultados") return { vista: "resultados" };
-  // «Producción»: lo que está por producir y la cola. `/programacion` (su nombre de antes) sigue abriéndola.
-  if (partes[0] === "produccion" || partes[0] === "programacion") return { vista: "programacion" };
-  // El tablero se quitó (las etapas salen solas en cada publicación): un enlace viejo va a Programación.
-  if (partes[0] === "tablero") return { vista: "programacion" };
+  // «Producción»: lo que está por producir y la cola. `/programacion` (su nombre de antes) sigue abriéndola, y el tablero
+  // (se quitó: las etapas salen solas en cada publicación) también: un enlace viejo va a Producción.
+  if (["produccion", "programacion", "tablero"].includes(partes[0])) return { vista: "programacion" };
   if (partes[0] === "bandeja") return { vista: "bandeja" };
   if (partes[0] === "biblioteca") return { vista: "biblioteca" };
   if (partes[0] === "campanas") return { vista: "campanas" };
@@ -218,18 +221,12 @@ export function analizarRuta(url = window.location) {
 }
 
 /** La dirección de una vista. El inverso exacto de `analizarRuta`. */
+/** Las vistas que son una dirección fija (la de Producción se llama distinto que su vista, por su nombre de antes). */
+const DIRECTAS = ["equipo", "tareas", "ajustes", "resultados", "bandeja", "campanas", "plan-campanas", "auditorias", "biblioteca", "lo-mejor"];
+
 export function construirRuta({ vista = "panel", cliente = null, calendario = null, pestana = "calendario", seccion = null, testigo = "", publicacion = null } = {}) {
-  if (vista === "equipo") return "/equipo";
-  if (vista === "tareas") return "/tareas";
-  if (vista === "ajustes") return "/ajustes";
-  if (vista === "resultados") return "/resultados";
+  if (DIRECTAS.includes(vista)) return `/${vista}`;
   if (vista === "programacion") return "/produccion";
-  if (vista === "bandeja") return "/bandeja";
-  if (vista === "campanas") return "/campanas";
-  if (vista === "plan-campanas") return "/plan-campanas";
-  if (vista === "auditorias") return "/auditorias";
-  if (vista === "biblioteca") return "/biblioteca";
-  if (vista === "lo-mejor") return "/lo-mejor";
   if (vista === "a-mano") return `/a-mano/${encodeURIComponent(calendario ?? "")}/${encodeURIComponent(publicacion ?? "")}`;
   if (vista === "invitacion") return `/invitacion/${encodeURIComponent(testigo)}`;
   if (!cliente) return "/";
