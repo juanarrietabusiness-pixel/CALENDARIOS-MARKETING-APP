@@ -699,8 +699,9 @@ const comoPrompt = ({ fijo, variable }, reusa) => (reusa
  * redactor delante (lo lee de la caché) que reescribe SÓLO lo flojo, y las piezas que repiten con su vecina con la opción
  * que les dio el código. → Map n → { cambios, motivo } (vacío si todo pasa). Si falla, vacío: la tanda sale igual.
  */
-async function revisarTanda(env, acceso, cliente, pedido, { plan, crudas, ideasLeidas, variedad, reusa }) {
-  const { fijo } = pedido.armar(plan);
+async function revisarTanda(env, acceso, cliente, pedido, { plan, crudas, ideasLeidas, variedad, reusa, arco = "" }) {
+  // Lo fijo EXACTO de las llamadas del redactor (la misma tanda y el mismo arco): así lo lee de la caché.
+  const { fijo } = pedido.armar(plan, { planTodo: plan, arco });
   const productos = Object.fromEntries(pedido.rotan.map((p) => [p.id, p.nombre]));
   const porN = new Map(ideasLeidas.map((i) => [i.n, i]));
   const piezas = plan.filter((r) => crudas.has(r.n)).map((r) => ({ r: { ...r, ...escogidoDe(r, crudas.get(r.n)), ...(porN.get(r.n) ? { formaGancho: porN.get(r.n).formaGancho, angulo: porN.get(r.n).angulo, anguloLinea: porN.get(r.n).anguloLinea ?? r.anguloLinea } : {}) }, escrito: crudas.get(r.n) }));
@@ -771,7 +772,7 @@ async function escribirTanda(env, acceso, cliente, pedido, datos = {}) {
       ? leerCamposDe(crudas, plan).map((t) => ({ ...t, productoId: plan.find((r) => r.n === t.n)?.productoId ?? "" }))
       : leerIdeas(crudas, plan, pedido.formato);
     const variedad = choquesDeVariedad(leidas, plan);
-    const criticas = await revisarTanda(env, acceso, cliente, { ...pedido, plan }, { plan, crudas, ideasLeidas: leidas, variedad, reusa });
+    const criticas = await revisarTanda(env, acceso, cliente, { ...pedido, plan }, { plan, crudas, ideasLeidas: leidas, variedad, reusa, arco });
     for (const [n, { cambios }] of criticas) {
       // Lo reescrito por el revisor sobre lo de antes; si era una de las que repetían, con la opción que le dio el código.
       const v = variedad.find((x) => x.n === n);

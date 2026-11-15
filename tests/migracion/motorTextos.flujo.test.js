@@ -128,6 +128,10 @@ describe("el mes en dos pasadas: el planificador y el redactor", () => {
     expect(redactor).toMatch(/EL ARCO DEL MES[^\n]*Del problema a la compra/);
     expect(redactor).toMatch(/EL PLAN DEL MES \(lo decidió el planificador[^)]*\): «La idea planificada 1» — por qué: Porque 1/);
     expect(redactor).not.toMatch(/otras formas que también valen aquí/);
+    // El revisor lee lo MISMO fijo que el redactor (con el arco): de la caché.
+    const fijos = peticiones.filter((p) => !esPlanificador(p)).map((p) => p.messages[0].content[0].text);
+    expect(fijos.length).toBeGreaterThan(1);
+    expect(new Set(fijos).size).toBe(1);
     const guardado = JSON.parse(env.MEDIA.objetos.get("planificador/u-jefe/c1/2030-03.json"));
     expect(Object.keys(guardado.piezas).sort()).toEqual(["c0", "c1", "c2", "c3"]);
     expect(db.sqlite.prepare("select funcion from consumo_ia order by rowid").all().map((f) => f.funcion)[0]).toBe("planificador del mes");
