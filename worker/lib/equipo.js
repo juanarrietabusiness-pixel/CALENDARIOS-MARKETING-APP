@@ -203,9 +203,9 @@ async function avisarAgrupado(env, acceso, { cal, cliente, para, quien, por, ids
   const abiertos = (await acceso.leer("avisos", { tipo: "aprobada", leido_at: NULO }, "created_at desc", 200))
     .filter((a) => delMes(a) && Date.parse(a.created_at) > ahoraMs - VENTANA_RESPUESTAS_MS);
   const respuestas = await acceso.leer("approvals", { calendar_id: cal.id });
-  // Lo que respondió desde que empezó el aviso (con un minuto de margen: la respuesta se guarda antes que el aviso).
-  const contar = (desde) => {
-    const d = Date.parse(desde) - 60_000;
+  // Lo que respondió desde que empezó el aviso (`margen`: la respuesta que lo abrió se guarda unos milisegundos antes).
+  const contar = (desde, margen = 0) => {
+    const d = Date.parse(desde) - margen;
     const recientes = respuestas.filter((r) => Date.parse(r.updated_at) >= d);
     return { n: recientes.filter((r) => r.estado === "aprobado").length, c: recientes.filter((r) => r.estado === "cambios").length };
   };
@@ -215,7 +215,7 @@ async function avisarAgrupado(env, acceso, { cal, cliente, para, quien, por, ids
   for (const userId of para) {
     const suyo = abiertos.find((a) => a.user_id === userId);
     if (!suyo) { if (!soloActualizar) nuevos.push(userId); continue; }
-    const { n, c } = contar(suyo.created_at);
+    const { n, c } = contar(suyo.created_at, 10_000);
     await acceso.actualizar("avisos", { id: suyo.id, leido_at: NULO }, {
       texto: textoDeRespuestas({ quien, n: Math.max(n, 1), c, mes, cliente: cliente?.name ?? "" }).slice(0, 500),
       enlace: base, por_nombre: String(quien).slice(0, 80),
@@ -223,7 +223,7 @@ async function avisarAgrupado(env, acceso, { cal, cliente, para, quien, por, ids
     cambiados.push(userId);
   }
   if (nuevos.length) {
-    const { n, c } = contar(fecha ?? new Date(ahoraMs).toISOString());
+    const { n, c } = fecha ? contar(fecha) : contar(new Date(ahoraMs).toISOString(), 10_000);
     const total = Math.max(n, ids.length);
     const una = total === 1 && !c;
     await avisar(env, acceso, {

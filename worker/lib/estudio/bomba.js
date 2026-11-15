@@ -61,13 +61,17 @@ export async function bombear(env, ownerId, { pasos = PASOS_POR_VUELTA, presupue
 
   // Después de publicar a su hora, lo que se está programando: cada paso prepara (Container) y programa una publicación.
   for (const l of lotes) {
-    if (dados >= pasos || !queda()) break;
     if ((Date.parse(l.bloqueado_hasta || "") || 0) > Date.now()) { espera = Math.min(espera, 3000); continue; }
-    try {
-      const r = await avanzarLoteProgramar(env, acceso, l.id);
-      if (r?.hizo) dados++;
-    } catch (err) {
-      console.error("bomba: programar", l.id, err?.message);
+    while (dados < pasos && queda()) {
+      try {
+        const r = await avanzarLoteProgramar(env, acceso, l.id);
+        if (!r?.hizo) break;
+        dados++;
+        if (r.lote?.estado !== "en_marcha") break;
+      } catch (err) {
+        console.error("bomba: programar", l.id, err?.message);
+        break;
+      }
     }
   }
 
