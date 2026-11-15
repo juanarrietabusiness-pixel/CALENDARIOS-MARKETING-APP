@@ -46,7 +46,7 @@ import { MonthGrid } from "./calendario/MonthGrid";
 import { CampanaMes } from "./calendario/campanaMes";
 import { RepeticionesMes } from "./calendario/repeticionesMes";
 import { repeticionesPendientes, copiaRepetida, conRegla } from "../lib/repetir";
-// «Producir el mes»: el ASISTENTE DEL MES (fase 6), de la estrategia al envío en una pantalla. Dentro van «Revisar las
+// «Preparar el mes»: el ASISTENTE DEL MES (fase 6), de la estrategia al envío en una pantalla. Dentro van «Revisar las
 // ideas», «Diseñar las aprobadas» (también los reels), «Guiones para grabar», «Completar los textos» y «Revisar el mes»,
 // que antes eran cinco entradas del menú «⋯». Se carga al abrirlo.
 const AsistenteMes = lazy(() => import("./calendario/AsistenteMes"));
@@ -272,7 +272,7 @@ export default function CalendarView({
   // hubiera». Añadir una capa nueva es añadir un nombre, no una
   // séptima bandera que alguien tendrá que acordarse de bajar.
   // ------------------------------------------------------------
-  // «?asistente=1» en la dirección (el botón «Planificar mes» de la cabecera del cliente, el buscador) abre el asistente
+  // «?asistente=1» en la dirección (el botón «Preparar el mes» de la cabecera del cliente, el buscador) abre el asistente
   // del mes al llegar; se quita de la dirección en cuanto se lee.
   const [capa, setCapa] = useState(() => (new URLSearchParams(window.location.search).get("asistente") ? "asistente" : null));
   // El paso con que se abre el asistente (null = el que le toca al mes): «Revisar» y «Diseñar» del envío lo fijan.
@@ -1012,11 +1012,11 @@ export default function CalendarView({
           resto agrupado. Antes eran siete botones idénticos que mezclaban
           la acción principal con un visor de registros de desarrollo. */}
       <div className="toolbar">
-        {/* «Producir el mes»: el ASISTENTE DEL MES (estrategia → plan → ideas → diseñar → revisar y enviar). Se abre en el
+        {/* «Preparar el mes»: el ASISTENTE DEL MES (estrategia → plan → ideas → diseñar → revisar y enviar). Se abre en el
             paso que le toca al mes; lo que se hizo queda en el calendario y lo retoma cualquiera del equipo. */}
         <button className="btn btn-accent" onClick={() => abrirAsistente()} disabled={Boolean(yoActual()?.soloLectura)}>
           <Icon name="sparkles" size={18} />
-          {genLoading ? genStatus : "Producir el mes"}
+          {genLoading ? genStatus : "Preparar el mes"}
         </button>
 
         <div className="segmented" role="group" aria-label="Vista del calendario" style={{ width: "auto", flexShrink: 0 }}>
@@ -1089,11 +1089,12 @@ export default function CalendarView({
             // El plan semanal y las fechas especiales son de la MARCA (fase 7): viven en Marca. Aquí quedan sus accesos
             // directos de siempre: la barra de los días (el plan) y la tarjeta de la campaña (las fechas del mes).
             // Revisar las ideas, diseñar las que ya hay, los guiones para grabar, completar los textos y revisar el mes
-            // viven en el asistente del mes («Producir el mes»): el menú se queda con lo que no es el flujo del mes.
+            // viven en el asistente del mes («Preparar el mes»): el menú se queda con lo que no es el flujo del mes.
             client?.driveFolder && !virtual && { icon: "upload", label: "Guardar el mes en Drive", onClick: () => abrirCapa("drive") },
             { icon: "copy", label: "Exportar ideas y descripciones", onClick: () => abrirCapa("exportar") },
-            { sep: true },
-            { icon: "terminal", label: capa === "diagnostico" ? "Ocultar diagnóstico" : "Ver diagnóstico", onClick: () => setCapa((c) => (c === "diagnostico" ? null : "diagnostico")) },
+            esAdmin() && { sep: true },
+            // El registro de lo que hace la IA al escribir: para quien administra (era un resto interno a la vista de todos).
+            esAdmin() && { icon: "terminal", label: capa === "diagnostico" ? "Ocultar diagnóstico" : "Ver diagnóstico", onClick: () => setCapa((c) => (c === "diagnostico" ? null : "diagnostico")) },
             // Borrar un mes entero es de quien administra (el servidor lo
             // exige). Desde el calendario se borran publicaciones, no meses.
             esAdmin() && !virtual && { icon: "trash", label: "Borrar el mes entero", danger: true, onClick: () => {
@@ -1694,7 +1695,7 @@ export default function CalendarView({
         </Suspense>
       )}
 
-      {/* El asistente del mes (fase 6): «Producir el mes». Escribe por `escribirMes`, que parte del calendario más nuevo. */}
+      {/* El asistente del mes (fase 6): «Preparar el mes». Escribe por `escribirMes`, que parte del calendario más nuevo. */}
       {capa === "asistente" && (
         <Suspense fallback={<div className="panel-cargando" role="status">Abriendo el asistente del mes…</div>}>
           <AsistenteMes

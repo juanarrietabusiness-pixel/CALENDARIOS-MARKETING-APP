@@ -42,6 +42,7 @@ import { DEFINICION_KIT, crearHerramientaKit } from "./kitDescargable.js";
 import { DEFINICIONES_CEREBRO, crearHerramientasCerebro, ErrorCerebro } from "./cerebro/herramientasCerebro.js";
 import { DEFINICIONES_CAMPANAS, crearHerramientasCampanas, ErrorCampanas } from "./herramientasCampanas.js";
 import { DEFINICIONES_TEXTOS, crearHerramientasTextos, ErrorTextos, avisosAlGuardar } from "./herramientasTextos.js";
+import { DEFINICIONES_EQUIPO, crearHerramientasEquipo, ErrorEquipo } from "./herramientasEquipo.js";
 
 const FORMATOS = ["post", "reel", "carrusel", "historia", "live"];
 const REDES = ["instagram", "facebook", "tiktok", "youtube"];
@@ -154,6 +155,8 @@ export const HERRAMIENTAS_MCP = Object.freeze([
   ...DEFINICIONES_CAMPANAS,
   // Los TEXTOS y el MES por el motor de la agencia (worker/lib/herramientasTextos.js): escribir, la ficha del método, el plan, la estrategia y la revisión.
   ...DEFINICIONES_TEXTOS,
+  // Lo del EQUIPO (worker/lib/herramientasEquipo.js): el enlace y el mensaje para el cliente, la campana, la Bandeja y los informes.
+  ...DEFINICIONES_EQUIPO,
   // Las que sólo llama la VISTA PREVIA del chat (MCP Apps: `visibility: ["app"]`, ver rutas/mcp.js).
   ...DEFINICIONES_VISTA,
 ]);
@@ -176,7 +179,7 @@ export function diasFijos(valor) {
   return Array.isArray(v) ? [...new Set(v.map(Number).filter((n) => Number.isInteger(n) && n >= 1 && n <= 6))].sort((a, b) => a - b) : [];
 }
 
-export function crearHerramientasMCP({ env, acceso, usuario }) {
+export function crearHerramientasMCP({ env, acceso, usuario, origen = "" }) {
   const consultas = crearEjecutor({ env, acceso });
   const por = { userId: usuario.id, nombre: `Claude (${usuario.nombre})`, color: "#D97757", tab: null };
   let clientes = null;
@@ -495,7 +498,7 @@ export function crearHerramientasMCP({ env, acceso, usuario }) {
       return { content: [{ type: "text", text: `Herramienta desconocida: ${nombre}` }], isError: true };
     } catch (e) {
       const delPedido = e instanceof ErrorHerramienta || e instanceof ErrorHerramientaEstudio || e instanceof ErrorDiseno || e instanceof ErrorReceta || e instanceof ErrorVista || e instanceof ErrorHerramientaLoMejor || e instanceof ErrorExportar || e instanceof ErrorSubida
-        || e instanceof ErrorCerebro || e instanceof ErrorCampanas || e instanceof ErrorTextos;
+        || e instanceof ErrorCerebro || e instanceof ErrorCampanas || e instanceof ErrorTextos || e instanceof ErrorEquipo;
       if (!delPedido) console.error("mcp:", nombre, e);
       return { content: [{ type: "text", text: delPedido ? e.message : `No se pudo: ${e?.message ?? e}` }], isError: true };
     }
@@ -514,6 +517,7 @@ export function crearHerramientasMCP({ env, acceso, usuario }) {
   Object.assign(acciones, crearHerramientasCerebro({ env, acceso, resolverCliente, usuario, por }));
   Object.assign(acciones, crearHerramientasCampanas({ env, acceso, resolverCliente, usuario, por, buscarPublicacion: buscar }));
   Object.assign(acciones, crearHerramientasTextos({ env, acceso, resolverCliente, usuario, por, buscarPublicacion: buscar }));
+  Object.assign(acciones, crearHerramientasEquipo({ env, acceso, resolverCliente, usuario, origen }));
 
   return { llamar };
 }

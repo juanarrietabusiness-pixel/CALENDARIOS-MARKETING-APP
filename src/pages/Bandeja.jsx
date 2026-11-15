@@ -366,7 +366,7 @@ export default function Bandeja({ clients = [], pulso = 0, yo }) {
                 <Icon name="lock" size={14} /> Conceder permisos de comentarios y mensajes
               </a>
             ) : (
-              <p className="hint">Falta el secreto <code>META_CONFIG_ID_BANDEJA</code> en el Worker (la configuración de inicio de sesión con estos permisos). Ver DEPLOY.md.</p>
+              <p className="hint">Falta la llave <code>META_CONFIG_ID_BANDEJA</code> en el servidor (Cloudflare: la configuración de inicio de sesión con estos permisos). Ver DEPLOY.md.</p>
             )
           ) : (
             <p className="hint">Sólo el administrador puede concederlos.</p>

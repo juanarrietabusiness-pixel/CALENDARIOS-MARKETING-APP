@@ -117,7 +117,7 @@ export default function AsistenteMes({
       <div ref={ref} role="dialog" aria-modal="true" aria-labelledby={`${ids}-t`} className="sheet asistente-mes" tabIndex={-1}>
         <div className="sheet-header">
           <div>
-            <h2 id={`${ids}-t`} style={{ fontSize: "var(--fs-md)", margin: 0 }}>Producir {mesNombre.toLowerCase()}</h2>
+            <h2 id={`${ids}-t`} style={{ fontSize: "var(--fs-md)", margin: 0 }}>Preparar {mesNombre.toLowerCase()}</h2>
             <p className="hint" style={{ margin: 0 }}>
               De la estrategia al envío, en orden. Se guarda en el calendario: lo retoma cualquiera del equipo.
               {a.por ? ` Último paso guardado por ${a.por}.` : ""}
@@ -424,7 +424,7 @@ function PasoPlan({ client, cal, onGuardarPlan, onPoner, onPlanificarAMano, onPr
           <summary className="hint">Otras formas de planificar</summary>
           <div className="asistente-mes-acciones">
             {onPlanificarAMano && <button type="button" className="btn btn-ghost btn-sm" onClick={onPlanificarAMano}>Planificar a mano (día por día, con plantillas propias)</button>}
-            {onProducirEnLote && !pasado && <button type="button" className="btn btn-ghost btn-sm" onClick={onProducirEnLote}>Crear el mes entero en lote en el Estudio</button>}
+            {onProducirEnLote && !pasado && <button type="button" className="btn btn-ghost btn-sm" onClick={onProducirEnLote}>Crear el mes entero con «Muchas piezas de una vez» del Estudio</button>}
           </div>
         </details>
       </div>

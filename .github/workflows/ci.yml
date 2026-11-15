@@ -53,6 +53,14 @@ jobs:
       - name: Tests de bundle
         run: npm run test:bundle
 
+      # La prueba de humo EN UN NAVEGADOR (tests/vivo/navegador.test.js, dentro de test:vivo): entra, abre un cliente,
+      # una publicación y /aprobar en Chromium. Playwright no es dependencia del proyecto: se instala aquí sin tocar
+      # package.json, con su Chromium y lo que éste necesita del sistema. Con CI=true la prueba FALLA si no puede correr.
+      - name: Chromium para la prueba de humo
+        run: |
+          npm install --no-save playwright@1.63.0
+          npx playwright install --with-deps chromium
+
       # El tiempo real, EJECUTADO: levanta `wrangler dev` —workerd de
       # verdad, con su D1 y su Durable Object—, mete a dos personas en un
       # espacio y comprueba que lo que escribe una llega al socket de la

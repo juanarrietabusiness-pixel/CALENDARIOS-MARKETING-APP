@@ -914,7 +914,7 @@ function Workspace({ session, ruta }) {
   }, [clients]);
 
   /**
-   * «Planificar mes» (y «Nuevo calendario» del buscador): el ASISTENTE DEL MES del mes que se mira, en el calendario
+   * «Preparar el mes» (y «Nuevo calendario» del buscador): el ASISTENTE DEL MES del mes que se mira, en el calendario
    * (calendario/AsistenteMes.jsx). Va por la dirección (`?asistente=1`): CalendarView lo abre al llegar o, si ya estaba
    * en ese mes, al oír el cambio de dirección. «Planificar a mano» (PlanWizard) se abre desde dentro del asistente.
    */
@@ -1689,15 +1689,17 @@ function Workspace({ session, ruta }) {
                       >
                         <Icon name="pencil" />
                       </button>
-                      {/* Ya no se crea un calendario por mes: el asistente
-                          PLANIFICA el mes que se elija, dentro del mismo calendario. */}
-                      <button className="btn btn-primary" onClick={abrirAsistenteDelMes}>
-                        <Icon name="sparkles" size={18} /> Planificar mes
-                      </button>
+                      {/* «Preparar el mes»: el asistente del mes, el MISMO botón que el de la barra del calendario (por eso
+                          en esa pestaña no se repite). Ya no se crea un calendario por mes. */}
+                      {pestana !== "calendario" && (
+                        <button className="btn btn-primary" onClick={abrirAsistenteDelMes}>
+                          <Icon name="sparkles" size={18} /> Preparar el mes
+                        </button>
+                      )}
                     </div>
                   </div>
 
-                  <ResumenCliente client={client} calendar={calendar} pulso={pulso} onIr={irAPestana} />
+                  <ResumenCliente client={client} calendar={calendar} pulso={pulso} onIr={irAPestana} onPrepararMes={abrirAsistenteDelMes} />
 
                   {/* Las CINCO pestañas del cliente (lib/rutas.js). Cada una es una dirección —se recarga, se comparte,
                       atrás funciona— y además una pestaña de verdad (BarraPestanas: role="tab", flechas, foco). Las

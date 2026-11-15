@@ -17,6 +17,7 @@
 // ============================================================
 
 import { FORMATS, MONTHS } from "../constants";
+import { hashtagsDe } from "./completitud";
 
 /** Los formatos que se exportan si nadie toca nada: los que se diseñan. */
 export const FORMATOS_EXPORTABLES_POR_DEFECTO = ["post", "carrusel"];
@@ -24,21 +25,9 @@ export const FORMATOS_EXPORTABLES_POR_DEFECTO = ["post", "carrusel"];
 /** Los campos que se exportan por defecto. */
 export const CAMPOS_EXPORTABLES = ["idea", "guion", "descripcion", "hashtags"];
 
-/**
- * Los hashtags de una publicación.
- *
- * `hashtagsFinales` casi siempre viene vacío: el prompt de generación los
- * pide DENTRO del caption, al final, y así es como los escribe el modelo.
- * Cuando no está suelto se recogen del propio texto, sin repetirlos y en
- * el orden en que aparecen.
- */
-export function hashtagsDe(post) {
-  const sueltos = (post?.hashtagsFinales || "").trim();
-  if (sueltos) return sueltos;
-  const texto = post?.descripcion || post?.script || "";
-  const encontrados = texto.match(/#[\p{L}\p{N}_]+/gu) || [];
-  return [...new Set(encontrados)].join(" ");
-}
+// Los hashtags de una publicación viven en completitud.js, que va en la carga inicial (el chip del mes): si estuvieran
+// aquí, todo este módulo —que sólo usa el diálogo de exportar, en diferido— entraba en el arranque por esa función.
+export { hashtagsDe };
 
 /**
  * «lunes 4 de agosto de 2026».

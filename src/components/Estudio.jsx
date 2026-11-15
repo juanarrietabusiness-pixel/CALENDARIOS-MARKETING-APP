@@ -868,7 +868,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
   const fijar = async (tipo, id) => {
     try {
       await guardarKitDeMarca({ ...(kit ?? {}), modelos: { ...(kit?.modelos ?? {}), [tipo]: id || undefined } });
-      avisar(true, id ? `Fijado para ${client.name}: arranca con él en el Estudio, el lote y «Producir el mes».` : "Ya no hay modelo fijado para este cliente.");
+      avisar(true, id ? `Fijado para ${client.name}: se usa en todo lo que se crea.` : "Ya no hay modelo fijado para este cliente.");
     } catch (e) {
       avisar(false, e.message);
     }
