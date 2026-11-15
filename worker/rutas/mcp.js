@@ -169,7 +169,7 @@ async function servidorMCP(req, env) {
   const mensaje = await cuerpo(req);
   if (!mensaje || typeof mensaje !== "object") return conCors(rpcError(null, -32700, "JSON no válido"), 400);
   const lote = Array.isArray(mensaje) ? mensaje : [mensaje];
-  const herramientas = crearHerramientasMCP({ env, acceso: crearAcceso(env.DB, usuario.ownerId, { clientes: usuario.clientes }), usuario });
+  const herramientas = crearHerramientasMCP({ env, acceso: crearAcceso(env.DB, usuario.ownerId, { clientes: usuario.clientes }), usuario, origen: origenDe(req) });
 
   const respuestas = [];
   for (const m of lote) {
