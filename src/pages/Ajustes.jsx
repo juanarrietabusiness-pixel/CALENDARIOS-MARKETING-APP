@@ -2,7 +2,7 @@ import "./Ajustes.css";
 import Icon from "../components/Icon";
 import SeccionIA from "../components/SeccionIA";
 import SeccionPresupuesto from "../components/SeccionPresupuesto";
-import { useEffect } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import SeccionDrive from "../components/SeccionDrive";
 import SeccionMeta from "../components/SeccionMeta";
 import SeccionTikTok from "../components/SeccionTikTok";
@@ -14,6 +14,9 @@ import SeccionPlantillas from "../components/SeccionPlantillas";
 import SeccionManualCampanas from "../components/SeccionManualCampanas";
 import LimpiezaTerminadas from "../components/LimpiezaTerminadas";
 import { TaskTemplatesManager } from "../components/TaskPanel";
+
+// Salud y avisos: su chunk (la salud del sistema y la suscripción a los avisos en el teléfono).
+const SeccionSalud = lazy(() => import("../components/SeccionSalud"));
 
 // ============================================================
 // Ajustes del espacio
@@ -34,6 +37,7 @@ const INDICE = [
   ["como-trabajamos", "Cómo trabajamos"],
   ["tareas", "Tareas"],
   ["copia", "Copia de seguridad"],
+  ["salud", "Salud y avisos"],
 ];
 
 export default function Ajustes({ yo, clients = [], pulso = 0, onVolver, onExportar, onImportar }) {
@@ -113,6 +117,10 @@ export default function Ajustes({ yo, clients = [], pulso = 0, onVolver, onExpor
             </button>
           </div>
         </section>
+
+        <Suspense fallback={<p className="hint" style={{ margin: 0 }}>Cargando la salud del sistema…</p>}>
+          <SeccionSalud esAdmin={esAdmin} pulso={pulso} />
+        </Suspense>
       </div>
     </div>
   );

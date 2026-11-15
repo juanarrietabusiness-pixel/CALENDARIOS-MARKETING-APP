@@ -31,6 +31,10 @@ import { calendarioPorTestigo, enviarAprobacion, actualizarContenido, mediaPermi
 import { difundir } from "./lib/vivo.js";
 import { rutasDatos } from "./rutas/datos.js";
 import { rutasAvisos } from "./rutas/avisos.js";
+import { rutasPush } from "./rutas/push.js";
+import { rutasSalud } from "./rutas/salud.js";
+import { correrCron, volcarSalud, limitesVencidosPendiente } from "./lib/salud.js";
+import { barrerRendersVencidos } from "./lib/estudio/render.js";
 import { avisarRespuestaCliente } from "./lib/equipo.js";
 import { rutasEquipo, rutaInvitacionPublica } from "./rutas/equipo.js";
 import { rutaIA } from "./rutas/ia.js";
@@ -136,7 +140,7 @@ async function sirveMedia(env, clave, cacheable, req = null) {
 }
 
 
-export default {
+const trabajador = {
   async fetch(req, env, ctx) {
     const url = new URL(req.url);
     const ruta = url.pathname;
@@ -404,7 +408,11 @@ export default {
       // ErrorAcceso lanzado dentro escaparía del `catch` y sería un 500.
       const acceso = crearAcceso(env.DB, usuario.ownerId, { clientes: usuario.clientes });
 
+      // Los avisos en el teléfono (Web Push) van dentro de /avisos: es lo suyo propio, también para sólo lectura.
+      if (partes[0] === "avisos" && partes[1] === "push") return await rutasPush(req, env, { acceso, usuario, partes, metodo });
       if (partes[0] === "avisos") return await rutasAvisos(req, env, { acceso, usuario, partes, metodo });
+      // Ajustes → Salud: el cron, los proveedores y las integraciones (sólo el administrador).
+      if (partes[0] === "salud") return await rutasSalud(req, env, { acceso, usuario, partes, metodo });
 
       // ---------- Generación de imágenes ----------
       if (partes[0] === "generar-imagen" && metodo === "POST") {
@@ -569,46 +577,48 @@ export default {
    */
   async scheduled(controlador, env, ctx) {
     ctx.waitUntil((async () => {
-      // Publicar va primero. La foto de métricas sólo si la cola no tenía
-      // nada: las dos juntas no caben en los límites de una invocación
-      // del plan gratuito (ver worker/lib/metricas.js).
-      // Y el informe del día 1 sólo si tampoco quedaban fotos: necesita la
-      // del último día del mes, y cabe él solo en la vuelta.
       const cuando = new Date(controlador?.scheduledTime ?? Date.now());
-      const publicadas = await procesarCola(env).catch((e) => { console.error("cron:", e); return 1; });
-      if (publicadas) return;
-      const fotos = await fotoPendiente(env, cuando).catch((e) => { console.error("cron métricas:", e); return 1; });
-      if (fotos) return;
-      const informes = await informePendiente(env, cuando).catch((e) => { console.error("cron informes:", e); return 1; });
-      if (informes) return;
-      // El de anuncios, a la misma hora y con la misma regla: uno por vuelta.
-      const deAnuncios = await informeAnunciosPendiente(env, cuando).catch((e) => { console.error("cron informe de anuncios:", e); return 1; });
-      if (deAnuncios) return;
-      // Las historias automáticas: poner en la cola la del día de un cliente (una sola vez al día por cliente;
-      // sin nada que hacer es UNA consulta). Antes del Estudio: con el Estudio ocupado horas, no saldría ninguna.
-      const historias = await historiasAutomaticasPendiente(env, cuando).catch((e) => { console.error("cron historias:", e); return 1; });
-      if (historias) return;
-      // El aviso a la hora de lo que se publica A MANO (10 min antes y a la hora): sin nada que avisar es UNA consulta.
-      // Antes del Estudio por lo mismo que las historias: un «es la hora» que llega una hora tarde no sirve.
-      const aMano = await avisosAManoPendiente(env, cuando).catch((e) => { console.error("cron avisos a mano:", e); return 1; });
-      if (aMano) return;
-      // El Estudio: lo que nadie está mirando (cerró la pestaña).
-      const estudio = await avanzarPendientes(env, cuando).catch((e) => { console.error("cron estudio:", e); return 1; });
-      if (estudio) return;
-      // Y los encargos (el lote que sigue en el servidor) que su bomba no esté llevando.
-      const encargos = await encargosDelCron(env, cuando).catch((e) => { console.error("cron encargos:", e); return 1; });
-      if (encargos) return;
-      // Y por último Inspiración: el feed de un cliente que lleva un día sin leerse (hasta diez llamadas a Meta o Google).
-      const inspiracion = await inspiracionPendiente(env, cuando).catch((e) => { console.error("cron inspiración:", e); return 1; });
-      if (inspiracion) return;
-      // «Lo mejor»: los anuncios de las búsquedas guardadas una vez por semana (con su tope de créditos) o, si no, unas
-      // pocas piezas sin clasificar (una llamada barata a la IA). Sólo si nada de lo de arriba tuvo trabajo.
-      const loMejor = await loMejorPendiente(env, cuando).catch((e) => { console.error("cron lo mejor:", e); return 1; });
-      if (loMejor) return;
-      if (await cerebroPendiente(env, cuando).catch((e) => { console.error("cron cerebro:", e); return 1; })) return; // el cerebro de UN cliente al día con GitHub
-      // La revisión 3Q: lo GRAVE de las campañas de UN cliente al día (no gasta, anuncio rechazado, el doble del número
-      // mágico sin una conversación) a la campana. Lo último: tres lecturas de Meta y sólo si nada más tuvo trabajo.
-      await revision3qPendiente(env, cuando).catch((e) => console.error("cron revisión 3Q:", e));
+      // En CASCADA: cada tarea dice si tuvo trabajo y, si lo tuvo, las de abajo esperan a la vuelta siguiente (todas juntas
+      // no caben en las 50 consultas y 50 peticiones de una invocación). Publicar va primero. La foto de métricas sólo si
+      // la cola no tenía nada; el informe del día 1 sólo si tampoco quedaban fotos (necesita la del último día del mes).
+      // Las historias y los avisos a mano antes del Estudio: con el Estudio ocupado horas no saldría ninguna, y un «es la
+      // hora» que llega tarde no sirve. Inspiración, «Lo mejor», el cerebro y la 3Q, al final y sólo si nada más tuvo trabajo.
+      //
+      // `correrCron` (worker/lib/salud.js) lleva la SALUD de cada tarea: un fallo para la vuelta como antes, pero se
+      // cuenta; a los 3 seguidos esa tarea se SALTA un rato y lo de abajo corre (antes, una que fallaba siempre dejaba sin
+      // correr todo lo de abajo para siempre); si lleva más de media hora fallando, se avisa al administrador. Se ve en
+      // Ajustes → Salud. Los renders muertos y la fecha límite del cliente miran cada 5 minutos (una consulta).
+      await correrCron(env, [
+        ["cola", () => procesarCola(env)],
+        ["renders", () => barrerRendersVencidos(env, cuando)],
+        ["limites", () => limitesVencidosPendiente(env, cuando)],
+        ["metricas", () => fotoPendiente(env, cuando)],
+        ["informes", () => informePendiente(env, cuando)],
+        ["informe-anuncios", () => informeAnunciosPendiente(env, cuando)],
+        ["historias", () => historiasAutomaticasPendiente(env, cuando)],
+        ["a-mano", () => avisosAManoPendiente(env, cuando)],
+        ["estudio", () => avanzarPendientes(env, cuando)],
+        ["encargos", () => encargosDelCron(env, cuando)],
+        ["inspiracion", () => inspiracionPendiente(env, cuando)],
+        ["lo-mejor", () => loMejorPendiente(env, cuando)],
+        ["cerebro", () => cerebroPendiente(env, cuando)], // el cerebro de UN cliente al día con GitHub
+        ["3q", () => revision3qPendiente(env, cuando)],
+      ]);
     })());
+  },
+};
+
+/**
+ * La puerta del Worker. Al terminar cada petición vuelca la salud de los proveedores que haya apuntado esta instancia
+ * (worker/lib/salud.js): sin nada nuevo no cuesta ni una consulta, y nunca retrasa la respuesta (`waitUntil`).
+ */
+export default {
+  ...trabajador,
+  async fetch(req, env, ctx) {
+    try {
+      return await trabajador.fetch(req, env, ctx);
+    } finally {
+      ctx?.waitUntil?.(volcarSalud(env));
+    }
   },
 };

@@ -25,6 +25,7 @@
 
 import { registrarConsumoGemini, leerConfigIA, motorDeVideo, MODELO_MUSE } from "./configIA.js";
 import { llamarIA, ErrorIA } from "./cerebro/ia.js";
+import { anotar } from "./salud.js";
 
 const API = "https://generativelanguage.googleapis.com";
 export const MAX_BYTES_VIDEO = 80 * 1024 * 1024;
@@ -92,6 +93,9 @@ async function modeloDisponible(cabeceras, excluir) {
 async function fallo(paso, res, gratis = false) {
   const texto = await res.text().catch(() => "");
   console.error(`video: al ${paso}, Google AI respondió`, res.status, texto.slice(0, 500));
+  // Ajustes → Salud (y el aviso del saldo, que Google dice en el texto: «prepayment credits depleted»). La llave
+  // gratuita no: sus topes por minuto no dicen nada de la cuenta de pago.
+  if (!gratis) anotar("google", { message: `Google AI respondió ${res.status} al ${paso}: ${texto.slice(0, 200)}`, estado: res.status });
   if (res.status === 429 && gratis) {
     return new ErrorVideo("La llave gratuita de Google llegó a su tope (por minuto o del día). Espera un rato, o cambia el motor de video en Ajustes → IA.", 429);
   }
@@ -243,6 +247,7 @@ async function generarConVideo(acceso, { cabeceras, datos, prompt, json, restant
   if (!res.ok) throw await falla("analizar el video", res);
 
   const data = await res.json();
+  if (!gratis) anotar("google");
   await registrarConsumoGemini(acceso, { funcion, modelo, meta: data?.usageMetadata, clienteId, gratis });
   const texto = (data?.candidates?.[0]?.content?.parts ?? []).map((p) => p?.text ?? "").join("").trim();
   if (!texto) throw new ErrorVideo("Google AI no devolvió ningún análisis del video.", 422);

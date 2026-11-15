@@ -23,6 +23,7 @@
 // `fetch` de mentira que contesta como su documentación.
 // ============================================================
 
+import { seguido } from "./salud.js";
 import { sha256, uuid, ahora } from "./ids.js";
 import { bajarALaGaleria, yaBajado } from "./competencia.js";
 import { semanaDe } from "../../src/lib/loMejor.js";
@@ -50,7 +51,13 @@ const MAX_CACHE = 1_500_000;
 /** El estado que le toca a la pantalla por cada código de la API. */
 const estadoPara = (s) => (s === 402 ? 402 : s === 404 ? 404 : s === 400 ? 400 : s === 403 ? 409 : 502);
 
-async function pedirSC(env, ruta, params) {
+/** Toda llamada a Scrape Creators pasa por aquí: su salud se apunta (un 402 avisa del saldo, worker/lib/salud.js). */
+const pedirSC = (env, ruta, params) => seguido("scrape-creators", () => pedirScrapeCreators(env, ruta, params), {
+  // «No encontró anuncios» (404) o una búsqueda mal escrita (400) son de la búsqueda, no de la cuenta.
+  ignorar: (e) => e?.estado === 404 || e?.estado === 400,
+});
+
+async function pedirScrapeCreators(env, ruta, params) {
   if (!scConfigurado(env)) throw new ErrorSC("Falta la llave de Scrape Creators (SCRAPECREATORS_API_KEY en los secretos del Worker).", 503);
   const url = `${SC_BASE}${ruta}?${new URLSearchParams(params)}`;
   let ultimo = 0;

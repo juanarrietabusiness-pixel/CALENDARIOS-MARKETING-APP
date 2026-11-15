@@ -22,6 +22,7 @@
 // llave es un pedido barato (Z-Image Turbo) y uno de video corto.
 // ============================================================
 
+import { seguido } from "../salud.js";
 import ESQUEMAS_JSON from "./higgsfield-schemas.json";
 import { ErrorMotor } from "./gemini.js";
 import { direccionValida } from "./descarga.js";
@@ -163,7 +164,10 @@ export function errorDeHiggsfield(estado, texto) {
   return new ErrorMotor(`Higgsfield devolvió un error (${estado})${d || "."}`, 502, { reintentable: estado >= 500 });
 }
 
-async function llamar(env, url, opciones = {}) {
+/** Toda llamada pasa por aquí: su salud se apunta (Ajustes → Salud, worker/lib/salud.js). */
+const llamar = (env, url, opciones = {}) => seguido("higgsfield", () => llamarHiggsfield(env, url, opciones));
+
+async function llamarHiggsfield(env, url, opciones = {}) {
   let res;
   try {
     res = await fetch(url, {

@@ -11,13 +11,15 @@
 //     Sólo si el proyecto sigue «Renderizando» con ESE intento: un encargo viejo no pisa uno nuevo.
 //   · `renderAlDia`: un render que no terminó en `PLAZO_RENDER_MS` (el objeto murió a la mitad) se da por fallido al
 //     leerlo, para que se pueda pedir otra vez y el guion se pueda editar.
+//   · `barrerRendersVencidos` (el cron, cada 5 minutos): lo mismo SIN que nadie lo lea —antes un render muerto sólo se
+//     daba por fallido al abrirlo, y «Publicar con música» se quedaba «haciéndose» para siempre—, y avisa.
 //   · `ligarAPublicacion`: liga el video a una publicación del cliente (o lo desliga) en cualquier momento; si el mp4 ya
 //     salió, lo pone en ella YA (sin volver a renderizar). Desligar no quita el mp4 del post de antes: eso se hace en él.
 // ============================================================
 
 import { carpetaDelVideo, alFrenteDelOrden } from "./carpetaVideo.js";
 import { uuid, ahora } from "../ids.js";
-import { crearAcceso } from "../acceso.js";
+import { crearAcceso, rendersVencidos } from "../acceso.js";
 import { difundir } from "../vivo.js";
 import { ErrorVideo, deFila, publicacionDelCliente, ID_VIDEO } from "../videosProyectos.js";
 import { marcarUso } from "./galeria.js";
@@ -364,4 +366,53 @@ export async function renderAlDia(acceso, fila, ahoraMs = Date.now()) {
   const cerrado = { ...render, estado: "fallido", error: "El render no terminó a tiempo: vuelve a pedirlo.", terminadoAt: ahora() };
   const escrito = await terminar(acceso, fila.client_id, fila.id, render.intento, "fallido", cerrado);
   return escrito ? { ...fila, estado: "fallido", render: JSON.stringify(cerrado) } : fila;
+}
+
+/** El minuto (de cada 5) en que el cron barre los renders vencidos: así no coincide con la fecha límite (salud.js). */
+const MINUTO_BARRIDO = 3;
+
+/**
+ * Del cron, cada 5 minutos: los renders que pasaron su plazo sin terminar (el objeto murió a la mitad) se dan por
+ * fallidos AUNQUE nadie los lea (`renderAlDia`), se avisa a quien lo pidió (o, si no se sabe, al administrador) y, si era
+ * un «Publicar con música», su publicación deja de decir que se está haciendo. Sin nada vencido, una consulta. → 1 si
+ * hizo algo.
+ */
+export async function barrerRendersVencidos(env, cuando = new Date()) {
+  if (cuando.getUTCMinutes() % 5 !== MINUTO_BARRIDO) return 0;
+  const vencidos = await rendersVencidos(env.DB, new Date(cuando.getTime() - PLAZO_RENDER_MS).toISOString(), 2);
+  if (!vencidos.length) return 0;
+  for (const v of vencidos) {
+    try {
+      const acceso = crearAcceso(env.DB, v.owner_id);
+      const fila = await acceso.leerUno("videos_proyectos", { id: v.id, client_id: v.client_id });
+      const alDia = fila ? await renderAlDia(acceso, fila, cuando.getTime()) : null;
+      if (!alDia || alDia === fila || alDia.estado !== "fallido") continue;
+      const render = leerJSON(alDia.render, {});
+      const origen = leerJSON(alDia.origen, {});
+      avisar(env, v.owner_id, v.client_id, v.id);
+      if (render.porId) await avisarRender(env, acceso, alDia, render);
+      else if (origen.tipo !== "reel") {
+        // Sin quién lo pidió (un encargo de antes): al administrador, una vez. En salud.js: estático sería un ciclo.
+        const { avisarAdministradores } = await import("../salud.js");
+        await avisarAdministradores(env, {
+          clave: `render:${v.id}:${render.intento ?? ""}`, tipo: "render-fallo", enlace: `/cliente/${encodeURIComponent(v.client_id)}/estudio`,
+          texto: `Falló el render del video «${String(alDia.titulo || "sin título").slice(0, 80)}»: no terminó a tiempo. Vuelve a pedirlo.`,
+        }, { soloEspacio: v.owner_id });
+      }
+      if (esVideoDeFoto(origen) && alDia.calendar_id && alDia.post_id) {
+        await cambiarPublicacion(env, acceso, {
+          clienteId: v.client_id, calendarId: alDia.calendar_id, postId: alDia.post_id, por: SISTEMA,
+          cambiar: (post) => {
+            if (post?.conMusicaPendiente?.videoId !== v.id) return null;
+            const { conMusicaPendiente, ...resto } = post;
+            void conMusicaPendiente;
+            return resto;
+          },
+        });
+      }
+    } catch (e) {
+      console.error("cron renders vencidos:", v.id, e?.message ?? e);
+    }
+  }
+  return 1;
 }

@@ -22,6 +22,7 @@
 // falla si un modelo de Kie del catálogo no tiene su pedido aquí, o al revés.
 // ============================================================
 
+import { seguido } from "../salud.js";
 import { ErrorMotor } from "./gemini.js";
 import { cuerpoSuno, pistasDeSuno } from "../../../src/lib/musica.js";
 import { USD_POR_CREDITO } from "../../../src/lib/voces.js";
@@ -420,7 +421,10 @@ export function datosDe(j, estadoHttp = 200) {
   return j?.data ?? {};
 }
 
-async function llamar(env, url, opciones = {}) {
+/** Toda llamada a Kie pasa por aquí: su salud se apunta (Ajustes → Salud; un 402 avisa del saldo, worker/lib/salud.js). */
+const llamar = (env, url, opciones = {}) => seguido("kie", () => llamarKie(env, url, opciones));
+
+async function llamarKie(env, url, opciones = {}) {
   let res;
   try {
     res = await fetch(url, { ...opciones, headers: { Authorization: `Bearer ${env.KIE_API_KEY}`, ...(opciones.headers ?? {}) }, signal: AbortSignal.timeout(PLAZO_MS) });

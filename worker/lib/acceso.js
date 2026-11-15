@@ -150,6 +150,11 @@ export const TABLAS_CON_DUENO = Object.freeze([
   "historias_auto_piezas",
   // El aviso a la hora de lo que se publica a mano (worker/lib/avisosAMano.js): una fila por publicación «La publico yo».
   "avisos_a_mano",
+  // Que nada falle en silencio (worker/lib/salud.js, worker/lib/push.js): lo que ya se avisó una vez (el saldo de un
+  // proveedor hoy, la fecha límite de un mes, una tarea del cron que falla) y los dispositivos que reciben los avisos
+  // importantes en el teléfono. La salud del cron y de los proveedores es de TODO el servidor: tabla `salud`, abajo.
+  "avisos_dados",
+  "push_suscripciones",
   // Del equipo. Tienen dueño como las demás: la lista de miembros de un
   // espacio es un dato del espacio, y pedirla sin acotar devolvería la
   // plantilla de otra agencia. Quien resuelve «este usuario, ¿de qué
@@ -528,6 +533,22 @@ export function crearAcceso(db, ownerId, { clientes = null } = {}) {
       }
       const resultados = db.batch ? await db.batch(sentencias) : await Promise.all(sentencias.map((x) => x.run()));
       return Number(resultados[0]?.meta?.changes ?? 0) === 1 && Number(resultados[1]?.meta?.changes ?? 0) === 1;
+    },
+
+    /**
+     * Inserta la fila si no estaba (por su clave primaria) → true si la insertó. Es la condición de un aviso que se da
+     * UNA vez (`avisos_dados`): si ya estaba, quien llama no avisa otra vez. El dueño lo pone la capa, como en `insertar`.
+     */
+    async insertarSiNoEsta(tabla, datos) {
+      exigirTabla(tabla);
+      const fila = CON_DUENO.has(tabla) ? { ...datos, owner_id: ownerId } : { ...datos };
+      comprobarCliente(tabla, fila);
+      const cols = exigirColumnas(Object.keys(fila));
+      const { meta } = await db
+        .prepare(`insert into ${tabla} (${cols.join(",")}) values (${cols.map(() => "?").join(",")}) on conflict do nothing`)
+        .bind(...cols.map((c) => fila[c]))
+        .run();
+      return Number(meta?.changes ?? 0) > 0;
     },
 
     async borrar(tabla, where) {
@@ -937,6 +958,109 @@ export async function cerebrosPorRevisar(db, { ahoraISO, revisadoAntes, fichaAnt
         limit ?`,
     )
     .bind(ahoraISO, revisadoAntes, fichaAntes, limite)
+    .all();
+  return results ?? [];
+}
+
+// ------------------------------------------------------------
+// Que nada falle en silencio (worker/lib/salud.js)
+// ------------------------------------------------------------
+//
+// La salud del cron y de los proveedores es de TODO el servidor —el cron recorre todos los espacios y la llave de un
+// proveedor es una—: la tabla `salud` no tiene `owner_id` sino `espacio` ('' = del servidor; el id de un espacio en lo
+// que va con su token, como Drive). Estas son sus únicas consultas, y la que lee pide el espacio de quien mira.
+
+const COLS_SALUD = Object.freeze([
+  "id", "espacio", "tipo", "ok_at", "trabajo_at", "error_at", "error", "fallos", "desde", "saltar_hasta", "avisado_at", "saldo_at", "updated_at",
+]);
+/** El instante más reciente de los dos (SQLite: `max()` con un NULL da NULL). */
+const masReciente = (c) => `${c} = coalesce(max(excluded.${c}, salud.${c}), excluded.${c}, salud.${c})`;
+
+/** Las filas de salud del servidor (tareas y proveedores) y, con `ownerId`, también las de ese espacio. UNA consulta. */
+export async function leerSalud(db, ownerId = null) {
+  const { results } = ownerId
+    ? await db.prepare("select * from salud where espacio = '' or espacio = ?").bind(String(ownerId)).all()
+    : await db.prepare("select * from salud where espacio = ''").bind().all();
+  return results ?? [];
+}
+
+/**
+ * Escribe filas de `salud` FUNDIENDO con lo que ya hay: los instantes se quedan con el más reciente (cada instancia del
+ * Worker apunta lo suyo) y el texto del error, con el del error más reciente. Lo del cron (fallos, desde, saltar_hasta,
+ * avisado_at) lo escribe una vuelta a la vez: se pisa. En trozos de 7 filas (D1 admite 100 parámetros por sentencia), en
+ * UN lote. → cuántas filas.
+ */
+export async function guardarSalud(db, filas) {
+  const lista = (filas ?? []).filter((f) => f?.id);
+  if (!lista.length) return 0;
+  const sentencias = [];
+  for (let i = 0; i < lista.length; i += 7) {
+    const trozo = lista.slice(i, i + 7);
+    sentencias.push(db.prepare(
+      `insert into salud (${COLS_SALUD.join(",")}) values ${trozo.map(() => `(${COLS_SALUD.map(() => "?").join(",")})`).join(",")} ` +
+        `on conflict (id) do update set ${masReciente("ok_at")}, ${masReciente("trabajo_at")}, ` +
+        "error = case when excluded.error_at is not null and (salud.error_at is null or excluded.error_at >= salud.error_at) then excluded.error else salud.error end, " +
+        `${masReciente("error_at")}, ${masReciente("saldo_at")}, fallos = excluded.fallos, desde = excluded.desde, ` +
+        "saltar_hasta = excluded.saltar_hasta, avisado_at = excluded.avisado_at, updated_at = excluded.updated_at",
+    ).bind(...trozo.flatMap((f) => COLS_SALUD.map((c) => {
+      const v = f[c];
+      if (c === "espacio" || c === "error") return String(v ?? "");
+      if (c === "fallos") return Number(v) || 0;
+      return v ?? null;
+    }))));
+  }
+  if (db.batch) await db.batch(sentencias);
+  else for (const s of sentencias) await s.run();
+  return lista.length;
+}
+
+/**
+ * Los administradores de TODOS los espacios (`memberships` con rol admin): un aviso del servidor —una tarea del cron que
+ * lleva rato fallando, el saldo de un proveedor que se acabó— es para el administrador de cada espacio, que es quien
+ * puede arreglarlo. → [{ owner_id, user_id }]. Lo demás (avisar) va después por la capa de ese espacio.
+ */
+export async function administradoresDeTodos(db, limite = 200) {
+  const { results } = await db
+    .prepare("select owner_id, user_id from memberships where rol = 'admin' order by owner_id limit ?")
+    .bind(limite)
+    .all();
+  return results ?? [];
+}
+
+/**
+ * Los videos que siguen «Renderizando» desde antes de `antesDe` (el objeto del render murió a la mitad), de TODOS los
+ * espacios: el cron los da por fallidos y avisa (worker/lib/estudio/render.js, `barrerRendersVencidos`). Ids, dueño y
+ * cliente; lo demás se lee con la capa de ese espacio.
+ */
+export async function rendersVencidos(db, antesDe, limite = 3) {
+  const { results } = await db
+    .prepare(
+      `select id, owner_id, client_id from videos_proyectos
+        where estado = 'renderizando' and updated_at < ?
+        order by updated_at asc limit ?`,
+    )
+    .bind(antesDe, limite)
+    .all();
+  return results ?? [];
+}
+
+/**
+ * Los meses compartidos con el cliente cuya FECHA LÍMITE (`opciones.fechaLimite`, AAAA-MM-DD) venció entre `desde` y
+ * `hasta` (sin incluirla) sin que el cliente mandara su revisión, y de los que aún no se avisó (`avisos_dados`
+ * «limite:<mes>:<fecha>»), de TODOS los espacios. Ids, dueño, cliente y la fecha.
+ */
+export async function mesesConLimiteVencido(db, desde, hasta, limite = 3) {
+  const { results } = await db
+    .prepare(
+      `select c.id, c.owner_id, c.client_id, json_extract(c.opciones, '$.fechaLimite') as limite from calendars c
+        where c.share_token is not null and c.share_enabled = 1
+          and coalesce(c.revision_enviada, '') = ''
+          and json_extract(c.opciones, '$.fechaLimite') >= ? and json_extract(c.opciones, '$.fechaLimite') < ?
+          and not exists (select 1 from avisos_dados a where a.owner_id = c.owner_id
+            and a.id = 'limite:' || c.id || ':' || json_extract(c.opciones, '$.fechaLimite'))
+        limit ?`,
+    )
+    .bind(desde, hasta, limite)
     .all();
   return results ?? [];
 }
