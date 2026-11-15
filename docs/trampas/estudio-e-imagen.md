@@ -1027,3 +1027,82 @@ contradicen, manda la de más abajo (la más nueva). Una trampa nueva de esta á
   · **El costo** es el de la versión del modelo × cuántas, con `decidir` (0,50 $ y «crear sin preguntar»); la llamada del
   director no se cuenta (es texto). La pantalla vive en VariacionesAnuncio.jsx (lazy): el chunk del Estudio está a 20,44 kB.
   · **Nada de esto se ha probado contra Anthropic ni los motores reales**: los tests usan un `fetch` de mentira.
+
+- **Crear a mano es una sub-sección, no un desplegable** (`/cliente/<slug>/crear/a-mano`, src/lib/rutas.js; Crear.jsx). «Avanzado»
+  era `useState(false)` debajo del chat del director y se cerraba en cada visita. Ahora el compositor está arriba en «A mano», la
+  pestaña recuerda la última sub-sección y `enfocarPrompt` (lo que pone una pieza en el compositor desde otro sitio) navega ahí.
+  En el diálogo de una publicación el compositor sale siempre (`conCompositor = dialogo || aMano`). Cosas que no se ven:
+  · **El compositor va en su chunk** (lazy desde Estudio.jsx): eso liberó el chunk del Estudio, que estaba en su tope; lo nuevo del
+  compositor va en `EstudioCompositor.css`, que sólo se carga con él. Su pie con «Crear» es `sticky`: `.est-compositor` lleva
+  `overflow: visible` porque el `overflow: hidden` de `.card` lo despegaba.
+  · **«De la galería» del compositor es un DIÁLOGO** (`EstudioElegir.jsx`): el modo «toca una imagen para ponerla» de la galería
+  (`destinoGaleria`) se quitó; la galería (EstudioGaleria.jsx) conserva su prop `destino` por si vuelve, sin uso. Mientras la
+  persona mira la galería, una tira «En el pedido» (IntersectionObserver sobre la zona del compositor) dice qué lleva y «Ir al pedido».
+  · **El visor no se cierra al pedir una corrección u otra versión**: guarda `enCamino` ({ desde, texto }) y, cuando la pieza llega
+  (por el aviso del encargo o la relectura), la abre (`abrirLaNueva`). Si el visor ya está cerrado, el aviso del Estudio trae «Abrirla».
+- **Lo creado desde una publicación se pone en SU sitio aunque se cierre el panel** (`src/lib/piezaEnSuSitio.js`; `sitio` en el paso
+  del encargo y `ponerResultados` en worker/lib/estudio/encargos.js). «Otra versión», «Corregir», «Recrear con mi marca» y «Diseñar
+  con el director» de un post sin imagen ocupaban el sitio sólo si el panel seguía abierto; si se cerraba, la pieza quedaba sólo en la
+  galería. Ahora el encargo lleva `sitio` ({ reemplaza: el src de la imagen tocada } o nada = añadir al final) y lo pone el que llegue
+  primero: el panel (en su formulario) o el servidor al cerrar el encargo. `postConPiezaEnSuSitio` no la pone dos veces y, si la imagen
+  tocada ya no está (se quitó a mano), no la pone. La publicación lleva `piezaEnCurso` mientras se hace: el panel guarda al cerrarse y
+  podría pisar lo que el servidor acaba de poner, así que al volver a abrirlo la retoma y la pone. Pasado un día la marca se ignora.
+  Y el costo se pregunta con la interfaz de la aplicación, no con `window.confirm`.
+
+- **La galería va por PÁGINAS, y lo que no está cargado se busca en el servidor** (`archivosVivos`, `paginaDeGaleria`,
+  `buscarEnGaleria` en worker/lib/estudio/galeria.js; `EstudioGaleria.jsx`, `hooks/useBusquedaGaleria.js`). Antes leía
+  las 300 más recientes y ya: Baby Caleb tenía 401 piezas vivas y 101 no se veían ni se encontraban buscando. Lo que no
+  se ve:
+  · **Los audios no cuentan**: la página filtra `tipo <> 'audio'` en la consulta (la capa admite ahora `menorQue`,
+  `mayorOIgual` y `distintoDe`, con el operador de una lista cerrada). Antes se filtraban DESPUÉS y una cuenta con muchas
+  locuciones veía menos de 300.
+  · **El cursor es la fecha de la última fila, y lo que comparte ese instante va entero en su página** (un lote apunta
+  varias a la vez): la siguiente empieza ANTES de ese instante, así que cortar entre ellas se saltaría las de más. Por eso
+  una página puede traer más de 300 (un test con 305 del mismo instante lo exige), y si tras ellas no queda nada más
+  viejo, `siguiente` sale null (una consulta de una fila).
+  · **`?hasta=`**: con «Cargar más», cada relectura de la pantalla (cada aviso del espacio, cada paso de un trabajo) relee
+  TODO lo cargado, no la primera página (si no, se perdía lo cargado). Como mucho `MAX_HASTA` (3000). El cursor lo guarda
+  Estudio.jsx en `hastaRef` (se suelta al cambiar de cliente).
+  · **Buscar en el servidor usa LA MISMA regla que la pantalla** (`coincideConBusqueda`, src/lib/galeriaVistas.js):
+  mientras quede una página por cargar, lo escrito se pregunta a GET …/galeria?q= (con 400 ms de espera, sobre las 3000
+  más recientes, 150 resultados) y se suma a lo que se ve. Con todo cargado no pregunta nada.
+  · **Lo de la MARCA llega aunque sea viejo**: `leerGaleria` suma a la página las fichas de lo protegido que no entró
+  (`fichasDeLaMarca`, una lectura por clave). La vista «Marca» lo enseña todo, `vistasDelCliente` encuentra las
+  plantillas y `clavesPerdidas` ya no pregunta a R2 por cada logo o foto del catálogo viejos (cada pregunta era una
+  petición).
+  · **Los usos de verdad, también en la galería**: `usosVivos` corre ahora para la página y la papelera juntas (UNA
+  lectura de los calendarios del cliente) y cada uso trae el día, el título y el producto de su publicación (lo usan la
+  búsqueda y el filtro de producto). «Usada / Sin usar» y la pila de versiones ya no premian una imagen que se cambió por
+  otra. Ojo: esa lectura de los calendarios va en CADA GET /api/estudio (antes, sólo si la papelera tenía algo usado).
+- **«Lo último» no es «todo»**: deja fuera la carpeta «Competencia» y lo de la marca (tienen su vista), cuenta TARJETAS
+  (un carrusel, una; las versiones de una pieza, una) y va por semanas (de lunes a domingo, Panamá, por la pieza más nueva
+  de cada tarjeta). La competencia se reconoce por el NOMBRE de su carpeta (`esCarpetaCompetencia`): la crea el estudio de
+  mercado sin tipo.
+- **Las carpetas de la aplicación no gastan las 30 de la persona** (`tipo: "auto"`, `TIPOS_VALIDOS`; `reusar` en
+  `crearCarpeta`). El lote las crea con `{ tipo: "auto", reusar: true }` (el del mismo día o del mismo mes se reusa) y las
+  variaciones con `{ tipo: "auto" }` (la repetida sale « (2)»). Las de antes, sin tipo, se reconocen por su nombre
+  («Lote …», «Variaciones · …», «Competencia»: `esCarpetaAutomatica`) y tampoco cuentan; así la de la competencia se crea
+  aunque la persona tenga ya sus 30. Van en el desplegable «Más carpetas…», no en la fila de chips. Cambiar el nombre de
+  `nombreCarpetaLote` o `carpetaDeVariaciones` sin cambiar ese patrón haría que las viejas volvieran a contar.
+- **Seleccionar es sobre lo que se VE** (`idsDeLaSeleccion`): la selección guarda ids de TARJETA; un carrusel o un reel
+  (`grupo-<carpeta>`) son todas las piezas de su carpeta para la papelera (como «Mandar el carrusel a la papelera») y sus
+  piezas EN ORDEN para «Poner en una publicación»; una pila de versiones es sólo la que se ve. Antes «Todas las que se
+  ven» marcaba también lo apilado y la papelera se lo llevaba, y tocar un carrusel con la selección puesta lo ABRÍA.
+  «Me gusta» y «Mover a carpeta…» en grupo saltan los carruseles (moverlos los desharía) y lo dicen.
+- **La galería está en su chunk** (`EstudioGaleria.jsx`): el del Estudio pasó de 20,49 a 17,55 kB. Lo que hace con el
+  compositor y el visor (referencia, animar, otra versión, abrir) le llega de Estudio.jsx por la prop `tarjeta`; el estado
+  que el compositor también toca (`filtro`, `enPapelera`, `enDrive`, `perdidos`) sigue en Estudio.jsx. `ideaDelPedido` se
+  mudó a src/lib/escenaDelPedido.js (kitMarca.js la reexporta): importada desde kitMarca, la galería arrastraba el kit al
+  grafo de lib/estudio.js y la carga inicial crecía 36 bytes (la lista de precargas de cada `import()`).
+- **La tarjeta es 4:5** (la del feed): lo vertical y lo 4:5 la llenan (`object-fit: cover`, recortado arriba y abajo; entero
+  al abrirlo) y lo cuadrado y horizontal va entero (`data-forma`, `formaDe`). Las marcas son como mucho TRES y van juntas
+  abajo (`insigniasDe`: en el pedido, video o versiones o carrusel, «Usada», el control); la casilla de seleccionar arriba
+  a la izquierda y la papelera (o el candado de la marca) arriba a la derecha. El control ya no es un `::after` de
+  `data-control`.
+- **«De la galería» arranca en «Sin usar»** (de verdad: lo que ninguna publicación lleva HOY) y lo dice debajo del buscador;
+  sin nada, «Ver también las usadas». Las versiones van apiladas (se pone la que se ve) y en modo `una` (portada de un
+  reel) las láminas de un carrusel siguen sueltas.
+- Probado en Chromium con 420 piezas subidas por la API (`wrangler dev` local): 295 tarjetas al abrir, «número 410» (no
+  cargada) se encuentra, «beige» (sólo en el bloque de la marca) no, «Cargar más» llega a 414 tarjetas, tocar el carrusel
+  con la selección lo marca, a 390 px sin desplazamiento lateral; el selector, igual. No se probó en un iPhone ni con la D1
+  de producción.

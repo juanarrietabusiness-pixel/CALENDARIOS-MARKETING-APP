@@ -261,3 +261,77 @@ contradicen, manda la de más abajo (la más nueva). Una trampa nueva de esta á
   estudio NO se hace por el conector**, a propósito: aprobarlo reescribe las notas del estudio en el cerebro y deja el
   documento en Drive, y la persona tiene que revisarlo entero en la pantalla.
   · Nada de esto se ha probado contra Anthropic real: `tests/migracion/cerebro.mcp.test.js` usa un `fetch` de mentira.
+
+- **El cerebro se pone al día con GitHub SECCIÓN A SECCIÓN, y se compara contra la BASE, no contra la nota**
+  (`worker/lib/cerebro/importar.js`, 0079). El SHA de GitHub es del archivo entero: con él, cambiar una sección hacía que
+  todas las notas corregidas de ese archivo salieran «no se actualizó», y «Usar la de GitHub en todas» deshacía
+  correcciones de secciones que no habían cambiado. Lo que no se ve:
+  · **`seccion_hash` es la huella de la sección TAL COMO LA TRAJO GitHub** (`huellaSeccion` en notas.js: cyrb53 sobre el
+  texto sin `\r` ni blancos de los extremos), no del texto de ahora. Una nota corregida choca sólo si la sección NUEVA no
+  tiene esa huella. Las notas de antes de 0079 no la tienen: `guardarNota` se la pone la PRIMERA vez que alguien corrige
+  una nota de GitHub que nadie había tocado (su texto aún es el de GitHub); una corregida desde antes, sin base, choca
+  la próxima vez que cambie su archivo (no se sabe si su sección cambió) salvo que GitHub ya diga lo mismo que ella.
+  · **Una sección se casa con su nota por el TÍTULO** (y por la ruta si alguien le cambió el título aquí). La que no
+  cambió ni se reescribe ni cambia de fecha (si no, «la ficha está desactualizada» saltaba con cada actualización); la
+  que cambió y nadie tocó se reescribe EN SU SITIO con `actualizarVarios` (su id y su ruta: los `[[enlaces]]` siguen) y
+  las dos fechas iguales («sin tocar»). Antes se borraba y se volvía a crear todo el archivo.
+  · **Si GitHub ya dice lo que se corrigió aquí** (la persona pasó la corrección allí), la nota deja de estar «corregida
+  aquí» (se le quita el bit 1 de `editada`) y su conflicto se va.
+  · **El MANIFIESTO (`cerebro_sync.archivos`: ruta → sha) dice qué ya se trajo**, no las notas: un archivo cuyas
+  secciones se borraron todas aquí ya no parece nuevo en cada vuelta. Sin manifiesto (la primera vez), sale de las notas
+  como antes (`manifiestoDeNotas`).
+- **Lo que ya no está en GitHub se QUITA, con tres guardas.** Un archivo que no aparece en el árbol (se borró, renombró o
+  movió, o pasó a `06_Assets_Brutos…`) se lleva sus notas sin tocar; las corregidas quedan como conflicto «archivo». Nada
+  se quita: (1) con el árbol CORTADO (`truncated` de GitHub: no se sabe qué falta), (2) importando OTRA carpeta que la de
+  la ficha (`carpeta` en la ruta) y (3) si la carpeta de la ficha CAMBIÓ y es la revisión automática: podría ser un error
+  al escribirla; hasta que una persona pulsa «Actualizar desde GitHub» se sigue apuntando la carpeta anterior en
+  `cerebro_sync.carpeta`, así que las vueltas siguientes tampoco quitan nada. Un archivo que sigue ahí pero ya no entra
+  (pasó de 400 KB) NO se quita: se dice en «lo que no entra». Lo de las notas «-2» (Baby Caleb, D'CASA, Feria del Lente)
+  salía de mover archivos: ahora lo viejo se va ANTES de crear lo nuevo en la misma vuelta, así que las rutas vuelven
+  sin «-2»; y una nota corregida de un archivo movido de carpeta lo sigue por su título (`huerfanas`).
+- **Una nota de GitHub borrada aquí deja una marca de «no traer»** (`cerebro_no_traer`: archivo + título de la sección; la
+  pone `DELETE /api/cerebro/<c>/nota/<id>` con `marcarNoTraer`). La importación salta esa sección aunque su archivo cambie.
+  «Volver a traer» (`DELETE …/no-traer/<id>`) borra la marca y FUERZA la bajada de ese archivo (`forzar`): si no, como su
+  SHA no cambió, la sección no volvería hasta el próximo cambio en GitHub. Las notas borradas ANTES de esto no tienen
+  marca: pueden volver una vez.
+- **Los conflictos se GUARDAN** (`cerebro_conflictos`, uno por nota, con la versión de GitHub de ESA sección): antes vivían en
+  el estado de React de quien pulsó el botón y se perdían al recargar. «Usar la de GitHub» pone ese texto sin volver a
+  GitHub; «Quedarme con la mía» hace de esa versión la nueva base (no vuelve a chocar hasta que la sección cambie otra
+  vez). Para «archivo» / «sección» (ya no está): quitar la nota, o quedársela como nota PROPIA (`origen: "manual"`, sin
+  versión: ninguna actualización la vuelve a mirar). `pisar` de la ruta sigue valiendo (lo de antes).
+- **Avisan a la campana UNA vez por choque** (`avisado_hash` = «tipo:huella»): lo nuevo o lo que choca con otra versión de
+  GitHub. Van a quien puede tocar el cerebro de ESE cliente (sin sólo lectura; un colaborador, si es de los suyos) y no a
+  quien pulsó el botón (lo está viendo). El cron firma «Cerebro» (`POR_CEREBRO`).
+- **Una sincronización a la vez** (`cerebro_sync.bloqueado_hasta`, 3 min, reservado con el valor leído como condición):
+  el cron, la revisión al abrir y el botón pueden cruzarse, y dos a la vez crearían dos veces las mismas notas. La
+  segunda recibe 409 «ya se está poniendo al día». Si falla GitHub, la fila queda revisada igual, con el `error` y sin
+  pendientes: el cron no lo reintenta cada minuto.
+- **La revisión diaria** (`cerebroPendiente` en sincronizar.js, al final del cron, antes de la revisión 3Q): UN cliente por
+  vuelta, de los que tienen repositorio Y notas de él (el primer llenado lo decide una persona). Una petición del árbol;
+  si su HUELLA (todo archivo de la carpeta, path:sha) es la de la última vez completa, no lee ni D1. Si quedaron archivos
+  para la siguiente vuelta (40 por vuelta), sigue con ese cliente antes que con nada. Si trajo cambios y hay ficha de la
+  IA, deja `ficha_pendiente` y la renueva en OTRA vuelta (la llamada a la IA no cabe con 40 descargas en una invocación),
+  y sólo pasados 5 min (`FICHA_ESPERA_MS`): si la trajo la pantalla, la pantalla la renueva y `prepararFicha` quita la
+  marca. Si la ficha falla (sin IA, sin presupuesto), la marca se quita y el motivo queda en `error`.
+- **Al abrir Marca → Cerebro también se revisa** (`POST …/importar { auto: true }`), salvo con sólo lectura y salvo que se
+  haya mirado hace menos de 10 min (`REVISION_RECIENTE_MS`: cambiar de pestaña no es motivo). La pantalla sigue sola
+  mientras queden archivos (12 vueltas como mucho) y renueva la ficha UNA vez al final.
+- **La ficha técnica sólo se da por vieja con lo que la alimenta** (`alimentaLaFicha` en preparar.js, la MISMA regla para
+  escribirla y para avisar): ni las «decisiones» que la aplicación apunta sola con cada respuesta del cliente (origen
+  `app`, fuente `respuesta:…`; con ellas el aviso salía casi siempre), ni lo interno, ni el prompt maestro de Meta AI
+  (`fueraDeUso`, que antes no se aplicaba aquí). Las reglas aceptadas (decisión, origen `ia`) sí la alimentan y van al
+  final, detrás de los documentos de GitHub.
+- **Los precios los manda el catálogo.** La IA de la ficha recibe el catálogo («Productos y servicios», la nota de cifras
+  del estudio de mercado) y no repite precios de venta en «Cifras vigentes»; su primera línea lo dice (`LINEA_PRECIOS`, la
+  pone el código, no la IA). «Datos que no cuadran» avisa de una línea de la ficha, las cifras o una memoria que nombra un
+  producto del catálogo (palabras enteras, el nombre más largo) con un importe que el catálogo no tiene para él (precio u
+  oferta). El importe que va pegado a «antes»/«era» no cuenta; un producto que el catálogo no nombra (el envío) tampoco.
+- **Lo que no entra se DICE** (`fuera` en `cerebro_sync`, «Lo que hay en GitHub y no entra»): árbol cortado, PDF/Word/hojas/
+  imágenes contados, archivos de más de 400 KB y de más de tres carpetas de hondo con su nombre, los que GitHub no dejó
+  leer y los que no cupieron en el tope de 400 notas (un archivo que no cabe ENTERO no entra; no se queda a medias).
+- **Nada vuelve a GitHub.** Copiar al repositorio lo que sólo existe en el cerebro necesita un token con permiso de
+  escritura que el servidor no tiene: no se hizo. «Editar en GitHub» (`blob/HEAD/<fuente>`, cada tramo escapado: las
+  carpetas llevan espacios) lleva a cambiar el canon allí.
+- **Nada de esto se ha probado contra GitHub real**: `tests/migracion/cerebro.sincronizar.test.js` habla con un GitHub de
+  mentira (árbol y blobs) y la D1 de verdad. Lo primero en producción: abrir el Cerebro de 57DMC y de KMT (sin
+  actualizar desde el 30 de septiembre) y mirar qué se quitó y qué chocó.

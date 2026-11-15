@@ -712,3 +712,75 @@ contradicen, manda la de más abajo (la más nueva). Una trampa nueva de esta á
   vuelve a mirar (publicador.js: un repost sin calendario cuya pieza no está vigente hoy se cancela con el motivo).
   · **Una persona manda** (`PUT …/piezas/<id>/vigencia`, «Sí puede salir» / «Ya no sirve» en Programación): `vigencia_por`
   «persona» y la revisión ya no la toca.
+
+- **«Programar lo aprobado» lo hace el SERVIDOR, y la pantalla sólo lo sigue** (`worker/lib/programarServidor.js`,
+  `src/lib/programarAprobadas.js`, `programar_lotes`, 0081). Antes la pantalla preparaba las imágenes una tras otra y guardaba
+  al final: si se cerraba la pestaña no quedaba nada. Lo que no se ve:
+  · **Un lote es una fila con `pendientes`, `hechas` y `fallidas`**; cada paso hace UNA publicación (`prepararYGuardar` en el
+  Container + `programar`) y guarda el avance. `bloqueado_hasta` es el permiso de un paso a la vez (4 min: arrancar el
+  Container y varias imágenes). Si el Worker muere a mitad, la publicación sigue en `pendientes` y se repite: `programar`
+  sustituye lo programado antes de la misma pieza, así que repetir no la duplica.
+  · **Quién lo avanza:** la bomba del espacio (`bombear` en worker/lib/estudio/bomba.js, después de la cola y antes de los
+  trabajos; varios pasos del mismo lote por vuelta), el cron de respaldo (`encargosDelCron` → `loteDelCron`, por
+  `lotesProgramarPendientes` en acceso.js) y la pantalla que lo sigue: `GET /api/publicar/lotes/:id` da ella el paso si
+  lleva quieto más de `EMPUJAR_TRAS_MS` (20 s).
+  · **Una publicación no va en dos lotes vivos del mismo mes** (`crearLoteProgramar` las salta): dos pasos a la vez sobre la
+  misma la meterían dos veces en la cola.
+  · **La pantalla guarda el mes ANTES de pedirlo** y al terminar RELEE el mes (`mesDeCalendario`) para devolverlo: el
+  servidor cambió las imágenes (JPEG, copias), y si la pantalla se quedara con las de antes, el siguiente guardado
+  devolvería las PNG al mes.
+  · **Sin Container** la pantalla sigue por el camino de antes (prepara en el navegador). Dos formas de saberlo: sin el
+  binding `VIDEO` (los tests) la ruta contesta 409 `sin_container`; con el binding pero sin Container de verdad (`wrangler
+  dev`: `enable_containers: false`, el objeto contesta 503) el lote de la PANTALLA (origen «agencia») se cierra en su primer
+  paso con `sinContainer` (nota «sin_container», sin aviso) y la pantalla lo lee y prepara ella. Lo de Claude y de
+  «Programar al aprobar» no tiene pantalla: sigue y cada una queda con su motivo. Un 503 del Container de verdad (un fallo
+  pasajero) también cuenta como «sin Container»: la pantalla lo hace por su cuenta, que funciona. El camino de antes guarda
+  el mes dos veces (una para preguntar, otra con lo preparado).
+  · **Lo que NO hace el servidor:** medir la duración de los videos (Shorts, TikTok); sin medir, la cola hace lo de
+  siempre, como «Programar al aprobar».
+  · Al cerrarse, a quien lo pidió le llega a la campana lo que no entró (o el «Listo» si tardó más de 3 min); lo de
+  «Programar al aprobar» avisa sólo lo que no entró, a quien lleva cada publicación o a todo el equipo.
+- **Claude programa como la aplicación** (`programar_publicacion` → `prepararYProgramar`; `programar_lo_aprobado` → un
+  lote del servidor que avanza ~20 s dentro de la respuesta y sigue solo). Antes una pieza del Estudio (PNG) no salía en
+  Instagram por MCP («programa desde el panel»). Sin Container, `programar_lo_aprobado` usa `programarLote` como antes y
+  `programar_publicacion` dice por qué no se pudo preparar. **Nada se ha probado contra Meta ni el Container reales.**
+- **Lo que respondió el cliente vive en `approvals`, no en `days.status`** (el enlace público sólo escribe `approvals`; el
+  `status` del mes se pone al día cuando alguien abre ese mes en la pantalla). Todo lo que mira fuera del calendario
+  abierto aplica las filas con `diasConRespuestas` (src/lib/aprobacion.js): `ver_calendario` (dice además «la IDEA» y lo
+  que pidió el cliente), `programar_lo_aprobado`, el informe mensual (`cifrasDelMes`, «aprobadas»), el Inicio y el resumen
+  del cliente (`resumenCalendario(cal, respuestas)` con `aprobacionesDelEspacio`, lo mismo que lee Producción).
+- **«Aprobar todas» es UNA petición, todas o ninguna** (`POST /api/publico/<t>/aprobaciones`, `enviarAprobaciones`, un lote
+  de D1; worker/lib/aprobarTodas.js). Antes la página mandaba una por publicación en serie y decía «Aprobamos todas» aunque
+  fallara una. Con «Programar al aprobar» encendido, las PIEZAS aprobadas van a un lote del servidor
+  (`programarAlAprobarVarias`): preparar 25 no cabe en los 30 s de `ctx.waitUntil`.
+- **Los avisos de lo que responde el cliente se JUNTAN por mes** (`avisarRespuestaCliente` en worker/lib/equipo.js). Lo
+  aprobado actualiza el aviso SIN LEER de ese mes de cada persona (tipo «aprobada», enlace al mes) si se abrió hace menos de
+  `VENTANA_RESPUESTAS_MS` (3 h): «Ana aprobó 12 publicaciones y pidió cambios en 2 de Noviembre 2026». Las cuentas salen de
+  `approvals` desde que se abrió el aviso (10 s de margen: la respuesta se guarda unos ms antes que el aviso; uno nuevo
+  cuenta desde el momento exacto de la respuesta, `fecha`). Los CAMBIOS pedidos van siempre en su aviso propio, con lo que
+  pidió. Actualizar un aviso no vuelve a notificar (mismo id): la notificación sale al crearlo. Un aviso leído (o pasada la
+  ventana) abre otro.
+- **«Enviar mi revisión» deja aviso en la campana** (`avisarRevisionCliente`): antes sólo se difundía y, sin nadie
+  conectado, se perdía. Con cuántas aprobó, en cuántas pidió cambios y cuántas dejó sin revisar.
+- **Sacar a alguien del equipo no deja trabajo huérfano** (`reasignarTrabajoDe`, desde DELETE /api/equipo/miembro/:id):
+  `responsableId` / `revisorId` de sus publicaciones (cada mes con su `updated_at` como condición) y `asignado_id` de sus
+  tareas pasan a quien lo saca, con un aviso. Y `destinatariosDe` hace que lo que responde el cliente o lo que falla en la
+  cola le llegue a todo el equipo si el responsable (o quien la programó) ya no está.
+- **Cuándo abrió el cliente su enlace** (`calendars.cliente_abrio_at`, 0081): lo apunta `calendarioPorTestigo` como mucho una
+  vez por hora y SIN tocar `updated_at` (es la condición con la que otros escriben el mes). No cuenta quien lo abre con la
+  sesión del equipo (cookie `__Host-sesion`): la agencia revisa su propio enlace. No está en `calendarToRow`: guardar el mes
+  no lo pisa.
+- **¿Este cliente aprueba antes de publicar?** (`clients.aprueba_antes`, 1 por defecto; `apruebaAntes` en filas.js). Con «no»:
+  la barra del mes destaca «Ver y programar lo listo», «Programar lo aprobado» toma lo que tiene su pieza y no tiene
+  cambios pedidos (`aprobadasSinProgramar(…, { sinAprobar })`, `listaSinAprobar`), igual `programar_lo_aprobado` de Claude.
+  Producción → «Aprobadas, por programar» sigue siendo de lo aprobado. Se cambia en «Enviar a cliente». Va en `clientToRow`
+  como `programar_al_aprobar` (una ficha abierta desde antes puede devolverlo a «sí» al guardarse: el mismo riesgo que ya
+  tenía «Programar al aprobar»).
+- **El panel de una publicación ya no arrastra el estudio de mercado ni el motor de ideas** (−36 kB comprimidos al abrirlo,
+  de 113,7 a 77,6): `lib/pauta.js` leía `LIMITES_ANUNCIO` de estudioMercado.js (ahora `limitesAnuncio.js`), «Tipo de
+  contenido» lo cargaba entero (ahora `import()` y SÓLO al abrir su plegable: un `<details>` monta sus hijos aunque esté
+  cerrado, así que se escucha su `toggle`), y `lib/estudio.js` leía `composicionDe` de loteAnuncios.js (ahora en
+  pilares.js). Las COMPOSICIONES fueron a pilares.js y no a un módulo propio a propósito: un trozo nuevo suma su nombre a la
+  lista de precarga de cada chunk que lo alcanza, y el del Estudio está a pocos bytes de su tope.
+- **«Enviar a cliente» se carga en diferido** (calendario/EnviarCliente.jsx; salió de dialogos.jsx), y CalendarView importa
+  `programarAprobadas.js` con `import()`: con eso la carga inicial bajó 2,8 kB (lo nuevo de este encargo cabe dentro).

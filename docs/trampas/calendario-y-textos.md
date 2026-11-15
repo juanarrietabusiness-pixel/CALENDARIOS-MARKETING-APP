@@ -572,3 +572,63 @@ contradicen, manda la de más abajo (la más nueva). Una trampa nueva de esta á
   lo importa directo.
   · **Nada de esto se ha probado contra Anthropic real**: tests/migracion/textos.mcp.test.js usa un `fetch` de mentira y la D1 de
   verdad.
+
+- **El motor de textos escribe de DOS en DOS, con lo fijo en la caché, y la primera llamada va sola** (`escribirTanda` en
+  worker/lib/estudio/lote.js; `partesDeProduccion`/`partesDeCampos`). Antes, 6 piezas con 9 campos en UNA respuesta: cada
+  pieza recibía muy poca atención. Cosas que no se ven:
+  · **Lo FIJO (papel, ficha, estrategia, contexto, campos y reglas) sale de la TANDA entera (`planTodo`), no de las piezas de
+    la llamada:** si saliera de cada grupo, cambiaría entre llamadas y la caché no se leería nunca. Lo de cada llamada (el
+    encabezado «Escribe N…», las piezas, lo ya usado y el JSON) va DETRÁS de la marca de caché. El revisor usa el MISMO
+    bloque fijo, con el mismo arco (`armar(plan, { planTodo, arco })`): si se arma con otro `planTodo`, deja de leer la caché.
+  · **La primera llamada va sola** (escribe la caché y sus titulares van a las demás como «ya salieron»); las demás, de
+    LLAMADAS_A_LA_VEZ (3) en 3. Con todas a la vez ninguna leería la caché.
+  · **Una sola pieza (el botón «IA» de un campo) va como antes:** un texto, sin caché y sin revisor. La caché sólo se marca
+    si el bloque se va a reusar (escribir la caché cuesta un 25 % más).
+  · **Cada llamada sólo aporta las piezas de SU grupo** (aunque la IA devuelva otros números).
+  · Sin presupuesto (402) se dice a la primera: las demás llamadas no se intentan. Si una llamada falla por otra cosa, la tanda
+    sale con lo que llegó (las que no salieron siguen sin idea y se escriben la próxima vez).
+  · El conector de Claude (`ficha_de_textos`) sigue recibiendo el pedido ENTERO en un texto (`pedido.prompt` = fijo + piezas).
+- **La ficha de diseño «imagen» ya NO la escribe el motor de textos** (por defecto; `conFicha: true` la pide). Se comía la
+  mitad de la salida y el director de arte la rehace al diseñar. Lo que se pierde: el respaldo `promptListo(post, { cualquiera:
+  true })` (ProducirMes, `delRedactor` de loteServidor) cae en `ideaSinMejorar` (escena + texto exacto) cuando el director
+  falla o «Mejorar» está apagado. Las publicaciones de antes conservan su borrador.
+- **El gancho y el ángulo son OPCIONES, no una orden** (`darForma` → `opciones: { tacticas, formas, angulos }`). La sugerida
+  del código va primero y lleva su id entre corchetes; las otras 1–2 cumplen las mismas reglas (su nivel, la pauta, los datos
+  reales, ni la de la vecina ni las que no le rinden). La IA dice cuál usó en "tactica", "forma" y "angulo"; sólo vale una de
+  SUS opciones (`escogidoDe`), si no, la sugerida. Lo que ya trae la casilla (forma o ángulo puestos) y una UGC (sus 3 ganchos
+  dependen de su forma) van FIJOS. En el modo «campos» no se ofrecen tácticas (no vuelven). Las líneas «forma del gancho: «X» —
+  …» siguen igual (los tests las cuentan): las otras van en «otras formas que también valen aquí».
+- **La VARIEDAD se corrige con el revisor, no sólo con la etiqueta** (`choquesDeVariedad`): si dos vecinas escogieron lo
+  mismo, el código le da a la segunda otra de SUS opciones y el revisor reescribe su gancho con ella; la etiqueta nueva SÓLO
+  se pone si el revisor la reescribió. Cambiar la etiqueta sin el texto mentiría a lo que aprende qué forma rinde.
+- **El PLANIFICADOR del mes** (`planificarMes`, función «planificador del mes», hueco del ASISTENTE: el modelo del chat y su
+  nivel de razonamiento). Corre en el modo «mes» y en «plan» con `planificar: true` (el asistente del mes, «Mes completo» con
+  plantilla y `escribir_textos` de un mes por el conector), con 4 casillas o más. Cosas que no se ven:
+  · **Se guarda en R2** (`planificador/<espacio>/<cliente>/<AAAA-MM>.json`, fuera de `clientes/`), por clave de casilla y con
+    su FIRMA (formato, tipo, producto, nivel, fecha): las tandas siguientes lo reusan sin pagarlo; vale HORAS_PLAN (12 h). Una
+    casilla con la misma clave pero otra firma (otra sesión de «Planificar mes») no lo hereda.
+  · **Planifica hasta 40 casillas por llamada** desde la tanda que pide; lo que no entra se planifica en la tanda que llega a
+    ello, con lo ya planificado delante («YA PLANIFICADAS») para seguir el arco.
+  · `pedidoDelLote` (también `ficha_de_textos`) APLICA lo guardado sin llamar a ninguna IA; sólo `produccionDeLote` planifica.
+  · **Las casillas del modo «mes» no traen clave**: se guardan por `claveDeCasilla` («fecha|n», el número en el plan ENTERO,
+    que no cambia entre tandas porque el plan sale igual con la misma semilla). Con `r.clave` a secas todas iban a «undefined».
+  · Si falla, se escribe sin él (el redactor escoge entre las opciones).
+- **El REVISOR** (`revisarTanda`, función «crítica de textos», hueco de redacción) va en toda tanda de 2 piezas o más y
+  reescribe SÓLO lo que no pasa su guía (de cualquier marca, gancho débil, nivel, repeticiones, llamado a la acción, regla del
+  anuncio). Sólo puede tocar los campos de escritura (nunca la forma, el ángulo ni la táctica); en «campos», sólo los que se
+  pidieron. Lo reescrito pasa por el MISMO lector (`leerIdeas`/`leerCamposDe`: precio, hashtags aparte, 3 hashtags en pauta).
+  Si falla, la tanda sale igual. La respuesta trae `revisadas` (cuántas reescribió).
+- **El contexto por BLOQUES** (`repartirContexto`): ficha, pautas, estudio, lenguaje, pasajes, rubro y ejemplos, cada uno con
+  su tope; lo que un bloque no usa pasa a los que se cortaron, en ese orden. Antes se juntaba todo y se cortaba a 6.000: los
+  pasajes y el rubro (lo último) a veces no llegaban. Quien llama con el `contexto` de antes (un texto) sigue igual.
+- **Los EJEMPLOS del cliente** (`ejemplosDelCliente`): 3 aprobadas (por `approvals` de sus 4 últimos meses o por su estado) y
+  2 que rindieron ≥ 1,2× la mediana de su cuenta (`metricas_publicacion.texto`, últimos 180 días), sólo con texto. Dos lecturas
+  en cada tanda. Van como TONO, «no copies».
+- **El control de calidad ya no cuenta las anotaciones del propio revisor** (`limpiarLeido` en src/lib/control.js): «Sofá cama
+  (no debía aparecer)», «OFERTA [sobra]», «… — repetido» se quitan de lo leído y de los errores de la IA (sólo lo que va entre
+  paréntesis, corchetes o tras una raya y DICE algo del revisor: «(507) 6000-0000» se queda). Con texto pedido, lo que la IA
+  dice que SOBRA no cuenta (como el código: el logo y la etiqueta del producto también traen letras; un precio inventado lo
+  dice «precios»). Sin texto pedido, el texto inventado sí cuenta.
+- **El control razona poco a propósito** (`esfuerzo` en worker/lib/estudio/control.js: «low» sin ficha, «medium» con la ficha
+  del director) y pide un JSON compacto: con el nivel «alto» del espacio cada revisión escribía ~3.300 tokens (casi todo
+  razonamiento) para un veredicto. Una clave omitida se lee como vacía (el contrato con quien lo usa no cambió).

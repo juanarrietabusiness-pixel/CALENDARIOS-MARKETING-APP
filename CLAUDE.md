@@ -122,7 +122,7 @@ búscalo ahí con grep (casi siempre ya hay uno que hace la mitad), y al crear u
 | `/` | Panel, sin cliente elegido |
 | `/cliente/<slug>` | Un cliente |
 | `/cliente/<slug>/<mes>-<año>` | Un mes del calendario de ese cliente (`octubre-2026`), exista o no su cajón. Los enlaces viejos con el nombre o el id del calendario siguen abriendo su mes |
-| `/cliente/<slug>/crear` · `/crear/director` · `/crear/galeria` | Crear: el director («¿Qué quieres crear?») arriba y la galería del Estudio debajo, con lo manual en «Avanzado» |
+| `/cliente/<slug>/crear` · `/crear/a-mano` · `/crear/director` · `/crear/galeria` | Crear: «A mano» (el compositor arriba, recordado), el director («¿Qué quieres crear?») y la galería del Estudio |
 | `/cliente/<slug>/referencias` · `/referencias/ideas` · `/inspiracion` · `/competencia` | Referencias: el banco de ideas, «Lo mejor» del cliente (`?pieza=<clave>` la señala) y la competencia del estudio de mercado |
 | `/cliente/<slug>/marca` · `/marca/ficha` · `/kit` · `/sonido` · `/negocio` · `/whatsapp` · `/cerebro` · `/plan` · `/fechas` · `/drive` | Marca: ficha, kit y voz, música y efectos (la biblioteca de sonido), números del negocio, el kit de WhatsApp y la voz de los clientes, cerebro (con el estudio de mercado), plan semanal, fechas especiales y la carpeta de Drive, con el semáforo del kit arriba |
 | `/cliente/<slug>/resultados` · `/resultados/redes` · `/resultados/anuncios` | Resultados del cliente: redes y la revisión 3Q de sus anuncios |
@@ -354,6 +354,12 @@ Lo que rompe en silencio, en todas las áreas. El porqué de cada una está en `
 14. **Interfaz:** sin emoji como icono (`Icon.jsx`), sin `window.confirm` ni `alert`, `Interruptor.jsx` para lo que se
     enciende, `useDialogA11y` en todo diálogo, `--tap` en lo pulsable, nunca por debajo de `--fs-3xs`.
 15. **Lo que no se ha probado contra el servicio real se dice** (en el código, en la trampa y al entregar).
+16. **Guardar un mes va con su versión:** el PUT del calendario lleva el `updated_at` que se leyó y contesta 409 si otra
+    persona guardó; la pantalla junta por publicación y vuelve a guardar. Un guardado sin versión (lo de antes, el MCP) sigue.
+17. **Las páginas públicas tienen su propia entrada** (`vite.publico.config.js`, `npm run build` hace las dos): /aprobar y
+    compañía no cargan la aplicación de la agencia. Lo que se añada ahí, ligero.
+18. **El cron se escribe en `correrCron`** (`worker/lib/salud.js`): cada tarea con su nombre; su salud (último éxito, error,
+    fallos seguidos) se ve en Ajustes → Salud. Una tarea nueva va en esa lista, no como un `if (...) return` suelto.
 
 ## Trampas conocidas, por área
 

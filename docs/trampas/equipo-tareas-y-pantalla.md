@@ -253,3 +253,39 @@ contradicen, manda la de más abajo (la más nueva). Una trampa nueva de esta á
   · **El CSS inicial estaba en su tope (12,48 de 12,5 kB)**: lo de Drive, el banco anterior y la ficha salió de index.css a
   Drive.css, PestanaContenido.css y FichaCliente.css, importados por sus componentes (todos en diferido). Lo nuevo va en
   cliente/cliente.css, con sus chunks.
+
+- **«Primeros pasos» pregunta a una ruta LIGERA, no al semáforo del kit.** El semáforo (Marca) lee GET /api/estudio —la galería
+  entera, con comprobaciones en R2— y GET /api/cerebro —todas las notas—: pedirlo cada vez que se abre un cliente sería caro.
+  · GET /api/primeros-pasos/<cliente> (worker/rutas/primerosPasos.js) hace la fila del cliente y cuatro lecturas cortas (una fila
+    del estudio de mercado, UNA nota de tipo ficha, sus cuentas y los TRES meses más recientes) y devuelve banderas. Un paso nuevo
+    se añade en `estadoDePrimerosPasos` y `pasosDelCliente` (src/lib/primerosPasos.js), no leyendo más en la pantalla.
+  · «Completo» se recuerda POR NAVEGADOR (`primeros-pasos:<cliente>` = «listo» u «oculto»): desde entonces ni se pide. Si algo
+    vuelve a faltar (se borra el logo), la lista NO vuelve: para eso está el semáforo de Marca.
+  · Se relee con cada `pulso` (cualquier cambio del espacio): por eso es ligera. El componente va con `key` por cliente.
+  · «Escribir el catálogo» / «Hacer el estudio» llevan a Marca → Cerebro con `?mercado=catalogo|estudio`: Marca lo lee al montarse
+    y con cada `popstate`, abre el estudio en esa pestaña y limpia la dirección (como `?lote=` en el Estudio).
+- **El glosario va en un PORTAL.** El menú de la cuenta vive en la cabecera, que es `sticky` con su propio z-index: un `.overlay`
+  dentro quedaría por debajo de lo demás. Al cerrarlo, el foco vuelve al avatar a mano (el botón que lo abrió ya no existe: el menú
+  se cerró). Un nombre de botón que cambie tiene que cambiar en src/lib/glosario.js: su test lo compara con la pantalla.
+- **El número rojo de «sin publicar» está DOS veces montado** (la barra lateral y la barra de abajo del teléfono, las dos siempre
+  en el DOM): ContadorFallidas comparte la petición por `pulso` (3 s) para no pedir dos veces lo mismo.
+- **«Ver diagnóstico» del menú «⋯» del calendario es sólo del administrador** (era un resto interno a la vista de todos).
+- **`hashtagsDe` vive en completitud.js, no en exportarContenido.js.** completitud.js va en la carga inicial (el chip del mes) e
+  importarla de exportarContenido.js metía ese módulo entero —que sólo usa el diálogo de exportar— en el arranque (~700 B
+  comprimidos). exportarContenido.js la reexporta: lo de antes sigue importándola de allí.
+- **La prueba de humo en el navegador necesita el dist/ y Playwright, que NO son dependencias del proyecto.**
+  · En CI y al desplegar los instala el paso «Chromium para la prueba de humo» (`npm install --no-save playwright@1.63.0` +
+    `npx playwright install --with-deps chromium`), antes de `test:vivo`. Si cambia la versión de Playwright, cambia en los dos
+    workflows.
+  · Con `CI=true` la prueba FALLA si no puede correr (sin Playwright, sin Chromium o sin dist/). En local, lo dice y se salta.
+  · Lo carga con `createRequire` (CommonJS), no con `import()`: en local Playwright está en NODE_PATH, que ESM no mira.
+  · La única queja de consola que se perdona es el 401 de /api/yo antes de entrar. /aprobar pide primero el nombre de quien
+    revisa: la prueba lo escribe. La idea de una publicación NO sale en el enlace del cliente (sí el texto).
+- **El conector de Claude (herramientasEquipo.js) sólo lee, salvo marcar los avisos propios.**
+  · `enlace_del_cliente` nunca crea ni regenera el testigo: si el mes no se compartió, lo dice (se crea con «Enviar al cliente»). El
+    mensaje es `mensajeDeEnvio` con las respuestas del cliente APLICADAS (`conAprobacion` sobre `approvals`), no el `status` de los
+    días. No marca nada como enviado: eso pasa al copiar en la aplicación.
+  · Las direcciones van con el origen del conector: `crearHerramientasMCP` recibe ahora `origen` (worker/rutas/mcp.js le pasa
+    `origenDe(req)`). Sin él (tests), en relativo.
+  · `ver_avisos` está anotada de sólo lectura aunque `marcar_leidos` escribe: sólo toca los avisos de QUIEN CONECTA (como la
+    campana, que también deja a quien es de sólo lectura).

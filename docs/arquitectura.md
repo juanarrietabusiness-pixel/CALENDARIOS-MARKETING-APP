@@ -957,3 +957,249 @@ tests/
   vivo/                   Levanta workerd y comprueba que el cambio de una
                           persona LLEGA al socket de la otra
 ```
+
+## Lo nuevo y lo que cambió en noviembre de 2026 (mejoras de los 9 puntos)
+
+Las líneas de cada área tal como las escribió quien la hizo. «(cambia)» o «…» = completa la línea de arriba del mismo archivo.
+
+### Crear a mano
+
+```
+  lib/
+    piezaEnSuSitio.js     La pieza que se crea DESDE una publicación, en SU sitio: la imagen que se tocó (o al final si el post
+                          estaba vacío), sin ponerla dos veces y con la marca `piezaEnCurso` mientras se hace; la misma regla en
+                          el panel y en el servidor (`ponerResultados` de encargos.js) (puro)
+  components/
+    cliente/Crear.jsx     (cambia) Crear tiene tres sub-secciones: «A mano» (el compositor arriba, recordado), «Director» y
+                          «Galería»; `/cliente/<slug>/crear/a-mano`
+    EstudioCompositor.jsx (cambia) en su chunk (lazy) y en tres bloques: QUÉ (formato post/historia/carrusel/video, idea, texto
+                          exacto), CON QUÉ (producto, referencias, personajes, logo) y AJUSTES plegados con su resumen de una línea
+                          (con EstudioCompositor.css); `QueCrear` es el selector único de formato y tipo de video
+    EstudioElegir.jsx     «De la galería» del compositor: escoger VARIAS referencias en un diálogo («2 de 3», los huecos del
+                          modelo) sin que la página salte
+    EstudioVisor.jsx      (cambia) barra fija con Poner en…, Corregir, Otra versión, Descargar y «Más»; UNA «Corregir» con sus
+                          atajos dentro (no cobran al primer toque); la pieza que llega se abre sola (`enCamino`, `onAbrirNueva`);
+                          exporta `Pieza` (la miniatura de una pieza, también para la galería)
+```
+
+### La galería
+
+```
+  hooks/useBusquedaGaleria.js  Buscar en el SERVIDOR lo que la galería aún no cargó (mientras quede una página): lo
+                          que vuelve se suma a lo que se ve (galería y «De la galería»)
+    galeriaVistas.js      La galería vista y buscada, lo PURO que comparten la pantalla y el Worker: buscar (escena o ficha,
+                          título, texto puesto, producto, la publicación donde se usa, modelo y fecha; sin tildes), la forma
+                          (vertical, 4:5, cuadrada, horizontal), la fecha (semanas de lunes a domingo y meses de Panamá), el
+                          producto, las carpetas de la aplicación (`esCarpetaAutomatica`, `esCarpetaCompetencia`) y por semanas
+    escenaDelPedido.js    `ideaDelPedido`, sola (kitMarca.js la reexporta): la galería la usa sin cargar el kit entero
+    estudio.js            (cambia) … filtros y VISTAS de la galería (`filtrarArchivos`, `contarVistas`, `VISTAS_GALERIA`),
+                          `conPagina` («Cargar más»), `idsDeLaSeleccion`, `insigniasDe` (como mucho 3), `fechaDeTarjeta`…
+    EstudioGaleria.jsx    La GALERÍA del Estudio, en su chunk (lazy): vistas («Lo último», «Carruseles y reels», «Me gusta»,
+                          «Marca», «Competencia», «Sin carpeta»), carpetas (las de la aplicación en un desplegable), buscar y
+                          filtrar, por semanas, «Cargar más», seleccionar en grupo (Me gusta, mover, agrupar, poner, papelera),
+                          la papelera y Drive
+    FiltrosGaleria.jsx    El buscador, el panel «Filtros» (tipo, formato, producto, uso, modelo, fecha) y los chips de las
+                          vistas: los mismos en la galería y en «De la galería» (con EstudioGaleria.css)
+    GaleriaSelector.jsx   (cambia) «De la galería» del panel de una publicación (y del chat): con la barra de la galería,
+                          las versiones apiladas, por semanas, «Sin usar» de partida y «Cargar más»
+    Estudio.jsx           (cambia) … la galería ya no está aquí: la pinta EstudioGaleria.jsx
+worker/lib/estudio/galeria.js  (cambia) … la galería POR PÁGINAS (`archivosVivos`, `paginaDeGaleria`), buscar en toda
+                          la galería (`buscarEnGaleria`), los usos de verdad también para la galería
+worker/rutas/estudio.js   (cambia) … GET /api/estudio/<c>?hasta= y GET /api/estudio/<c>/galeria?antes= | ?q=
+```
+
+### El motor de textos
+
+Línea NUEVA, junto a `camposTexto.js` / `escribirTextos.js`:
+
+```
+    motorTextos.js        El motor de textos como lo haría Claude: los EJEMPLOS del propio cliente (lo aprobado y lo que más
+                          rindió, para el tono), el PLANIFICADOR del mes (mira todas las casillas y decide idea, gancho, ángulo y
+                          porqué con un arco; lo decidido se guarda en R2 por casilla con su firma), la VARIEDAD (vecinas que
+                          escogieron lo mismo) y el REVISOR (reescribe sólo lo flojo) (puro; lo usa el Worker)
+```
+
+Líneas CAMBIADAS:
+
+```
+    loteAnuncios.js       … (añadir al final:) el contexto por BLOQUES con su tope (`repartirContexto`, TOPES_CONTEXTO, ~15.000
+                          caracteres), el papel del redactor, el pedido en dos partes (`partesDeProduccion`: lo FIJO, igual en toda
+                          la tanda y en caché, y lo de cada llamada) y las OPCIONES de cada casilla (2–3 tácticas, formas del gancho
+                          y ángulos válidos: la IA escoge, `escogidoDe`)
+    camposTexto.js        … (añadir:) el pedido en dos partes (`partesDeCampos`) y las opciones de forma y ángulo
+    control.js            … (añadir:) quita lo que el revisor ANOTA dentro de lo leído («(no debía aparecer)»: `limpiarLeido`) y pide
+                          un JSON compacto
+```
+
+En el párrafo de `worker/lib/estudio/` (lote.js): «lote.js (la producción en lote: niveles, matriz, tipos y mes; escribe de dos en
+dos con lo fijo en caché, el planificador del mes y el revisor)».
+
+### El cerebro y GitHub
+
+```
+  lib/
+    cerebroVista.js       La pestaña Cerebro: tipos, filtros, lo que se lee siempre y los grupos por archivo, frases de
+                          resultado (también lo que hizo una sincronización con GitHub), documentos (puro)
+    cerebroGitHub.js      La pestaña Cerebro y GitHub: varias vueltas de una importación sumadas, «Revisado en GitHub hoy a
+                          las…», lo que de la carpeta no entra (PDF, Word, enormes, hondos) y la diferencia «La tuya / La de
+                          GitHub» línea a línea (puro; aparte de cerebroVista.js, que carga también el asistente)
+    datosCerebro.js       «Datos que no cuadran»: teléfonos y correos de la ficha, las cifras, la ficha del cliente y las
+                          memorias que ninguna nota dice, y los PRECIOS que no son los del catálogo (puro; también el Worker)
+  components/
+    CerebroGitHub.jsx     Marca → Cerebro: cómo va con GitHub (última revisión, lo que no entra), los conflictos con la
+                          diferencia y «Quedarme con la mía» / «Usar la de GitHub» nota por nota (o «Quitar sus N notas» de un
+                          archivo que se fue), y «No se traen de GitHub» con «Volver a traer»
+worker/
+  lib/
+    cerebro/              … importar.js (la sincronización SECCIÓN A SECCIÓN con GitHub: lo nuevo, lo que cambió, lo que ya no
+                          está, lo que se borró aquí, conflictos), repositorio.js (el árbol en una petición —`leerArbol`, con
+                          su huella y lo que no entra— y `descargar`; «Editar en GitHub»), estadoSync.js (la fila de
+                          `cerebro_sync` de cada cliente y el permiso de una sincronización a la vez), sincronizar.js (la
+                          sincronización con su aviso a la campana, resolver conflictos, «no traer» y `cerebroPendiente`, el
+                          paso del cron) …
+migraciones/d1/           … 0079 el cerebro sincronizado con GitHub (`seccion_hash`, `cerebro_sync`, `cerebro_conflictos`,
+                          `cerebro_no_traer`)
+```
+
+Rutas nuevas de `worker/rutas/cerebro.js` (para su cabecera ya están escritas): `POST /importar` admite `auto`;
+`GET /conflictos/<id>`, `POST /conflictos { ids, usar }`, `DELETE /no-traer/<id>`. El `GET /<cliente>` trae además
+`conflictos`, `noTraer` y `estado.sync`, `estado.repoWeb`, `estado.delRepositorio`; `GET /nota/<id>` trae `github` (el
+enlace «Editar en GitHub») si la nota viene del repositorio.
+
+### Publicar y el cliente final
+
+```
+  lib/
+    enviarCliente.js      «Enviar a cliente»: el número de WhatsApp de la ficha (8 cifras = Panamá, +507), el enlace
+                          wa.me con el mensaje y «Lo abrió el martes a las 9:12» (hora de Panamá) (puro; sólo lo carga el diálogo)
+    limitesAnuncio.js     Los topes de un anuncio (título 40, texto 600, descripción 30), solos: los lee lib/pauta.js (el panel
+                          de cada publicación) sin arrastrar el estudio de mercado; estudioMercado.js los reexporta (puro)
+    programarAprobadas.js «Programar lo aprobado» de UN calendario: guarda el mes YA, el SERVIDOR crea el lote (Container +
+                          cola) y la pantalla lo SIGUE; sin Container (409 `sin_container`), el camino de antes (en diferido)
+    aprobacion.js         (+) `respuestasDeFilas` / `diasConRespuestas`: las filas de `approvals` aplicadas a los días, como la
+                          pantalla (Claude, el informe, el Inicio); `listaSinAprobar` (cliente que no aprueba antes)
+    pilares.js            (+) las COMPOSICIONES de una pieza y `composicionDe` (salieron de loteAnuncios.js, que las reexporta)
+  components/
+    calendario/EnviarCliente.jsx  «Enviar a cliente» (salió de dialogos.jsx, en diferido): enlace, mensaje, «Abrir en WhatsApp»,
+                          «Compartir…», cuándo lo abrió el cliente, «¿Este cliente aprueba antes de publicar?»
+worker/
+  lib/
+    programarServidor.js  Programar desde el SERVIDOR: `prepararYProgramar` (una publicación: Container + cola; Claude), el
+                          LOTE (`programar_lotes`: un paso = una publicación, la bomba del espacio, el cron de respaldo y la
+                          pantalla que lo sigue), su aviso al cerrarse, «Programar al aprobar» de varias, /api/publicar/lotes
+    aprobarTodas.js       «Aprobar todas» del enlace del cliente en UNA petición: todas o ninguna, un aviso, el lote si el
+                          cliente tiene «Programar al aprobar», el cerebro
+    equipo.js             (+) avisos agrupados de lo que responde el cliente (`avisarRespuestaCliente`, `textoDeRespuestas`),
+                          «Enviar mi revisión» en la campana (`avisarRevisionCliente`), `destinatariosDe` (quien la lleva si
+                          sigue en el equipo; si no, todos) y `reasignarTrabajoDe` (al sacar a alguien)
+migraciones/d1/           (+) 0081 programar desde el servidor, cuándo abrió el cliente su enlace y si aprueba antes de publicar
+```
+
+### Que nada falle en silencio
+
+En `src/lib/`:
+```
+    saludApi.js           Cliente de /api/salud (la salud del sistema y los saldos que se leen gratis) y de los avisos en el
+                          teléfono (/api/avisos/push: permiso, `pushManager.subscribe` con la llave VAPID, quitar, prueba);
+                          sólo lo carga Ajustes → Salud y avisos
+```
+En `src/components/`:
+```
+    SeccionSalud.jsx      Ajustes → «Salud y avisos» (lazy, con SeccionSalud.css): «Recibir avisos en este dispositivo» (todos;
+                          el aviso del iPhone sin instalar) y, para el administrador, la salud del sistema: cada tarea del cron,
+                          cada proveedor con su saldo y cada integración del espacio, plegadas si van bien
+```
+En `worker/lib/`:
+```
+    salud.js              Que nada falle en silencio: la cascada del cron con la salud de cada tarea (`correrCron`: un fallo se
+                          cuenta y a los 3 seguidos la tarea se salta un rato; a la media hora avisa al administrador), la salud
+                          de los proveedores apuntada en memoria donde ya se llaman (`anotar`, `seguido`) y volcada a D1 sólo al
+                          cambiar (`volcarSalud`), el aviso del saldo agotado una vez por proveedor y día, la fecha límite del
+                          cliente vencida (`limitesVencidosPendiente`), lo que enseña Ajustes → Salud (`estadoDeSalud`) y los
+                          saldos que se leen gratis (Kie, ElevenLabs)
+    push.js               Web Push sin librerías: las llaves VAPID (creadas solas en R2, `firmas/push-vapid.json`), el JWT ES256
+                          (RFC 8292), el cuerpo aes128gcm (RFC 8291), qué avisos van al teléfono y `pushDeAvisos` (lo llama
+                          `avisar()`; borra las suscripciones que contestan 404/410)
+```
+En `worker/rutas/`:
+```
+    salud.js              /api/salud (sólo el administrador): el estado del cron, los proveedores y las integraciones; /saldos
+    push.js               /api/avisos/push: la llave pública, suscribir este dispositivo, quitar y el aviso de prueba
+```
+En `worker/lib/estudio/render.js` (línea existente), añadir: «… y `barrerRendersVencidos` (el cron, cada 5 minutos)».
+En `public/sw.js` (si figura): «el ÚNICO service worker: POST /compartir y las notificaciones (push, notificationclick)».
+`tests/despliegue/infra.live.test.js` (test:infra) suma «el cron corre y ninguna tarea lleva horas fallando» (por la API de D1,
+sólo lectura; sin la tabla `salud`, no mide nada).
+Migraciones: `0080 la salud del sistema, los avisos que se dan una vez y los dispositivos con avisos (Web Push)`.
+
+### Velocidad y carga
+
+```
+publico.html              La entrada de las páginas del CLIENTE FINAL; `vite.publico.config.js` la construye en el mismo
+                          dist/ y la copia a aprobar.html, informe.html, informe-anuncios.html, ventas.html, voz.html y
+                          auditoria.html (Cloudflare contesta /aprobar con aprobar.html antes del respaldo de la SPA)
+vite.publico.config.js    El SEGUNDO build (`npm run build` hace los dos): sólo publico.html, `emptyOutDir: false`, sin public/
+src/
+  main.jsx                La entrada de la agencia: la barrera de errores del armazón y `vigilarDespliegue()`
+  publico.js              La entrada del cliente final: decide la página por la dirección ANTES de cargar nada y la
+                          descarga con React y los estilos base, todo a la vez (sin el armazón de la agencia)
+  publicoMontar.js        Monta esa página (React, index.css, la barrera de errores); sin JSX a propósito
+  components/
+    BarreraErrores.jsx    La barrera de errores: «Algo falló en esta pantalla · Volver a cargar»; en el armazón (completa),
+                          alrededor de cada pantalla (se rearma con `llave`) y del asistente, las tareas y los diálogos
+                          (flotante); un trozo que no llegó tras un despliegue recarga una vez
+  lib/
+    recargaDespliegue.js  La pantalla en blanco tras un despliegue: reconocer un trozo que no se pudo descargar, recargar
+                          UNA vez (marca en sessionStorage, 30 s) y `vite:preloadError` (puro salvo `vigilarDespliegue`)
+    fusionMes.js          Juntar lo mío con lo que otra persona guardó en el mismo mes (el 409 de la versión): por campo de
+                          cada publicación, lo del mes y cada clave de `opciones`; base, mío y suyo (puro)
+    reducida.js           La copia reducida de una imagen de R2 (`?mini=1`): la pintan el chip del mes, la cuadrícula del
+                          perfil y la página del cliente (puro, sin importaciones)
+worker/
+  lib/estudio/miniaturas.js  (sumar:) la COPIA REDUCIDA de 480 px de las imágenes de publicación (`reducidas/<clave>.jpg`):
+                          `sirveReducida` (`?mini=1`, con el permiso del original) y `crearReducida` (al subir y la
+                          primera vez que se pide, con el Container)
+```
+
+Y en las líneas que ya existen:
+- `src/lib/db.js`: «Llama a /api/*; conserva todas sus firmas; `saveCalendar` con `base` guarda con la versión leída y,
+  si otra persona guardó entremedias (409), junta y vuelve a guardar; `leerCalendario` relee UN mes».
+- `worker/rutas/datos.js`: «CRUD: clientes, calendarios (GET de un mes, el PUT con `X-Calendario-Version`), chat, tareas, banco».
+
+### Claridad, guía y Claude
+
+```
+  lib/
+    primerosPasos.js      «Primeros pasos» de un cliente: de las filas a banderas (`estadoDePrimerosPasos`, lo usa el Worker)
+                          y de las banderas a los 8 pasos con su arreglo (`pasosDelCliente`) (puro, sin importaciones)
+    glosario.js           «¿Qué es cada cosa?»: cada nombre de la aplicación con lo que hace y dónde está, y su filtro (puro)
+    completitud.js        (cambia) ahora también `hashtagsDe` (exportarContenido.js la reexporta)
+  components/
+    PrimerosPasos.jsx     La lista «Primeros pasos» bajo el resumen del cliente: plegable, desaparece al completarse, «No mostrar
+                          más» (lazy, la carga ResumenCliente; con PrimerosPasos.css)
+    Glosario.jsx          «¿Qué es cada cosa?» del menú de la cuenta: el glosario en un diálogo con buscador, en un portal (lazy)
+worker/
+  lib/
+    herramientasEquipo.js Lo del equipo por MCP: enlace_del_cliente (el enlace y el mensaje de «Enviar al cliente»), ver_avisos
+                          (la campana de quien conecta; marcar leídos), ver_bandeja y ver_informes (sólo leen)
+  rutas/
+    primerosPasos.js      GET /api/primeros-pasos/<cliente>: lo que le falta para arrancar, en cinco lecturas cortas
+tests/
+  vivo/navegador.test.js  La prueba de humo EN CHROMIUM: entrar, un cliente, el panel de una publicación y /aprobar, sin errores
+                          en la consola (Playwright: en CI lo instala el paso «Chromium para la prueba de humo»)
+```
+
+Nombres que cambian en lo que se ve (las direcciones y los ids internos NO cambian):
+
+- El asistente del mes: **«Preparar el mes»** (era «Planificar mes» en la cabecera del cliente y «Producir el mes» en la barra del
+  calendario; su diálogo, «Preparar noviembre 2026»). En la pestaña Calendario el botón de la cabecera no sale: está en la barra.
+- El lote del Estudio: **«Muchas piezas de una vez»** (era «Producir varias piezas»). La tarjeta que lo contiene sigue «Muchas de una vez».
+- **«Producción»** se queda para la cola (/produccion). El encargo de «Diseñar las aprobadas» se titula «Diseñar el mes» (sale en la campana).
+- La acción del buscador «Nuevo calendario de X» → «Preparar el mes de X (nuevo calendario, planificar, producir)».
+
+Frase para la nota de las instrucciones del servidor MCP (worker/rutas/mcp.js, junto al MÉTODO):
+
+> Para mandarle el mes al cliente, `enlace_del_cliente` da el enlace de aprobación y el mismo mensaje de «Enviar al cliente» (nunca
+> crea ni cambia el enlace); `ver_avisos` es la campana de quien conecta, `ver_bandeja` lo que espera respuesta en la Bandeja de un
+> cliente y `ver_informes` sus informes con su enlace. Responder, generar o compartir se hace en la aplicación.
+
