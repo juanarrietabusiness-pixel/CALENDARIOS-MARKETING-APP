@@ -32,7 +32,7 @@ import { difundir } from "./vivo.js";
 import { obtenerOCrearMes, ErrorMes } from "./meses.js";
 import { crearAcceso, tareasScPendientes, espaciosPorClasificar } from "./acceso.js";
 import { llamarIA, ErrorIA } from "./cerebro/ia.js";
-import { MODELO_HAIKU, sinIADeTexto, prepararIA } from "./configIA.js";
+import { sinIADeTexto, prepararIA } from "./configIA.js";
 import { traerPublicacion, ErrorCompetencia } from "./competencia.js";
 import {
   scConfigurado, buscarAnunciosSC, traerAnuncio, traerTikTok, ErrorSC, creditosDeLaSemana, guardarAjustesDeCreditos, marcarLleno,
@@ -347,8 +347,6 @@ export async function miniaturaDe(env, p) {
 // Clasificar (la IA barata, una vez por pieza)
 // ------------------------------------------------------------
 
-/** El modelo de la clasificación: Haiku sin razonar si hay llave de Anthropic; si no, el del espacio (Meta). */
-const modeloBarato = (env) => (env.ANTHROPIC_API_KEY ? MODELO_HAIKU : null);
 
 /**
  * Clasifica hasta `max` piezas sin tipo (las de `claves`, o las mejores de la semana y el mes que aún no lo tienen).
@@ -387,7 +385,7 @@ export async function clasificarPendientes(env, acceso, { claves = null, max = C
   try {
     const r = await llamarIA(env, acceso, null, {
       prompt: bloques.length ? [...bloques, { type: "text", text: texto }] : texto,
-      salida: 1500, funcion: "clasificar lo mejor", modelo: modeloBarato(env), esfuerzo: "low",
+      salida: 1500, funcion: "clasificar lo mejor", esfuerzo: "low", // el modelo, el del espacio para «análisis» (Ajustes → IA)
     });
     leido = leerClasificacion(r.texto, tanda.length);
     if (!Object.keys(leido).length) fallo = "La IA no devolvió una clasificación que se pueda leer.";

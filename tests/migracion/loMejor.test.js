@@ -196,7 +196,11 @@ describe("reunir y ordenar", () => {
 });
 
 describe("clasificar", () => {
-  it("una llamada barata (Haiku, sin razonar) que mira la miniatura y se guarda", async () => {
+  it("usa el modelo que el espacio puso para «análisis» (nunca Haiku fijo), sin razonar, mira la miniatura y se guarda", async () => {
+    // Antes iba SIEMPRE a Haiku si había llave de Anthropic: la agencia, que trabaja con Muse para no gastar la API de
+    // Claude, pagaba igual esta tarea. Ahora manda Ajustes → IA; aquí el espacio escogió Haiku para «análisis».
+    db.sqlite.prepare("insert or replace into ajustes_espacio (id, owner_id, ia_modelos) values (?,?,?)")
+      .run(DUENO, DUENO, JSON.stringify({ analisis: "haiku" }));
     respuestaIA = () => JSON.stringify({ piezas: [1, 2, 3, 4, 5, 6].map((n) => ({ n, tipo: n === 1 ? "ugc" : "otro", otro: "Lista de precios", persona: n === 1, idea: `Idea ${n}` })) });
     const r = await pedir("/api/lo-mejor/clasificar", { method: "POST", body: {} });
     expect(r.status).toBe(200);

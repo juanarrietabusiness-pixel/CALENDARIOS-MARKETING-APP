@@ -15,7 +15,7 @@
 
 import { crearAcceso, clientesConHistoriasPendientes, historiasPorRevisar, NULO } from "./acceso.js";
 import { llamarIA, ErrorIA } from "./cerebro/ia.js";
-import { MODELO_HAIKU, sinIADeTexto } from "./configIA.js";
+import { sinIADeTexto } from "./configIA.js";
 import { fechaEnZona } from "../../src/lib/agenda.js";
 import { fechasDelMes } from "../../src/lib/fechasEspeciales.js";
 import {
@@ -263,7 +263,7 @@ export async function revisarVigencias(env, acceso, clientId, { max = REVISAR_PO
   try {
     const r = await llamarIA(env, acceso, null, {
       prompt: [...bloques, { type: "text", text: pedido }], salida: 1200, funcion: "vigencia de historias",
-      modelo: env.ANTHROPIC_API_KEY ? MODELO_HAIKU : null, esfuerzo: "low",
+      esfuerzo: "low", // el modelo, el del espacio para «análisis» (Ajustes → IA): antes, Haiku fijo si había llave
     });
     leido = leerVigencia(r.texto, conImagen.length);
     if (!Object.keys(leido).length) fallo = "La IA no devolvió una revisión que se pueda leer.";

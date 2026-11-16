@@ -368,3 +368,14 @@ contradicen, manda la de más abajo (la más nueva). Una trampa nueva de esta á
   skills. Lo que pide `confirmado` se enseña antes a la persona. `editar_publicacion` acepta además `referencia` (el
   `referenceLink`, limpio con `enlaceLimpio`: lo pide «falta para enviar»). Un test exige que `initialize` nombre
   escribir_textos, ficha_de_textos y numeros_del_negocio.
+- **Por el conector, Claude PIENSA Y ESCRIBE ÉL; el calendario no piensa por él** (decisión de la agencia, 16-nov: paga la
+  membresía de Claude y no quiere gastar la API de Claude en la app; la IA de la app se queda en Muse). Las instrucciones del
+  servidor MCP (`METODO` en worker/rutas/mcp.js) y las descripciones de `ficha_de_textos` / `escribir_textos` lo dicen así:
+  · **Textos:** por defecto `ficha_de_textos` (el método: lo que el código decidió para cada pieza) y guardar con
+    `editar_publicacion`; `escribir_textos` (el motor de la app) sólo si la persona lo pide.
+  · **Estrategia del mes:** la propone Claude con lo que lee y la guarda con `estrategia_del_mes`; `proponer` sólo si se pide.
+  · **Diseño:** Claude escribe la ficha de cada pieza (`guia_de_diseno`) en `disenar_piezas`; sólo la idea (el director de
+    la app) si se pide. La revisión de calidad y la imagen siguen corriendo en la app (Muse y el motor de imagen).
+  · **Ninguna tarea va fija en Haiku:** «clasificar lo mejor» y «vigencia de historias» usaban Haiku siempre que había llave
+    de Anthropic; ahora van con el modelo del espacio para «análisis» (Ajustes → IA). Si alguien vuelve a forzar un modelo
+    en una llamada, gasta una API que la agencia decidió no usar.
