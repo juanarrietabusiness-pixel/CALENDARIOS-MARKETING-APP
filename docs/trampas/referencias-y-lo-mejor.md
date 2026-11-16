@@ -65,7 +65,7 @@ contradicen, manda la de más abajo (la más nueva). Una trampa nueva de esta á
   otras fuentes en `tambien` (`unirRepetidas`). La consulta del cron (`espaciosPorClasificar` en acceso.js) arma la clave
   con la MISMA regla en SQL: si cambia `claveDeInspiracion`, cambia también ahí.
   · **El tipo lo clasifica la IA UNA vez y se guarda** (`lo_mejor_piezas`, función «clasificar lo mejor», hueco «análisis»):
-  Haiku sin razonar si hay llave de Anthropic (`llamarIA` acepta ahora `esfuerzo`), mirando la miniatura (del CDN o de R2) y
+  sin razonar y con el modelo del espacio para «análisis» (antes, Haiku fijo si había llave de Anthropic; `llamarIA` acepta `esfuerzo`), mirando la miniatura (del CDN o de R2) y
   el texto, de 6 en 6. Los tipos NO se limitan: lo que no encaja va como «otro» con su nombre (`etiqueta`). La pantalla pide
   clasificar lo que ve sin tipo (una vez por ventana abierta) y el cron, lo de la inspiración y los anuncios. Lo que falla
   queda apuntado con su motivo (sin `clasificada_at`): el cron no lo repite cada minuto y la pantalla lo reintenta pasadas 6 h.

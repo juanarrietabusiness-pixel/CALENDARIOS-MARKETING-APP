@@ -701,7 +701,7 @@ contradicen, manda la de más abajo (la más nueva). Una trampa nueva de esta á
   publicó; un mes, una fecha, un evento (Navidad, Black Friday, la patria) o «esta semana» → hasta esa fecha (con fechas
   explícitas, la última que nombra; lo relativo acota). Lo que ya no sirve ni se prepara (`pendientesDePreparar`) ni pasa
   por la IA. «100 % algodón» no es una promoción (el % sólo cuenta con «descuento», «off» o «menos»).
-  · **La IA MIRA la historia ya dibujada** (`revisarVigencias`, Haiku sin razonar si hay llave de Anthropic, función
+  · **La IA MIRA la historia ya dibujada** (`revisarVigencias`, sin razonar y con el modelo del espacio para «análisis» —ya no Haiku fijo—, función
   «vigencia de historias», hueco «análisis»; 4 publicaciones por llamada): el texto dentro del diseño no está en ningún
   campo. Gana lo más RESTRICTIVO de reglas e IA (`combinarVigencia`). Si falla, la pieza sigue «sin revisar» (no sale) con
   `revision_error`, y el cron no la reintenta solo hasta 6 h después (`revision_intento_at`); «Revisar vigencia» sí.
