@@ -62,13 +62,22 @@ export function partirEnfasis(texto, { mayusculas = false } = {}) {
   const poner = (trozo, enfasis) => {
     for (const p of trozo.split(/\s+/).filter(Boolean)) salida.push({ texto: mayusculas ? p.toUpperCase() : p, enfasis });
   };
+  // Los signos pegados al cierre de un énfasis («*café*,», «*esperar*?») van con la palabra enfatizada: sueltos eran una
+  // «palabra» más y salía «café ,» con un espacio en medio.
+  const resto = (trozo, trasEnfasis) => {
+    const pegado = trasEnfasis && salida.length ? /^[^\s\p{L}\p{N}]+/u.exec(trozo) : null;
+    if (pegado) salida[salida.length - 1].texto += pegado[0];
+    poner(pegado ? trozo.slice(pegado[0].length) : trozo, false);
+  };
   let desde = 0;
+  let trasEnfasis = false;
   for (const m of t.matchAll(ENFASIS)) {
-    poner(t.slice(desde, m.index), false);
+    resto(t.slice(desde, m.index), trasEnfasis);
     poner(m[1], true);
     desde = m.index + m[0].length;
+    trasEnfasis = true;
   }
-  poner(t.slice(desde), false);
+  resto(t.slice(desde), trasEnfasis);
   return salida;
 }
 
