@@ -10,7 +10,7 @@
 // aplicación al abrirse (`terminarPendientes`).
 // ============================================================
 
-import { pedir } from "./db";
+import { pedir, pedirImagen } from "./db";
 import { terminadoEncargo } from "./encargos";
 import { ponerTexto } from "./loteEstudio";
 import { conLogoSiToca } from "./logoEstudio";
@@ -215,10 +215,4 @@ export const mejorarVideo = (clienteId, datos) => pedir(`/estudio/${encodeURICom
 /** Los textos de los ganchos (o lo que pasa en una entrada o un cierre nuevos), escritos por la IA. No crea nada. */
 export const textosDeGancho = (clienteId, datos) => pedir(`/estudio/${encodeURIComponent(clienteId)}/mejorar-video/textos`, post(datos));
 /** La muestra de un color: un cuadro del video con ese grade → una dirección `blob:` para un <img>. Gratis. */
-export async function muestraDeColor(clienteId, datos) {
-  const r = await fetch(`/api/estudio/${encodeURIComponent(clienteId)}/mejorar-video/muestra`, {
-    method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify(datos ?? {}),
-  });
-  if (!r.ok) throw new Error((await r.json().catch(() => null))?.error || "No se pudo sacar la muestra.");
-  return URL.createObjectURL(await r.blob());
-}
+export const muestraDeColor = (clienteId, datos) => pedirImagen(`/estudio/${encodeURIComponent(clienteId)}/mejorar-video/muestra`, datos);

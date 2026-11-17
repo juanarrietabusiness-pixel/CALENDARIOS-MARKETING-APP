@@ -66,6 +66,23 @@ export async function pedir(ruta, opciones = {}) {
   return datos;
 }
 
+/**
+ * Una IMAGEN de la API (la muestra de un color de «Mejorar mi video»): POST con JSON y la respuesta como dirección
+ * `blob:` para un <img>. Con la misma cookie y la misma pestaña que `pedir`; el error, del cuerpo.
+ */
+export async function pedirImagen(ruta, datos = {}) {
+  const res = await fetch(`/api${ruta}`, {
+    method: "POST", credentials: "same-origin", body: JSON.stringify(datos ?? {}),
+    headers: { "Content-Type": "application/json", "X-Pestana": PESTANA },
+  });
+  if (!res.ok) {
+    const e = new Error((await res.json().catch(() => null))?.error || `La petición falló con estado ${res.status}.`);
+    e.estado = res.status;
+    throw e;
+  }
+  return URL.createObjectURL(await res.blob());
+}
+
 const conCuerpo = (metodo, datos) => ({ method: metodo, body: JSON.stringify(datos) });
 
 /**
