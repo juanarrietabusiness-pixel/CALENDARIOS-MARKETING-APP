@@ -66,6 +66,7 @@ const GaleriaSelector = lazy(() => import("../GaleriaSelector"));
 // El tipo, el estilo y la plantilla de «Crear la imagen aquí»: lee el kit, va aparte.
 const OpcionesCrearAqui = lazy(() => import("./OpcionesCrearAqui"));
 const VideoListo = lazy(() => import("../VideoListo"));
+const MejorarVideo = lazy(() => import("../MejorarVideo"));
 const Recetas = lazy(() => import("../Recetas"));
 // El aviso del kit (fase 7): sin logo, o un producto que nombra sin fotos. Lee la galería del cliente: aparte.
 const AvisoKitPieza = lazy(() => import("./AvisoKitPieza"));
@@ -177,6 +178,7 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
    * Con el formato automático, dos imágenes o más lo vuelven carrusel; si no, se avisa de que el formato no cambió.
    */
   const [galeria, setGaleria] = useState(false);
+  const [mejorando, setMejorando] = useState(false);
   const ponerDeGaleria = (archivos, { reemplazar }) => {
     setGaleria(false);
     if (!archivos.length) return;
@@ -204,6 +206,18 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
       ? " Es un «" + (post.format || "post") + "»: cámbialo a carrusel arriba si quieres que salgan como láminas."
       : "";
     setEscrito(`${varias ? `Puestas ${archivos.length} piezas` : "Puesta 1 pieza"} de la galería en la publicación${varias ? ", en orden" : ""}.${aviso}`);
+  };
+  /** «Mejorar mi video»: el mejorado ocupa el sitio del video de antes (que sigue en la galería) y se apunta su uso. */
+  const ponerMejorado = (video) => {
+    if (!video) return;
+    setForm((p) => {
+      const medios = mediosDe(p);
+      const i = medios.findIndex((m) => m.tipo === "video" && String(m.src ?? "").startsWith("/api/media/"));
+      const nuevos = i >= 0 ? medios.map((m, k) => (k === i ? medioDeArchivo(video) : m)) : [...medios, medioDeArchivo(video)];
+      return { ...conMedios(p, nuevos), mediosCambiadosAt: new Date().toISOString() };
+    });
+    if (cal && post.id) apuntarUso(clientId, video.id, { calendarId: cal.dbId || cal.id, postId: post.id }).catch(() => {});
+    setEscrito("Puesto el video mejorado en la publicación (el de antes sigue en la galería).");
   };
   /** El video del reel con IA: va SOLO en la publicación (sustituye lo que hubiera) y se apunta su uso. */
   const ponerReel = ([video], opciones = {}) => {
@@ -819,6 +833,19 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
           </Suspense>
         )}
 
+        {videoSubido && clientId && (
+          <div className="pieza-mejorar">
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => setMejorando(true)}
+              title="Escalar, cambiar la luz, cambiar algo o sacar varios ángulos de la toma, con el audio original">
+              <Icon name="wand" size={14} /> Mejorar mi video
+            </button>
+          </div>
+        )}
+        {mejorando && videoSubido && clientId && (
+          <Suspense fallback={null}>
+            <MejorarVideo clienteId={clientId} archivo={{ clave: videoSubido, src: videoSubido }} cliente={client} onCerrar={() => setMejorando(false)} onPoner={ponerMejorado} />
+          </Suspense>
+        )}
         {videoSubido && clientId && (
           <Suspense fallback={null}>
             <VideoListo key={videoSubido} clienteId={clientId} clave={videoSubido} src={videoSubido} productoId={post.productoId ?? ""}

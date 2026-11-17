@@ -35,9 +35,9 @@ export const PALABRAS_POR_SEGUNDO = 2.5;
  * Seedance 2.5 por Kie (varios planos, música propia y el storyboard de referencia). Lo de más, en Flow.
  */
 export const DURACIONES_REEL = Object.freeze([
-  { segundos: 10, nombre: "10 s · Gemini Omni", modelos: ["gemini-omni-kie", "kling-3-omni-kie", "seedance-2-kie", "gemini-omni-flash"] },
+  { segundos: 10, nombre: "10 s · Gemini Omni", modelos: ["gemini-omni-1-2-kie", "gemini-omni-kie", "kling-3-omni-kie", "seedance-2-kie", "gemini-omni-flash"] },
   { segundos: 8, nombre: "8 s · Veo 3.1 Fast", modelos: ["veo-3-1-fast-kie"] },
-  { segundos: 15, nombre: "15 s · un solo video", modelos: ["seedance-2-5-kie", "kling-3-omni-kie", "seedance-2-kie"] },
+  { segundos: 15, nombre: "15 s · un solo video", modelos: ["gemini-omni-1-2-kie", "seedance-2-5-kie", "kling-3-omni-kie", "seedance-2-kie"] },
   { segundos: 20, nombre: "20 s · Seedance 2.5", modelos: ["seedance-2-5-kie"] },
   { segundos: 30, nombre: "30 s · Seedance 2.5", modelos: ["seedance-2-5-kie"] },
   // Lo más largo es para FLOW: varios clips de 10 s de Omni pegados (aquí no se crea por API).

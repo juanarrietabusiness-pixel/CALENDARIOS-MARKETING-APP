@@ -17,6 +17,7 @@ import { modeloPorId } from "./estudioCatalogo";
 
 const PREFERENCIA = Object.freeze({
   mismo: [
+    ["gemini-omni-1-2-kie", "Gemini Omni 1.2 edita el video original (hasta 15 s): conserva el escenario, la cámara y la música, y cambia sólo lo que se le pide. El más barato que edita."],
     ["gemini-omni-kie", "Gemini Omni edita el video original: conserva el escenario, la cámara y la música, y cambia sólo lo que se le pide."],
     ["gemini-omni-video-kie", "Gemini Omni en calidad alta: edita el video original conservando el escenario."],
     ["kling-3-omni-kie", "Kling 3.0 Omni sigue el video de referencia con las fotos del producto."],
@@ -29,6 +30,7 @@ const PREFERENCIA = Object.freeze({
     ["kling-3-omni-kie", "Kling 3.0 Omni hace hasta 15 s con varios planos y las fotos del producto."],
     ["seedance-2-kie", "Seedance 2.0 hace hasta 15 s con varios planos y las fotos del producto."],
     ["wan-3-kie", "Wan 3.0: 1080p con las fotos del producto de referencia."],
+    ["gemini-omni-1-2-kie", "Gemini Omni 1.2: hasta 15 s con varios planos y las fotos del producto."],
     ["gemini-omni-kie", "Gemini Omni: hasta 10 s con varios planos y las fotos del producto."],
   ],
 });

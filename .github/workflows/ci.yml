@@ -106,6 +106,8 @@ jobs:
         run: docker exec video node container/probarAudio.mjs
       - name: Los clips de video (capas «video»), dentro de la imagen
         run: docker exec video node container/probarClips.mjs
+      - name: Unir con el audio original («Mejorar mi video»), dentro de la imagen
+        run: docker exec video node container/probarUnir.mjs
       - name: Lo que dijo el contenedor
         if: always()
         run: docker logs video || true

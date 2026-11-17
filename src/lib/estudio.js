@@ -763,7 +763,7 @@ export async function archivoEnGaleria(clienteId, src) {
 /** El nombre de cada ajuste en la pantalla. */
 export const ETIQUETA_AJUSTE = Object.freeze({
   aspectRatio: "Formato", imageSize: "Tamaño", resolution: "Resolución", duration: "Duración", calidad: "Calidad", formato: "Archivo",
-  modo: "Calidad del video", sonido: "Sonido", voz: "Voz de la locución",
+  modo: "Calidad del video", sonido: "Sonido", voz: "Voz de la locución", factor: "Ampliar",
 });
 
 /** «4 s», «720p», «1K» según el ajuste. */
@@ -771,6 +771,7 @@ const VALORES = Object.freeze({
   calidad: { high: "Alta (pule en varias pasadas)", low: "Rápida" }, formato: { webp: "WebP (ligero)", png: "PNG", jpeg: "JPEG" },
   modo: { std: "Estándar (720p)", pro: "Pro (1080p)", "4K": "4K" }, sonido: { si: "Con sonido", no: "Sin sonido" },
   voz: { "": "La que escoja el modelo", ...VOCES_OMNI },
+  factor: { 1: "Igual (sólo limpiar)", 2: "× 2", 4: "× 4" },
 });
 
 export function valorDeAjuste(nombre, valor) {

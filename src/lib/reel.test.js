@@ -46,13 +46,13 @@ describe("el reel con IA: el guion por planos", () => {
   });
 
   it("el video: Omni por Kie primero; con referencias va el storyboard, si no, el primer fotograma de inicio", () => {
-    expect(modeloRecomendadoParaReel({ kie: true, gemini: true }).id).toBe("gemini-omni-kie");
+    expect(modeloRecomendadoParaReel({ kie: true, gemini: true }).id).toBe("gemini-omni-1-2-kie");
     // La lista va del más barato al más caro (por pieza), la prueba al final.
     const lista = modelosParaReel({ kie: true, gemini: true });
     const costos = lista.filter((m) => m.motor !== "prueba").map(costoDePieza);
     expect(costos).toEqual([...costos].sort((a, b) => a - b));
     expect(lista.at(-1).motor).toBe("prueba");
-    expect(modeloParaTramo({ kie: true }).id).toBe("gemini-omni-kie");
+    expect(modeloParaTramo({ kie: true }).id).toBe("gemini-omni-1-2-kie");
     expect(modeloParaTramo({ gemini: true })).toBeNull();
     const fotogramas = Array.from({ length: 8 }, (_, i) => ({ clave: `clientes/c1/f${i}.png` }));
     const planos = [{ desde: 0, hasta: 5, escena: "a" }, { desde: 5, hasta: 10, escena: "b" }];

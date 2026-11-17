@@ -65,8 +65,9 @@ describe("recrear un anuncio", () => {
     // Sin Kie no hay nada que sirva: nunca propone un modelo sin llave.
     expect(motorParaRecrear({ higgsfield: false }, { modo: "mismo" })).toBeNull();
     const mismo = motorParaRecrear({ kie: true }, { modo: "mismo", segundos: 25 });
-    expect(mismo.modelo.id).toBe("gemini-omni-kie");
-    expect(mismo.segundos).toBe(10);
+    // Omni 1.2 primero: edita hasta 15 s y cuesta menos que el 1.1.
+    expect(mismo.modelo.id).toBe("gemini-omni-1-2-kie");
+    expect(mismo.segundos).toBe(15);
     expect(mismo.porque).toMatch(/conserva el escenario/);
     const largo = motorParaRecrear({ kie: true }, { modo: "version", segundos: 22 });
     expect(largo.modelo.id).toBe("seedance-2-5-kie");

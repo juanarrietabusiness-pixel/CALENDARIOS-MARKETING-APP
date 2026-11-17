@@ -466,9 +466,12 @@ export function crearHerramientasDiseno({ env, acceso, resolverCliente, usuario,
       const vivo = e.estado === "en_marcha";
       const listas = [...new Set(e.pasos.flatMap(finalesDe))].map((x) => porId.get(x)).filter((f) => f && String(f.mime ?? "").startsWith("image/"));
       const textoEstado = [
-        `Encargo ${e.id} (${e.tipo === "carrusel" ? "carrusel" : "piezas"}): ${vivo ? "en marcha" : e.estado === "hecho" ? "terminado" : e.estado}. ${e.nota ?? ""}`.trim(),
+        `Encargo ${e.id} (${e.tipo === "carrusel" ? "carrusel" : e.tipo === "mejora" ? "mejorar un video" : "piezas"}): ${vivo ? "en marcha" : e.estado === "hecho" ? "terminado" : e.estado}. ${e.nota ?? ""}`.trim(),
         e.error ? `Motivo: ${e.error}` : "",
         ...lineas,
+        // «Mejorar mi video»: el video FINAL es el que lleva el audio original (versión del original en la galería).
+        e.mejora?.union?.archivoId ? `El video FINAL, con el audio original: archivo ${e.mejora.union.archivoId} (versión del ${e.mejora.archivoId}). Ponlo con poner_en_publicacion si la persona lo pide.` : "",
+        e.mejora?.union?.fase === "fallido" ? `Sin el audio original: ${e.mejora.union.error}` : "",
         imagenes.length ? `Van ${imagenes.length === 1 ? "la imagen lista" : `las ${imagenes.length} imágenes listas`}, en el orden de arriba: MÍRALAS antes de darlas por buenas.` : "",
         ...(e.puestos ?? []).map((x) => (x.aviso ? `No se pudo poner en la publicación ${x.postId}: ${x.aviso}` : `Puesto solo en la publicación ${x.postId} (${x.archivos.length} archivo${x.archivos.length === 1 ? "" : "s"}).`)),
         listas.length > MAX_PIEZAS_VISTAS ? `Hay ${listas.length - MAX_PIEZAS_VISTAS} más: míralas con ver_pieza.` : "",

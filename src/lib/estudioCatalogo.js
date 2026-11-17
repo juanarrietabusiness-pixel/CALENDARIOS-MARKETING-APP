@@ -422,6 +422,29 @@ export const MODELOS = Object.freeze([
     },
   },
   {
+    // Omni 1.2 (noviembre de 2026): hasta 15 s, edita un video de hasta 15 s y cuesta casi la mitad que el 1.1. Los
+    // campos y los precios salen de la página de Kie leída por búsqueda (no del extracto de la agencia): sin probar.
+    id: "gemini-omni-1-2-kie", motor: "kie", tipo: "video", nombre: "Gemini Omni Flash 1.2 (Kie) · hasta 15 s", cola: true,
+    creador: "Google", calidad: 4, velocidad: "normal", costo: 0.045, por: "s", referencias: 6, inicial: 1, final: 1, video: 1, estimado: true,
+    costoSegun: { ajuste: "resolution", valores: { "360p": 0.02, "720p": 0.045, "1080p": 0.05, "4k": 0.11 } },
+    nota: "El Omni más nuevo por Kie.ai: de 3 a 15 s con sonido; hasta 6 imágenes de referencia, o imagen inicial y final, o un video de hasta 15 s para EDITARLO (cambiar la luz, el estilo o algo de la escena). Más barato que el 1.1. Precio aproximado; sin probar todavía contra Kie.",
+    para: ["reels de 15 s", "editar un video", "storyboard"],
+    ajustes: {
+      aspectRatio: enumerado(["9:16", "16:9"], "9:16"), duration: enumerado(["4", "5", "6", "8", "10", "12", "15"], "10"),
+      resolution: enumerado(["720p", "1080p", "4k", "360p"], "720p"),
+    },
+  },
+  {
+    // Topaz por Kie: amplía y limpia un video ya hecho (cualquier duración, hasta 50 MB). Se cobra por lo que dura el
+    // video; Kie no publicó el precio en lo que tenemos: el de aquí es una suposición por lo alto.
+    id: "topaz-video-kie", motor: "kie", tipo: "video", nombre: "Topaz · ampliar y limpiar un video (Kie)", cola: true, necesitaVideo: true,
+    creador: "Topaz Labs", calidad: 4, velocidad: "lento", costo: 0.06, por: "s", segundos: 15, referencias: 0, inicial: 0, final: 0, video: 1, estimado: true,
+    costoSegun: { ajuste: "factor", valores: { 1: 0.06, 2: 0.06, 4: 0.12 } },
+    nota: "Amplía y limpia TU video (×2 o ×4) sin inventar nada: el mismo video, más nítido. Hasta 50 MB (MP4 o MOV). Se cobra por lo que dura el video: el precio supone 15 s. Precio aproximado; sin probar todavía contra Kie.",
+    para: ["mejorar un video", "más nitidez", "escalar"],
+    ajustes: { factor: enumerado(["2", "4", "1"], "2") },
+  },
+  {
     id: "kling-3-kie", motor: "kie", tipo: "video", nombre: "Kling 3.0 (Kie)", cola: true,
     creador: "Kling (Kuaishou)", calidad: 4, velocidad: "normal", costo: 0.07, por: "s", referencias: 0, inicial: 1, final: 1, estimado: true,
     costoSegun: { ajuste: "modo", valores: { std: 0.07, pro: 0.1, "4K": 0.2 } },

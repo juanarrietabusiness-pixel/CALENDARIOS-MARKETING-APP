@@ -62,6 +62,7 @@ import { textoDeLasQueEncajan } from "../../../src/lib/bibliotecaSonido.js";
 import { DURACION_MUSICA } from "../../../src/lib/musica.js";
 import { MODELOS_VOZ } from "../../../src/lib/voces.js";
 import { DEFINICIONES_VIDEO, crearHerramientasVideo } from "./herramientasVideo.js";
+import { LOOKS, ANGULOS } from "../../../src/lib/mejoraVideo.js";
 import { miniaturasDe, MAX_PIEZAS_VISTAS } from "./miniaturas.js";
 import { vistaDeTrabajo } from "./vistaTrabajo.js";
 import { audioDeMuestra, lineasDeMedios } from "./vistaMedios.js";
@@ -240,6 +241,34 @@ export const DEFINICIONES_ESTUDIO = Object.freeze([
         video_id: { type: "string", description: "ID de un proyecto de video animado (opcional): la música queda puesta en él." },
         confirmado: { type: "boolean", description: "Sólo tras oír «sí» del usuario a la cifra exacta que le dijiste." },
       },
+    },
+  },
+  {
+    name: "mejorar_video",
+    description:
+      "MEJORA un video que ya está en la galería del cliente (grabado por la persona o hecho con IA) y SIEMPRE conserva su AUDIO ORIGINAL: " +
+      "modo «escalar» (Topaz: el mismo video ×2 o ×4 y más limpio; cualquier duración, hasta 50 MB), «look» (cambia sólo la luz y el color " +
+      "con uno de los looks de la agencia: " + LOOKS.map((l) => `${l.id} = ${l.nombre}`).join(", ") + "), «cambiar» (una instrucción libre y, " +
+      "si hace falta, hasta 3 fotos de referencia de la galería: el producto exacto) o «angulos» (de 3 a 5 cámaras nuevas de la MISMA toma, " +
+      "montadas solas saltando de cámara con el audio original; ids: " + ANGULOS.map((a) => `${a.id} = ${a.nombre}`).join(", ") + "; si alguien " +
+      "habla a cámara, la boca no coincidirá en los ángulos nuevos: avísalo). Look, cambiar y ángulos: hasta 15 s con Gemini Omni 1.2 y de 15 a " +
+      "30 s con Seedance 2.5. SIEMPRE cuesta y SIEMPRE se confirma: la primera llamada NO crea nada y devuelve el costo y lo que se hará; " +
+      "díselo a la persona y sólo con su «sí» repite la MISMA llamada con confirmado=true. Se hace en el servidor (unos minutos): mira cómo va " +
+      "con estado_encargo; el resultado queda en la galería como versión del video original.",
+    input_schema: {
+      type: "object",
+      properties: {
+        ...clienteParam,
+        archivo_id: { type: "string", description: "ID del VIDEO en la galería (de ver_estudio o estado_encargo)." },
+        modo: { type: "string", enum: ["escalar", "look", "cambiar", "angulos"] },
+        look: { type: "string", enum: LOOKS.map((l) => l.id), description: "Sólo con modo=look." },
+        instruccion: { type: "string", description: "Sólo con modo=cambiar: qué cambia (≤ 600)." },
+        referencias: { type: "array", items: { type: "string" }, description: "Sólo con modo=cambiar: IDs de fotos de la galería (hasta 3)." },
+        angulos: { type: "array", items: { type: "string", enum: ANGULOS.map((a) => a.id) }, description: "Sólo con modo=angulos: de 3 a 5." },
+        factor: { type: "string", enum: ["2", "4", "1"], description: "Sólo con modo=escalar: cuánto ampliar (2 por defecto; 1 = sólo limpiar)." },
+        confirmado: { type: "boolean", description: "Sólo tras oír «sí» del usuario a la cifra exacta que le dijiste." },
+      },
+      required: ["archivo_id", "modo"],
     },
   },
   // El video animado: crear, ver, editar y aprobar el guion (worker/lib/estudio/herramientasVideo.js).
@@ -816,6 +845,31 @@ export function crearHerramientasEstudio({ env, acceso, resolverCliente, usuario
           }
           throw new ErrorHerramientaEstudio(e.message);
         }
+        throw e;
+      }
+    },
+    async mejorar_video({ cliente, archivo_id: archivoId, modo, look, instruccion, referencias, angulos, factor, confirmado }) {
+      const c = await resolverCliente(cliente);
+      // En el momento: mejoraVideo.js y encargos.js, estáticos, cerrarían el ciclo con herramientas.js.
+      const { crearMejora } = await import("./mejoraVideo.js");
+      const { crearEncargo } = await import("./encargos.js");
+      try {
+        const fila = await crearMejora(env, acceso, c, {
+          archivoId, modo, look, instruccion, referencias, angulos, factor, confirmado: confirmado === true,
+          origen: origen === "asistente" ? "asistente" : "claude",
+        }, { usuario, crearEncargo });
+        return [
+          `Pedido: encargo ${fila.id} («${fila.titulo}»). Se hace en el servidor y tarda unos minutos; al final se une con el audio original.`,
+          `Mira cómo va con estado_encargo y el ID ${fila.id}. El video final queda en la galería como versión del original.`,
+        ].join("\n");
+      } catch (e) {
+        if (e instanceof ErrorEstudio && e.codigo === "confirmar") {
+          return [
+            `NO SE CREÓ NADA. ${e.resumen ?? e.message}`, e.aviso ?? "",
+            "Díselo al usuario con esa cifra y pregúntale si lo hago. Sólo si responde que sí, vuelve a llamar con los MISMOS datos y confirmado=true.",
+          ].filter(Boolean).join("\n");
+        }
+        if (e instanceof ErrorEstudio) throw new ErrorHerramientaEstudio(e.message);
         throw e;
       }
     },

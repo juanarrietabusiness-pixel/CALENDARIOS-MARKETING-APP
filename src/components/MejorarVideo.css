@@ -1,0 +1,30 @@
+/* «Mejorar mi video» (lazy, con su componente). */
+.mejorar-video { max-width: 640px; display: flex; flex-direction: column; gap: var(--sp-3); max-height: min(92dvh, 900px); overflow-y: auto; }
+.mejorar-video-cabecera { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); }
+.mejorar-video-cabecera h3 { margin: 0; }
+.mejorar-video-vista { width: 100%; max-height: 38dvh; border-radius: var(--radius-sm); background: var(--surface-3); object-fit: contain; }
+.mejorar-video-modos, .mejorar-video-rejilla, .mejorar-video-opciones { border: none; margin: 0; padding: 0; display: grid; gap: var(--sp-2); }
+.mejorar-video-modos { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+.mejorar-video-rejilla { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+.mejorar-video-modos legend, .mejorar-video-rejilla legend, .mejorar-video-opciones legend { margin-bottom: var(--sp-1); }
+.mejorar-video-modo, .mejorar-video-ficha {
+  display: flex; align-items: flex-start; gap: var(--sp-2); min-height: var(--tap); padding: var(--sp-2);
+  border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); cursor: pointer;
+}
+.mejorar-video-modo span, .mejorar-video-ficha span { display: flex; flex-direction: column; gap: 2px; min-width: 0; font-size: var(--fs-sm); }
+.mejorar-video-modo small, .mejorar-video-ficha small { color: var(--text-muted); font-size: var(--fs-3xs); line-height: 1.35; }
+.mejorar-video-modo[data-elegido], .mejorar-video-ficha[data-elegido] { background: var(--accent-soft); border-color: var(--accent-line); }
+.mejorar-video-modo input, .mejorar-video-ficha input { margin-top: 3px; }
+.mejorar-video-opciones label { display: flex; align-items: center; gap: var(--sp-2); min-height: var(--tap-sm); font-size: var(--fs-sm); }
+.mejorar-video-fotos { display: flex; flex-direction: column; gap: var(--sp-2); align-items: flex-start; }
+.mejorar-video-chips { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.mejorar-video-chips li { position: relative; }
+.mejorar-video-chips img { width: 64px; height: 64px; object-fit: cover; border-radius: var(--radius-sm); display: block; }
+.mejorar-video-chips .btn-icon { position: absolute; top: -8px; right: -8px; background: var(--surface-3); }
+.mejorar-video-costo {
+  display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-3);
+  border: 1px solid var(--accent-line); border-radius: var(--radius-sm); background: var(--accent-soft);
+}
+.mejorar-video-botones { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.mejorar-video-progreso { display: flex; flex-direction: column; gap: var(--sp-3); }
+.mejorar-video-progreso ul { margin: var(--sp-2) 0 0; padding-left: var(--sp-4); font-size: var(--fs-sm); display: grid; gap: 2px; }

@@ -21,7 +21,7 @@ export const DURACIONES_OBJETIVO = Object.freeze([8, 10, 15, 20, 30, 45, 60]);
 export const DURACION_REEL_POR_DEFECTO = 10;
 
 /** El orden en que se prefiere cada modelo para UN video (los mejores para un reel con storyboard, primero). */
-const PREFERIDOS_UNO = ["gemini-omni-kie", "kling-3-omni-kie", "seedance-2-5-kie", "seedance-2-kie", "minimax-h3-kie", "gemini-omni-flash", "veo-3-1-fast-kie", "kling-3-kie", "wan-3-kie"];
+const PREFERIDOS_UNO = ["gemini-omni-1-2-kie", "gemini-omni-kie", "kling-3-omni-kie", "seedance-2-5-kie", "seedance-2-kie", "minimax-h3-kie", "gemini-omni-flash", "veo-3-1-fast-kie", "kling-3-kie", "wan-3-kie"];
 /** Y para los clips (animar UNA imagen bien y barato): Veo 3.1 Lite primero (ver reelPedidos.js). */
 const PREFERIDOS_CLIPS = PREFERIDOS_CLIPS_REEL;
 /**
