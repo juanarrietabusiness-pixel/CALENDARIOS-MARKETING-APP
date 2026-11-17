@@ -293,6 +293,24 @@ export const DEFINICIONES_ESTUDIO = Object.freeze([
 export const NOMBRES_ESTUDIO = new Set(DEFINICIONES_ESTUDIO.map((d) => d.name));
 
 /**
+ * Una lista que puede llegar como lista o ESCRITA como texto: un cliente de MCP con el esquema de antes (que aún no conoce
+ * el campo) la manda como «["a","b"]». Un texto suelto, una lista de uno. Pura.
+ */
+export function listaDeArgumento(v) {
+  if (Array.isArray(v)) return v;
+  if (typeof v !== "string" || !v.trim()) return [];
+  try { const x = JSON.parse(v); if (Array.isArray(x)) return x; } catch { /* no es JSON: un texto suelto */ }
+  return [v];
+}
+
+/** Un objeto que puede llegar como objeto o escrito como texto («{"desde":8}»). Pura. */
+export function objetoDeArgumento(v) {
+  if (v && typeof v === "object" && !Array.isArray(v)) return v;
+  if (typeof v !== "string") return null;
+  try { const x = JSON.parse(v); return x && typeof x === "object" && !Array.isArray(x) ? x : null; } catch { return null; }
+}
+
+/**
  * La receta «Video del producto» (src/lib/videoProducto.js) dicha a la IA: la misma que sigue el botón de la pantalla, así
  * pedirla en el chat o por Claude da lo mismo. Salió de una prueba que funcionó: la caja y el logo salen perfectos porque
  * NO los dibuja el modelo de video.
@@ -870,8 +888,8 @@ export function crearHerramientasEstudio({ env, acceso, resolverCliente, usuario
       const { crearEncargo } = await import("./encargos.js");
       try {
         const fila = await crearMejora(env, acceso, c, {
-          archivoId, modo, look, instruccion, referencias, angulos, factor, confirmado: confirmado === true,
-          color, textos: Array.isArray(textos) ? textos : [], momento, saltar, segundos, hacia, idea,
+          archivoId, modo, look, instruccion, referencias: listaDeArgumento(referencias), angulos: listaDeArgumento(angulos), factor, confirmado: confirmado === true,
+          color, textos: listaDeArgumento(textos), momento: objetoDeArgumento(momento), saltar, segundos, hacia, idea,
           origen: origen === "asistente" ? "asistente" : "claude",
         }, { usuario, crearEncargo });
         return [
