@@ -71,7 +71,8 @@ describe("recrear un anuncio", () => {
     expect(mismo.porque).toMatch(/conserva el escenario/);
     const largo = motorParaRecrear({ kie: true }, { modo: "version", segundos: 22 });
     expect(largo.modelo.id).toBe("seedance-2-5-kie");
-    expect(largo.segundos).toBe(30);
+    // Seedance 2.5 admite más duraciones: 22 s exactos, sin pagar 30.
+    expect(largo.segundos).toBe(22);
     expect(duracionAdmitida(modeloPorId("seedance-2-5-kie"), 13)).toBe(15);
   });
 });

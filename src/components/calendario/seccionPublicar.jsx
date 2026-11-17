@@ -67,6 +67,7 @@ const GaleriaSelector = lazy(() => import("../GaleriaSelector"));
 const OpcionesCrearAqui = lazy(() => import("./OpcionesCrearAqui"));
 const VideoListo = lazy(() => import("../VideoListo"));
 const MejorarVideo = lazy(() => import("../MejorarVideo"));
+const NuevosGanchos = lazy(() => import("../NuevosGanchos"));
 const Recetas = lazy(() => import("../Recetas"));
 // El aviso del kit (fase 7): sin logo, o un producto que nombra sin fotos. Lee la galería del cliente: aparte.
 const AvisoKitPieza = lazy(() => import("./AvisoKitPieza"));
@@ -179,6 +180,7 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
    */
   const [galeria, setGaleria] = useState(false);
   const [mejorando, setMejorando] = useState(false);
+  const [ganchos, setGanchos] = useState(false);
   const ponerDeGaleria = (archivos, { reemplazar }) => {
     setGaleria(false);
     if (!archivos.length) return;
@@ -839,7 +841,16 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
               title="Escalar, cambiar la luz, cambiar algo o sacar varios ángulos de la toma, con el audio original">
               <Icon name="wand" size={14} /> Mejorar mi video
             </button>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => setGanchos(true)}
+              title="Varias versiones de la entrada del anuncio, para probarlas en el mismo conjunto de Meta">
+              <Icon name="sparkles" size={14} /> Nuevos ganchos
+            </button>
           </div>
+        )}
+        {ganchos && videoSubido && clientId && (
+          <Suspense fallback={null}>
+            <NuevosGanchos clienteId={clientId} archivo={{ clave: videoSubido, src: videoSubido }} cliente={client} onCerrar={() => setGanchos(false)} onPoner={ponerMejorado} />
+          </Suspense>
         )}
         {mejorando && videoSubido && clientId && (
           <Suspense fallback={null}>

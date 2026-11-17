@@ -2,9 +2,10 @@ import "./MejorarVideo.css";
 import { Suspense, lazy, useEffect, useId, useRef, useState } from "react";
 import Icon from "./Icon";
 import { useDialogA11y } from "../hooks/useDialogA11y";
-import { mejorarVideo, seguirEncargo } from "../lib/encargosApi";
+import { mejorarVideo, seguirEncargo, muestraDeColor } from "../lib/encargosApi";
 import { textoDePaso } from "../lib/encargos";
-import { LOOKS, ANGULOS, NOMBRE_MODO, MIN_ANGULOS, MAX_ANGULOS, MAX_REFERENCIAS_MEJORA, textoDeMejora } from "../lib/mejoraVideo";
+import { LOOKS, ANGULOS, NOMBRE_MODO, MODOS_DE_MEJORAR, MIN_ANGULOS, MAX_ANGULOS, MAX_REFERENCIAS_MEJORA, ALARGAR, textoDeMejora } from "../lib/mejoraVideo";
+import { COLORES } from "../lib/coloresVideo";
 
 const GaleriaSelector = lazy(() => import("./GaleriaSelector"));
 const PonerEnPublicacion = lazy(() => import("./PonerEnPublicacion"));
@@ -18,6 +19,8 @@ const PonerEnPublicacion = lazy(() => import("./PonerEnPublicacion"));
 // ============================================================
 
 const DESCRIPCION = {
+  color: "Cambia el color con un grade, sin IA: gratis, no toca la escena y vale para cualquier duración.",
+  alargar: "Unos segundos más al final (o al principio) que siguen la misma escena. Para que llegue a la duración que necesitas.",
   escalar: "El mismo video, ampliado y más nítido (Topaz). Cualquier duración, hasta 50 MB.",
   look: "Sólo cambia la luz y el color, con uno de nuestros looks. Hasta 30 s.",
   cambiar: "Cambia algo de la escena con tus palabras (y, si quieres, una foto del producto). Hasta 30 s.",
@@ -34,7 +37,12 @@ const DESCRIPCION = {
 export default function MejorarVideo({ clienteId, archivo, cliente = null, onCerrar, onPoner = null, onListo = null }) {
   const ref = useDialogA11y(onCerrar);
   const id = useId();
-  const [modo, setModo] = useState("look");
+  const [modo, setModo] = useState("color");
+  const [color, setColor] = useState(COLORES[0].id);
+  const [muestras, setMuestras] = useState({});
+  const [segundos, setSegundos] = useState(6);
+  const [hacia, setHacia] = useState("final");
+  const [idea, setIdea] = useState("");
   const [factor, setFactor] = useState("2");
   const [look, setLook] = useState(LOOKS[0].id);
   const [instruccion, setInstruccion] = useState("");
@@ -50,10 +58,33 @@ export default function MejorarVideo({ clienteId, archivo, cliente = null, onCer
   const [puesto, setPuesto] = useState(false);
   const vivo = useRef(true);
   useEffect(() => () => { vivo.current = false; }, []);
+  // Las muestras de color: un cuadro del video con cada grade (gratis, por el Container), una vez, al abrir «Color».
+  // Sin `muestras` en las dependencias: guardar la primera volvía a correr el efecto y su limpieza cortaba las demás.
+  const pedidas = useRef(false);
+  useEffect(() => {
+    if (modo !== "color" || !clienteId || pedidas.current) return;
+    pedidas.current = true;
+    const base = archivo?.id ? { archivoId: archivo.id } : { clave: archivo?.clave ?? archivo?.src ?? "" };
+    let sigue = true;
+    (async () => {
+      for (const c of [{ id: "" }, ...COLORES]) {
+        try {
+          const url = await muestraDeColor(clienteId, { ...base, color: c.id });
+          if (!sigue) return;
+          setMuestras((m) => ({ ...m, [c.id || "original"]: url }));
+        } catch {
+          if (sigue) setMuestras((m) => ({ ...m, error: true }));
+          return;
+        }
+      }
+    })();
+    return () => { sigue = false; pedidas.current = false; };
+  }, [modo, clienteId, archivo]);
 
   const cuerpo = () => ({
     ...(archivo?.id ? { archivoId: archivo.id } : { clave: archivo?.clave ?? archivo?.src ?? "" }),
     modo, factor, look, instruccion, angulos, referencias: fotos.map((f) => f.id), seguido: true,
+    color, segundos, hacia, idea,
   });
   // Cambiar lo escogido deja el costo de antes sin valor.
   const cambiar = (fn) => (...args) => { setCosto(null); setError(""); fn(...args); };
@@ -63,9 +94,9 @@ export default function MejorarVideo({ clienteId, archivo, cliente = null, onCer
     setOcupado(true);
     setError("");
     try {
-      // Sin `confirmado`, el servidor nunca crea nada: contesta 409 con el costo.
-      await mejorarVideo(clienteId, cuerpo());
-      setError("El servidor no pidió confirmar: vuelve a intentarlo.");
+      // Sin `confirmado`, el servidor nunca crea nada que cueste: contesta 409 con el costo. Lo gratis (el color) se hace ya.
+      const r = await mejorarVideo(clienteId, cuerpo());
+      if (r?.encargo) { setOcupado(false); return seguir(r.encargo); }
     } catch (e) {
       if (e?.estado === 409 && e.datos?.codigo === "confirmar") setCosto({ costo: e.datos.costo, resumen: e.datos.resumen ?? e.message, aviso: e.datos.aviso ?? null });
       else setError(e.message);
@@ -79,13 +110,24 @@ export default function MejorarVideo({ clienteId, archivo, cliente = null, onCer
     setError("");
     try {
       const r = await mejorarVideo(clienteId, { ...cuerpo(), confirmado: true });
-      setEncargo(r.encargo);
+      await seguir(r.encargo);
+    } catch (e) {
+      if (vivo.current) setError(e.message);
+    }
+    if (vivo.current) setOcupado(false);
+  };
+
+  /** Sigue el encargo hasta que termina y enseña el resultado. */
+  async function seguir(e0) {
+    setOcupado(true);
+    try {
+      setEncargo(e0);
       const fin = await seguirEncargo({
-        clienteId, id: r.encargo.id, seguir: () => vivo.current,
+        clienteId, id: e0.id, seguir: () => vivo.current,
         alCambio: (e, archivos) => {
           if (!vivo.current) return;
           setEncargo(e);
-          const nuevo = e.mejora?.union?.archivoId ? archivos.get(e.mejora.union.archivoId) : null;
+          const nuevo = e.mejora?.union?.archivoIds?.length ? archivos.get(e.mejora.union.archivoIds[0]) : null;
           const delModelo = e.pasos.map((p) => archivos.get(p.opciones?.[0]?.id)).find(Boolean);
           if (e.estado !== "en_marcha") setResultado(nuevo ?? delModelo ?? null);
         },
@@ -95,7 +137,7 @@ export default function MejorarVideo({ clienteId, archivo, cliente = null, onCer
       if (vivo.current) setError(e.message);
     }
     if (vivo.current) setOcupado(false);
-  };
+  }
 
   const elegirFotos = (lista) => {
     setEligiendo(false);
@@ -125,13 +167,48 @@ export default function MejorarVideo({ clienteId, archivo, cliente = null, onCer
             {archivo?.src && <video className="mejorar-video-vista" src={archivo.src} muted playsInline controls preload="metadata" aria-label="El video que se mejora" />}
             <fieldset className="mejorar-video-modos">
               <legend className="label">¿Qué quieres hacer?</legend>
-              {Object.keys(NOMBRE_MODO).map((m) => (
+              {MODOS_DE_MEJORAR.map((m) => (
                 <label key={m} className="mejorar-video-modo" data-elegido={modo === m || undefined}>
                   <input type="radio" name={`${id}-modo`} value={m} checked={modo === m} onChange={cambiar(() => setModo(m))} />
                   <span><strong>{NOMBRE_MODO[m]}</strong><small>{DESCRIPCION[m]}</small></span>
                 </label>
               ))}
             </fieldset>
+
+            {modo === "color" && (
+              <fieldset className="mejorar-video-colores">
+                <legend className="label">El color</legend>
+                {muestras.error && <p className="hint" style={{ margin: 0, gridColumn: "1 / -1" }}>No se pudieron sacar las muestras; el color se aplica igual.</p>}
+                {COLORES.map((c) => (
+                  <label key={c.id} className="mejorar-video-color" data-elegido={color === c.id || undefined}>
+                    <input type="radio" name={`${id}-color`} checked={color === c.id} onChange={cambiar(() => setColor(c.id))} className="sr-only" />
+                    {muestras[c.id] ? <img src={muestras[c.id]} alt="" /> : <span className="mejorar-video-color-vacio" aria-hidden="true" />}
+                    <strong>{c.nombre}</strong>
+                    <small>{c.texto}</small>
+                  </label>
+                ))}
+              </fieldset>
+            )}
+
+            {modo === "alargar" && (
+              <>
+                <fieldset className="mejorar-video-opciones">
+                  <legend className="label">Cuánto más</legend>
+                  {ALARGAR.map((s) => (
+                    <label key={s}><input type="radio" name={`${id}-s`} checked={segundos === s} onChange={cambiar(() => setSegundos(s))} /> {s} s</label>
+                  ))}
+                </fieldset>
+                <fieldset className="mejorar-video-opciones">
+                  <legend className="label">Dónde</legend>
+                  <label><input type="radio" name={`${id}-h`} checked={hacia === "final"} onChange={cambiar(() => setHacia("final"))} /> Al final (sigue desde el último cuadro)</label>
+                  <label><input type="radio" name={`${id}-h`} checked={hacia === "inicio"} onChange={cambiar(() => setHacia("inicio"))} /> Al principio (termina en el primer cuadro)</label>
+                </fieldset>
+                <div className="field">
+                  <label className="label" htmlFor={`${id}-idea`}>Qué pasa en lo nuevo (opcional)</label>
+                  <input id={`${id}-idea`} className="input" maxLength={500} value={idea} onChange={(e) => cambiar(setIdea)(e.target.value)} placeholder="Ej.: la cámara se aleja despacio y se ve toda la habitación" />
+                </div>
+              </>
+            )}
 
             {modo === "escalar" && (
               <fieldset className="mejorar-video-opciones">
@@ -203,7 +280,7 @@ export default function MejorarVideo({ clienteId, archivo, cliente = null, onCer
             ) : (
               <div className="mejorar-video-botones">
                 <button type="button" className="btn btn-primary" onClick={pedirCosto} disabled={ocupado || !puedePedir} aria-busy={ocupado || undefined}>
-                  <Icon name="sparkles" size={16} /> {ocupado ? "Calculando…" : "Ver cuánto cuesta"}
+                  <Icon name="sparkles" size={16} /> {modo === "color" ? (ocupado ? "Poniendo el color…" : "Poner el color (gratis)") : ocupado ? "Calculando…" : "Ver cuánto cuesta"}
                 </button>
                 <button type="button" className="btn btn-ghost" onClick={onCerrar}>Cancelar</button>
               </div>

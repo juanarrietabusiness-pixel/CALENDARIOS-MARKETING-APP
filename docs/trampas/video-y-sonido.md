@@ -927,3 +927,27 @@ contradicen, manda la de más abajo (la más nueva). Una trampa nueva de esta á
   se ha probado contra Kie** (la unión sí, con ffmpeg: `probarUnir.mjs`); el precio de Topaz es una suposición por lo alto.
   · **La primera prueba real (17-11-2026) falló al crear la tarea**: en Omni 1.2 `video_list` es una LISTA DE DIRECCIONES
   (`["https://…"]`), no `[{ url, start, ends }]` como en el extracto del 1.1. Corregido; el 1.1 sigue con objetos (sin probar).
+- **Color, ganchos, entrada y cierre con IA, alargar y plantillas de movimiento gráfico** (17-11-2026; `src/lib/
+  mejoraVideo.js`, `coloresVideo.js`, `plantillasVideo.js`, `container/unir.mjs`, `NuevosGanchos.jsx`,
+  `CrearConPlantilla.jsx`). Cosas que no se ven:
+  · **La unión trabaja por VERSIONES** (`union.versiones`): cada una es un video de la galería, versión del original.
+  Un tramo es un trozo de UN clip con SU audio (`audio: { fuente, desde }`; por defecto el del original en ese segundo, que
+  es lo que necesitan los ángulos). Lo de antes (`union.tramos`) se lee como una versión (`versionesDe`).
+  · **Lo gratis no pregunta y no necesita Kie**: el color y los ganchos con el momento fuerte no tienen pasos (el encargo
+  se juzga por su unión: `listos` admite una mejora sin pasos). Las muestras de color salen del Container de los cuadros.
+  · **Entrada, cierre y alargar parten de un FOTOGRAMA del original** (`fotograma:<s>` en el plan; `crearMejora` lo saca
+  con `/fotograma` y lo deja en la galería con `ajustes.fotogramaDe`). Sin Container, 503 antes de cobrar nada. La entrada
+  nueva lleva sólo la imagen FINAL: `seedance-2-5-kie` tiene `soloFinal` (`validarPedido` lo admite). **Sin probar contra
+  Kie** si Seedance 2.5 acepta `last_frame_url` sin `first_frame_url`: si no, el error lo dirá al pedir.
+  · Seedance 2.5 admite ahora más duraciones (18, 22, 25, 28, 4…): un video de 21 s ya no paga 30.
+  · **Los textos de los ganchos** los escribe la IA con las FORMAS DE GANCHO del método (sólo las de pauta y video, sin las
+  que piden un dato) en la función «guion de video»; con el video desglosado, también escoge el MOMENTO FUERTE. Por MCP no
+  se ofrece: Claude los escribe él (`mejorar_video` con `textos`).
+  · **El texto del gancho** se dibuja en un PNG (letra de la casa, placa con la paleta del kit) y se superpone con ffmpeg
+  los segundos del momento + 1,2 s. Va en el tercio de arriba, lejos de los botones de Instagram.
+  · **Plantillas**: sin voz; cada escena dura su `pausa` (≤ 3 s) o lo que `dura` una foto (los cortes rápidos del logo y
+  del producto, ≥ `MIN_ESCENA`). Dos componentes nuevos del motor: `comentario` y `busqueda` (motorComponentes.js); la
+  búsqueda se escribe a 16 letras por segundo y achica la letra para caber. Sobre un fondo claro la tarjeta blanca no se
+  veía: la primera escena va sobre el acento y el oscuro de la marca.
+  · **Predictor de viralidad (Higgsfield), descartado**: cuesta créditos de Higgsfield (la agencia no los compra), no se
+  puede reproducir aquí y «¿Está listo este video?» ya revisa el gancho y la retención con el método de la agencia.

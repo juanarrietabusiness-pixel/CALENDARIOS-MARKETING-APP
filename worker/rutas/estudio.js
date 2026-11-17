@@ -14,6 +14,10 @@
 //   POST   /<cliente>/mejorar-video                «Mejorar mi video» { archivoId, modo: escalar|look|cambiar|angulos, look?,
 //                                                    instruccion?, referencias? (ids), angulos? (ids), factor?, confirmado? }:
 //                                                    sin `confirmado`, 409 con el costo y el resumen; con él, el encargo
+//                                                    (color y ganchos con el momento fuerte: gratis, sin preguntar)
+//   POST   /<cliente>/mejorar-video/muestra        { archivoId|clave, color, t? } → JPEG: un cuadro con ese color
+//   POST   /<cliente>/mejorar-video/textos         { archivoId|clave, para: texto|entrada|cierre, cuantos?, idea? } →
+//                                                    { textos, momento, formas }: la IA escribe los ganchos (no crea nada)
 //   POST   /<cliente>/encargos                     { tipo: "lote", pasos, … }: una cadena de piezas que lleva el SERVIDOR
 //   GET    /<cliente>/encargos                     Los de este cliente en marcha y los de las últimas 48 h
 //   GET    /<cliente>/encargos/<id>                Uno, con las imágenes que ya salieron
@@ -114,7 +118,7 @@ import {
   vaciarPapelera, crearCarpeta, renombrarCarpeta, ordenarCarpeta, borrarCarpeta, archivoPublico, clavesPerdidas,
   paginaDeGaleria, buscarEnGaleria,
 } from "../lib/estudio/galeria.js";
-import { crearMejora } from "../lib/estudio/mejoraVideo.js";
+import { crearMejora, muestraDeColor, textosDeGancho } from "../lib/estudio/mejoraVideo.js";
 import { crearEncargo, avanzarEncargo, cancelarEncargo, finalesDePaso, encargoPublico, encargoConArchivos, accionDeReel } from "../lib/estudio/encargos.js";
 import { ponerPiezasEnPost, ErrorPoner } from "../lib/estudio/ponerPiezas.js";
 import { topeSinPreguntar } from "../lib/configIA.js";
@@ -318,6 +322,18 @@ export async function rutasEstudio(req, env, { acceso, usuario, partes, metodo }
     }
 
     // ---------- «Mejorar mi video» y «Varios ángulos» (mejoraVideo.js): un encargo que arma el servidor ----------
+    // La muestra de un color (un cuadro con el grade, gratis) y los textos de los ganchos (la IA escribe, no crea nada).
+    if (b === "mejorar-video" && (c === "muestra" || c === "textos") && metodo === "POST") {
+      const datos = await cuerpo(req);
+      if (!datos) return error("JSON inválido");
+      try {
+        return c === "muestra" ? await muestraDeColor(env, acceso, cliente, datos) : json(await textosDeGancho(env, acceso, cliente, datos));
+      } catch (e) {
+        if (e instanceof ErrorEstudio) return fallo(e);
+        if (e?.estado) return json({ error: e.message }, e.estado);
+        throw e;
+      }
+    }
     if (b === "mejorar-video" && !c && metodo === "POST") {
       const datos = await cuerpo(req);
       if (!datos) return error("JSON inválido");

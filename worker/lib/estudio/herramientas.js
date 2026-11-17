@@ -63,6 +63,7 @@ import { DURACION_MUSICA } from "../../../src/lib/musica.js";
 import { MODELOS_VOZ } from "../../../src/lib/voces.js";
 import { DEFINICIONES_VIDEO, crearHerramientasVideo } from "./herramientasVideo.js";
 import { LOOKS, ANGULOS } from "../../../src/lib/mejoraVideo.js";
+import { COLORES } from "../../../src/lib/coloresVideo.js";
 import { miniaturasDe, MAX_PIEZAS_VISTAS } from "./miniaturas.js";
 import { vistaDeTrabajo } from "./vistaTrabajo.js";
 import { audioDeMuestra, lineasDeMedios } from "./vistaMedios.js";
@@ -246,7 +247,14 @@ export const DEFINICIONES_ESTUDIO = Object.freeze([
   {
     name: "mejorar_video",
     description:
-      "MEJORA un video que ya está en la galería del cliente (grabado por la persona o hecho con IA) y SIEMPRE conserva su AUDIO ORIGINAL: " +
+      "MEJORA un video que ya está en la galería del cliente (grabado por la persona o hecho con IA) y SIEMPRE conserva su AUDIO ORIGINAL. " +
+      "GRATIS (sin IA, sin preguntar): «color» (un grade con ffmpeg que no cambia la escena; ids: " + COLORES.map((c) => `${c.id} = ${c.nombre}`).join(", ") + ") y " +
+      "«ganchos» (de 1 a 3 versiones del ANUNCIO que abren con el MOMENTO FUERTE del mismo video —momento {desde, hasta}, ≤ 4 s: el resultado, el " +
+      "antes y después— con un texto de gancho encima, uno por versión en «textos» (3 a 8 palabras, los escribes TÚ con las formas de gancho del " +
+      "método), y siguen con el video desde «saltar» s; para probarlas en el mismo conjunto de Meta). CON IA (cuestan): «gancho-ia» (de 1 a 3 " +
+      "ENTRADAS nuevas de 5 s con Seedance 2.5 que terminan en el cuadro del segundo «saltar», donde sigue el video; en «textos», qué se VE en cada " +
+      "una; si el video empieza con alguien hablando a cámara, mejor «ganchos»), «cierre-ia» (cierres nuevos de 5 s que salen del cuadro a «saltar» " +
+      "s del final), «alargar» (5, 6, 8 o 10 s más, «hacia» final o inicio, con «idea» opcional), " +
       "modo «escalar» (Topaz: el mismo video ×2 o ×4 y más limpio; cualquier duración, hasta 50 MB), «look» (cambia sólo la luz y el color " +
       "con uno de los looks de la agencia: " + LOOKS.map((l) => `${l.id} = ${l.nombre}`).join(", ") + "), «cambiar» (una instrucción libre y, " +
       "si hace falta, hasta 3 fotos de referencia de la galería: el producto exacto) o «angulos» (de 3 a 5 cámaras nuevas de la MISMA toma, " +
@@ -260,7 +268,14 @@ export const DEFINICIONES_ESTUDIO = Object.freeze([
       properties: {
         ...clienteParam,
         archivo_id: { type: "string", description: "ID del VIDEO en la galería (de ver_estudio o estado_encargo)." },
-        modo: { type: "string", enum: ["escalar", "look", "cambiar", "angulos"] },
+        modo: { type: "string", enum: ["color", "ganchos", "escalar", "look", "cambiar", "angulos", "alargar", "gancho-ia", "cierre-ia"] },
+        color: { type: "string", enum: COLORES.map((c) => c.id), description: "Sólo con modo=color." },
+        textos: { type: "array", items: { type: "string" }, description: "Con ganchos: el texto de cada versión. Con gancho-ia y cierre-ia: qué se ve en cada una. De 1 a 3." },
+        momento: { type: "object", properties: { desde: { type: "number" }, hasta: { type: "number" } }, description: "Sólo con ganchos: el momento fuerte (s del video, ≤ 4 s)." },
+        saltar: { type: "number", description: "Con ganchos y gancho-ia: desde qué segundo sigue el video (0 = desde el principio). Con cierre-ia: cuántos segundos del final se quitan." },
+        segundos: { type: "integer", enum: [5, 6, 8, 10], description: "Sólo con alargar." },
+        hacia: { type: "string", enum: ["final", "inicio"], description: "Sólo con alargar." },
+        idea: { type: "string", description: "Sólo con alargar: qué pasa en lo nuevo (opcional)." },
         look: { type: "string", enum: LOOKS.map((l) => l.id), description: "Sólo con modo=look." },
         instruccion: { type: "string", description: "Sólo con modo=cambiar: qué cambia (≤ 600)." },
         referencias: { type: "array", items: { type: "string" }, description: "Sólo con modo=cambiar: IDs de fotos de la galería (hasta 3)." },
@@ -848,7 +863,7 @@ export function crearHerramientasEstudio({ env, acceso, resolverCliente, usuario
         throw e;
       }
     },
-    async mejorar_video({ cliente, archivo_id: archivoId, modo, look, instruccion, referencias, angulos, factor, confirmado }) {
+    async mejorar_video({ cliente, archivo_id: archivoId, modo, look, instruccion, referencias, angulos, factor, confirmado, color, textos, momento, saltar, segundos, hacia, idea }) {
       const c = await resolverCliente(cliente);
       // En el momento: mejoraVideo.js y encargos.js, estáticos, cerrarían el ciclo con herramientas.js.
       const { crearMejora } = await import("./mejoraVideo.js");
@@ -856,10 +871,11 @@ export function crearHerramientasEstudio({ env, acceso, resolverCliente, usuario
       try {
         const fila = await crearMejora(env, acceso, c, {
           archivoId, modo, look, instruccion, referencias, angulos, factor, confirmado: confirmado === true,
+          color, textos: Array.isArray(textos) ? textos : [], momento, saltar, segundos, hacia, idea,
           origen: origen === "asistente" ? "asistente" : "claude",
         }, { usuario, crearEncargo });
         return [
-          `Pedido: encargo ${fila.id} («${fila.titulo}»). Se hace en el servidor y tarda unos minutos; al final se une con el audio original.`,
+          `Pedido: encargo ${fila.id} («${fila.titulo}»). Se hace en el servidor (de uno a varios minutos); al final se une con el audio original.`,
           `Mira cómo va con estado_encargo y el ID ${fila.id}. El video final queda en la galería como versión del original.`,
         ].join("\n");
       } catch (e) {

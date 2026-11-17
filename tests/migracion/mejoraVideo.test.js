@@ -252,3 +252,92 @@ describe("la unión con el audio original", () => {
     expect(e.mejora.union).toMatchObject({ fase: "fallido", error: "ffmpeg no pudo unir el audio" });
   });
 });
+
+describe("lo nuevo: color, ganchos y lo que sale de un fotograma", () => {
+  /** El Container de los cuadros, de mentira: guarda los clips y da un JPEG de fotograma. */
+  function videoFalso() {
+    const pedidos = [];
+    return {
+      pedidos,
+      idFromName: (n) => n,
+      get: () => ({
+        fetch: async (req) => {
+          const url = new URL(req.url);
+          pedidos.push({ metodo: req.method, ruta: url.pathname });
+          if (req.method === "HEAD") return new Response(null, { status: 404 });
+          if (req.method === "PUT") return Response.json({ ok: true });
+          return new Response(new Uint8Array([0xff, 0xd8, 0xff, 0xd9]), { headers: { "Content-Type": "image/jpeg" } });
+        },
+      }),
+    };
+  }
+  const alUnir = (cuerpos) => async (ruta, init = {}) => {
+    if (init.method === "HEAD") return new Response(null, { status: 200 });
+    if (ruta === "/unir") { cuerpos.push(JSON.parse(init.body)); return new Response(MP4, { headers: { "X-Ancho": "1080", "X-Alto": "1920" } }); }
+    return Response.json({});
+  };
+
+  it("color: gratis, sin preguntar ni Kie; una versión con su color, sin pasos", async () => {
+    delete env.KIE_API_KEY;
+    const r = await pedir(JEFE, "/estudio/c1/mejorar-video", { archivoId: "v1", modo: "color", color: "cine" });
+    expect(r.status).toBe(201);
+    const { encargo: e } = await r.json();
+    expect(e.pasos).toEqual([]);
+    expect(trabajos()).toBe(0);
+    env.RENDER = renderFalso();
+    await avanzarEncargo(env, crearAcceso(db, JEFE), e.id);
+    expect(env.RENDER.pedidos.some((p) => p.metodo === "POST" && p.ruta === "/unir")).toBe(true);
+    const cuerpos = [];
+    const u = await ejecutarUnion(env, { ownerId: JEFE, clienteId: "c1", encargoId: e.id }, alUnir(cuerpos));
+    expect(u.estado).toBe("hecho");
+    expect(cuerpos[0]).toMatchObject({ color: "cine", copiar: false, tramos: [{ clip: "v1", desde: 0, hasta: 8 }] });
+  });
+
+  it("ganchos con el momento fuerte: una versión por texto, cada una a la galería, con el texto y el color del kit", async () => {
+    const r = await pedir(JEFE, "/estudio/c1/mejorar-video", { archivoId: "v1", modo: "ganchos", textos: ["¿Duermes con calor?", "Mira esto"], momento: { desde: 5, hasta: 7 } });
+    expect(r.status).toBe(201);
+    const { encargo: e } = await r.json();
+    const cuerpos = [];
+    const u = await ejecutarUnion(env, { ownerId: JEFE, clienteId: "c1", encargoId: e.id }, alUnir(cuerpos));
+    expect(u.archivoIds).toHaveLength(2);
+    expect(cuerpos.map((c) => c.texto.texto)).toEqual(["¿Duermes con calor?", "Mira esto"]);
+    expect(cuerpos[0].tramos).toEqual([{ clip: "v1", desde: 5, hasta: 7 }, { clip: "v1", desde: 0, hasta: 8 }]);
+    const filas = db.sqlite.prepare("select ajustes from estudio_archivos where id in (?, ?)").all(...u.archivoIds).map((f) => JSON.parse(f.ajustes));
+    expect(filas.every((a) => a.deArchivo === "v1" && a.mejora === "ganchos")).toBe(true);
+  });
+
+  it("entrada nueva con IA: sin Container no se puede (hace falta el fotograma); con él, el fotograma va a la galería y al pedido", async () => {
+    const cuerpo = { archivoId: "v1", modo: "gancho-ia", textos: ["Alguien cae sobre la cama"], saltar: 2, confirmado: true };
+    expect((await pedir(JEFE, "/estudio/c1/mejorar-video", cuerpo)).status).toBe(503);
+    env.VIDEO = videoFalso();
+    const r = await pedir(JEFE, "/estudio/c1/mejorar-video", cuerpo);
+    expect(r.status).toBe(201);
+    const pasos = JSON.parse(db.sqlite.prepare("select pasos from estudio_encargos").get().pasos);
+    const clave = pasos[0].pedido.medios.end[0];
+    expect(clave).toMatch(/^clientes\/c1\//);
+    expect(env.MEDIA.objetos.has(clave)).toBe(true);
+    const foto = db.sqlite.prepare("select tipo, ajustes from estudio_archivos where clave = ?").get(clave);
+    expect(foto.tipo).toBe("imagen");
+    expect(JSON.parse(foto.ajustes)).toMatchObject({ fotogramaDe: "v1", t: 2 });
+    expect(env.VIDEO.pedidos.some((p) => p.ruta === "/fotograma")).toBe(true);
+  });
+
+  it("la muestra de un color sale del Container como JPEG", async () => {
+    env.VIDEO = videoFalso();
+    const r = await pedir(JEFE, "/estudio/c1/mejorar-video/muestra", { archivoId: "v1", color: "cine" });
+    expect(r.status).toBe(200);
+    expect(r.headers.get("Content-Type")).toBe("image/jpeg");
+  });
+});
+
+describe("las plantillas de movimiento gráfico, por la API", () => {
+  it("crea el borrador desde la plantilla, y sin lo que pide dice qué falta", async () => {
+    const r = await pedir(JEFE, "/videos/c1/plantilla", { plantilla: "comentarios", datos: { comentario: "¿Hacen envíos?", respuestas: ["Sí, a todo Panamá"] } });
+    expect(r.status).toBe(201);
+    const { video } = await r.json();
+    expect(video.estado).toBe("borrador");
+    expect(video.guion.escenas[0].capas.some((c) => c.tipo === "comentario")).toBe(true);
+    const mal = await pedir(JEFE, "/videos/c1/plantilla", { plantilla: "logo", datos: { fotos: ["a"] } });
+    expect(mal.status).toBe(400);
+  });
+});

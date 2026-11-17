@@ -17,11 +17,16 @@
 
 import { modeloPorId, estimar, costoUnitario, textoCosto } from "./estudioCatalogo.js";
 import { SIN_TEXTO_VIDEO } from "./videoLimpio.js";
+import { colorPorId } from "./coloresVideo.js";
 
-export const MODOS_MEJORA = Object.freeze(["escalar", "look", "cambiar", "angulos"]);
+export const MODOS_MEJORA = Object.freeze(["color", "escalar", "look", "cambiar", "angulos", "alargar", "ganchos", "gancho-ia", "cierre-ia"]);
 export const NOMBRE_MODO = Object.freeze({
-  escalar: "Escalar", look: "Look y luz", cambiar: "Cambiar algo", angulos: "Varios ángulos",
+  color: "Color", escalar: "Escalar", look: "Look y luz", cambiar: "Cambiar algo", angulos: "Varios ángulos", alargar: "Alargar",
+  ganchos: "Ganchos con el momento fuerte", "gancho-ia": "Entrada nueva con IA", "cierre-ia": "Cierre nuevo con IA",
 });
+/** Los modos de «Mejorar mi video» (los de los ganchos van en su propia pantalla, «Nuevos ganchos»). */
+export const MODOS_DE_MEJORAR = Object.freeze(["color", "escalar", "look", "cambiar", "angulos", "alargar"]);
+export const MODOS_DE_GANCHOS = Object.freeze(["ganchos", "gancho-ia", "cierre-ia"]);
 
 /** Lo más que dura un video que Omni 1.2 edita; hasta `HASTA_LARGO`, Seedance 2.5. */
 export const HASTA_OMNI = 15;
@@ -125,6 +130,34 @@ export const promptDeAngulo = (angulo) => [
   SIN_TEXTO_VIDEO,
 ].join(" ");
 
+/** El prompt de lo que sigue DESDE el último cuadro (alargar al final). Pura. */
+export const promptDeSeguir = (idea = "") => [
+  "Continúa EXACTAMENTE esta escena desde la imagen inicial, como si la cámara no hubiera dejado de grabar: las mismas personas, la misma ropa, el mismo lugar, la misma luz y el mismo estilo de cámara.",
+  idea ? `Lo que pasa: ${idea.replace(/\.$/, "")}.` : "La acción sigue de forma natural y tranquila; el movimiento de cámara, suave.",
+  "Una sola toma continua, sin cortes.", SIN_TEXTO_VIDEO,
+].join(" ");
+
+/** El prompt de lo que va ANTES del primer cuadro (alargar al principio). Pura. */
+export const promptDeAntes = (idea = "") => [
+  "Haz los segundos que van JUSTO ANTES de la imagen final y termina exactamente en ella: las mismas personas, la misma ropa, el mismo lugar, la misma luz.",
+  idea ? `Lo que pasa: ${idea.replace(/\.$/, "")}.` : "La acción llega a ese momento de forma natural.",
+  "Una sola toma continua, sin cortes.", SIN_TEXTO_VIDEO,
+].join(" ");
+
+/** El prompt de una ENTRADA nueva de anuncio que termina en el cuadro donde sigue el video. Pura. */
+export const promptDeEntrada = (idea) => [
+  "La ENTRADA de un anuncio vertical: en el primer segundo pasa algo que detiene el dedo (movimiento, contraste, una acción clara) y termina EXACTAMENTE en la imagen final, para que el video siga desde ahí sin que se note el corte.",
+  `Lo que pasa: ${String(idea).replace(/\.$/, "")}.`,
+  "Las mismas personas, el mismo producto y el mismo lugar de la imagen final; nada inventado del producto.", SIN_TEXTO_VIDEO,
+].join(" ");
+
+/** El prompt de un CIERRE nuevo que sale del cuadro donde se corta el video. Pura. */
+export const promptDeCierre = (idea) => [
+  "El CIERRE de un anuncio vertical que sigue desde la imagen inicial sin que se note el corte: termina en el producto o en el resultado, claro y quieto al final (ahí irá el llamado).",
+  `Lo que pasa: ${String(idea).replace(/\.$/, "")}.`,
+  "Las mismas personas, el mismo producto y el mismo lugar de la imagen inicial; nada inventado del producto.", SIN_TEXTO_VIDEO,
+].join(" ");
+
 /**
  * Los tramos del montaje de ángulos: salta de cámara cada `CORTE_ANGULOS` s, empezando por el original y pasando por cada
  * ángulo en orden. `fuente`: "original" o el índice del ángulo. Pura.
@@ -141,17 +174,75 @@ export function tramosDeAngulos(duracion, n) {
 
 const enSegundos = (s) => `${Math.round(s * 10) / 10} s`.replace(".", ",");
 
+/** El FOTOGRAMA de un segundo del original que va de imagen inicial o final: la marca que el servidor cambia por su clave. */
+export const fotogramaEn = (t) => `fotograma:${Math.round(Number(t) * 1000) / 1000}`;
+export const esFotograma = (v) => /^fotograma:-?\d+(\.\d+)?$/.test(String(v ?? ""));
+
+/** Lo que dura una entrada o un cierre nuevo, y lo que se puede alargar (s). */
+export const SEGUNDOS_GANCHO = 5;
+export const ALARGAR = Object.freeze([5, 6, 8, 10]);
+export const MAX_GANCHOS = 3;
+/** Lo que dura como mucho el «momento fuerte» que abre un gancho sin IA. */
+export const MAX_MOMENTO = 4;
+
+/** El estilo del texto del gancho con el kit: placa del color de acento y letra clara. Pura. */
+export function estiloDeTexto(paleta = []) {
+  const hex = (c) => (/^#[0-9a-f]{6}$/i.test(String(c ?? "")) ? c : null);
+  const fondo = hex(paleta[0]) ?? "#111111";
+  return { fondo, color: hex(paleta[1]) && paleta[1].toLowerCase() !== fondo.toLowerCase() ? paleta[1] : "#FFFFFF" };
+}
+
+const unaVersion = (tramos, extra = {}) => ({ tramos, copiar: false, ...extra });
+const original = (desde, hasta) => ({ fuente: "original", desde, hasta });
+const delPaso = (i, hasta) => ({ fuente: i, desde: 0, hasta, audio: { fuente: i, desde: 0 } });
+
+/** Los textos de gancho limpios (1 a 3, ≤ 90 cada uno). Pura. */
+const textosDe = (lista) => [...new Set((Array.isArray(lista) ? lista : [lista]).map((t) => String(t ?? "").replace(/\s+/g, " ").trim()).filter((t) => t.length >= 3))]
+  .slice(0, MAX_GANCHOS).map((t) => t.slice(0, 90));
+
 /**
  * El PLAN de una mejora → { ok, error } | { ok: true, modo, titulo, pasos: [{ id, titulo, pedido }], costo, modelo,
- * resumen, aviso, union }. `video`: { clave, ancho, alto, duracion, bytes }; `activos`: { motor: bool }. Pura: el
- * Worker la usa para crear el encargo (con la clave ya comprobada) y la pantalla para enseñar el costo antes.
+ * resumen, aviso, union: { versiones: [{ tramos, copiar, color?, texto? }] } }. `video`: { clave, ancho, alto, duracion,
+ * bytes }; `activos`: { motor: bool }; `paleta`: los colores del kit (para el texto del gancho). Pura: el Worker la usa
+ * para crear el encargo (con la clave ya comprobada) y la pantalla para enseñar el costo antes.
+ *
+ * Un tramo es un trozo de UN clip: `fuente` "original" o el índice del paso (lo que hizo el modelo), con `audio` si no
+ * es el del original en ese segundo. Un fotograma (`fotograma:<s>`) en los medios lo cambia el servidor por su clave.
  */
-export function planDeMejora({ modo, video = {}, look = "", instruccion = "", angulos = [], referencias = [], factor = "2", activos = {} } = {}) {
-  if (!MODOS_MEJORA.includes(modo)) return { ok: false, error: "Escoge qué hacer con el video: escalar, look, cambiar algo o varios ángulos." };
-  if (!activos.kie) return { ok: false, error: "Mejorar un video va por Kie.ai, y este servidor no tiene su llave (KIE_API_KEY)." };
+export function planDeMejora({
+  modo, video = {}, look = "", instruccion = "", angulos = [], referencias = [], factor = "2", activos = {},
+  color = "", textos = [], momento = null, saltar = 0, segundos = 6, hacia = "final", idea = "", paleta = [],
+} = {}) {
+  if (!MODOS_MEJORA.includes(modo)) return { ok: false, error: "Escoge qué hacer con el video." };
   const duracion = Number(video.duracion) || 0;
   if (!(duracion > 0)) return { ok: false, error: "No pude medir lo que dura el video: vuelve a subirlo en MP4." };
   const medios = { video: [video.clave] };
+  const estilo = estiloDeTexto(paleta);
+
+  // ---- Lo que NO usa IA: el color y el gancho con el momento fuerte. Gratis (cómputo del Container).
+  if (modo === "color") {
+    const c = colorPorId(color);
+    if (!c) return { ok: false, error: "Escoge un color." };
+    return {
+      ok: true, modo, modelo: null, costo: 0, titulo: `Color: ${c.nombre}`, pasos: [],
+      resumen: `El color «${c.nombre}» en todo el video (${enSegundos(duracion)}), sin IA: no cuesta nada y no cambia la escena. Conserva el audio original.`,
+      union: { versiones: [unaVersion([original(0, duracion)], { color: c.id, titulo: c.nombre })] },
+    };
+  }
+  if (modo === "ganchos") {
+    const lista = textosDe(textos);
+    if (!lista.length) return { ok: false, error: "Escribe al menos un texto de gancho." };
+    const desde = Math.max(0, Math.min(Number(momento?.desde) || 0, duracion - 0.5));
+    const hasta = Math.max(desde + 0.5, Math.min(Number(momento?.hasta) || desde + 2, desde + MAX_MOMENTO, duracion));
+    const corte = Math.max(0, Math.min(Number(saltar) || 0, duracion - 1));
+    return {
+      ok: true, modo, modelo: null, costo: 0, titulo: `${lista.length} ${lista.length === 1 ? "gancho" : "ganchos"} con el momento fuerte`, pasos: [],
+      resumen: `${lista.length === 1 ? "Una versión" : `${lista.length} versiones`} del anuncio que abren con el momento fuerte (${enSegundos(desde)}–${enSegundos(hasta)}) y el texto del gancho encima, y siguen con el video${corte ? ` desde el segundo ${enSegundos(corte)}` : ""}. Sin IA: no cuesta nada.`,
+      union: { versiones: lista.map((t) => unaVersion([original(desde, hasta), original(corte, duracion)], { texto: { texto: t, hasta: hasta - desde + 1.2, ...estilo }, titulo: t })) },
+    };
+  }
+
+  if (!activos.kie) return { ok: false, error: "Esto va por Kie.ai, y este servidor no tiene su llave (KIE_API_KEY)." };
 
   if (modo === "escalar") {
     if (Number(video.bytes) > TOPE_ESCALAR) return { ok: false, error: "Para escalar, el video tiene que pesar 50 MB o menos." };
@@ -162,17 +253,61 @@ export function planDeMejora({ modo, video = {}, look = "", instruccion = "", an
       ok: true, modo, modelo, costo, titulo: `Escalado ×${f}`,
       resumen: `Topaz amplía tu video ×${f} y lo limpia (${enSegundos(duracion)}): ${textoCosto(costo)}. Conserva el audio original.`,
       pasos: [{ id: "escalar", titulo: `Escalado ×${f}`, pedido: { modelo: modelo.id, prompt: "Ampliar y limpiar el video.", n: 1, ajustes: { factor: f }, medios } }],
-      union: { tramos: [{ fuente: 0, desde: 0, hasta: duracion }] },
+      union: { versiones: [{ tramos: [{ fuente: 0, desde: 0, hasta: duracion }], copiar: true }] },
+    };
+  }
+
+  // ---- Lo que hace Seedance 2.5 desde un FOTOGRAMA del original: alargar, una entrada nueva, un cierre nuevo.
+  if (["alargar", "gancho-ia", "cierre-ia"].includes(modo)) {
+    const modelo = modeloPorId("seedance-2-5-kie");
+    const proporcion = proporcionPara(modelo, video.ancho, video.alto);
+    const base = { ...(proporcion ? { aspectRatio: proporcion } : {}), resolution: "720p", sonido: "si" };
+    const extra = String(idea ?? "").trim().slice(0, 500);
+    if (modo === "alargar") {
+      const s = ALARGAR.includes(Number(segundos)) ? Number(segundos) : 6;
+      const alInicio = hacia === "inicio";
+      const ajustes = { ...base, duration: String(s) };
+      const costo = estimar(modelo, 1, ajustes);
+      const prompt = alInicio ? promptDeAntes(extra) : promptDeSeguir(extra);
+      return {
+        ok: true, modo, modelo, costo, titulo: `Alargado ${s} s ${alInicio ? "al principio" : "al final"}`,
+        resumen: `Seedance 2.5 hace ${s} s más ${alInicio ? "ANTES del principio, terminando en su primer cuadro" : "desde el último cuadro, siguiendo la escena"}: ${textoCosto(costo)}. Tu audio suena donde estaba; en lo nuevo, el ambiente del modelo.`,
+        pasos: [{ id: "alargar", titulo: `${s} s más`, pedido: { modelo: modelo.id, prompt, n: 1, ajustes, medios: alInicio ? { end: [fotogramaEn(0)] } : { start: [fotogramaEn(-0.05)] } } }],
+        union: { versiones: [unaVersion(alInicio ? [delPaso(0, s), original(0, duracion)] : [original(0, duracion), delPaso(0, s)])] },
+      };
+    }
+    const ideas = textosDe(textos.length ? textos : extra);
+    if (!ideas.length) return { ok: false, error: modo === "cierre-ia" ? "Escribe qué pasa en el cierre nuevo." : "Escribe qué pasa en la entrada nueva (una idea por gancho)." };
+    const ajustes = { ...base, duration: String(SEGUNDOS_GANCHO) };
+    const unidad = estimar(modelo, 1, ajustes);
+    const costo = Math.round(unidad * ideas.length * 1000) / 1000;
+    if (modo === "gancho-ia") {
+      const corte = Math.max(0, Math.min(Number(saltar) || 0, duracion - 1));
+      return {
+        ok: true, modo, modelo, costo, titulo: `${ideas.length} ${ideas.length === 1 ? "entrada nueva" : "entradas nuevas"} con IA`,
+        resumen: `Seedance 2.5 hace ${ideas.length === 1 ? "una entrada nueva" : `${ideas.length} entradas nuevas`} de ${SEGUNDOS_GANCHO} s que ${ideas.length === 1 ? "termina" : "terminan"} justo en el cuadro donde sigue tu video${corte ? ` (segundo ${enSegundos(corte)})` : ""}: ${textoCosto(costo)}. Desde ahí, tu audio original.`,
+        aviso: "Si tu video empieza con alguien hablando a cámara, la voz de la entrada nueva no será la suya: mejor un gancho sin IA (el momento fuerte con texto).",
+        pasos: ideas.map((t, i) => ({ id: `gancho-${i + 1}`, titulo: `Entrada ${i + 1}`, pedido: { modelo: modelo.id, prompt: promptDeEntrada(t), n: 1, ajustes, medios: { end: [fotogramaEn(corte)] } } })),
+        union: { versiones: ideas.map((t, i) => unaVersion([delPaso(i, SEGUNDOS_GANCHO), original(corte, duracion)], { requiere: [i], titulo: t })) },
+      };
+    }
+    const fin = Math.max(1, duracion - Math.max(0, Math.min(Number(saltar) || 0, duracion - 1)));
+    return {
+      ok: true, modo, modelo, costo, titulo: `${ideas.length} ${ideas.length === 1 ? "cierre nuevo" : "cierres nuevos"} con IA`,
+      resumen: `Seedance 2.5 hace ${ideas.length === 1 ? "un cierre nuevo" : `${ideas.length} cierres nuevos`} de ${SEGUNDOS_GANCHO} s que ${ideas.length === 1 ? "sale" : "salen"} del cuadro del segundo ${enSegundos(fin)}: ${textoCosto(costo)}. Hasta ahí, tu video con su audio.`,
+      pasos: ideas.map((t, i) => ({ id: `cierre-${i + 1}`, titulo: `Cierre ${i + 1}`, pedido: { modelo: modelo.id, prompt: promptDeCierre(t), n: 1, ajustes, medios: { start: [fotogramaEn(fin)] } } })),
+      union: { versiones: ideas.map((t, i) => unaVersion([original(0, fin), delPaso(i, SEGUNDOS_GANCHO)], { requiere: [i], titulo: t })) },
     };
   }
 
   const modelo = modeloQueEdita(duracion);
-  if (!modelo) return { ok: false, error: `El video dura ${enSegundos(duracion)}: para cambiar la luz, algo de la escena o los ángulos, hasta ${HASTA_LARGO} s (recórtalo antes). Escalar sí admite videos largos.` };
+  if (!modelo) return { ok: false, error: `El video dura ${enSegundos(duracion)}: para cambiar la luz, algo de la escena o los ángulos, hasta ${HASTA_LARGO} s (recórtalo antes). Escalar y color sí admiten videos largos.` };
   const ajustes = ajustesDeEdicion(modelo, { ...video, duracion });
   const unidad = estimar(modelo, 1, ajustes);
   const nombreModelo = modelo.id === "gemini-omni-1-2-kie" ? "Gemini Omni 1.2" : "Seedance 2.5";
   const cubre = Number(ajustes.duration);
   const recorte = cubre < duracion ? ` El modelo hace ${cubre} s: lo que pase de ahí queda fuera.` : "";
+  const uno = { versiones: [{ tramos: [{ fuente: 0, desde: 0, hasta: Math.min(duracion, cubre) }], copiar: true }] };
 
   if (modo === "look") {
     const l = lookPorId(look);
@@ -181,7 +316,7 @@ export function planDeMejora({ modo, video = {}, look = "", instruccion = "", an
       ok: true, modo, modelo, costo: unidad, titulo: `Look: ${l.nombre}`,
       resumen: `${nombreModelo} cambia la luz y el color («${l.nombre}», ${cubre} s): ${textoCosto(unidad)}. Conserva el audio original.${recorte}`,
       pasos: [{ id: "look", titulo: l.nombre, pedido: { modelo: modelo.id, prompt: promptDeLook(l), n: 1, ajustes, medios } }],
-      union: { tramos: [{ fuente: 0, desde: 0, hasta: Math.min(duracion, cubre) }] },
+      union: uno,
     };
   }
 
@@ -194,7 +329,7 @@ export function planDeMejora({ modo, video = {}, look = "", instruccion = "", an
       ok: true, modo, modelo, costo: unidad, titulo: "Cambio en el video",
       resumen: `${nombreModelo} cambia «${que.slice(0, 80)}»${fotos.length ? ` con ${fotos.length === 1 ? "tu foto" : `${fotos.length} fotos`} de referencia` : ""} (${cubre} s): ${textoCosto(unidad)}. Conserva el audio original.${recorte}`,
       pasos: [{ id: "cambiar", titulo: "Cambio", pedido: { modelo: modelo.id, prompt: promptDeCambio(que, fotos.length > 0), n: 1, ajustes, medios: { ...medios, ...(fotos.length ? { reference: fotos } : {}) } } }],
-      union: { tramos: [{ fuente: 0, desde: 0, hasta: Math.min(duracion, cubre) }] },
+      union: uno,
     };
   }
 
@@ -208,15 +343,18 @@ export function planDeMejora({ modo, video = {}, look = "", instruccion = "", an
     resumen: `${nombreModelo} graba ${elegidos.length} cámaras nuevas de la misma toma (${cubre} s cada una): ${textoCosto(costo)}. Después se monta solo, saltando de cámara cada ${CORTE_ANGULOS} s, con el audio original.${recorte}`,
     aviso: "Si en el video alguien habla a cámara, en los ángulos nuevos la boca no coincidirá con la voz: funciona mejor con tomas sin habla (producto, ambiente, acción) o con la voz en off.",
     pasos: elegidos.map((a) => ({ id: `angulo-${a.id}`, titulo: a.nombre, pedido: { modelo: modelo.id, prompt: promptDeAngulo(a), n: 1, ajustes, medios } })),
-    union: { tramos: tramosDeAngulos(largo, elegidos.length), copiar: false },
+    union: { versiones: [unaVersion(tramosDeAngulos(largo, elegidos.length))] },
   };
 }
 
 /** Cómo va la mejora, en palabras, para la pantalla. Pura. */
 export function textoDeMejora(m = {}) {
   const u = m.union ?? {};
-  if (u.fase === "uniendo") return "Uniendo con el audio original…";
-  if (u.fase === "hecho") return "Listo, con el audio original.";
+  if (u.fase === "uniendo") return m.modo === "color" ? "Poniendo el color…" : "Uniendo con el audio original…";
+  if (u.fase === "hecho") {
+    const n = u.archivoIds?.length ?? 1;
+    return `${n > 1 ? `Listas ${n} versiones` : "Listo"}, con el audio original.${u.error ? ` ${u.error}` : ""}`;
+  }
   if (u.fase === "fallido") return u.error || "No se pudo unir con el audio original.";
   return "";
 }

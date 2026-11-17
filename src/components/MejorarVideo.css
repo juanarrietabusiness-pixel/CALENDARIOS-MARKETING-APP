@@ -28,3 +28,16 @@
 .mejorar-video-botones { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
 .mejorar-video-progreso { display: flex; flex-direction: column; gap: var(--sp-3); }
 .mejorar-video-progreso ul { margin: var(--sp-2) 0 0; padding-left: var(--sp-4); font-size: var(--fs-sm); display: grid; gap: 2px; }
+.mejorar-video-colores { border: none; margin: 0; padding: 0; display: grid; gap: var(--sp-2); grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); }
+.mejorar-video-colores legend { margin-bottom: var(--sp-1); }
+.mejorar-video-color {
+  display: flex; flex-direction: column; gap: 2px; padding: var(--sp-1); cursor: pointer; min-height: var(--tap);
+  border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); font-size: var(--fs-sm);
+}
+.mejorar-video-color img, .mejorar-video-color-vacio { width: 100%; aspect-ratio: 9 / 12; object-fit: cover; border-radius: var(--radius-sm); background: var(--surface-3); display: block; }
+.mejorar-video-color small { color: var(--text-muted); font-size: var(--fs-3xs); line-height: 1.3; }
+.mejorar-video-color[data-elegido] { background: var(--accent-soft); border-color: var(--accent-line); }
+.mejorar-video-color:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+.mejorar-video-versiones { display: grid; gap: var(--sp-3); grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
+.mejorar-video-version { display: flex; flex-direction: column; gap: var(--sp-1); font-size: var(--fs-sm); }
+.mejorar-video-tiempo { border: none; margin: 0; padding: 0; display: grid; gap: var(--sp-2); grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }

@@ -212,9 +212,12 @@ src/
                           composiciones funcionan con cada cliente (puro; también el Worker)
     loteEstudio.js        Cómo se arma cada pieza del lote (`pedidoDeLote`, lo que lee el director) y `ponerTexto` (la
                           compuesta recuerda su cruda: «Otra versión» sobre ella); los carruseles y reels del lote
-    mejoraVideo.js        «MEJORAR MI VIDEO» y «VARIOS ÁNGULOS»: los modos (escalar, look, cambiar, ángulos), nuestros LOOKS y
-                          ÁNGULOS, qué modelo edita según lo que dura (Omni 1.2 ≤ 15 s, Seedance 2.5 ≤ 30 s), el costo, los
-                          prompts y los tramos del montaje de ángulos (`planDeMejora`) (puro; también el Worker y el MCP)
+    mejoraVideo.js        «MEJORAR MI VIDEO», «VARIOS ÁNGULOS» y «NUEVOS GANCHOS»: los modos (color, escalar, look, cambiar,
+                          ángulos, alargar, ganchos, entrada y cierre con IA), nuestros LOOKS y ÁNGULOS, qué modelo edita según
+                          lo que dura, el costo, los prompts y las VERSIONES de la unión (`planDeMejora`) (puro; Worker y MCP)
+    coloresVideo.js       Los COLORES de «Mejorar mi video»: grades con filtros de ffmpeg, sin IA (puro; también el Container)
+    plantillasVideo.js    PLANTILLAS de movimiento gráfico: el guion v1 de «Respondo tu comentario», «Búsqueda», «Producto que
+                          salta» y «Logo sobre fondos», armado por el código (`guionDePlantilla`) (puro; también el Worker)
     loteServidor.js       El lote que lleva el SERVIDOR: armar cada pieza como paso (`pasoDeLote`, con «{{ESCENA}}») y
                           lanzarlo; un carrusel del lote (`lanzarCarruselDeIdea`)
     encargosApi.js        Los encargos desde el navegador: pedir, seguir (`seguirEncargo`), lanzar un carrusel, terminar lo
@@ -662,8 +665,11 @@ src/
     calendario/ConMusica.jsx  «Publicar con música» en la pestaña Pieza: la foto → un reel con música (pista con «Escuchar», duración,
                           movimiento) y «Volver a la foto»; el carrusel → a mano con la música de Instagram y su canción (lazy)
     VideoListo.jsx        «¿Está listo este video?»: en la pestaña Subir y en el visor del Estudio (lazy)
-    MejorarVideo.jsx      «Mejorar mi video» (escalar, look, cambiar algo, varios ángulos): el costo antes, el sí, cómo va y
-                          «Poner en la publicación»; en la pestaña Pieza y en el visor del Estudio (lazy, con su CSS)
+    MejorarVideo.jsx      «Mejorar mi video» (color con muestras, escalar, look, cambiar algo, varios ángulos, alargar): el costo
+                          antes, el sí, cómo va y «Poner en la publicación»; en la pestaña Pieza y en el visor (lazy, con su CSS)
+    NuevosGanchos.jsx     «Nuevos ganchos»: versiones de la entrada (con el momento fuerte, gratis) o entrada y cierre nuevos con
+                          IA, los textos escritos con IA; en la pestaña Pieza y en el visor del Estudio (lazy)
+    CrearConPlantilla.jsx «Plantillas de moda» del video animado: escoger, escribir y las fotos de la galería (lazy)
     DesgloseVideo.jsx     «Desglosar toma por toma» en el visor de un video del Estudio: el costo, la cuenta, el mapa de
                           secuencia plegado, «Copiar el desglose» y «Desglosar otra vez» (lazy)
     calendario/avisoTemporada.jsx  «Se acerca …»: la fecha comercial del cliente en tres semanas y cómo reutilizar una pieza
@@ -881,7 +887,8 @@ worker/
     estudio/ponerPiezas.js  «Poner en una publicación…» del Estudio (POST /api/estudio/<c>/poner): lo de la galería a un post
     estudio/mejoraVideo.js  «Mejorar mi video» en el servidor (POST /api/estudio/<c>/mejorar-video y `mejorar_video` del MCP): el
                           video de ESE cliente medido, el 409 con el costo, el encargo «mejora» y la UNIÓN con el audio original
-                          (`pasoUnion` la encarga al Durable Object del render; `ejecutarUnion` es su alarma: clips, /unir, R2, galería)
+                          (`pasoUnion` la encarga al Durable Object del render; `ejecutarUnion` es su alarma: clips, /unir por
+                          versión, R2, galería), los fotogramas del original, la muestra de un color y los textos de los ganchos
     estudio/fondosVideo.js  Crear las IMÁGENES DE FONDO de un video animado con el director (un encargo del servidor, con su costo) y,
                           al cerrarse, ponerlas en el guion guardado (`ponerFondosEnVideo`)
     estudio/estilosVideo.js  Los ESTILOS DE VIDEO guardados: guardar uno de un video, renombrar, quitar y aplicarlo a otro (el kit, sólo
@@ -953,7 +960,8 @@ worker/
 container/                El Container del video animado (Node + @napi-rs/canvas + ffmpeg, Dockerfile): /cuadro, /hoja, /revisar y
                           /render (render.mjs) con el MISMO motor de src/lib; los clips de video (clips.mjs, PUT /clip/<id>);
                           /golpes (golpes.mjs: el ritmo de una canción, con ffmpeg y src/lib/golpes.js); /unir (unir.mjs: la
-                          imagen de «Mejorar mi video» con el AUDIO ORIGINAL, o el montaje de ángulos);
+                          imagen de «Mejorar mi video» con el AUDIO que toca por tramo, el color y el texto del gancho;
+                          /muestra-color y /fotograma);
                           probar.mjs, probarAudio.mjs, probarClips.mjs y probarUnir.mjs son sus pruebas (job «contenedor»)
 migraciones/d1/           Esquema de D1: una migración por cambio, numeradas (`ls migraciones/d1` las lista con su nombre)
 scripts/migracion/        Volcado desde Supabase, conversión e importación
