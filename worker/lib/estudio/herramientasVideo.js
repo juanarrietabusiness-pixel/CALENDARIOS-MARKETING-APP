@@ -69,7 +69,7 @@ import { pedidoConClips, alContenedor, respuestaEnBase64 } from "./cuadros.js";
 import { pedirRender, renderAlDia, ligarAPublicacion } from "./render.js";
 import { escucharVideo } from "./escuchar.js";
 import { EFECTOS_CATALOGO, efectoDelCatalogo, buscarEnCatalogo, cuentaPorPapel } from "../../../src/lib/catalogoEfectos.js";
-import { PAPELES, EFECTO_AUTOMATICO, momentosColocados, textoDeColocado } from "../../../src/lib/efectosColocados.js";
+import { PAPELES, EFECTO_AUTOMATICO, SONIDOS_DE_TRANSICION, momentosColocados, textoDeColocado } from "../../../src/lib/efectosColocados.js";
 import { reloj } from "../../../src/lib/escucharSonido.js";
 import { palabrasParaLinea } from "../../../src/lib/videoCancion.js";
 import { conMusicaSegun } from "./conMusica.js";
@@ -963,7 +963,7 @@ export function crearHerramientasVideo({ env, acceso, resolverCliente, usuario, 
         return [
           `El catálogo de efectos de la aplicación: ${EFECTOS_CATALOGO.length}, gratis (earshot, MIT; uisfx, CC0). Los papeles (y cuántos hay):`,
           ...Object.entries(PAPELES).filter(([k]) => cuenta[k]).map(([k, r]) => `· ${k} (${cuenta[k]}): ${r.para} — ${regla(r)}.`),
-          `Los automáticos (sin lista): ${EFECTO_AUTOMATICO.transicion} en cada transición y ${EFECTO_AUTOMATICO.sello} en cada sello o llamado.`,
+          `Los automáticos (sin lista) VARÍAN: cada tipo de transición suena a su familia (${Object.entries(SONIDOS_DE_TRANSICION).map(([t, l]) => `${t}: ${l[0]}…`).join("; ")}) y rotan las variantes; suenan solos también el sello o llamado, el logo, cada ítem de una lista, una cifra, una búsqueda, un comentario y un icono. Una lista colocada los sustituye todos.`,
           "Para ver los de un papel: efectos_sonido con «papel» (o «buscar» palabras). Para ponerlos: sonido_video con «colocados».",
         ].join("\n");
       }

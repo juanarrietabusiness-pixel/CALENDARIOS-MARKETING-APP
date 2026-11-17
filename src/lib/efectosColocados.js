@@ -55,6 +55,58 @@ export const PAPELES = Object.freeze({
  * glitch (un golpe grave en el destello) y el pop de cada sello o llamado.
  */
 export const EFECTO_AUTOMATICO = Object.freeze({ transicion: "whoosh_fast-crisp", impacto: "pro_impact-air", sello: "ui_pop-soft" });
+/**
+ * La VARIEDAD de los automáticos: cada tipo de transición suena a su familia (un empuje a un barrido grave, una cortina a
+ * un paño que pasa, un círculo a un respiro que se abre, un golpe a un impacto…) y, dentro de la familia, la variante va
+ * ROTANDO con cada transición del video. Antes sonaba el mismo whoosh en todas, el mismo impacto y el mismo pop: lo
+ * primero que se oye como «plantilla». El primero de cada lista es el de `EFECTO_AUTOMATICO` cuando lo hay.
+ */
+export const SONIDOS_DE_TRANSICION = Object.freeze({
+  fundido: ["swish-soft", "swipe-velvet", "reverse_swell-short"],
+  barrido: ["swipe-glide", "swipe-paper", "swipe-cloth"],
+  deslizar: ["swish-bright", "swipe-flick", "whoosh_fast-sleeve"],
+  zoom: ["whoosh_fast-whip", "whoosh_fast-tight", "whoosh_fast-reverse"],
+  empuje: ["whoosh_big-swell", "pro_whoosh_big-swell", "whoosh_big-cape", "pro_whoosh_big-tonal"],
+  cortina: ["whoosh_big-thump_airy", "swipe-velvet", "whoosh_big-thump"],
+  circulo: ["reverse_swell-ring", "reverse_swell-cymbal", "reverse_swell-breath"],
+  persiana: ["swipe-cloth", "shutter-film", "swish-cane"],
+  golpe: ["pro_impact-air", "pro_impact-deep", "cut_hit-punch", "pro_impact-swell"],
+  glitch: ["pro_glitch-standard", "pro_glitch-data", "glitch-burst"],
+});
+/** Lo que entra en pantalla y suena solo (sin lista), con sus variantes que rotan; y el volumen (dB) de cada sitio. */
+export const SONIDOS_DE_CAPA = Object.freeze({
+  sello: ["ui_pop-soft", "pro_pop-boop", "pro_pop-double", "ui_pop-wide"],
+  logo: ["logo_sting-soft_bloom", "pro_logo_sting-swell_sting", "logo_sting-spark"],
+  // Los ítems de una lista, en madera (cálido; no un pop de interfaz), y el ÚLTIMO, una confirmación: «ya está».
+  item: ["knock-wood", "knock-desk", "knock-double"],
+  final: ["notify-mid_wood", "notify-mid_tine"],
+  cifra: ["mallet-up4", "mallet-flourish"],
+  busqueda: ["pro_typing_run-tick", "pro_typing_run-soft"],
+  resultado: ["ui_pop-step", "ui_pop-blip"],
+  comentario: ["notify-m2", "notify-m3"],
+  icono: ["pro_pop_in-round", "pro_pop_in-double"],
+  despues: ["notify-mid_tine", "notify-mid_wood"],
+  marcador: ["pro_shimmer-m1", "pro_shimmer-m2"],
+});
+/** Lo que acompaña a un GOLPE de luz: la subida que termina en el destello y el grave que queda debajo. */
+export const CAPAS_DEL_GOLPE = Object.freeze({ subida: ["riser-swell", "riser-build", "pro_riser-air_gate"], caida: ["pro_sub_drop-soft", "pro_sub_drop-low"] });
+const VOLUMEN_DE_CAPA = Object.freeze({ item: -1, icono: -2, resultado: -2, marcador: -2, caida: -3 });
+/** Las transiciones que se MUEVEN (su whoosh cae en la mitad, lo más rápido del movimiento, no en el primer cuadro). */
+const SE_MUEVEN = new Set(["empuje", "cortina", "circulo", "persiana", "deslizar", "barrido", "zoom"]);
+/** Cuándo se pinta el marcador de una palabra de énfasis, desde que entra su texto (aproximado: la primera línea). */
+const MARCADOR_TRAS = 0.45;
+/**
+ * Los SECUNDARIOS (el destello del marcador, la nota de una cifra, el pop de un icono) son adorno: callan si un principal
+ * (una transición, un golpe, un ítem, el logo…) suena hasta `ANTES` s antes o `DESPUES` s después. Sin esto se
+ * amontonaban sobre la cola de un impacto o encima del whoosh de su propia escena.
+ */
+const SECUNDARIOS = new Set(["marcador", "cifra", "icono"]);
+export const RESPIRO_SECUNDARIO = Object.freeze({ antes: 0.5, despues: 0.25 });
+/** Lo que espera cada ítem de una lista a que entre el anterior si la capa no lo dice (s; lo mismo que dibuja el motor). */
+const CADA_ITEM = 0.4;
+/** Una variante de la lista por su turno (0, 1, 2…), dando la vuelta. Pura. */
+const turnoDe = (lista, n) => lista[((n % lista.length) + lista.length) % lista.length];
+
 /** Las transiciones que suenan a IMPACTO (un golpe grave en el destello, que es su mitad), no a whoosh. */
 export const TRANSICIONES_DE_IMPACTO = Object.freeze(["golpe", "glitch"]);
 /** Lo que se le sube al impacto automático (dB): lo grave se oye menos a igual RMS. */
@@ -239,27 +291,94 @@ export function momentosColocados(colocados, guion, linea, datosDe) {
 }
 
 /**
- * Los AUTOMÁTICOS como colocados: un whoosh en cada escena que entra con transición (no en un corte seco ni en la
- * primera), un IMPACTO en el destello de un golpe o un glitch (la mitad de la transición, algo más fuerte) y un pop al
- * entrar cada sello y cada llamado. `propios` ({ transicion?, sello? }: un efecto de la biblioteca, { archivoId, clave,
- * nombre }) suena en vez del del catálogo. Dos a menos de 0,15 s se quedan en uno. Pura.
+ * Los AUTOMÁTICOS como colocados, con VARIEDAD: cada transición (no un corte seco ni la primera escena) suena a la familia
+ * de su tipo (`SONIDOS_DE_TRANSICION`), rotando la variante; un golpe o un glitch, en su destello (la mitad de la
+ * transición, algo más fuerte). Y lo que entra en pantalla: el pop de cada sello o llamado, la firma del logo, cada ítem
+ * de una lista cuando llega, el golpe de una cifra, el tecleo de una búsqueda, la campana de un comentario y el pop de un
+ * icono (`SONIDOS_DE_CAPA`, también rotando). `propios` ({ transicion?, sello? }: un efecto de la biblioteca, { archivoId,
+ * clave, nombre }) suena en vez de los del catálogo en las transiciones y en los sellos. Dos a menos de 0,15 s se quedan
+ * en uno. Pura.
  */
 export function colocadosAutomaticos(guion, linea, propios = {}) {
-  const de = (sitio) => (propios?.[sitio]?.archivoId ? { propio: propios[sitio] } : { sonido: EFECTO_AUTOMATICO[sitio] });
+  const turnos = {};
+  const siguiente = (sitio, lista) => turnoDe(lista, (turnos[sitio] = (turnos[sitio] ?? -1) + 1));
   const lista = [];
+  const de = (sitio, t, ancla, lista_ = SONIDOS_DE_CAPA[sitio]) => {
+    const vol = VOLUMEN_DE_CAPA[sitio];
+    lista.push({ t, secundario: SECUNDARIOS.has(sitio), c: { sonido: siguiente(sitio, lista_), ...ancla, ...(vol ? { volumen: vol } : {}) } });
+  };
   (guion?.escenas ?? []).forEach((e, k) => {
     const esc = linea?.escenas?.[k];
     if (!esc) return;
-    if (k > 0 && TRANSICIONES_DE_IMPACTO.includes(e.transicion?.tipo)) {
-      const mitad = Math.round(((Number(e.transicion.dur) || 0) / 2) * 1000);
-      lista.push({ t: esc.desde + mitad / 1000, c: { sonido: EFECTO_AUTOMATICO.impacto, escena: e.id, ...(mitad ? { ajusteMs: Math.min(MAX_AJUSTE_MS, mitad) } : {}), volumen: REALCE_IMPACTO } });
-    } else if (k > 0 && e.transicion?.tipo && e.transicion.tipo !== "corte") lista.push({ t: esc.desde, c: { ...de("transicion"), escena: e.id } });
+    const tipo = e.transicion?.tipo;
+    const mitad = Math.min(MAX_AJUSTE_MS, Math.round(((Number(e.transicion?.dur) || 0) / 2) * 1000));
+    if (k > 0 && TRANSICIONES_DE_IMPACTO.includes(tipo)) {
+      const destello = r3(esc.desde + mitad / 1000);
+      lista.push({ t: destello, c: { sonido: siguiente(`transicion:${tipo}`, SONIDOS_DE_TRANSICION[tipo]), escena: e.id, ...(mitad ? { ajusteMs: mitad } : {}), volumen: REALCE_IMPACTO } });
+      if (tipo === "golpe") {
+        // La SUBIDA que termina justo en el destello y el GRAVE que queda debajo: un golpe de cine, no un clic.
+        lista.push({ t: destello - 0.01, c: { sonido: siguiente("subida", CAPAS_DEL_GOLPE.subida), segundo: destello } });
+        lista.push({ t: destello + 0.01, c: { sonido: siguiente("caida", CAPAS_DEL_GOLPE.caida), segundo: destello, volumen: VOLUMEN_DE_CAPA.caida } });
+      }
+    } else if (k > 0 && tipo && tipo !== "corte") {
+      // Cada tipo rota SUS variantes (la primera de cada uno es la más suya: una persiana suena a paño, no a obturador).
+      const c = propios?.transicion?.archivoId ? { propio: propios.transicion } : { sonido: siguiente(`transicion:${tipo}`, SONIDOS_DE_TRANSICION[tipo] ?? [EFECTO_AUTOMATICO.transicion]) };
+      const ajuste = SE_MUEVEN.has(tipo) && mitad ? mitad : 0;
+      lista.push({ t: r3(esc.desde + ajuste / 1000), c: { ...c, escena: e.id, ...(ajuste ? { ajusteMs: ajuste } : {}) } });
+    }
     for (const c of e.capas ?? []) {
-      if (c.tipo === "sello" || c.tipo === "llamado") lista.push({ t: tiempoDeCapa(c, esc).desde, c: { ...de("sello"), escena: e.id, capa: c.id } });
+      const t = tiempoDeCapa(c, esc).desde;
+      const ancla = { escena: e.id, capa: c.id };
+      const antesDelFin = (x) => x < esc.hasta;
+      if (c.tipo === "sello" || c.tipo === "llamado") {
+        lista.push({ t, c: propios?.sello?.archivoId ? { propio: propios.sello, ...ancla } : { sonido: siguiente("sello", SONIDOS_DE_CAPA.sello), ...ancla } });
+      } else if (["logo", "cifra", "comentario", "icono"].includes(c.tipo)) de(c.tipo, t, ancla);
+      else if (c.tipo === "busqueda") {
+        de("busqueda", t, ancla);
+        // Los resultados llegan cuando acaba de escribir, uno cada 0,35 s (lo mismo que dibuja el motor); el último, el
+        // de la marca, con su campanita.
+        const largo = String(c.texto ?? "").length;
+        const escrito = largo / Math.max(16, largo / 1.2) + 0.3;
+        const n = Math.min(4, (c.resultados ?? []).length);
+        for (let i = 0; i < n; i++) {
+          const ti = r3(t + escrito + i * 0.35);
+          if (antesDelFin(ti)) de(i === n - 1 ? "despues" : "resultado", ti, { segundo: ti });
+        }
+      } else if (c.tipo === "antes_despues") {
+        const ti = r3(t + 0.5);
+        if (antesDelFin(ti)) de("despues", ti, { segundo: ti });
+      } else if (c.tipo === "texto" && c.resalte === "marcador") {
+        const ti = r3(t + MARCADOR_TRAS);
+        if (antesDelFin(ti)) de("marcador", ti, { segundo: ti });
+      } else if (c.tipo === "lista") {
+        // Cada ítem cuando llega (el primero, con la capa; los demás, cada `cada` segundos), anclado a su segundo; el
+        // último de una lista NUMERADA (unos pasos) suena a confirmación.
+        const cada = Number(c.cada) > 0 ? Number(c.cada) : CADA_ITEM;
+        const items = (c.items ?? []).slice(0, 6);
+        items.forEach((_, i) => {
+          const ti = r3(t + i * cada);
+          if (!antesDelFin(ti)) return;
+          const ultimo = c.numerada && items.length > 1 && i === items.length - 1;
+          de(ultimo ? "final" : "item", ti, i === 0 ? ancla : { segundo: ti });
+        });
+      }
     }
   });
   lista.sort((a, b) => a.t - b.t);
-  return lista.filter((x, i, l) => i === 0 || x.t - l[i - 1].t >= JUNTOS_AUTOMATICOS).map((x) => x.c);
+  // Dos a menos de 0,15 s se quedan en uno, salvo las capas de un golpe (suenan juntas a propósito).
+  const juntos = new Set([...CAPAS_DEL_GOLPE.subida, ...CAPAS_DEL_GOLPE.caida]);
+  const principales = lista.filter((x) => !x.secundario).map((x) => x.t);
+  // «Dos a menos de 0,15 s» es dentro de la MISMA clase (dos transiciones, o dos cosas que entran): un whoosh y el pop
+  // del sello que entra con él suenan los dos.
+  const ultimo = { escena: -Infinity, capa: -Infinity };
+  return lista.filter((x) => {
+    if (juntos.has(x.c.sonido)) return true;
+    if (x.secundario && principales.some((p) => p >= x.t - RESPIRO_SECUNDARIO.antes - 1e-6 && p <= x.t + RESPIRO_SECUNDARIO.despues + 1e-6)) return false;
+    const clase = x.c.escena && !x.c.capa ? "escena" : "capa";
+    if (x.t - ultimo[clase] < JUNTOS_AUTOMATICOS) return false;
+    ultimo[clase] = x.t;
+    return true;
+  }).map((x) => x.c);
 }
 
 /**
