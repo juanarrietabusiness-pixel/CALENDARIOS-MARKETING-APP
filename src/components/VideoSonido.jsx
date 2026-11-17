@@ -13,6 +13,8 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 import Icon from "./Icon";
 import { pedir } from "../lib/db";
 import { limpiarSonido, VOLUMEN_MUSICA } from "../lib/sonidoVideo";
+import { textoDeColocado } from "../lib/efectosColocados";
+import { reloj } from "../lib/escucharSonido";
 import { conDuracion, avisarSonidos } from "../lib/sonidosApi";
 import GenerarMusica from "./GenerarMusica";
 
@@ -24,7 +26,88 @@ export default function VideoSonido({ client, video, sucio, onCambio }) {
   return (
     <>
       <Sonido client={client} video={video} onCambio={onCambio} />
+      <Escuchar client={client} video={video} />
       <Historial client={client} video={video} sucio={sucio} onCambio={onCambio} />
+    </>
+  );
+}
+
+/**
+ * ESCUCHAR sin oídos (POST …/escuchar): el mismo audio que el render, medido por el Container. Enseña la hoja (escenas,
+ * palabras, el nivel de cada pista, el espectrograma y cada efecto numerado), los avisos y los momentos que conviene
+ * escuchar. No gasta IA. Sirve antes de la voz (con los tiempos estimados) y antes de renderizar.
+ */
+function Escuchar({ client, video }) {
+  const [estado, setEstado] = useState(null);
+  const [ocupado, setOcupado] = useState(false);
+  const escuchar = async () => {
+    setOcupado(true); setEstado(null);
+    try {
+      const r = await pedir(`${base(client.id, video.id)}/escuchar`, { method: "POST", body: "{}" });
+      setEstado({ informe: r.informe, texto: r.texto, hoja: r.hoja });
+    } catch (e) { setEstado({ error: e.message }); } finally { setOcupado(false); }
+  };
+  const inf = estado?.informe;
+  return (
+    <details className="va-sonido">
+      <summary>Escuchar el sonido (medido)</summary>
+      <p className="hint">Arma el mismo audio que el render (voz, música y efectos) y lo mide: cuánto suena cada efecto frente a la voz y la música, qué palabra pisa, lo que se tapa, y los momentos que conviene escuchar. No gasta IA.</p>
+      <div className="va-acciones">
+        <button type="button" className="btn btn-ghost btn-sm" disabled={ocupado || video.estado === "renderizando"} onClick={escuchar}>
+          <Icon name="music" /> {ocupado ? "Midiendo…" : estado?.informe ? "Volver a medir" : "Escuchar el sonido"}
+        </button>
+      </div>
+      {estado?.error && <p className="va-msg va-error" role="alert">{estado.error}</p>}
+      {inf && (
+        <div role="status">
+          {estado.hoja && (
+            <img src={`data:${estado.hoja.mime};base64,${estado.hoja.datos}`} style={{ width: "100%", borderRadius: "var(--radius-sm)" }}
+              alt={`El sonido de «${video.titulo || "el video"}»: escenas, palabras, el nivel de la voz, la música y los efectos en el tiempo, y cada efecto numerado.`} />
+          )}
+          {inf.avisos?.length > 0 && (
+            <ul style={{ fontSize: "var(--fs-sm)", paddingLeft: "var(--sp-4)" }}>
+              {inf.avisos.map((a) => <li key={a}>{a}</li>)}
+            </ul>
+          )}
+          {inf.escuchar?.length > 0 && (
+            <>
+              <p style={{ fontSize: "var(--fs-sm)", fontWeight: 600, marginBottom: 0 }}>Escucha estos momentos en el video:</p>
+              <ol style={{ fontSize: "var(--fs-sm)", paddingLeft: "var(--sp-4)" }}>
+                {inf.escuchar.map((m) => <li key={m.segundo}><strong>{reloj(m.segundo)}</strong> — {m.porque}</li>)}
+              </ol>
+            </>
+          )}
+          <details>
+            <summary>El informe completo</summary>
+            <pre style={{ whiteSpace: "pre-wrap", fontSize: "var(--fs-xs)" }}>{estado.texto}</pre>
+          </details>
+        </div>
+      )}
+    </details>
+  );
+}
+
+/** La lista de efectos colocados (la pone Claude con sonido_video): cada uno con su nombre del catálogo. */
+function ListaColocada({ colocados, onQuitar, ocupado }) {
+  const [nombres, setNombres] = useState(null);
+  useEffect(() => {
+    let vivo = true;
+    // El catálogo pesa unos 80 kB: sólo se carga cuando hay una lista que nombrar.
+    import("../lib/catalogoEfectos").then((m) => { if (vivo) setNombres(m); }).catch(() => {});
+    return () => { vivo = false; };
+  }, []);
+  const nombre = (c) => (c.propio ? `«${c.propio.nombre || "Efecto de la biblioteca"}»` : nombres?.efectoDelCatalogo(c.sonido) ? `«${nombres.efectoDelCatalogo(c.sonido).nombre}»` : c.sonido);
+  return (
+    <>
+      <p className="hint">Efectos colocados ({colocados.length}): cada uno anclado a un momento del video. Mandan sobre los automáticos; los pone Claude con sonido_video.</p>
+      <ol style={{ fontSize: "var(--fs-sm)", paddingLeft: "var(--sp-4)", margin: 0 }}>
+        {colocados.map((c, i) => <li key={`${i}-${c.sonido ?? c.propio?.archivoId}`}>{textoDeColocado(c, nombre(c))}</li>)}
+      </ol>
+      <div className="va-acciones">
+        <button type="button" className="btn btn-ghost btn-sm" disabled={ocupado} onClick={onQuitar}>
+          <Icon name="trash" /> Quitar la lista (vuelven los automáticos)
+        </button>
+      </div>
     </>
   );
 }
@@ -75,6 +158,19 @@ function Sonido({ client, video, onCambio }) {
     } catch (e) { setMsg({ error: true, texto: e.message }); } finally { setOcupado(""); }
   };
 
+  // Quitar la lista colocada: se guarda lo que YA estaba guardado, sin ella (vuelven los automáticos).
+  const quitarLista = async () => {
+    setOcupado("lista"); setMsg(null);
+    try {
+      const r = await pedir(`${base(client.id, video.id)}/sonido`, {
+        method: "PUT",
+        body: JSON.stringify({ efectos: actual.efectos, musica: actual.musica ? { archivoId: actual.musica.archivoId, volumen: actual.musica.volumen } : null, efectosPropios: { transicion: actual.efectosPropios?.transicion?.archivoId ?? null, sello: actual.efectosPropios?.sello?.archivoId ?? null }, colocados: [] }),
+      });
+      onCambio(r.video); avisar(client.id, video.id);
+      setMsg({ texto: "Lista quitada: vuelven los efectos automáticos." });
+    } catch (e) { setMsg({ error: true, texto: e.message }); } finally { setOcupado(""); }
+  };
+
   const subir = async (e) => {
     const f = e.target.files?.[0];
     e.target.value = "";
@@ -109,9 +205,10 @@ function Sonido({ client, video, onCambio }) {
       <p className="hint">Va aparte del guion: cambiarlo no pide otra voz. Se oye al volver a renderizar (gratis).</p>
       <label className="va-check">
         <input type="checkbox" checked={efectos} onChange={(e) => setEfectos(e.target.checked)} />
-        Efectos de sonido bajitos (un whoosh en cada transición, un pop al entrar un sello o el llamado)
+        Efectos de sonido bajitos ({actual.colocados?.length ? "la lista colocada" : "un whoosh en cada transición, un pop al entrar un sello o el llamado"})
       </label>
-      {efectos && (
+      {efectos && actual.colocados?.length > 0 && <ListaColocada colocados={actual.colocados} onQuitar={quitarLista} ocupado={Boolean(ocupado) || renderizando} />}
+      {efectos && !actual.colocados?.length && (
         <>
           <SelectorEfecto id={`${ids}-ef-t`} etiqueta="Efecto en las transiciones" porDefecto="El whoosh de la aplicación" valor={transicion}
             onCambio={setTransicion} lista={efectosLista} antes={actual.efectosPropios?.transicion} />

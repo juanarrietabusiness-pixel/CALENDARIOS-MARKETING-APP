@@ -2,8 +2,9 @@
 // La prueba del AUDIO del render, DENTRO de la imagen (con su ffmpeg de Debian): `docker exec video node
 // container/probarAudio.mjs`. Las tomas son como las de verdad: MP3 mono a 44,1 kHz y 128 kb/s (lo que devuelve
 // ElevenLabs), con y sin pausas, y con una pausa DESPUÉS del final de la toma (la última palabra de la alineación puede
-// acabar unos milisegundos más tarde que el archivo). Además, una toma cuyo muestreo cambia a la mitad, y los EFECTOS de
-// la biblioteca de sonido (un MP3 y un WAV subidos) en vez de los sintetizados.
+// acabar unos milisegundos más tarde que el archivo). Además, una toma cuyo muestreo cambia a la mitad, los EFECTOS del
+// catálogo de la aplicación (los automáticos y una lista colocada por escena, capa y palabra: cada uno suena en su
+// instante) y los de la biblioteca de sonido (un MP3 y un WAV subidos) en vez de los automáticos.
 // ============================================================
 
 import { spawnSync } from "node:child_process";
@@ -16,7 +17,8 @@ import { audioDelVideo } from "./render.mjs";
 import { RENDER } from "../src/lib/renderVideo.js";
 import { validarGuion, lineaDeTiempo } from "../src/lib/videoEscenas.js";
 import { EJEMPLO_GUION } from "../src/lib/videoFormatoIA.js";
-import { momentosDeEfectos } from "../src/lib/efectosSonido.js";
+import { colocadosAutomaticos, momentosColocados, instanteDe } from "../src/lib/efectosColocados.js";
+import { efectoDelCatalogo } from "../src/lib/catalogoEfectos.js";
 import { golpesDeCancion } from "./golpes.mjs";
 
 const FFMPEG = process.env.FFMPEG || "ffmpeg";
@@ -59,10 +61,11 @@ function nivel(archivo, desde, hasta) {
   return b.length ? Math.sqrt(suma / (b.length / 2)) : 0;
 }
 
-async function caso(titulo, audio, silencios, total, { callado = null, suena = null, guion = null, linea = null, efectos = false, musica = null, efectosPropios = null } = {}) {
+async function caso(titulo, audio, silencios, total, { callado = null, suena = null, guion = null, linea = null, efectos = false, musica = null, colocados = [], propios = {}, libreria = {}, cuantos = null, umbral = 0.02 } = {}) {
   const salida = join(carpeta, `${titulo.replace(/\W+/g, "-")}.m4a`);
   try {
-    const m = await audioDelVideo(carpeta, { audio, linea: linea ?? { silencios }, total, salida, guion, efectos, musica, efectosPropios });
+    const m = await audioDelVideo(carpeta, { audio, linea: linea ?? { silencios }, total, salida, guion, efectos, musica, colocados, propios, libreria });
+    if (cuantos !== null && m?.efectos?.cuantos !== cuantos) throw new Error(`sonaron ${m?.efectos?.cuantos} efectos, no ${cuantos}`);
     const dur = duracion(salida);
     if (!(Math.abs(dur - total) < 0.06)) throw new Error(`el audio dura ${dur} s, no ${total}`);
     // Con voz, o con sólo música (una foto con música): normalizado a -14 LUFS y sin pasarse de pico.
@@ -71,7 +74,7 @@ async function caso(titulo, audio, silencios, total, { callado = null, suena = n
     if (normalizado && !(m?.pico <= RENDER.pico + 0.5)) throw new Error(`el pico quedó en ${m?.pico} dB`);
     // La pausa está donde tiene que estar: callada en su sitio y con voz justo antes (sin contar lo que AAC emborrona).
     if (callado && nivel(salida, ...callado) > 0.003) throw new Error(`entre ${callado.join(" y ")} s debería haber silencio`);
-    if (suena && nivel(salida, ...suena) < 0.02) throw new Error(`entre ${suena.join(" y ")} s debería sonar la voz`);
+    if (suena && nivel(salida, ...suena) < umbral) throw new Error(`entre ${suena.join(" y ")} s debería sonar (${nivel(salida, ...suena).toFixed(4)})`);
     console.log(`✓ ${titulo} (${dur.toFixed(2)} s${m ? `, ${m.lufs} LUFS, pico ${m.pico} dB` : ""})`);
   } catch (e) {
     mal++;
@@ -101,24 +104,51 @@ try {
   const l = lineaDeTiempo(g, null);
   const vozEjemplo = await readFile(mp3("voz-ejemplo.mp3", Math.max(1, l.total - 1)));
   const tema = await readFile(mp3("tema.mp3", 4, 44100, "0.5"));
-  if (!momentosDeEfectos(g, l).length) { mal++; console.error("✗ el ejemplo debería tener efectos (transiciones o sellos)"); }
-  await caso("Con efectos y música de fondo (ducking y fundido)", vozEjemplo, l.silencios, l.total, {
-    guion: g, linea: l, efectos: true, musica: { audio: tema, volumen: 0 },
+  const automaticos = colocadosAutomaticos(g, l);
+  if (!automaticos.length) { mal++; console.error("✗ el ejemplo debería tener efectos (transiciones o sellos)"); }
+  // Los automáticos, del CATÁLOGO (los MP3 de la imagen): el pop de un sello suena en su instante.
+  const popAuto = automaticos.find((c) => c.capa);
+  const tPop = popAuto ? instanteDe(popAuto, g, l).t : null;
+  await caso("Con efectos (los automáticos, del catálogo) y música de fondo (ducking y fundido)", vozEjemplo, l.silencios, l.total, {
+    guion: g, linea: l, efectos: true, musica: { audio: tema, volumen: 0 }, cuantos: automaticos.length,
+  });
+  // Sin voz ni música el audio no se normaliza: los efectos quedan bajitos (a su nivel de siempre), pero suenan donde van.
+  await caso("Los automáticos del catálogo suenan en su instante (sin voz ni música)", null, l.silencios, l.total, {
+    guion: g, linea: l, efectos: true, cuantos: automaticos.length, umbral: 0.003, ...(tPop !== null ? { suena: [tPop, tPop + 0.08] } : {}),
+  });
+  // Una LISTA colocada (escena, capa, palabra y segundo): manda sobre los automáticos y cada uno suena en su instante.
+  const lista = [
+    { sonido: "whoosh_fast-crisp", escena: "e2" },
+    { sonido: "ui_pop-soft", escena: "e2", capa: "s" },
+    { sonido: "cut_hit-punch", palabra: "precio" },
+    { sonido: "ui-success", segundo: 1 },
+    { sonido: "ui-add-to-cart", escena: "nada" },
+  ];
+  const datos = (c) => { const e = efectoDelCatalogo(c.sonido); return e ? { papel: e.papel, pico: e.pico, nombre: e.nombre } : null; };
+  const { momentos, sinSitio } = momentosColocados(lista, g, l, datos);
+  if (sinSitio.length !== 1 || momentos.length !== 4) { mal++; console.error(`✗ la lista: ${momentos.length} con sitio y ${sinSitio.length} sin (se esperaban 4 y 1)`); }
+  const golpe = momentos.find((x) => x.clave === "cut_hit-punch");
+  await caso("Con una lista colocada (escena, capa, palabra y segundo; una sin sitio)", null, l.silencios, l.total, {
+    guion: g, linea: l, efectos: true, colocados: lista, cuantos: 4, umbral: 0.003, ...(golpe ? { suena: [golpe.en, golpe.en + 0.1], callado: [golpe.en - 0.4, golpe.en - 0.15] } : {}),
+  });
+  await caso("La lista con voz y música (la música baja antes del golpe)", vozEjemplo, l.silencios, l.total, {
+    guion: g, linea: l, efectos: true, colocados: lista, musica: { audio: tema, volumen: 0 }, cuantos: 4,
   });
   // Los EFECTOS de la biblioteca de sonido (subidos por la agencia: un MP3 con silencio delante y un WAV corto), en vez
-  // del whoosh y del pop sintetizados: el audio sigue en -14 LUFS y en su duración, y en el instante de un sello suena.
+  // de los automáticos: el audio sigue en -14 LUFS y en su duración, y en el instante de un sello suena.
   const whooshSubido = await readFile(mp3("whoosh-subido.mp3", 1.2, 44100, "if(lt(t,0.3),0,0.6)"));
   const popSubido = await readFile(wav("pop-subido.wav", 0.25));
-  const momentos = momentosDeEfectos(g, l);
-  const pop = momentos.find((x) => x.tipo === "pop");
+  const propios = { transicion: { archivoId: "whoosh-subido", nombre: "Whoosh subido" }, sello: { archivoId: "pop-subido", nombre: "Pop subido" } };
   await caso("Con efectos SUBIDOS (biblioteca de sonido) y música", vozEjemplo, l.silencios, l.total, {
-    guion: g, linea: l, efectos: true, musica: { audio: tema, volumen: 0 }, efectosPropios: { whoosh: whooshSubido, pop: popSubido },
-    ...(pop ? { suena: [pop.en, pop.en + 0.2] } : {}),
+    guion: g, linea: l, efectos: true, musica: { audio: tema, volumen: 0 }, propios, libreria: { "whoosh-subido": whooshSubido, "pop-subido": popSubido },
+    cuantos: automaticos.length, ...(tPop !== null ? { suena: [tPop, tPop + 0.2] } : {}),
   });
-  // Uno que no se puede leer no tumba el audio: suena el sintetizado.
-  await caso("Con un efecto subido que no se puede leer (va el sintetizado)", vozEjemplo, l.silencios, l.total, {
-    guion: g, linea: l, efectos: true, efectosPropios: { pop: Buffer.from("no es un audio") },
+  // Uno que no se puede leer no tumba el audio: suena el de la aplicación.
+  await caso("Con un efecto subido que no se puede leer (va el de la aplicación)", vozEjemplo, l.silencios, l.total, {
+    guion: g, linea: l, efectos: true, propios: { sello: propios.sello }, libreria: { "pop-subido": Buffer.from("no es un audio") }, cuantos: automaticos.length,
   });
+  // Con los efectos apagados, ni los automáticos ni la lista.
+  await caso("Con los efectos apagados", vozEjemplo, l.silencios, l.total, { guion: g, linea: l, efectos: false, colocados: lista, cuantos: 0 });
   // Una foto con música (src/lib/conMusica.js): sin voz, la escena entera es un silencio insertado y debajo sólo la
   // música, repetida; tiene que oírse a -14 LUFS (sin voz que la mida quedaba muy baja) y sonar en medio.
   await caso("Sólo música, sin voz (una foto con música)", null, [{ en: 0, dur: 10 }], 10, { musica: { audio: tema, volumen: 0 }, suena: [4, 6] });

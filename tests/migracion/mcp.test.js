@@ -147,6 +147,7 @@ describe("el protocolo y las herramientas", () => {
     expect(ini.result.instructions).toMatch(/ficha_de_textos/);
     expect(ini.result.instructions).toMatch(/numeros_del_negocio/);
     expect(ini.result.instructions).toMatch(/guia_de_diseno/);
+    expect(ini.result.instructions).toMatch(/escuchar_video/);
     const notif = await pedir("/mcp", { method: "POST", headers: { Authorization: `Bearer ${tk}` }, body: JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }) });
     expect(notif.status).toBe(202);
     const { result } = await (await mcp(tk, "tools/list")).json();

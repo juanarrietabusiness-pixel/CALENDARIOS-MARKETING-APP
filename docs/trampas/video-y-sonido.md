@@ -955,3 +955,42 @@ contradicen, manda la de más abajo (la más nueva). Una trampa nueva de esta á
   (del lado de Kie, ya con el pedido aceptado: el formato es el bueno). Sin un resultado todavía, no se sabe si es el modelo
   recién salido, la edición a 1080p o la duración. Si sigue pasando: probar a 720p o un video más corto antes de culpar al
   pedido; Seedance 2.5 (de 15 a 30 s) es el otro camino para «look» y «cambiar algo».
+- **Los EFECTOS DE SONIDO por evento: un catálogo propio, una lista anclada a lo que pasa y «escuchar» sin oídos**
+  (17-11-2026; `src/lib/catalogoEfectos.js`, `efectosColocados.js`, `efectosSonido.js`, `escucharSonido.js`,
+  `container/efectos.mjs`, `container/escuchar.mjs`, `worker/lib/estudio/escuchar.js`, `scripts/efectos/`). Se estudiaron
+  earshot (github.com/Leonxlnx/earshot) y real-sfx de Clipwing (github.com/Clipwing/skills): NO se subió su código. Cosas
+  que no se ven en la pantalla:
+  · **El catálogo son archivos de la aplicación, no filas**: 283 MP3 en `public/efectos/v1` (2,6 MB; 236 de earshot, los que
+  pasan SU auditoría —16 no—, y 47 de uisfx, el paquete «studio» sin los que suenan en bucle). Se sirven como estáticos y la
+  imagen del Container los COPIA (`COPY public/efectos` y su excepción en `.dockerignore`: sin ella, el render se quedaba
+  sin catálogo y sonaban los sintetizados). Los datos (`catalogoEfectos.datos.js`) los GENERA
+  `scripts/efectos/armar-catalogo.mjs` y no se editan a mano. Un id NO se renombra: las listas guardadas lo usan.
+  · **El banco de earshot se renderiza SIN sus modelos** (sólo numpy, scipy, soundfile y soxr; ni torch ni 1,1 GB de CLAP y
+  AST): 252 sonidos en 17 minutos de CPU, una vez. Sus «oídos» (los modelos) no van a Cloudflare: en una mezcla aciertan qué
+  es un sonido la mitad de las veces (su propio LIMITS.md); lo fiable son las MEDIDAS, que ffmpeg y el código ya sacan.
+  · **El pico de un efecto es el primer instante a 1 dB del más fuerte**, medido sobre el MP3 decodificado como lo hace el
+  Container (el mismo `muestrasDeEfecto`). Con la ventana más fuerte a secas, uno con meseta (una subida que se sostiene)
+  saltaba hasta 220 ms entre el WAV y el MP3. Aun así, tres (riser-build, toggle-rocker, whoosh_big-gust) tienen la meseta
+  ambigua: como el render mide el mismo MP3, cae siempre igual.
+  · **Con lista, los automáticos callan** (si no, el whoosh de una transición sonaría dos veces); `[]` los devuelve. Y los
+  automáticos ahora son del catálogo (`EFECTO_AUTOMATICO`: whoosh_fast-crisp y ui_pop-soft), con las mismas reglas: el pico
+  del whoosh 37 ms DESPUÉS del corte (antes, centrado en él). El sintetizado queda de respaldo si un MP3 no se lee.
+  · **El nivel de un efecto es el más alto de dos reglas**: el de siempre (12 dB bajo la voz, movido por su papel) y sus dB
+  medidos SOBRE la música del segundo de antes (la mediana de ventanas de 50 ms, medida ANTES de bajar la música). Sin la
+  segunda, un efecto en un hueco sin voz quedaba 3 dB por debajo de la música. Techo: 6 dB bajo la voz; con la música a 9 dB
+  bajo la voz en los huecos, un efecto ahí llega a +3 dB sobre ella. Para más, `volumen` a mano (pasa el techo).
+  · **Lo que no se ha medido lo dice**: los papeles brillo, firma, glitch, interfaz y propio llevan una regla prudente
+  (`medido: false`); la densidad de earshot (18 a 30 efectos cada 10 s con locución) es de películas de PRODUCTO, no una meta
+  para un reel de marketing: el informe la enseña y sólo avisa si se pasa.
+  · **Guardar no pisa nada**: un PUT del sonido sin `colocados` (la pantalla de antes) conserva la lista; quitar de la
+  biblioteca un efecto que usa la lista es un 409 (`usa` mira también `colocados`). El Worker sólo manda como sustituto de un
+  automático el efecto de la biblioteca que PUDO leer: así el Container no avisa dos veces.
+  · **Escuchar va al Container de los cuadros, no al del render**: no espera a la cola de renders y tarda 1,5 s (30 s de
+  video). Sirve ANTES de la voz (tiempos estimados, y lo dice): se coloca, se escucha, se corrige y sólo al final se paga el
+  render. La hoja es un PNG de unos 250 kB que va en el JSON (la pantalla la pinta como `data:`; `img-src` la deja).
+  · **Sin voz ni música el audio no se normaliza**, como antes: los efectos solos quedan a su nivel bajito.
+  · Lo probado: las reglas, la mezcla y el informe (vitest), el Container en local con el ffmpeg del sistema
+  (`probarAudio.mjs` y `probar.mjs`: cada efecto suena en su instante; /escuchar da informe y hoja) y la pantalla «Sonido» en
+  Chromium (la lista, «Quitar la lista», «Escuchar el sonido»). NO probado: el render en Cloudflare con el catálogo en la
+  imagen, la hoja vista desde el chat de Claude, y si los efectos de earshot SUENAN bien: eso lo dice una persona en los
+  momentos que marca el informe (su prueba a ciegas fue de un oyente y 15 intentos).

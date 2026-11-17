@@ -12,6 +12,7 @@
 // ============================================================
 
 import { BYTES_MUESTRA, RENDER } from "./renderVideo.js";
+import { limpiarColocados } from "./efectosColocados.js";
 
 /** Dónde queda la música respecto a la voz (dB, en RMS): mientras se habla y en los huecos sin voz. */
 export const MUSICA_BAJO_LA_VOZ = Object.freeze({ hablando: 20, hueco: 9 });
@@ -47,9 +48,10 @@ function pistaLimpia(m) {
 
 /**
  * El sonido de un video, limpio: { efectos (bool, encendidos por defecto), musica: null | { archivoId, clave?, nombre,
- * volumen (dB, -12…12), de? }, efectosPropios?: { transicion?, sello? } }. Lo que no vale se quita. `efectosPropios` son
- * efectos de la BIBLIOTECA (un id, o { archivoId, clave, nombre }) que suenan en vez del whoosh o del pop sintetizados;
- * sólo va si hay alguno. `de: "agencia"`: la pista es de la biblioteca de la agencia. Pura.
+ * volumen (dB, -12…12), de? }, efectosPropios?: { transicion?, sello? }, colocados?: [...] }. Lo que no vale se quita.
+ * `efectosPropios` son efectos de la BIBLIOTECA (un id, o { archivoId, clave, nombre }) que suenan en vez del whoosh o del
+ * pop automáticos; `colocados`, la lista de efectos anclados a eventos (src/lib/efectosColocados.js), que manda sobre los
+ * automáticos. Los dos, sólo si hay alguno. `de: "agencia"`: la pista es de la biblioteca de la agencia. Pura.
  */
 export function limpiarSonido(s) {
   const o = s && typeof s === "object" && !Array.isArray(s) ? s : {};
@@ -66,7 +68,11 @@ export function limpiarSonido(s) {
     const e = pistaLimpia(p[sitio]);
     if (e) propios[sitio] = e;
   }
-  return { efectos: o.efectos !== false, musica, ...(Object.keys(propios).length ? { efectosPropios: propios } : {}) };
+  const colocados = limpiarColocados(o.colocados);
+  return {
+    efectos: o.efectos !== false, musica, ...(Object.keys(propios).length ? { efectosPropios: propios } : {}),
+    ...(colocados.length ? { colocados } : {}),
+  };
 }
 
 /** El RMS (0–1) de un PCM s16le estéreo, sin contar lo que es exactamente cero (el silencio insertado). Pura. */

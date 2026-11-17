@@ -25,6 +25,10 @@
 /assets/*
   Cache-Control: public, max-age=31536000, immutable
 
+# El catálogo de efectos de sonido (src/lib/catalogoEfectos.js): un día. Si se regenera, cambia en v1 sin cambiar el nombre.
+/efectos/*
+  Cache-Control: public, max-age=86400
+
 /index.html
   Cache-Control: public, max-age=0, must-revalidate
 

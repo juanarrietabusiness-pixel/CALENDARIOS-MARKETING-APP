@@ -32,8 +32,12 @@
 //   POST   /api/videos/<c>/<id>/publicacion { postId, calendarId? }: ligarlo a una publicación del cliente (postId vacío:
 //                                           desligarlo). Si el mp4 ya está hecho, se pone en ella ya
 //   PUT    /api/videos/<c>/<id>/sonido      { efectos, musica: { archivoId, volumen } | null, efectosPropios?: { transicion,
-//                                           sello } (ids de efectos de la biblioteca) }: lo que suena debajo de la voz. Va
-//                                           aparte del guion: no sube la versión ni pide otra voz (gratis)
+//                                           sello } (ids de efectos de la biblioteca), colocados?: [...] (la lista de
+//                                           efectos anclados a eventos, src/lib/efectosColocados.js) }: lo que suena
+//                                           debajo de la voz. Va aparte del guion: no sube la versión ni pide otra voz
+//                                           (gratis). Sin `efectosPropios` o sin `colocados`, lo que tenía se queda
+//   POST   /api/videos/<c>/<id>/escuchar    ESCUCHAR sin oídos (worker/lib/estudio/escuchar.js): el mismo audio que el
+//                                           render, medido → { informe, texto, hoja: { mime, datos } }. No gasta IA
 //   GET    /api/videos/<c>/<id>/fondos      Las IMÁGENES DE FONDO por crear del guion guardado: cuántas, su costo y si ya se
 //                                           están creando
 //   POST   /api/videos/<c>/<id>/fondos      { confirmado }: crearlas con el DIRECTOR (un encargo del servidor; 9:16, sin
@@ -117,6 +121,7 @@ import { pedirMusica, ErrorMusica } from "../lib/estudio/musica.js";
 import { proponerMusica, musicaALaMarca, resumenDelAnalisis, ErrorDirectorMusical } from "../lib/estudio/directorMusical.js";
 import { pedidoConClips, alContenedor } from "../lib/estudio/cuadros.js";
 import { pedirRender, renderAlDia, ligarAPublicacion } from "../lib/estudio/render.js";
+import { escucharVideo } from "../lib/estudio/escuchar.js";
 import { publicarConMusica, carruselAReel } from "../lib/estudio/conMusica.js";
 import { pedirFondos, estadoDeFondos } from "../lib/estudio/fondosVideo.js";
 import { costoDeVoz, fraseDeMuestra, modeloDeVoz, esIdDeVoz } from "../../src/lib/voces.js";
@@ -417,6 +422,9 @@ async function rutasDelCliente(req, env, { acceso, usuario, partes, metodo }) {
     return new Response(r.body, { headers: cabeceras });
   }
 
+  // ESCUCHAR sin oídos: el mismo audio que el render, por pistas y medido, con su hoja (el Container; no gasta IA).
+  if (accion === "escuchar" && metodo === "POST") return json(await escucharVideo(env, acceso, cliente, fila));
+
   // «Proponer la música para este video»: el director musical lee el guion GUARDADO (no lo que haya sin guardar en la
   // pantalla) y propone; no toca el video ni pide nada a Suno, así que no pide la versión.
   if (accion === "musica" && metodo === "POST") {
@@ -476,9 +484,11 @@ async function rutasDelCliente(req, env, { acceso, usuario, partes, metodo }) {
 
   // El sonido (efectos y música): tampoco toca el guion ni la voz.
   if (accion === "sonido" && metodo === "PUT") {
-    // Sin `efectosPropios` en el cuerpo (una pantalla de antes), los de la biblioteca que ya tenía se quedan.
-    const efectosPropios = b.efectosPropios === undefined ? deFila(fila).sonido.efectosPropios ?? null : b.efectosPropios;
-    const r = await guardarSonido(acceso, cliente, fila, { efectos: b.efectos, musica: b.musica ?? null, efectosPropios });
+    // Sin `efectosPropios` o sin `colocados` en el cuerpo (una pantalla de antes), lo que ya tenía se queda.
+    const antes = deFila(fila).sonido;
+    const efectosPropios = b.efectosPropios === undefined ? antes.efectosPropios ?? null : b.efectosPropios;
+    const colocados = b.colocados === undefined ? antes.colocados ?? [] : b.colocados;
+    const r = await guardarSonido(acceso, cliente, fila, { efectos: b.efectos, musica: b.musica ?? null, efectosPropios, colocados });
     avisar(env, acceso, usuario, req, clienteId, id);
     return json(r);
   }

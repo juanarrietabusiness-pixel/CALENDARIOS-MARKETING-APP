@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { limpiarSonido, nivelDe, hablandoPorVentana, curvaDeDucking, mezclarMusica, mezclarClip, MUSICA_BAJO_LA_VOZ, FUNDIDO_MUSICA, FUNDIDO_CLIP } from "./sonidoVideo.js";
-import { momentosDeEfectos, sintetizar, mezclarEfectos, DURACION_EFECTO } from "./efectosSonido.js";
+import { sintetizar, mezclarColocados, DURACION_EFECTO } from "./efectosSonido.js";
+import { colocadosAutomaticos, momentosColocados, EFECTO_AUTOMATICO } from "./efectosColocados.js";
 import { BYTES_MUESTRA } from "./renderVideo.js";
 import { validarGuion, lineaDeTiempo } from "./videoEscenas.js";
 import { EJEMPLO_GUION } from "./videoFormatoIA.js";
@@ -81,18 +82,25 @@ describe("los efectos de sonido", () => {
   const guion = validarGuion(JSON.parse(JSON.stringify(EJEMPLO_GUION))).guion;
   const linea = lineaDeTiempo(guion);
 
-  it("un whoosh en cada transición que no es un corte y un pop al entrar cada sello y el llamado", () => {
-    const m = momentosDeEfectos(guion, linea);
+  it("los automáticos: un whoosh en cada transición que no es un corte y un pop al entrar cada sello y el llamado", () => {
+    const l = colocadosAutomaticos(guion, linea);
     const conTransicion = guion.escenas.slice(1).filter((e) => e.transicion.tipo !== "corte").length;
-    expect(m.filter((x) => x.tipo === "whoosh")).toHaveLength(conTransicion);
+    expect(l.filter((x) => x.sonido === EFECTO_AUTOMATICO.transicion)).toHaveLength(conTransicion);
     const sellosYLlamados = guion.escenas.flatMap((e) => e.capas).filter((c) => c.tipo === "sello" || c.tipo === "llamado").length;
-    expect(m.filter((x) => x.tipo === "pop").length).toBeLessThanOrEqual(sellosYLlamados);
-    expect(m.length).toBeGreaterThan(0);
-    // En orden y sin dos pegados.
-    for (let i = 1; i < m.length; i++) expect(m[i].en - m[i - 1].en).toBeGreaterThanOrEqual(0.15);
+    const pops = l.filter((x) => x.sonido === EFECTO_AUTOMATICO.sello);
+    expect(pops.length).toBeLessThanOrEqual(sellosYLlamados);
+    expect(pops.every((x) => x.escena && x.capa)).toBe(true);
+    expect(l.length).toBeGreaterThan(0);
+    // En orden y sin dos pegados (por el momento de su ancla).
+    const datos = () => ({ papel: "propio", pico: 0, nombre: "x" });
+    const { momentos } = momentosColocados(l, guion, linea, datos);
+    for (let i = 1; i < momentos.length; i++) expect(momentos[i].evento - momentos[i - 1].evento).toBeGreaterThanOrEqual(0.15);
     // Sin transiciones ni sellos, nada.
     const liso = { escenas: guion.escenas.map((e) => ({ ...e, transicion: { tipo: "corte", dur: 0 }, capas: e.capas.filter((c) => !["sello", "llamado"].includes(c.tipo)) })) };
-    expect(momentosDeEfectos(liso, linea)).toEqual([]);
+    expect(colocadosAutomaticos(liso, linea)).toEqual([]);
+    // Con un efecto de la biblioteca para un sitio, ése en su lugar.
+    const propio = colocadosAutomaticos(guion, linea, { sello: { archivoId: "ding", nombre: "Ding" } });
+    expect(propio.filter((x) => x.propio?.archivoId === "ding")).toHaveLength(pops.length);
   });
 
   it("se sintetizan iguales cada vez, con su duración y el pico en 1", () => {
@@ -104,13 +112,19 @@ describe("los efectos de sonido", () => {
     }
   });
 
-  it("se mezclan bajitos: unos 12 dB por debajo de la voz, en su sitio", () => {
+  it("se mezclan bajitos: unos 12 dB por debajo de la voz (movidos por su papel), en su sitio", () => {
     const voz = pcm(3, { a: 0.3, desde: 0, hasta: 1 });
-    const fuera = mezclarEfectos(new Uint8Array(voz), [{ tipo: "whoosh", en: 2 }], { muestreo: M });
-    expect(rmsEntre(fuera, 1.2, 1.9)).toBe(0); // antes del efecto, el silencio sigue
-    const efecto = rmsEntre(fuera, 2, 2 + DURACION_EFECTO.whoosh);
+    const efectos = new Uint8Array(voz.byteLength);
+    const m = { i: 0, clave: "w", en: 2, golpe: 2, db: 0, sobreFondo: 6, volumen: 0 };
+    const { medidas } = mezclarColocados(efectos, [m], new Map([["w", sintetizar("whoosh", M)]]), { habla: voz, muestreo: M });
+    expect(rmsEntre(efectos, 1.2, 1.9)).toBe(0); // antes del efecto, nada
+    const efecto = rmsEntre(efectos, 2, 2 + DURACION_EFECTO.whoosh);
     expect(db(efecto / nivelDe(voz))).toBeGreaterThan(-15);
     expect(db(efecto / nivelDe(voz))).toBeLessThan(-9);
+    expect(medidas[0].sobreVoz).toBeCloseTo(-12, 0);
+    // El papel lo mueve: uno que va 5 dB más bajo (un tic) queda unos 17 dB bajo la voz.
+    const tic = mezclarColocados(new Uint8Array(voz.byteLength), [{ ...m, db: -5 }], new Map([["w", sintetizar("whoosh", M)]]), { habla: voz, muestreo: M });
+    expect(tic.medidas[0].sobreVoz).toBeCloseTo(-17, 0);
   });
 });
 
