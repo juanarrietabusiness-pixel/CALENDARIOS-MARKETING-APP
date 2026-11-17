@@ -1038,3 +1038,9 @@ contradicen, manda la de más abajo (la más nueva). Una trampa nueva de esta á
   · El conector MCP de una sesión de Claude que se abrió ANTES de desplegar `colocados` no lo tiene en su esquema y lo quita
   sin avisar (sonido_video dice «Guardado» con los automáticos). Para poner una lista hay que abrir una sesión nueva o usar
   la pantalla «Sonido».
+  · **El Container de RENDER también sigue un rato con la imagen vieja tras desplegar** (17-11-2026): el primer render de
+  después del despliegue salió con los efectos automáticos de antes, aunque el Worker ya era el nuevo y hacía más de 30 s
+  que no se renderizaba. Cinco minutos después, el mismo render salió con los nuevos. Cómo se supo, sin oídos: renderizar
+  en local el mismo guion y la misma música con el código nuevo y con el viejo, y correlacionar la envolvente del audio
+  con el mp4 de producción (1,000 con el que lo hizo, 0,775 con el otro). Tras un despliegue que toca el audio o el
+  motor, espera unos minutos antes de renderizar lo que se va a entregar, y compruébalo así.
