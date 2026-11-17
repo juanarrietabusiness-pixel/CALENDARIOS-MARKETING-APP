@@ -951,3 +951,7 @@ contradicen, manda la de más abajo (la más nueva). Una trampa nueva de esta á
   veía: la primera escena va sobre el acento y el oscuro de la marca.
   · **Predictor de viralidad (Higgsfield), descartado**: cuesta créditos de Higgsfield (la agencia no los compra), no se
   puede reproducir aquí y «¿Está listo este video?» ya revisa el gancho y la retención con el método de la agencia.
+  · **Omni 1.2 por Kie, editando un video de 12 s a 1080p (17-11-2026), falló DOS veces con «generate task timeout»**
+  (del lado de Kie, ya con el pedido aceptado: el formato es el bueno). Sin un resultado todavía, no se sabe si es el modelo
+  recién salido, la edición a 1080p o la duración. Si sigue pasando: probar a 720p o un video más corto antes de culpar al
+  pedido; Seedance 2.5 (de 15 a 30 s) es el otro camino para «look» y «cambiar algo».
