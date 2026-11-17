@@ -44,3 +44,20 @@ describe("las plantillas de movimiento gráfico", () => {
     expect(new Set(logos.map((l) => `${l.pos}-${l.tam}`)).size).toBe(1);
   });
 });
+
+describe("lo que salió en el primer video real", () => {
+  it("una búsqueda larga se escribe en 1,2 s como mucho: los resultados se ven en la escena", async () => {
+    const { escritoHasta, letrasPorSegundo, MAX_ESCRIBIR } = await import("./motorComponentes.js");
+    const larga = "óptica que me haga los lentes hoy en Panamá";
+    expect(larga.length / letrasPorSegundo(larga)).toBeLessThanOrEqual(MAX_ESCRIBIR + 1e-9);
+    expect(escritoHasta(larga, MAX_ESCRIBIR)).toBe(larga);
+    expect(letrasPorSegundo("corta")).toBe(16);
+  });
+
+  it("un signo pegado al cierre de un énfasis va con la palabra (sin «café ,»)", async () => {
+    const { partirEnfasis } = await import("./motorTexto.js");
+    expect(partirEnfasis("Con música y *café*, ya").map((p) => p.texto)).toEqual(["Con", "música", "y", "café,", "ya"]);
+    expect(partirEnfasis("¿Por qué *esperar*?").map((p) => p.texto)).toEqual(["¿Por", "qué", "esperar?"]);
+    expect(partirEnfasis("Lo *mejor* de todo").map((p) => p.texto)).toEqual(["Lo", "mejor", "de", "todo"]);
+  });
+});

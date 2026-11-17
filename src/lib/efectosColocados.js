@@ -50,8 +50,15 @@ export const PAPELES = Object.freeze({
   propio: { nombre: "De la biblioteca", para: "un efecto subido a la biblioteca de sonido", alinear: "arranque", ajusteMs: 0, sobreFondo: 6, separacionMs: 0, bajaMusica: false, medido: false },
 });
 
-/** Los efectos AUTOMÁTICOS (sin lista): el whoosh de cada transición y el pop de cada sello o llamado, del catálogo. */
-export const EFECTO_AUTOMATICO = Object.freeze({ transicion: "whoosh_fast-crisp", sello: "ui_pop-soft" });
+/**
+ * Los efectos AUTOMÁTICOS (sin lista), del catálogo: el whoosh de cada transición que se mueve, el IMPACTO de un golpe o un
+ * glitch (un golpe grave en el destello) y el pop de cada sello o llamado.
+ */
+export const EFECTO_AUTOMATICO = Object.freeze({ transicion: "whoosh_fast-crisp", impacto: "pro_impact-air", sello: "ui_pop-soft" });
+/** Las transiciones que suenan a IMPACTO (un golpe grave en el destello, que es su mitad), no a whoosh. */
+export const TRANSICIONES_DE_IMPACTO = Object.freeze(["golpe", "glitch"]);
+/** Lo que se le sube al impacto automático (dB): lo grave se oye menos a igual RMS. */
+export const REALCE_IMPACTO = 5;
 
 /** El nivel de partida bajo la voz (dB, en RMS de lo que suena), el de siempre; cada papel se mueve sobre él. */
 export const BAJO_LA_VOZ = 12;
@@ -233,8 +240,9 @@ export function momentosColocados(colocados, guion, linea, datosDe) {
 
 /**
  * Los AUTOMÁTICOS como colocados: un whoosh en cada escena que entra con transición (no en un corte seco ni en la
- * primera) y un pop al entrar cada sello y cada llamado. `propios` ({ transicion?, sello? }: un efecto de la biblioteca,
- * { archivoId, clave, nombre }) suena en vez del del catálogo. Dos a menos de 0,15 s se quedan en uno. Pura.
+ * primera), un IMPACTO en el destello de un golpe o un glitch (la mitad de la transición, algo más fuerte) y un pop al
+ * entrar cada sello y cada llamado. `propios` ({ transicion?, sello? }: un efecto de la biblioteca, { archivoId, clave,
+ * nombre }) suena en vez del del catálogo. Dos a menos de 0,15 s se quedan en uno. Pura.
  */
 export function colocadosAutomaticos(guion, linea, propios = {}) {
   const de = (sitio) => (propios?.[sitio]?.archivoId ? { propio: propios[sitio] } : { sonido: EFECTO_AUTOMATICO[sitio] });
@@ -242,7 +250,10 @@ export function colocadosAutomaticos(guion, linea, propios = {}) {
   (guion?.escenas ?? []).forEach((e, k) => {
     const esc = linea?.escenas?.[k];
     if (!esc) return;
-    if (k > 0 && e.transicion?.tipo && e.transicion.tipo !== "corte") lista.push({ t: esc.desde, c: { ...de("transicion"), escena: e.id } });
+    if (k > 0 && TRANSICIONES_DE_IMPACTO.includes(e.transicion?.tipo)) {
+      const mitad = Math.round(((Number(e.transicion.dur) || 0) / 2) * 1000);
+      lista.push({ t: esc.desde + mitad / 1000, c: { sonido: EFECTO_AUTOMATICO.impacto, escena: e.id, ...(mitad ? { ajusteMs: Math.min(MAX_AJUSTE_MS, mitad) } : {}), volumen: REALCE_IMPACTO } });
+    } else if (k > 0 && e.transicion?.tipo && e.transicion.tipo !== "corte") lista.push({ t: esc.desde, c: { ...de("transicion"), escena: e.id } });
     for (const c of e.capas ?? []) {
       if (c.tipo === "sello" || c.tipo === "llamado") lista.push({ t: tiempoDeCapa(c, esc).desde, c: { ...de("sello"), escena: e.id, capa: c.id } });
     }

@@ -947,7 +947,10 @@ contradicen, manda la de más abajo (la más nueva). Una trampa nueva de esta á
   los segundos del momento + 1,2 s. Va en el tercio de arriba, lejos de los botones de Instagram.
   · **Plantillas**: sin voz; cada escena dura su `pausa` (≤ 3 s) o lo que `dura` una foto (los cortes rápidos del logo y
   del producto, ≥ `MIN_ESCENA`). Dos componentes nuevos del motor: `comentario` y `busqueda` (motorComponentes.js); la
-  búsqueda se escribe a 16 letras por segundo y achica la letra para caber. Sobre un fondo claro la tarjeta blanca no se
+  búsqueda se escribe a 16 letras por segundo (más rápido si es larga: nunca más de 1,2 s, o los resultados —con el remate
+  de la marca— no llegaban a salir en una escena muda de 3 s; pasó en el primer video real) y achica la letra para caber.
+  · **Un signo pegado al cierre de un énfasis** («*café*,», «*esperar*?») salía separado («café ,»): `partirEnfasis` lo
+  pega a la palabra enfatizada. Sobre un fondo claro la tarjeta blanca no se
   veía: la primera escena va sobre el acento y el oscuro de la marca.
   · **Predictor de viralidad (Higgsfield), descartado**: cuesta créditos de Higgsfield (la agencia no los compra), no se
   puede reproducir aquí y «¿Está listo este video?» ya revisa el gancho y la retención con el método de la agencia.
@@ -955,6 +958,24 @@ contradicen, manda la de más abajo (la más nueva). Una trampa nueva de esta á
   (del lado de Kie, ya con el pedido aceptado: el formato es el bueno). Sin un resultado todavía, no se sabe si es el modelo
   recién salido, la edición a 1080p o la duración. Si sigue pasando: probar a 720p o un video más corto antes de culpar al
   pedido; Seedance 2.5 (de 15 a 30 s) es el otro camino para «look» y «cambiar algo».
+  · **El movimiento gráfico (17-11-2026): transiciones que mueven las DOS escenas, fondos vivos, cámara, viñeta, letra
+  cinética y resalte del énfasis** (`docs/formato-escenas-v1.md`, «El movimiento gráfico»). Lo que ya pasó al hacerlo:
+  el marcador del énfasis en acento sobre un fondo del acento (rojo sobre rojo) no se veía, igual que las viñetas de una
+  lista: el motor pasa ese acento al claro u oscuro que contrasta (`visibleSobreElFondo`). Un marcador del alto estimado
+  dejaba asomar las mayúsculas de impacto o pisaba el renglón de abajo de un gigante (blanco sobre blanco): se mide con
+  `actualBoundingBoxAscent/Descent`. La máscara de línea, si se queda puesta, corta la tilde de «SÍ»: sólo recorta
+  mientras sube. Una malla con un TERCER color salía sucia (rojo y dorado sobre negro = marrón; acento sobre crema =
+  mancha rosa): sólo usa `color2` y un brillo. El desenfoque es `ctx.filter` por llamada (no hay desenfoque direccional en
+  Canvas 2D); en Safari no existe y la vista previa sale sin desenfoque (el render sí lo lleva). Un render de 17 s con
+  seis transiciones tarda ~35 s en el Container. Sin voz, la duración de cada escena es su `pausa` (máx. 3 s): para cortar
+  en el bombo hay que medir la canción (sus golpes) y poner las pausas en múltiplos del pulso; un `golpe`/`glitch`
+  impacta a mitad de su `dur`.
+  · **Tras desplegar, el Container sigue con la imagen VIEJA mientras esté despierto** (17-11-2026): el Worker ya
+  aceptaba `malla` y `latigo`, pero `revisar_video` (que corre en el Container) los rechazaba con la lista de antes.
+  Cloudflare sólo arranca la imagen nueva cuando la instancia se duerme (2 min sin pedidos el de los cuadros; 30 s el
+  del render) y otro pedido la despierta: pedirle cosas seguidas la mantiene en la vieja. Si justo tras un despliegue
+  el Container no conoce algo nuevo, deja de llamarlo 3 minutos y vuelve a probar. Y `editar_escena` tiene su propia lista
+  de campos (`CAMPOS_ESCENA`): un campo nuevo de la escena va ahí también (lo vigila videos.camposEscena.test.js).
 - **Los EFECTOS DE SONIDO por evento: un catálogo propio, una lista anclada a lo que pasa y «escuchar» sin oídos**
   (17-11-2026; `src/lib/catalogoEfectos.js`, `efectosColocados.js`, `efectosSonido.js`, `escucharSonido.js`,
   `container/efectos.mjs`, `container/escuchar.mjs`, `worker/lib/estudio/escuchar.js`, `scripts/efectos/`). Se estudiaron
@@ -973,8 +994,10 @@ contradicen, manda la de más abajo (la más nueva). Una trampa nueva de esta á
   saltaba hasta 220 ms entre el WAV y el MP3. Aun así, tres (riser-build, toggle-rocker, whoosh_big-gust) tienen la meseta
   ambigua: como el render mide el mismo MP3, cae siempre igual.
   · **Con lista, los automáticos callan** (si no, el whoosh de una transición sonaría dos veces); `[]` los devuelve. Y los
-  automáticos ahora son del catálogo (`EFECTO_AUTOMATICO`: whoosh_fast-crisp y ui_pop-soft), con las mismas reglas: el pico
-  del whoosh 37 ms DESPUÉS del corte (antes, centrado en él). El sintetizado queda de respaldo si un MP3 no se lee.
+  automáticos ahora son del catálogo (`EFECTO_AUTOMATICO`: whoosh_fast-crisp, pro_impact-air para un golpe o un glitch y
+  ui_pop-soft), con las mismas reglas: el pico del whoosh 37 ms DESPUÉS del corte (antes, centrado en él); el impacto, por
+  su arranque en el destello (la mitad de la transición, con `ajusteMs`) y 5 dB más (`REALCE_IMPACTO`: lo grave se oye
+  menos). Los sintetizados (whoosh, impacto y pop) quedan de respaldo si un MP3 no se lee.
   · **El nivel de un efecto es el más alto de dos reglas**: el de siempre (12 dB bajo la voz, movido por su papel) y sus dB
   medidos SOBRE la música del segundo de antes (la mediana de ventanas de 50 ms, medida ANTES de bajar la música). Sin la
   segunda, un efecto en un hueco sin voz quedaba 3 dB por debajo de la música. Techo: 6 dB bajo la voz; con la música a 9 dB

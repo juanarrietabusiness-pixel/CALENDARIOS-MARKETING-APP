@@ -96,8 +96,10 @@ src/
                           de tiempo anclada a palabras (`lineaDeTiempo`, `tiempoDeCapa`) y el ciclo del proyecto (puro;
                           lo leerán el motor de Canvas, el Worker y el render del Container). Ver docs/formato-escenas-v1.md
     motorVideo.js         El MOTOR del video animado: dibuja el instante t de un guion en un Canvas 2D (paleta del kit,
-                          posiciones, entradas, salidas, bucles, transiciones, fondo, grano). Puro y determinista: lo
-                          comparten la vista previa y el render del Container
+                          posiciones, entradas, salidas, bucles, transiciones, fondo, grano; y el movimiento gráfico:
+                          transiciones que mueven las dos escenas, fondos vivos, cámara, viñeta, letra cinética y
+                          resalte; sus pruebas en movimientoGrafico.test.js). Puro y determinista: lo comparten la
+                          vista previa y el render del Container
     motorPiezas.js        Las PIEZAS del motor: iconos dibujados, cifra que cuenta, el dibujo libre (formas), los fondos de
                           estrellas y líneas, quitar el fondo liso del logo y su tono (puro: navegador y Container)
     motorComponentes.js   Los componentes del video animado que eran marcador: lista (escalonada), burbuja, reloj, antes y
@@ -143,8 +145,8 @@ src/
                           pedido a la IA con la música de la marca delante, leer su propuesta (sin artistas) y el respaldo (puro)
     efectosSonido.js      Los efectos del video animado: leerlos (`muestrasDeEfecto`), su pico (`picoDeEfecto`) y el AUDIO POR
                           PISTAS (`armarSonido`: voz, música y efectos; cada efecto nivelado contra la voz y contra la música del
-                          segundo de antes, con techo bajo la voz; la música baja antes de un golpe); el whoosh y el pop
-                          sintetizados son el respaldo (puro: el Container)
+                          segundo de antes, con techo bajo la voz; la música baja antes de un golpe); el whoosh, el impacto
+                          (golpe y glitch) y el pop sintetizados son el respaldo (puro: el Container)
     efectosColocados.js   Los EFECTOS COLOCADOS: la lista de efectos anclados a un evento (escena, capa, palabra o segundo), las
                           REGLAS de cada papel medidas por earshot (alinear por arranque o pico, adelanto, dB sobre la música,
                           rachas, bajada de la música) y los automáticos como lista (puro: Worker, Container y pantalla)

@@ -139,7 +139,10 @@ export const esColor = (c) => TOKENS_COLOR.includes(c) || HEX.test(String(c ?? "
 export const POSICIONES = Object.freeze(["centro", "arriba", "abajo", "izq", "der", "arriba-izq", "arriba-der", "abajo-izq", "abajo-der"]);
 // «golpe» (la última, para no cambiar el orden de las de antes): seca, de 1,15 a 1 en ~0,12 s, sin rebote (las palabras
 // que entran cuando se cantan).
-export const ENTRADAS = Object.freeze(["aparece", "fundido", "sube", "baja", "escala", "rebote", "escribe", "barrido", "dibuja", "golpe"]);
+// Las de MOVIMIENTO GRÁFICO (al final, por lo mismo): «mascara» (sube desde detrás de una línea invisible, cada línea del
+// texto a su tiempo), «escalonado» (palabra por palabra en cascada, sin voz que las marque), «latigo» (entra de lado con
+// un rebote seco) y «desenfoque» (de borroso y algo grande a nítido).
+export const ENTRADAS = Object.freeze(["aparece", "fundido", "sube", "baja", "escala", "rebote", "escribe", "barrido", "dibuja", "golpe", "mascara", "escalonado", "latigo", "desenfoque"]);
 export const SALIDAS = Object.freeze(["ninguna", "fundido", "baja", "escala"]);
 export const BUCLES = Object.freeze(["ninguno", "flota", "pulso", "gira", "late"]);
 /** Lo que se escribe de un fondo por crear (`pide`) y el tratamiento de color de una imagen. */
@@ -147,8 +150,19 @@ export const MAX_PIDE_FONDO = 400;
 export const TRATAMIENTOS_IMAGEN = Object.freeze(["color", "byn"]);
 /** Cómo se mueve una imagen a sangre mientras se ve (el «Ken Burns» de una foto con música). */
 export const MOVIMIENTOS_IMAGEN = Object.freeze(["ninguno", "acercar", "alejar", "paneo"]);
-export const TRANSICIONES = Object.freeze(["corte", "fundido", "barrido", "zoom", "deslizar"]);
-export const FONDOS = Object.freeze(["plano", "degradado", "papel", "rayas", "puntos", "estrellas", "lineas"]);
+// Las de antes congelan la escena que sale; las nuevas MUEVEN las dos: «empuje» (la nueva empuja a la vieja, con
+// desenfoque de movimiento), «golpe» (zoom de impacto con destello), «cortina» (dos paños del color de marca cruzan la
+// pantalla), «circulo» (se abre un círculo con su aro), «persiana» (bandas escalonadas) y «glitch» (cortes de señal).
+export const TRANSICIONES = Object.freeze(["corte", "fundido", "barrido", "zoom", "deslizar", "empuje", "golpe", "cortina", "circulo", "persiana", "glitch"]);
+/** Hacia dónde va una transición con dirección (empuje, cortina, persiana, deslizar). */
+export const DIRECCIONES = Object.freeze(["izq", "der", "arriba", "abajo"]);
+// Fondos VIVOS (se mueven con el tiempo): «malla» (manchas de color que derivan, un degradado de malla), «rayos» (haces
+// que giran despacio desde el centro) y «foco» (una luz cenital con motas desenfocadas que flotan).
+export const FONDOS = Object.freeze(["plano", "degradado", "papel", "rayas", "puntos", "estrellas", "lineas", "malla", "rayos", "foco"]);
+/** La CÁMARA de una escena: se acerca, se aleja o deriva despacio mientras dura (el fondo, a la mitad: paralaje). */
+export const CAMARAS = Object.freeze(["ninguna", "acercar", "alejar", "deriva"]);
+/** Cómo se marca la palabra de énfasis: en otro color, con un marcador detrás que se pinta o con un subrayado que se traza. */
+export const RESALTES = Object.freeze(["color", "marcador", "subrayado"]);
 export const RITMOS = Object.freeze(["calmado", "medio", "rapido"]);
 export const ILUSTRACIONES = Object.freeze(["plana", "papel", "linea", "poster"]);
 export const ICONOS_VIDEO = Object.freeze([
@@ -201,6 +215,7 @@ export const COMPONENTES = Object.freeze({
       texto: { ...T(MAX_PANTALLA, true), enfasis: true }, rol: E(["titular", "apoyo", "dato", "etiqueta", "gigante"], "titular"), color: C("texto"),
       placa: { t: "color", def: "" }, alinear: E(["centro", "izq", "der"], "centro"),
       mayusculas: { ...B(false), omitir: true }, porPalabra: { ...B(false), omitir: true },
+      resalte: { ...E(RESALTES, "color"), omitir: true },
     },
   },
   sello: { nombre: "Sello de texto", props: { texto: T(24, true), color: C("acento"), rotacion: N(-20, 20, -6) } },
@@ -216,7 +231,7 @@ export const COMPONENTES = Object.freeze({
   // Un COMENTARIO como los de Instagram (la plantilla «Respondo tu comentario»): la foto (la inicial), el usuario, el
   // texto, el corazón con los «me gusta» y «Responder». `usuario` sin @; vacío, «cliente».
   comentario: { nombre: "Comentario de Instagram", props: { usuario: T(30), texto: T(140, true), likes: N(0, 999999, 0), color: C("claro") } },
-  // Una BARRA DE BÚSQUEDA que se escribe sola (a unas 16 letras por segundo) y debajo, uno tras otro, los resultados;
+  // Una BARRA DE BÚSQUEDA que se escribe sola (a 16 letras por segundo, o más rápido si es larga: nunca más de 1,2 s) y debajo, uno tras otro, los resultados;
   // el último sale destacado con el acento (el de la marca). La plantilla «Búsqueda».
   busqueda: { nombre: "Barra de búsqueda", props: { texto: T(60, true), resultados: { t: "textos", max: 4, maxTexto: 50, def: [] }, color: C("claro") } },
   // Una IMAGEN de la galería. En su caja por defecto; con `encuadre` «completo», A SANGRE detrás de todo (como un video):
@@ -493,7 +508,11 @@ function validarEscena(e, i, errores, avisos, idsEscenas, { cancion = false, exa
   const transicion = {
     tipo: validarProp(E(TRANSICIONES, "corte"), tr.tipo, `${donde}.transicion.tipo`, errores),
     dur: validarProp(N(0, 1, 0.3), tr.dur, `${donde}.transicion.dur`, errores),
+    // Sólo si los trae: la dirección (empuje, cortina, persiana, deslizar) y el color (cortina, golpe, circulo, glitch).
+    ...(tr.dir !== undefined && tr.dir !== null && tr.dir !== "" ? { dir: validarProp(E(DIRECCIONES, "arriba"), tr.dir, `${donde}.transicion.dir`, errores) } : {}),
+    ...(tr.color !== undefined && tr.color !== null && tr.color !== "" ? { color: validarProp(C("acento"), tr.color, `${donde}.transicion.color`, errores) } : {}),
   };
+  const camara = validarProp(E(CAMARAS, "ninguna"), e.camara, `${donde}.camara`, errores);
   const capasIn = e.capas === undefined ? [] : e.capas;
   if (!Array.isArray(capasIn)) errores.push({ donde: `${donde}.capas`, mensaje: "«capas» es una lista." });
   const lista = Array.isArray(capasIn) ? capasIn : [];
@@ -521,6 +540,7 @@ function validarEscena(e, i, errores, avisos, idsEscenas, { cancion = false, exa
     id, tipo: TIPOS_ESCENA[e.tipo] ? e.tipo : "explicacion", habla, pantalla, pausa: pausa >= 0 && pausa <= MAX_PAUSA ? pausa : 0, fondo, transicion, capas,
     // Sólo si la trae: un guion de antes valida igual.
     ...(exactaEscena ? { maquetacion: "exacta" } : {}),
+    ...(camara !== "ninguna" ? { camara } : {}),
   };
 }
 
@@ -561,6 +581,8 @@ function validarEstilo(s = {}, errores) {
     grano: validarProp(N(0, 1, 0.25), est.grano, "estilo.grano", errores),
     ritmo: validarProp(E(RITMOS, "medio"), est.ritmo, "estilo.ritmo", errores),
     ilustracion: validarProp(E(ILUSTRACIONES, "plana"), est.ilustracion, "estilo.ilustracion", errores),
+    // La viñeta (0–1): oscurece las esquinas y lleva la mirada al centro. Sólo si la trae.
+    ...(Number(est.vineta) > 0 ? { vineta: validarProp(N(0, 1, 0), est.vineta, "estilo.vineta", errores) } : {}),
     // El aspecto del personaje (piel, pelo, ropa, accesorio): si no lo trae, sale el del kit del cliente.
     ...(esObjeto(est.personaje) ? { personaje: limpiarPersonaje(est.personaje) } : {}),
   };

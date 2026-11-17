@@ -23,8 +23,10 @@ import { BYTES_MUESTRA, RENDER } from "./renderVideo.js";
 import { nivelDe, mezclarMusica } from "./sonidoVideo.js";
 import { BAJO_LA_VOZ, TECHO_BAJO_LA_VOZ, bajadaEn } from "./efectosColocados.js";
 
-/** Lo que dura cada efecto (s). */
-export const DURACION_EFECTO = Object.freeze({ whoosh: 0.42, pop: 0.09 });
+/** Lo que dura cada efecto SINTETIZADO, el respaldo de los automáticos (s). */
+export const DURACION_EFECTO = Object.freeze({ whoosh: 0.42, pop: 0.09, impacto: 0.8 });
+/** Las transiciones que suenan a IMPACTO (un golpe grave en el destello), no a whoosh: viven con los automáticos. */
+export { TRANSICIONES_DE_IMPACTO } from "./efectosColocados.js";
 
 const r3 = (n) => Math.round(n * 1000) / 1000;
 
@@ -51,8 +53,9 @@ function azar(semilla) {
 
 /**
  * Las muestras (mono, -1…1, pico 1) de un efecto a `muestreo`. Whoosh: ruido que pasa por un filtro que se abre y se
- * cierra (sube y baja de brillo) con una envolvente en campana. Pop: un tono que cae de 900 a 250 Hz en un instante, con
- * ataque de 2 ms y caída rápida. Pura.
+ * cierra (sube y baja de brillo) con una envolvente en campana. Impacto: un bombo de cine (un seno que cae, un chasquido y
+ * una cola de aire grave). Pop: un tono que cae de 900 a 250 Hz en un instante, con ataque de 2 ms y caída rápida. Son el
+ * RESPALDO de los automáticos del catálogo si su MP3 no se pudiera leer. Pura.
  */
 export function sintetizar(tipo, muestreo = RENDER.muestreo, semilla = 7) {
   const n = Math.round(DURACION_EFECTO[tipo] * muestreo);
@@ -67,6 +70,21 @@ export function sintetizar(tipo, muestreo = RENDER.muestreo, semilla = 7) {
       const corte = 0.02 + 0.25 * campana;
       lp += corte * (r() * 2 - 1 - lp);
       s[i] = lp * campana;
+    }
+  } else if (tipo === "impacto") {
+    // Un BOMBO de cine: un seno que cae de 110 a 38 Hz con caída larga, un chasquido de 4 ms encima y una cola de ruido
+    // grave filtrado (el aire del golpe).
+    const r = azar(semilla);
+    let fase = 0;
+    let lp = 0;
+    for (let i = 0; i < n; i++) {
+      const t = i / muestreo;
+      const f = 38 + 72 * Math.exp(-t * 14);
+      fase += (2 * Math.PI * f) / muestreo;
+      const cuerpo = Math.sin(fase) * Math.min(1, t / 0.003) * Math.exp(-t * 4.2);
+      const chasquido = t < 0.004 ? (r() * 2 - 1) * (1 - t / 0.004) * 0.8 : 0;
+      lp += 0.04 * (r() * 2 - 1 - lp);
+      s[i] = cuerpo + chasquido + lp * 1.6 * Math.exp(-t * 6);
     }
   } else {
     let fase = 0;

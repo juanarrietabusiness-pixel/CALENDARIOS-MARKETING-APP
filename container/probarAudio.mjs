@@ -134,6 +134,15 @@ try {
   await caso("La lista con voz y música (la música baja antes del golpe)", vozEjemplo, l.silencios, l.total, {
     guion: g, linea: l, efectos: true, colocados: lista, musica: { audio: tema, volumen: 0 }, cuantos: 4,
   });
+  // Una transición «golpe» suena a IMPACTO (un golpe grave del catálogo) en su destello, la mitad de la transición.
+  const gGolpe = JSON.parse(JSON.stringify(EJEMPLO_GUION));
+  gGolpe.escenas[1].transicion = { tipo: "golpe", dur: 0.34 };
+  const gg = validarGuion(gGolpe).guion;
+  const lg = lineaDeTiempo(gg, null);
+  const impacto = colocadosAutomaticos(gg, lg).find((c) => c.sonido === "pro_impact-air");
+  const tImpacto = impacto ? instanteDe(impacto, gg, lg).t + (impacto.ajusteMs ?? 0) / 1000 : null;
+  if (!gg || tImpacto === null) { mal++; console.error("✗ una transición «golpe» debería llevar su impacto automático"); }
+  else await caso("Un golpe suena a impacto en el destello", null, lg.silencios, lg.total, { guion: gg, linea: lg, efectos: true, umbral: 0.003, suena: [tImpacto, tImpacto + 0.15], callado: [tImpacto - 0.12, tImpacto - 0.02] });
   // Los EFECTOS de la biblioteca de sonido (subidos por la agencia: un MP3 con silencio delante y un WAV corto), en vez
   // de los automáticos: el audio sigue en -14 LUFS y en su duración, y en el instante de un sello suena.
   const whooshSubido = await readFile(mp3("whoosh-subido.mp3", 1.2, 44100, "if(lt(t,0.3),0,0.6)"));

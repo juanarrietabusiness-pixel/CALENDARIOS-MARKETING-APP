@@ -38,7 +38,7 @@ export function dibujarLista(ctx, capa, h) {
   ctx.font = `700 ${Math.round(tam)}px ${cuerpo}`;
   const ancho = Math.min(w, marca() + sep() + Math.max(0, ...lineas.flat().map((l) => ctx.measureText(l).width)));
   const x0 = -ancho / 2;
-  const acento = h.color("acento");
+  const acento = h.acento ?? h.color("acento");
   let y = -alto / 2;
   lineas.forEach((ls, i) => {
     const fila = Math.max(marca(), ls.length * tam * 1.2);
@@ -404,8 +404,14 @@ export function dibujarComentario(ctx, capa, h) {
   return { w: ancho, h: alto };
 }
 
-/** Lo que se ve escrito de la búsqueda a los `vida` segundos (16 letras por segundo; sin vida, entera). Pura. */
-export const escritoHasta = (texto, vida) => (Number.isFinite(vida) ? String(texto).slice(0, Math.max(0, Math.floor(vida * 16))) : String(texto));
+/**
+ * Las letras por segundo a las que se escribe una búsqueda: 16, o más rápido si es larga, para que nunca tarde más de
+ * `MAX_ESCRIBIR` s (una escena muda dura como mucho 3 s y los resultados, con el remate, tienen que verse). Pura.
+ */
+export const MAX_ESCRIBIR = 1.2;
+export const letrasPorSegundo = (texto) => Math.max(16, String(texto ?? "").length / MAX_ESCRIBIR);
+/** Lo que se ve escrito de la búsqueda a los `vida` segundos (sin vida, entera). Pura. */
+export const escritoHasta = (texto, vida) => (Number.isFinite(vida) ? String(texto).slice(0, Math.max(0, Math.floor(vida * letrasPorSegundo(texto)))) : String(texto));
 
 /**
  * BÚSQUEDA: una barra redondeada con la lupa donde la búsqueda se ESCRIBE sola (con su cursor) y, cuando termina,
@@ -452,7 +458,7 @@ export function dibujarBusqueda(ctx, capa, h) {
   const vida = Number.isFinite(h.vida) ? h.vida : 99;
   if (!termino || Math.floor(vida * 2) % 2 === 0) ctx.fillRect(xt + ctx.measureText(visible).width + tam * 0.1, yl - tam * 0.6, tam * 0.1, tam * 1.2);
   // Los resultados, cuando acabó de escribir: uno cada 0,35 s.
-  const desde = String(capa.texto).length / 16 + 0.3;
+  const desde = String(capa.texto).length / letrasPorSegundo(capa.texto) + 0.3;
   resultados.forEach((r, i) => {
     const p = Math.min(1, Math.max(0, (vida - desde - i * 0.35) / 0.25));
     if (p <= 0) return;

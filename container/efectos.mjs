@@ -24,7 +24,7 @@ const RAIZ = fileURLToPath(new URL("..", import.meta.url));
 /** Lo ya decodificado del catálogo (id → Float32Array). */
 const cache = new Map();
 /** El sintetizado que sustituye a cada automático si su archivo no se pudiera leer. */
-const SINTETIZADO = Object.freeze({ [EFECTO_AUTOMATICO.transicion]: "whoosh", [EFECTO_AUTOMATICO.sello]: "pop" });
+const SINTETIZADO = Object.freeze({ [EFECTO_AUTOMATICO.transicion]: "whoosh", [EFECTO_AUTOMATICO.impacto]: "impacto", [EFECTO_AUTOMATICO.sello]: "pop" });
 
 /** Las muestras de un efecto del catálogo (o null). `decodificar(bytes, nombre)` → PCM s16le estéreo al muestreo del render. */
 export async function muestrasDelCatalogo(id, decodificar) {
