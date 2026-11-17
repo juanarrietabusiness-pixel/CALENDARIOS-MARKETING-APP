@@ -194,6 +194,24 @@ export const MODELOS_KIE = Object.freeze({
       },
     };
   },
+  // Omni 1.2: como el 1.1, pero hasta 6 imágenes y hasta 15 s; el video que se edita va entero (hasta 15 s).
+  "gemini-omni-1-2-kie": ({ prompt, ajustes, refs, inicio, fin, videos }) => {
+    const duration = String(ajustes.duration || "10");
+    const input = { prompt, aspect_ratio: ajustes.aspectRatio || "9:16", resolution: ajustes.resolution || "720p", duration };
+    if (inicio.length) return { model: "google/gemini-omni-flash-1-2", input: { ...input, first_frame_url: inicio[0], ...(fin.length ? { last_frame_url: fin[0] } : {}) } };
+    return {
+      model: "google/gemini-omni-flash-1-2",
+      input: {
+        ...input,
+        ...(refs.length ? { image_urls: refs.slice(0, videos.length ? 5 : 6) } : {}),
+        ...(videos.length ? { video_list: [{ url: videos[0], start: 0, ends: Math.min(15, Number(duration) || 10) }] } : {}),
+      },
+    };
+  },
+  // Topaz: sólo el video y cuánto ampliarlo (el prompt no se usa).
+  "topaz-video-kie": ({ ajustes, videos }) => ({
+    model: "topaz/video-upscale", input: { video_url: videos[0], upscale_factor: ["1", "2", "4"].includes(String(ajustes.factor)) ? String(ajustes.factor) : "2" },
+  }),
   "hailuo-2-3-kie": ({ prompt, ajustes, inicio }) => ({
     model: "hailuo/2-3-image-to-video-pro",
     input: { prompt, image_url: inicio[0], duration: String(ajustes.duration || "6"), resolution: ajustes.resolution || "768P" },
@@ -389,6 +407,10 @@ export function validarKie(modelo, pedido = {}) {
   }
   if (modelo.id === "gemini-omni-kie" && n("video") && n("reference") > 5) return "Con un video, Gemini Omni admite hasta 5 imágenes de referencia.";
   if (modelo.id === "gemini-omni-kie" && n("start") && pedido.ajustes?.voz) return "Con imagen inicial, Gemini Omni no admite una voz escogida: quita la voz o usa los fotogramas como referencias.";
+  if (modelo.id === "gemini-omni-1-2-kie" && n("start") && (n("reference") || n("video"))) {
+    return "Gemini Omni 1.2 no mezcla la imagen inicial con referencias o video: usa una cosa o la otra.";
+  }
+  if (modelo.id === "gemini-omni-1-2-kie" && n("video") && n("reference") > 5) return "Con un video, Gemini Omni 1.2 admite hasta 5 imágenes de referencia.";
   if (modelo.id === "veo-3-1-fast-kie" && n("reference") && n("start")) return "Veo 3.1 no mezcla referencias con imagen inicial: usa una cosa o la otra.";
   if (modelo.id === "kling-3-omni-kie" && n("start") && (n("reference") || n("video"))) return "Kling 3.0 Omni no mezcla la imagen inicial con referencias o video.";
   if (modelo.id === "gemini-omni-video-kie" && n("video") && n("reference") > 5) return "Con un video, Gemini Omni admite hasta 5 imágenes de referencia.";

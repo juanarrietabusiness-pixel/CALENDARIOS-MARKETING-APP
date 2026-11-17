@@ -63,6 +63,8 @@ import { postConPiezas } from "../../../src/lib/galeriaPura.js";
 import { postConPiezaEnSuSitio, limpiarSitio } from "../../../src/lib/piezaEnSuSitio.js";
 import { mediosDe } from "../../../src/lib/publicacion.js";
 import { avisarEncargo } from "../equipo.js";
+import { limpiarMejora, pasoUnion, unionTerminada, mejoraPublica } from "./mejoraVideo.js";
+import { textoDeMejora } from "../../../src/lib/mejoraVideo.js";
 
 /**
  * La plantilla del kit que escogió el DIRECTOR (o la de su tipo) en el pedido de una pieza, como lo hace la pantalla
@@ -191,6 +193,8 @@ export function encargoPublico(f, { conPedidos = false } = {}) {
     ...(f.tipo === "carrusel" ? { sistema: leerJSON(f.datos, {}).sistema ?? null } : {}),
     // El reel: el guion, qué sale (video o clips), el montaje y dónde quedó puesto.
     ...(f.tipo === "reel" ? { reel: reelPublico(leerJSON(f.datos, {})) } : {}),
+    // La mejora de un video: el original, el modo y cómo va la unión con su audio.
+    ...(f.tipo === "mejora" ? { mejora: mejoraPublica(leerJSON(f.datos, {})) } : {}),
     // Lo que quedó puesto solo en las publicaciones (las piezas que pidió Claude con su post_id).
     ...(leerJSON(f.datos, {}).puestos ? { puestos: leerJSON(f.datos, {}).puestos } : {}),
     // Los fondos de un video animado: de qué video y cuántos quedaron puestos en su guion.
@@ -209,13 +213,15 @@ function anunciar(env, acceso, fila) {
  * Guarda el encargo y despierta a quien lo lleva. No genera nada todavía: lo que puede rechazarse por pieza (la llave,
  * las referencias, el presupuesto) lo rechaza `crearTrabajo` al pedir cada una, y esa pieza queda con su motivo.
  */
-export async function crearEncargo(env, acceso, cliente, cuerpo = {}, { usuario = null } = {}) {
+export async function crearEncargo(env, acceso, cliente, cuerpo = {}, { usuario = null, interno = false } = {}) {
   const tipo = TIPOS_ENCARGO.includes(cuerpo.tipo) ? cuerpo.tipo : null;
   if (!tipo) throw new ErrorEstudio("Ese encargo no existe.", 400);
+  // Una MEJORA la arma el servidor (mejoraVideo.js: comprueba el video, mide y pregunta el costo), nunca el navegador.
+  if (tipo === "mejora" && !interno) throw new ErrorEstudio("«Mejorar mi video» se pide por /mejorar-video.", 400);
   const datos = {
     mejorar: tipo === "lote" && cuerpo.mejorar !== false, controlar: tipo !== "reel" && cuerpo.controlar === true,
     // Un carrusel y el storyboard de un reel van en ORDEN: cada lámina (o fotograma) lleva la anterior de referencia.
-    paralelo: tipo === "carrusel" || tipo === "reel" ? 1 : Math.max(1, Math.min(3, Math.floor(Number(cuerpo.paralelo)) || 2)),
+    paralelo: tipo === "carrusel" || tipo === "reel" ? 1 : tipo === "mejora" ? 3 : Math.max(1, Math.min(3, Math.floor(Number(cuerpo.paralelo)) || 2)),
     // Lo que sale se pone SOLO en su publicación al terminar (las piezas que pide Claude con `post_id`).
     poner: cuerpo.poner === true,
     // La pantalla lo sigue de cerca (una pieza del panel o del visor): la campana sólo avisa si falla o si tarda mucho.
@@ -230,7 +236,10 @@ export async function crearEncargo(env, acceso, cliente, cuerpo = {}, { usuario 
       .slice(0, 2).map((e) => ({ papel: e.papel, media_type: e.media_type, data: e.data })),
     // Las IMÁGENES DE FONDO de un video animado (fondosVideo.js): al cerrarse, cada una va a las capas de su `pide`.
     ...(objeto(cuerpo.fondosVideo, 8000) ? { fondosVideo: objeto(cuerpo.fondosVideo, 8000) } : {}),
+    // «Mejorar mi video»: el original, el modo y cómo se une con su audio (mejoraVideo.js).
+    ...(tipo === "mejora" && limpiarMejora(cuerpo.mejora) ? { mejora: limpiarMejora(cuerpo.mejora) } : {}),
   };
+  if (tipo === "mejora" && !datos.mejora) throw new ErrorEstudio("Falta el video que se mejora.", 400);
   let pasos;
   if (tipo === "reel") {
     // El reel por planos: el storyboard en orden, y luego el video o los clips y el montaje (encargoReel.js).
@@ -318,7 +327,7 @@ export async function avanzarEncargo(env, acceso, id) {
   }
   const listos = fila.tipo === "reel"
     ? reelTerminado(datos, pasos)
-    : pasos.length > 0 && pasos.every(terminado) && !pasos.some((p) => porAcabar(env, p));
+    : pasos.length > 0 && pasos.every(terminado) && !pasos.some((p) => porAcabar(env, p)) && unionTerminada(datos);
   // Un carrusel terminado queda ORDENADO en su carpeta (la galería lo enseña como una tarjeta, en este orden). Si la
   // pantalla pone después el texto de la plantilla, vuelve a ordenarlo con las finales.
   if (listos && r.estado == null && fila.tipo === "carrusel" && datos.carpetaId) {
@@ -348,7 +357,8 @@ export async function avanzarEncargo(env, acceso, id) {
   }
   const cambios = {
     bloqueado_hasta: "", updated_at: ahora(), pasos: JSON.stringify(pasos), datos: JSON.stringify(datos),
-    nota: texto(r.nota ?? (fila.tipo === "reel" ? notaDelReel(datos, pasos) : notaDe(pasos)), 300), estado,
+    nota: texto(r.nota ?? (fila.tipo === "reel" ? notaDelReel(datos, pasos)
+      : (fila.tipo === "mejora" && textoDeMejora(datos.mejora)) || notaDe(pasos)), 300), estado,
     ...(estado !== "en_marcha" ? { terminado_at: ahora() } : {}),
     ...(estado === "fallido" ? { error: texto(r.error ?? delReel?.error ?? pasos.find((p) => p.error)?.error ?? "No salió ninguna pieza.", 400) } : {}),
   };
@@ -602,6 +612,11 @@ async function paso(env, acceso, fila, pasos, datos) {
       return { hizo: true };
     }
   }
+  // Una mejora con todo hecho: la unión con el audio original (mejoraVideo.js).
+  if (fila.tipo === "mejora") {
+    const r = await pasoUnion(ctx, fila);
+    if (r) return { ...r, hizo: Boolean(r.hizo) || cambio };
+  }
   // El reel, con el storyboard hecho: el video o los clips, y el montaje.
   if (fila.tipo === "reel") {
     const r = await pasoReel(ctx, fila);
@@ -799,6 +814,8 @@ export async function encargoConArchivos(acceso, fila) {
   const ids = [...new Set([
     ...e.pasos.flatMap((p) => [...p.opciones.map((o) => o.id), ...(p.finales ?? [])]),
     ...(fila.tipo === "reel" ? archivosDelReel(leerJSON(fila.datos, {}), leerJSON(fila.pasos, [])) : []),
+    // La mejora: el video final (con el audio original) y el original.
+    ...(fila.tipo === "mejora" ? [e.mejora?.union?.archivoId, e.mejora?.archivoId] : []),
   ].filter(Boolean))];
   const archivos = ids.length ? await acceso.leerVarios("estudio_archivos", COLUMNAS_ARCHIVO, "id", ids, { client_id: fila.client_id }) : [];
   return { encargo: e, archivos: archivos.map(archivoPublico) };

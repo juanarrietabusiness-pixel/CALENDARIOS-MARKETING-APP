@@ -429,7 +429,13 @@ export function avisoDeEncargo(fila, { datos = {}, pasos = [] } = {}, ahoraMs = 
   const donde = puestas ? ": ya está en su publicación." : ". Está en la galería del Estudio.";
   let texto;
   if (fila.tipo === "reel") texto = textoDeReel(titulo, fallo, motivo, datos);
-  else if (fila.tipo === "carrusel") {
+  else if (fila.tipo === "mejora") {
+    // «Mejorar mi video»: lo nuevo queda como VERSIÓN del video original, con su audio (o se dice por qué no).
+    const u = datos.mejora?.union ?? {};
+    texto = fallo ? `No salió ${titulo}${motivo ? `: ${motivo}` : "."}`
+      : u.fase === "hecho" ? `Listo ${titulo}, con el audio original: está en la galería como versión de tu video.`
+        : `Listo ${titulo}, pero sin el audio original${u.error ? ` (${String(u.error).slice(0, 120)})` : ""}. Está en la galería del Estudio.`;
+  } else if (fila.tipo === "carrusel") {
     texto = fallo ? `No salió el carrusel ${titulo}${motivo ? `: ${motivo}` : "."}` : `Listo el carrusel ${titulo} (${hechas} ${hechas === 1 ? "lámina" : "láminas"})${donde}`;
   } else {
     const una = pasos.length <= 1;

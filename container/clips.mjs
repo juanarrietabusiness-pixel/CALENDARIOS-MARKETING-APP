@@ -46,6 +46,8 @@ const ruta = (id) => {
   return join(CARPETA, `${id}.bin`);
 };
 const rutaInfo = (id) => join(CARPETA, `${id}.json`);
+/** Dónde está en disco un clip ya guardado (para unir.mjs). */
+export const rutaDeClip = (id) => ruta(id);
 
 /** ¿Está ya el clip? (y lo marca como usado). */
 export async function tieneClip(id) {
@@ -57,7 +59,7 @@ export async function tieneClip(id) {
 }
 
 /** Corre un programa y junta su salida → { codigo, salida (Buffer), error (texto) }. */
-function correr(programa, args) {
+export function correr(programa, args) {
   return new Promise((ok, mal) => {
     const proc = spawn(programa, args, { stdio: ["ignore", "pipe", "pipe"] });
     const trozos = [];

@@ -19,10 +19,10 @@ export function modelosParaReel(activos = {}) {
   return porPrecio(MODELOS.filter((m) => m.tipo === "video" && (m.referencias >= 2 || m.inicial) && !m.necesitaVideo && (m.motor === "prueba" || activos[m.motor])), activos);
 }
 
-/** El que se escoge si nadie escoge: Omni por Kie (storyboard de 7 y corregir un tramo), luego los que le siguen. */
+/** El que se escoge si nadie escoge: Omni 1.2 por Kie (storyboard de 6, hasta 15 s y corrige un tramo), luego el 1.1 y los que le siguen. */
 export function modeloRecomendadoParaReel(activos = {}) {
   const lista = modelosParaReel(activos);
-  return ["gemini-omni-kie", "kling-3-omni-kie", "seedance-2-kie", "gemini-omni-flash", "kling-3-kie", "veo-3-1-fast-kie"]
+  return ["gemini-omni-1-2-kie", "gemini-omni-kie", "kling-3-omni-kie", "seedance-2-kie", "gemini-omni-flash", "kling-3-kie", "veo-3-1-fast-kie"]
     .map((id) => lista.find((m) => m.id === id)).find(Boolean) ?? lista.find((m) => m.motor !== "prueba") ?? lista[0] ?? null;
 }
 
@@ -31,7 +31,7 @@ export const corrigeTramos = (modelo) => (modelo?.video ?? 0) > 0;
 
 /** El modelo para corregir un tramo: Gemini Omni por Kie si hay llave; si no, otro que admita un video. */
 export function modeloParaTramo(activos = {}) {
-  return ["gemini-omni-kie", "kling-3-omni-kie", "seedance-2-kie"].map(modeloPorId).find((m) => m && activos[m.motor]) ?? null;
+  return ["gemini-omni-1-2-kie", "gemini-omni-kie", "kling-3-omni-kie", "seedance-2-kie"].map(modeloPorId).find((m) => m && activos[m.motor]) ?? null;
 }
 
 /**

@@ -900,3 +900,28 @@ contradicen, manda la de más abajo (la más nueva). Una trampa nueva de esta á
   video, a propósito.
   · Funciones nuevas en el hueco «análisis»: «desglose de video» y «fotograma listo para animar». **Nada de esto se ha
   probado contra Gemini, Meta ni Anthropic reales**: los tests usan `fetch` de mentira.
+- **«Mejorar mi video» y «Varios ángulos de una toma»** (`src/lib/mejoraVideo.js`, `worker/lib/estudio/mejoraVideo.js`,
+  `container/unir.mjs`, `components/MejorarVideo.jsx`; `mejorar_video` del MCP). Cosas que no se ven:
+  · **El AUDIO ORIGINAL se pone después, siempre**: Omni 1.2 y Seedance 2.5 inventan su sonido y Topaz puede devolver el video
+  mudo. Lo que sale del modelo es un paso intermedio (queda en la galería); lo que se entrega es la UNIÓN del Container
+  (`/unir`), que queda como VERSIÓN del original (`ajustes.deArchivo`, `audioOriginal: true`). Un tramo va sin recodificar
+  (`-c:v copy`, se corta a lo más corto); los ángulos sí se codifican (libx264) y se encajan llenando, sin bandas.
+  · **La unión NO se hace dentro del paso del encargo**: el permiso del encargo dura 240 s y `avanzarEncargo` escribe al final
+  con ese permiso como condición. Se encarga al Durable Object del render (`idFromName("mejora-<encargo>")`, su alarma de
+  15 min y sus 2 vCPU) y el encargo mira en los pasos siguientes (`GET /unir?intento=`). El resultado vive en el storage del
+  objeto, no en la fila: si la alarma escribiera `datos`, el siguiente paso lo pisaría. Sin noticias en 20 min, fallida.
+  · **El encargo no se cierra hasta saber cómo acabó la unión** (`unionTerminada` en `listos`). Si falla, queda «hecho» con lo
+  del modelo y el motivo en `mejora.union.error` (la campana lo dice); un corte del Container se reintenta una vez.
+  · **Una mejora la arma el SERVIDOR**: `crearEncargo` rechaza `tipo: "mejora"` si no viene de `crearMejora` (`interno`), que
+  comprueba que el video y las fotos sean de ese cliente y pregunta el costo SIEMPRE (409 `confirmar` con `resumen`).
+  `/api/estudio/<c>/mejorar` ya era «mejorar el prompt»: la ruta es `/mejorar-video`.
+  · **Duración**: se mide de `ajustes.duracion` o leyendo la caja `moov` en R2 (`sondearEnR2`, también vale para MOV). Look,
+  cambiar y ángulos: hasta 15 s con Omni 1.2 (a 1080p, casi lo mismo que 720p), de 15 a 30 s con Seedance 2.5 (sigue el
+  video de REFERENCIA: puede cambiar más que Omni). Topaz admite cualquier duración hasta 50 MB y se cobra por segundo: el
+  catálogo supone 15 s (`segundos`), el plan cobra lo que dura de verdad.
+  · **Ángulos**: cada uno recrea la misma toma desde otra cámara y el montaje salta cada `CORTE_ANGULOS` (2 s) empezando por
+  el original. Un ángulo que no salió deja su tramo al original. Si alguien habla a cámara la boca no coincide: se avisa.
+  · **Omni 1.2 (`gemini-omni-1-2-kie`) y Topaz (`topaz-video-kie`) salen de lo que devolvió la BÚSQUEDA** (docs.kie.ai no se
+  alcanza desde aquí): el extracto lleva la entrada de Omni 1.2 marcada así. Omni 1.2 pasó a ser el primero en las listas de
+  preferencia (reel, tramo, recrear); como no tiene `audio_ids`, la voz fija de Omni sigue siendo cosa del 1.1. **Nada de esto
+  se ha probado contra Kie** (la unión sí, con ffmpeg: `probarUnir.mjs`); el precio de Topaz es una suposición por lo alto.

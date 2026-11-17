@@ -19,6 +19,8 @@ const VideoListo = lazy(() => import("./VideoListo"));
 const DesgloseVideo = lazy(() => import("./DesgloseVideo"));
 // «Poner en una publicación…»: lo que ya está en la galería, a un post de cualquier mes (sin crear ni cobrar).
 const PonerEnPublicacion = lazy(() => import("./PonerEnPublicacion"));
+// «Mejorar mi video» y «Varios ángulos» (escalar, look, cambiar algo, ángulos), con el audio original.
+const MejorarVideo = lazy(() => import("./MejorarVideo"));
 // «Variaciones para anuncios»: de esta pieza maestra, las de un conjunto de anuncios (sólo se descarga al pulsarlo).
 const VariacionesAnuncio = lazy(() => import("./VariacionesAnuncio"));
 
@@ -200,6 +202,7 @@ export default function Visor({
   const [extrayendo, setExtrayendo] = useState(false);
   const [poniendo, setPoniendo] = useState(false);
   const [variando, setVariando] = useState(false);
+  const [mejorando, setMejorando] = useState(false);
   const m = modeloPorId(a.modelo);
   const puedeOtra = !lectura && !a.subido && costoOtra != null && onOtraIgual;
   const video = a.tipo === "video";
@@ -253,6 +256,11 @@ export default function Visor({
           {puedeOtra && (
             <button type="button" className="btn btn-secondary est-barra-boton" aria-expanded={abierto === "otra"} aria-controls={`${id}-otra`} onClick={() => setAbierto("otra")}>
               <Icon name="sparkles" size={18} /> <span>Otra versión</span>
+            </button>
+          )}
+          {video && !lectura && clienteId && esVideoReal(a) && (
+            <button type="button" className="btn btn-secondary est-barra-boton" onClick={() => setMejorando(true)} title="Escalar, cambiar la luz, cambiar algo o sacar varios ángulos de la toma, con el audio original">
+              <Icon name="wand" size={18} /> <span>Mejorar</span>
             </button>
           )}
           <a className="btn btn-secondary est-barra-boton" href={a.src} download={nombreDeDescarga(a)}><Icon name="download" size={18} /> <span>Descargar</span></a>
@@ -426,6 +434,11 @@ export default function Visor({
       {extrayendo && (
         <Suspense fallback={null}>
           <ExtraerUgc client={cliente} inicial={{ id: a.id, src: a.src, nombre: "Este video" }} onCerrar={() => setExtrayendo(false)} />
+        </Suspense>
+      )}
+      {mejorando && (
+        <Suspense fallback={null}>
+          <MejorarVideo clienteId={clienteId} archivo={a} cliente={cliente} onCerrar={() => setMejorando(false)} />
         </Suspense>
       )}
       {poniendo && (

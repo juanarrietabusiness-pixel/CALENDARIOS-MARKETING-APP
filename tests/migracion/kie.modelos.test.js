@@ -93,7 +93,7 @@ describe("los modelos de Kie, contra su documentación", () => {
   it("cada uno cuesta algo y se puede pedir con sus valores por defecto", () => {
     for (const m of deKie) {
       expect(estimar(m), m.id).toBeGreaterThan(0);
-      const medios = m.necesitaVideo ? { video: ["v"], reference: ["r"] } : m.necesitaImagen ? (m.inicial ? { start: ["i"] } : { reference: ["r"] }) : {};
+      const medios = m.necesitaVideo ? { video: ["v"], ...(m.referencias ? { reference: ["r"] } : {}) } : m.necesitaImagen ? (m.inicial ? { start: ["i"] } : { reference: ["r"] }) : {};
       expect(validarPedido({ modelo: m.id, prompt: "Una escena", medios }).ok, m.id).toBe(true);
     }
   });

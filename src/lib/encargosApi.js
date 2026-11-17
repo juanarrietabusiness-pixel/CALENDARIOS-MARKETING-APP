@@ -206,3 +206,9 @@ export const montarReel = (clienteId, id, datos) => pedir(ruta(clienteId, `/${en
 export const fotogramaFinal = (clienteId, id, pasoId, archivoId) => finalesDePaso(clienteId, id, pasoId, [archivoId]);
 /** Los encargos de un cliente (los en marcha y los de las últimas 48 h): para retomar un reel. */
 export const listarEncargos = (clienteId) => pedir(ruta(clienteId)).then((r) => r?.encargos ?? []);
+/**
+ * «Mejorar mi video» / «Varios ángulos» (worker/lib/estudio/mejoraVideo.js): { archivoId, modo, look?, instruccion?,
+ * referencias?, angulos?, factor?, confirmado? }. Sin `confirmado`, el servidor contesta 409 con `costo` y `resumen` (un
+ * video pregunta siempre). → { encargo, archivos }.
+ */
+export const mejorarVideo = (clienteId, datos) => pedir(`/estudio/${encodeURIComponent(clienteId)}/mejorar-video`, post(datos));

@@ -22,6 +22,8 @@
 //                                              lo que necesita una imagen para salir en cada red (src/lib/prepararRedes.js,
 //                                              el MISMO dibujo que el navegador en encajarLienzo.js). Para «Programar al
 //                                              aprobar» sin pantalla. No lleva guion.
+//   POST /unir      { original, tramos: [{ clip, desde, hasta }], salida?, copiar? } → el MP4: la imagen de los clips con
+//                                              el AUDIO del original («Mejorar mi video», unir.mjs). Los clips, ya subidos.
 //   PUT  /clip/<id> (el cuerpo: los bytes del VIDEO)  → JSON { ancho, alto, duracion, audio }: guarda un clip de la galería
 //                                              para las capas `video` (clips.mjs). Va por flujo: el Worker no lo carga.
 //   HEAD /clip/<id>  → 200 si ya está (no hace falta subirlo otra vez), 404 si no
@@ -51,6 +53,7 @@ import { dibujarTextoPlantilla, dibujarLogo, letraDe } from "../src/lib/acabadoL
 import { encajarEn, reducirEn } from "../src/lib/encajarLienzo.js";
 import { LADO_PUBLICAR } from "../src/lib/prepararRedes.js";
 import { renderizar } from "./render.mjs";
+import { unir } from "./unir.mjs";
 import { golpesDeCancion } from "./golpes.mjs";
 import { conGolpes, limpiarGolpes } from "../src/lib/golpes.js";
 
@@ -201,6 +204,16 @@ async function atender(ruta, p) {
   if (ruta === "/miniatura") return miniatura(p);
   if (ruta === "/imagen-redes") return imagenRedes(p);
   if (ruta === "/acabado") return acabado(p);
+  // «Mejorar mi video»: la imagen nueva con el audio del original (unir.mjs). Los clips ya están subidos.
+  if (ruta === "/unir") {
+    const turno = renderEnCurso.then(() => unir(p));
+    renderEnCurso = turno.catch(() => {});
+    const r = await turno;
+    return {
+      cuerpo: r.mp4, tipo: "video/mp4",
+      cabeceras: { "X-Bytes": String(r.mp4.length), "X-Ancho": String(r.ancho), "X-Alto": String(r.alto), "X-Duracion": r.duracion.toFixed(3) },
+    };
+  }
   // Los golpes de una canción (el BPM y el segundo de cada golpe): ffmpeg la decodifica y src/lib/golpes.js la analiza.
   if (ruta === "/golpes") {
     if (typeof p.audio !== "string" || !p.audio) throw new ErrorPedido("Falta el audio.");

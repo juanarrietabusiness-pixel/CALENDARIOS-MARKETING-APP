@@ -11,6 +11,9 @@
 //   POST   /<cliente>/trabajos/<id>/avanzar        UN paso: una imagen
 //   POST   /<cliente>/trabajos/<id>/cancelar
 //   POST   /<cliente>/trabajos/<id>/reintentar
+//   POST   /<cliente>/mejorar-video                «Mejorar mi video» { archivoId, modo: escalar|look|cambiar|angulos, look?,
+//                                                    instruccion?, referencias? (ids), angulos? (ids), factor?, confirmado? }:
+//                                                    sin `confirmado`, 409 con el costo y el resumen; con él, el encargo
 //   POST   /<cliente>/encargos                     { tipo: "lote", pasos, … }: una cadena de piezas que lleva el SERVIDOR
 //   GET    /<cliente>/encargos                     Los de este cliente en marcha y los de las últimas 48 h
 //   GET    /<cliente>/encargos/<id>                Uno, con las imágenes que ya salieron
@@ -111,6 +114,7 @@ import {
   vaciarPapelera, crearCarpeta, renombrarCarpeta, ordenarCarpeta, borrarCarpeta, archivoPublico, clavesPerdidas,
   paginaDeGaleria, buscarEnGaleria,
 } from "../lib/estudio/galeria.js";
+import { crearMejora } from "../lib/estudio/mejoraVideo.js";
 import { crearEncargo, avanzarEncargo, cancelarEncargo, finalesDePaso, encargoPublico, encargoConArchivos, accionDeReel } from "../lib/estudio/encargos.js";
 import { ponerPiezasEnPost, ErrorPoner } from "../lib/estudio/ponerPiezas.js";
 import { topeSinPreguntar } from "../lib/configIA.js";
@@ -119,7 +123,7 @@ const ID = /^[\w-]{1,80}$/;
 
 
 /** Una respuesta de error de este módulo: lleva además el `codigo` y el costo, que la pantalla usa para pedir confirmación. */
-const fallo = (e) => json({ error: e.message, ...(e.codigo ? { codigo: e.codigo } : {}), ...(e.costo != null ? { costo: e.costo } : {}), ...(e.usos != null ? { usos: e.usos } : {}), ...(e.que ? { que: e.que } : {}), ...(e.motivo ? { motivo: e.motivo } : {}) }, e.estado ?? 400);
+const fallo = (e) => json({ error: e.message, ...(e.codigo ? { codigo: e.codigo } : {}), ...(e.costo != null ? { costo: e.costo } : {}), ...(e.usos != null ? { usos: e.usos } : {}), ...(e.que ? { que: e.que } : {}), ...(e.motivo ? { motivo: e.motivo } : {}), ...(e.resumen ? { resumen: e.resumen } : {}), ...(e.aviso ? { aviso: e.aviso } : {}) }, e.estado ?? 400);
 
 export async function rutasEstudio(req, env, { acceso, usuario, partes, metodo }) {
   const [, a, b, c, d] = partes;
@@ -309,6 +313,19 @@ export async function rutasEstudio(req, env, { acceso, usuario, partes, metodo }
         }));
       } catch (e) {
         if (e instanceof ErrorPoner) return fallo(e);
+        throw e;
+      }
+    }
+
+    // ---------- «Mejorar mi video» y «Varios ángulos» (mejoraVideo.js): un encargo que arma el servidor ----------
+    if (b === "mejorar-video" && !c && metodo === "POST") {
+      const datos = await cuerpo(req);
+      if (!datos) return error("JSON inválido");
+      try {
+        const fila = await crearMejora(env, acceso, cliente, datos, { usuario, crearEncargo });
+        return json(await encargoConArchivos(acceso, fila), 201);
+      } catch (e) {
+        if (e instanceof ErrorEstudio) return fallo(e);
         throw e;
       }
     }

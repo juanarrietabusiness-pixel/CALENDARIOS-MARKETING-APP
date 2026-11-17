@@ -18,6 +18,7 @@
 // ============================================================
 
 import { ejecutarRender } from "./lib/estudio/render.js";
+import { ejecutarUnion } from "./lib/estudio/mejoraVideo.js";
 
 /** El puerto del servidor del Container (container/servidor.mjs). */
 const PUERTO = 8080;
@@ -104,7 +105,8 @@ export class ContenedorVideo extends ConContenedor {
 
 /**
  * El Container del RENDER. `POST /encargar` { ownerId, clienteId, videoId, intento } apunta el encargo y pone la alarma
- * ya (202); la alarma lo hace. El encargo se BORRA antes de empezar: si el objeto muere a la mitad, la alarma no lo
+ * ya (202); la alarma lo hace. `POST /unir` { ownerId, clienteId, encargoId, intento } hace lo mismo con la UNIÓN de
+ * «Mejorar mi video» (mejoraVideo.js; un objeto por mejora) y `GET /unir?intento=` dice cómo acabó. El encargo se BORRA antes de empezar: si el objeto muere a la mitad, la alarma no lo
  * repite (otro render entero, y quizá el mismo fallo); el proyecto queda «Renderizando» y al leerlo pasado el plazo se
  * da por fallido (`renderAlDia`), con «Renderizar» otra vez a un toque.
  */
@@ -115,6 +117,7 @@ export class RenderVideo extends ConContenedor {
 
   async fetch(req) {
     const url = new URL(req.url);
+    if (url.pathname === "/unir") return this.unir(req, url);
     if (req.method !== "POST" || url.pathname !== "/encargar") return new Response("No existe.", { status: 404 });
     const e = await req.json().catch(() => null);
     if (!e || !["ownerId", "clienteId", "videoId", "intento"].every((k) => typeof e[k] === "string" && e[k])) {
@@ -125,7 +128,35 @@ export class RenderVideo extends ConContenedor {
     return Response.json({ ok: true }, { status: 202 });
   }
 
+  /** La unión de una mejora: encargarla (POST) o saber cómo acabó (GET, por su intento). */
+  async unir(req, url) {
+    if (req.method === "GET") {
+      const r = await this.state.storage.get("resultado");
+      const intento = url.searchParams.get("intento");
+      return Response.json(r && r.intento === intento ? r : { estado: "uniendo" });
+    }
+    if (req.method !== "POST") return new Response("No existe.", { status: 404 });
+    const e = await req.json().catch(() => null);
+    if (!e || !["ownerId", "clienteId", "encargoId", "intento"].every((k) => typeof e[k] === "string" && e[k])) {
+      return Response.json({ error: "Unión incompleta." }, { status: 400 });
+    }
+    await this.state.storage.put("union", { ownerId: e.ownerId, clienteId: e.clienteId, encargoId: e.encargoId, intento: e.intento });
+    await this.state.storage.delete("resultado");
+    await this.state.storage.setAlarm(Date.now());
+    return Response.json({ ok: true }, { status: 202 });
+  }
+
   async alarm() {
+    // La unión de una mejora: se borra antes de empezar (como el render) y lo que salga queda para que el encargo lo lea.
+    const union = await this.state.storage.get("union");
+    if (union) {
+      await this.state.storage.delete("union");
+      const r = await ejecutarUnion(this.env, union, async (ruta, init) => {
+        const puerto = await this.puerto();
+        return puerto.fetch(new Request(`http://contenedor${ruta}`, init));
+      });
+      await this.state.storage.put("resultado", { ...r, intento: union.intento });
+    }
     const encargo = await this.state.storage.get("encargo");
     if (!encargo) return;
     await this.state.storage.delete("encargo");
