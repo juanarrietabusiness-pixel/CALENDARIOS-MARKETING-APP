@@ -970,3 +970,9 @@ contradicen, manda la de más abajo (la más nueva). Una trampa nueva de esta á
   seis transiciones tarda ~35 s en el Container. Sin voz, la duración de cada escena es su `pausa` (máx. 3 s): para cortar
   en el bombo hay que medir la canción (sus golpes) y poner las pausas en múltiplos del pulso; un `golpe`/`glitch`
   impacta a mitad de su `dur`.
+  · **Tras desplegar, el Container sigue con la imagen VIEJA mientras esté despierto** (17-11-2026): el Worker ya
+  aceptaba `malla` y `latigo`, pero `revisar_video` (que corre en el Container) los rechazaba con la lista de antes.
+  Cloudflare sólo arranca la imagen nueva cuando la instancia se duerme (2 min sin pedidos el de los cuadros; 30 s el
+  del render) y otro pedido la despierta: pedirle cosas seguidas la mantiene en la vieja. Si justo tras un despliegue
+  el Container no conoce algo nuevo, deja de llamarlo 3 minutos y vuelve a probar. Y `editar_escena` tiene su propia lista
+  de campos (`CAMPOS_ESCENA`): un campo nuevo de la escena va ahí también (lo vigila videos.camposEscena.test.js).
