@@ -204,7 +204,9 @@ export const MODELOS_KIE = Object.freeze({
       input: {
         ...input,
         ...(refs.length ? { image_urls: refs.slice(0, videos.length ? 5 : 6) } : {}),
-        ...(videos.length ? { video_list: [{ url: videos[0], start: 0, ends: Math.min(15, Number(duration) || 10) }] } : {}),
+        // Una LISTA DE DIRECCIONES, no objetos con tramo: Kie lo rechazó en la primera prueba real (17-11-2026,
+        // «video_list must be a string array»). El video entero (hasta 15 s) es lo que se edita.
+        ...(videos.length ? { video_list: [videos[0]] } : {}),
       },
     };
   },

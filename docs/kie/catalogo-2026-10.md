@@ -57,9 +57,9 @@ Source: https://docs.kie.ai (llms.txt index). Base URL: https://api.kie.ai . Aut
   inputs: TOP.callBackUrl:string;image_urls:array=[]<string,max 10>;prompt*:string(maxLen 20000);aspect_ratio*:string[1:1|1:4|1:8|2:3|3:2|3:4|4:1|4:3|4:5|5:4|8:1|9:16|16:9|21:9|auto]
 - `google/gemini-omni-flash-1-1`
   inputs: TOP.callBackUrl:string;prompt*:string(maxLen 20000);image_urls:array<string>;first_frame_url:string;last_frame_url:string;audio_ids:array<string>;video_list:array<object>;character_ids:array<string>;duration*:string[4|6|8|10];aspect_ratio:string[16:9|9:16];resolution:string[360p|720p|1080p|4k]="720p";seed:integer
-<!-- Añadido el 17-11-2026, NO del extracto de la agencia: la página de Kie (docs.kie.ai) no se alcanza desde aquí y esto sale de lo que devolvió la búsqueda. Sin probar contra Kie: si el pedido falla por un campo, corregirlo aquí y en kie.js. Precio leído: 360p 0,02 $/s, 720p 0,045, 1080p 0,05, 4K 0,11; al editar, por lo que dura el video de entrada. -->
+<!-- Añadido el 17-11-2026, NO del extracto de la agencia: la página de Kie (docs.kie.ai) no se alcanza desde aquí y esto sale de lo que devolvió la búsqueda. Primera prueba real (17-11-2026): `video_list` es una lista de DIRECCIONES («video_list must be a string array»), no objetos. Precio leído: 360p 0,02 $/s, 720p 0,045, 1080p 0,05, 4K 0,11; al editar, por lo que dura el video de entrada. -->
 - `google/gemini-omni-flash-1-2`
-  inputs: TOP.callBackUrl:string;prompt*:string(maxLen 20000);image_urls:array<string,max 6>;first_frame_url:string;last_frame_url:string;video_list:array<object>;duration*:string[3|4|5|6|7|8|9|10|11|12|13|14|15];aspect_ratio:string[16:9|9:16];resolution:string[360p|720p|1080p|4k]="720p";seed:integer
+  inputs: TOP.callBackUrl:string;prompt*:string(maxLen 20000);image_urls:array<string,max 6>;first_frame_url:string;last_frame_url:string;video_list:array<string>;duration*:string[3|4|5|6|7|8|9|10|11|12|13|14|15];aspect_ratio:string[16:9|9:16];resolution:string[360p|720p|1080p|4k]="720p";seed:integer
 
 ## market/flux2
 - `flux-2/pro-text-to-image`, `flux-2/flex-text-to-image`

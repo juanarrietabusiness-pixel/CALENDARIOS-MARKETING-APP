@@ -556,6 +556,8 @@ describe("Kie.ai: el recorrido de un pedido", () => {
     const omni = p("gemini-omni-kie", { refs: ["1", "2", "3", "4", "5", "6", "7"].map((x) => `https://${x}`), videos: ["https://v"] }).input;
     expect(omni.image_urls).toHaveLength(5);
     expect(omni.video_list).toEqual([{ url: "https://v", start: 0, ends: 10 }]);
+    // Omni 1.2: `video_list` es una lista de DIRECCIONES (Kie rechazó los objetos en la primera prueba real).
+    expect(p("gemini-omni-1-2-kie", { videos: ["https://v"] }).input.video_list).toEqual(["https://v"]);
     expect(p("hailuo-2-3-kie", { inicio: ["https://i"] })).toEqual({ model: "hailuo/2-3-image-to-video-pro", input: { prompt: "p", image_url: "https://i", duration: "10", resolution: "768P" } });
     expect(p("wan-2-7-kie").model).toBe("wan/2-7-text-to-video");
     expect(p("wan-2-7-kie", { inicio: ["https://i"] }).model).toBe("wan/2-7-image-to-video");
