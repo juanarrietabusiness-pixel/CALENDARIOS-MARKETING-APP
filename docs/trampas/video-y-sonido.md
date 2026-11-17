@@ -947,7 +947,10 @@ contradicen, manda la de más abajo (la más nueva). Una trampa nueva de esta á
   los segundos del momento + 1,2 s. Va en el tercio de arriba, lejos de los botones de Instagram.
   · **Plantillas**: sin voz; cada escena dura su `pausa` (≤ 3 s) o lo que `dura` una foto (los cortes rápidos del logo y
   del producto, ≥ `MIN_ESCENA`). Dos componentes nuevos del motor: `comentario` y `busqueda` (motorComponentes.js); la
-  búsqueda se escribe a 16 letras por segundo y achica la letra para caber. Sobre un fondo claro la tarjeta blanca no se
+  búsqueda se escribe a 16 letras por segundo (más rápido si es larga: nunca más de 1,2 s, o los resultados —con el remate
+  de la marca— no llegaban a salir en una escena muda de 3 s; pasó en el primer video real) y achica la letra para caber.
+  · **Un signo pegado al cierre de un énfasis** («*café*,», «*esperar*?») salía separado («café ,»): `partirEnfasis` lo
+  pega a la palabra enfatizada. Sobre un fondo claro la tarjeta blanca no se
   veía: la primera escena va sobre el acento y el oscuro de la marca.
   · **Predictor de viralidad (Higgsfield), descartado**: cuesta créditos de Higgsfield (la agencia no los compra), no se
   puede reproducir aquí y «¿Está listo este video?» ya revisa el gancho y la retención con el método de la agencia.

@@ -16,6 +16,7 @@
 // ============================================================
 
 import { MAX_PAUSA, MIN_ESCENA } from "./videoEscenas.js";
+import { letrasPorSegundo } from "./motorComponentes.js";
 
 export const PLANTILLAS_VIDEO = Object.freeze([
   { id: "comentarios", nombre: "Respondo tu comentario", detalle: "El comentario de un cliente como en Instagram, la respuesta de la marca frase a frase y el cierre con el producto y el logo. Para responder objeciones." },
@@ -73,7 +74,7 @@ function busqueda(d) {
   const texto = corto(d.busqueda, 60);
   if (!texto) return { error: "Escribe lo que se busca." };
   const resultados = lista(d.resultados, 4, 50);
-  const escribir = texto.length / 16 + 0.3 + resultados.length * 0.35 + 1;
+  const escribir = texto.length / letrasPorSegundo(texto) + 0.3 + resultados.length * 0.35 + 1;
   const escenas = [{
     id: "e1", tipo: "gancho", habla: "", pausa: Math.min(MAX_PAUSA, Math.max(1.6, escribir)), fondo: { tipo: "degradado", color: "acento", color2: "oscuro" }, transicion: { tipo: "corte" },
     capas: [{ tipo: "busqueda", id: "b", texto, resultados, pos: "centro", tam: 0.88, entra: { s: 0 }, animacion: { entrada: "aparece" } }],
