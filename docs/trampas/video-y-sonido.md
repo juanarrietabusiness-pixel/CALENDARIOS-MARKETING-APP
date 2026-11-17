@@ -925,3 +925,5 @@ contradicen, manda la de más abajo (la más nueva). Una trampa nueva de esta á
   alcanza desde aquí): el extracto lleva la entrada de Omni 1.2 marcada así. Omni 1.2 pasó a ser el primero en las listas de
   preferencia (reel, tramo, recrear); como no tiene `audio_ids`, la voz fija de Omni sigue siendo cosa del 1.1. **Nada de esto
   se ha probado contra Kie** (la unión sí, con ffmpeg: `probarUnir.mjs`); el precio de Topaz es una suposición por lo alto.
+  · **La primera prueba real (17-11-2026) falló al crear la tarea**: en Omni 1.2 `video_list` es una LISTA DE DIRECCIONES
+  (`["https://…"]`), no `[{ url, start, ends }]` como en el extracto del 1.1. Corregido; el 1.1 sigue con objetos (sin probar).
