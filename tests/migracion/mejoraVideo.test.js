@@ -341,3 +341,15 @@ describe("las plantillas de movimiento gráfico, por la API", () => {
     expect(mal.status).toBe(400);
   });
 });
+
+describe("el conector con el esquema de antes", () => {
+  it("las listas y los objetos que llegan escritos como texto se leen igual", async () => {
+    const { listaDeArgumento, objetoDeArgumento } = await import("../../worker/lib/estudio/herramientas.js");
+    expect(listaDeArgumento('["a","b"]')).toEqual(["a", "b"]);
+    expect(listaDeArgumento(["a"])).toEqual(["a"]);
+    expect(listaDeArgumento("un gancho")).toEqual(["un gancho"]);
+    expect(listaDeArgumento(undefined)).toEqual([]);
+    expect(objetoDeArgumento('{"desde":8.5,"hasta":11}')).toEqual({ desde: 8.5, hasta: 11 });
+    expect(objetoDeArgumento("nada")).toBeNull();
+  });
+});
