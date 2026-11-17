@@ -1017,3 +1017,24 @@ contradicen, manda la de más abajo (la más nueva). Una trampa nueva de esta á
   Chromium (la lista, «Quitar la lista», «Escuchar el sonido»). NO probado: el render en Cloudflare con el catálogo en la
   imagen, la hoja vista desde el chat de Claude, y si los efectos de earshot SUENAN bien: eso lo dice una persona en los
   momentos que marca el informe (su prueba a ciegas fue de un oyente y 15 intentos).
+- **Los efectos AUTOMÁTICOS sonaban siempre a los mismos tres** (17-11-2026; `colocadosAutomaticos` en
+  `src/lib/efectosColocados.js`). Un whoosh para toda transición, un impacto y un pop: lo primero que se oye como
+  plantilla (lo dijo la agencia escuchando dos videos seguidos). Ahora:
+  · Cada TIPO de transición suena a su familia (`SONIDOS_DE_TRANSICION`: empuje, un barrido grave; cortina, un paño;
+  círculo, un respiro que se abre; persiana, un paño o un obturador; golpe, un impacto…), con su contador PROPIO: la
+  primera vez de cada tipo, su variante más suya; las siguientes rotan. Con un contador global, la primera persiana del
+  video caía en «obturador».
+  · El whoosh de una transición que se MUEVE cae en su mitad (lo más rápido del movimiento), no en su primer cuadro.
+  · Un `golpe` lleva tres capas (`CAPAS_DEL_GOLPE`): la subida que TERMINA en el destello, el impacto y un grave debajo.
+  Antes del destello ya no hay silencio (container/probarAudio.mjs lo comprueba así).
+  · Lo que entra suena (`SONIDOS_DE_CAPA`): el logo (firma), cada ítem de una lista en madera y el último de una lista
+  numerada como confirmación, la búsqueda (tecleo y cada resultado, el último con campanita, con el mismo tiempo que dibuja
+  el motor), el «después» de un antes y después, el comentario, una cifra, un icono y el marcador del énfasis.
+  · Los ADORNOS (marcador, cifra, icono) callan si un principal suena 0,5 s antes o 0,25 s después: se amontonaban sobre
+  la cola de un impacto. Y «dos a menos de 0,15 s» es por clase: un whoosh y el pop del sello que entra con él suenan los
+  dos (antes, uno se comía al otro).
+  · Medido con «escuchar» en los dos videos de Feria del Lente: 11 y 13 efectos cada 10 s, sin avisos de pisarse. El gusto
+  no se ha comprobado con oídos: lo dice una persona.
+  · El conector MCP de una sesión de Claude que se abrió ANTES de desplegar `colocados` no lo tiene en su esquema y lo quita
+  sin avisar (sonido_video dice «Guardado» con los automáticos). Para poner una lista hay que abrir una sesión nueva o usar
+  la pantalla «Sonido».

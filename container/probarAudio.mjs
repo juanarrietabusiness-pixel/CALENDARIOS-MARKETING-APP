@@ -142,7 +142,8 @@ try {
   const impacto = colocadosAutomaticos(gg, lg).find((c) => c.sonido === "pro_impact-air");
   const tImpacto = impacto ? instanteDe(impacto, gg, lg).t + (impacto.ajusteMs ?? 0) / 1000 : null;
   if (!gg || tImpacto === null) { mal++; console.error("✗ una transición «golpe» debería llevar su impacto automático"); }
-  else await caso("Un golpe suena a impacto en el destello", null, lg.silencios, lg.total, { guion: gg, linea: lg, efectos: true, umbral: 0.003, suena: [tImpacto, tImpacto + 0.15], callado: [tImpacto - 0.12, tImpacto - 0.02] });
+  // Antes del destello ya no hay silencio: sube la «subida» que termina en él (CAPAS_DEL_GOLPE).
+  else await caso("Un golpe suena a impacto en el destello (con su subida antes)", null, lg.silencios, lg.total, { guion: gg, linea: lg, efectos: true, umbral: 0.003, suena: [tImpacto - 0.3, tImpacto + 0.15] });
   // Los EFECTOS de la biblioteca de sonido (subidos por la agencia: un MP3 con silencio delante y un WAV corto), en vez
   // de los automáticos: el audio sigue en -14 LUFS y en su duración, y en el instante de un sello suena.
   const whooshSubido = await readFile(mp3("whoosh-subido.mp3", 1.2, 44100, "if(lt(t,0.3),0,0.6)"));

@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   limpiarColocado, limpiarColocados, instanteDe, momentosColocados, colocadosAutomaticos, bajadasDeMusica, bajadaEn,
-  textoDeColocado, archivosDeColocados, palabraComparable, PAPELES, BAJADA_MUSICA, MAX_COLOCADOS, EFECTO_AUTOMATICO,
+  textoDeColocado, archivosDeColocados, palabraComparable, PAPELES, BAJADA_MUSICA, MAX_COLOCADOS, EFECTO_AUTOMATICO, SONIDOS_DE_TRANSICION, SONIDOS_DE_CAPA, CAPAS_DEL_GOLPE,
 } from "./efectosColocados.js";
 import { armarSonido, nivelDeFondoEn, sumarPistas } from "./efectosSonido.js";
 import { nivelDe } from "./sonidoVideo.js";
@@ -9,6 +9,7 @@ import { limpiarSonido } from "./sonidoVideo.js";
 import { BYTES_MUESTRA } from "./renderVideo.js";
 import { validarGuion, lineaDeTiempo, tiempoDeCapa } from "./videoEscenas.js";
 import { EJEMPLO_GUION } from "./videoFormatoIA.js";
+import { efectoDelCatalogo } from "./catalogoEfectos.js";
 
 // ============================================================
 // Los EFECTOS COLOCADOS: anclados a eventos del video (escena, capa, palabra o segundo), con las reglas medidas de cada
@@ -109,7 +110,8 @@ describe("las reglas de cada papel", () => {
 
   it("los automáticos son colocados con los ids del catálogo", () => {
     const l = colocadosAutomaticos(guion, linea);
-    expect(l).toContainEqual({ sonido: EFECTO_AUTOMATICO.transicion, escena: "e2" });
+    // Una transición que se mueve: su whoosh cae en la mitad (lo más rápido del movimiento).
+    expect(l).toContainEqual({ sonido: SONIDOS_DE_TRANSICION.deslizar[0], escena: "e2", ajusteMs: Math.round((guion.escenas[1].transicion.dur / 2) * 1000) });
     expect(l).toContainEqual({ sonido: EFECTO_AUTOMATICO.sello, escena: "e2", capa: "s" });
     expect(textoDeColocado({ sonido: "x", escena: "e2", capa: "s", ajusteMs: -20 }, "«Pop»")).toBe("«Pop» al entrar la capa s de la escena e2 (-20 ms)");
     expect(textoDeColocado({ sonido: "x", palabra: "precio", n: 2 })).toBe("x al decir «precio» (la vez 2)");
@@ -178,3 +180,89 @@ describe("la mezcla por pistas", () => {
     expect(nivelDe(r.pistas.efectos)).toBeGreaterThan(0);
   });
 });
+
+describe("los automáticos VARÍAN (no el mismo whoosh, el mismo impacto y el mismo pop en todo el video)", () => {
+  const escena = (id, extra = {}) => ({ id, tipo: "dato", habla: "", pausa: 3, fondo: { tipo: "plano" }, capas: [], ...extra });
+
+  it("todo lo que suena solo existe en el catálogo, y cada lista sin repetidos", () => {
+    for (const lista of [...Object.values(SONIDOS_DE_TRANSICION), ...Object.values(SONIDOS_DE_CAPA)]) {
+      expect(new Set(lista).size).toBe(lista.length);
+      for (const id of lista) expect(efectoDelCatalogo(id), id).not.toBeNull();
+    }
+    expect(SONIDOS_DE_TRANSICION.golpe[0]).toBe(EFECTO_AUTOMATICO.impacto);
+    expect(SONIDOS_DE_CAPA.sello[0]).toBe(EFECTO_AUTOMATICO.sello);
+  });
+
+  it("dos transiciones del mismo tipo no suenan igual, y cada tipo suena a su familia", () => {
+    const { guion } = validarGuion({ version: 1, escenas: [
+      escena("a"), escena("b", { transicion: { tipo: "empuje", dur: 0.4 } }), escena("c", { transicion: { tipo: "empuje", dur: 0.4 } }),
+      escena("d", { transicion: { tipo: "circulo", dur: 0.4 } }),
+    ] });
+    const l = colocadosAutomaticos(guion, lineaDeTiempo(guion));
+    expect(l).toHaveLength(3);
+    expect(l[0].sonido).not.toBe(l[1].sonido);
+    expect(SONIDOS_DE_TRANSICION.empuje).toEqual(expect.arrayContaining([l[0].sonido, l[1].sonido]));
+    expect(SONIDOS_DE_TRANSICION.circulo).toContain(l[2].sonido);
+  });
+
+  it("suenan también el logo, cada ítem de una lista cuando llega, una cifra y un icono", () => {
+    const { guion } = validarGuion({ version: 1, escenas: [
+      escena("a", { capas: [
+        { tipo: "cifra", id: "n", valor: 40, entra: { s: 0.2 } },
+        { tipo: "lista", id: "l", items: ["uno", "dos", "tres"], cada: 0.5, entra: { s: 0.6 } },
+      ] }),
+      escena("b", { capas: [{ tipo: "icono", id: "i", nombre: "reloj" }, { tipo: "logo", id: "logo", entra: { s: 0.5 } }] }),
+    ] });
+    const linea = lineaDeTiempo(guion);
+    const l = colocadosAutomaticos(guion, linea);
+    const items = l.filter((c) => SONIDOS_DE_CAPA.item.includes(c.sonido));
+    expect(items).toHaveLength(3);
+    expect(items.map((c) => instanteDe(c, guion, linea).t)).toEqual([0.6, 1.1, 1.6]);
+    expect(new Set(items.map((c) => c.sonido)).size).toBe(3);
+    expect(l.some((c) => c.capa === "n" && SONIDOS_DE_CAPA.cifra.includes(c.sonido))).toBe(true);
+    expect(l.some((c) => c.capa === "logo" && SONIDOS_DE_CAPA.logo.includes(c.sonido))).toBe(true);
+    expect(l.some((c) => c.capa === "i" && SONIDOS_DE_CAPA.icono.includes(c.sonido))).toBe(true);
+  });
+
+  it("un adorno (el pop de un icono) calla si una transición suena a la vez", () => {
+    const { guion } = validarGuion({ version: 1, escenas: [
+      escena("a"), escena("b", { transicion: { tipo: "empuje", dur: 0.4 }, capas: [{ tipo: "icono", id: "i", nombre: "reloj", entra: { s: 0.2 } }] }),
+    ] });
+    const l = colocadosAutomaticos(guion, lineaDeTiempo(guion));
+    expect(l.some((c) => c.capa === "i")).toBe(false);
+    expect(l.some((c) => c.escena === "b" && SONIDOS_DE_TRANSICION.empuje.includes(c.sonido))).toBe(true);
+  });
+
+  it("un golpe de luz suena como en cine: la subida termina en el destello, el impacto y el grave debajo", () => {
+    const { guion } = validarGuion({ version: 1, escenas: [escena("a"), escena("b", { transicion: { tipo: "golpe", dur: 0.6 } })] });
+    const linea = lineaDeTiempo(guion);
+    const l = colocadosAutomaticos(guion, linea);
+    const subida = l.find((c) => CAPAS_DEL_GOLPE.subida.includes(c.sonido));
+    const caida = l.find((c) => CAPAS_DEL_GOLPE.caida.includes(c.sonido));
+    const impacto = l.find((c) => SONIDOS_DE_TRANSICION.golpe.includes(c.sonido));
+    expect(subida?.segundo).toBeCloseTo(3.3, 3);
+    expect(caida?.segundo).toBeCloseTo(3.3, 3);
+    expect(instanteDe(impacto, guion, linea).t + impacto.ajusteMs / 1000).toBeCloseTo(3.3, 3);
+  });
+
+  it("el último paso de una lista numerada confirma; una búsqueda suena al escribir y con cada resultado; el marcador brilla", () => {
+    const { guion } = validarGuion({ version: 1, escenas: [
+      escena("a", { capas: [
+        { tipo: "lista", id: "l", items: ["uno", "dos", "tres"], numerada: true, cada: 0.5, entra: { s: 1.2 } },
+        { tipo: "texto", id: "t", texto: "Así de *fácil*", resalte: "marcador", entra: { s: 0 } },
+      ] }),
+      escena("b", { capas: [{ tipo: "busqueda", id: "b", texto: "lentes listos hoy", resultados: ["uno", "dos", "tres"] }] }),
+    ] });
+    const linea = lineaDeTiempo(guion);
+    const l = colocadosAutomaticos(guion, linea);
+    expect(l.filter((c) => SONIDOS_DE_CAPA.item.includes(c.sonido))).toHaveLength(2);
+    expect(l.find((c) => SONIDOS_DE_CAPA.final.includes(c.sonido))?.segundo).toBeCloseTo(2.2, 3);
+    expect(l.some((c) => SONIDOS_DE_CAPA.marcador.includes(c.sonido))).toBe(true);
+    expect(l.some((c) => c.capa === "b" && SONIDOS_DE_CAPA.busqueda.includes(c.sonido))).toBe(true);
+    const tras = l.filter((c) => c.segundo > 3).map((c) => c.segundo);
+    // «lentes listos hoy» (17 letras) se escribe en 17/16 s; los resultados, 0,3 s después y cada 0,35 s.
+    [3 + 17 / 16 + 0.3, 3 + 17 / 16 + 0.65, 3 + 17 / 16 + 1].forEach((x, i) => expect(tras[i]).toBeCloseTo(x, 2));
+    expect(tras).toHaveLength(3);
+  });
+});
+

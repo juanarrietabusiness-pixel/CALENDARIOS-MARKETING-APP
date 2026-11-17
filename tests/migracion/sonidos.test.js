@@ -453,7 +453,7 @@ describe("los EFECTOS COLOCADOS y escuchar sin oídos", () => {
     const papeles = await h.efectos_sonido({});
     expect(papeles).toMatch(/· transicion \(\d+\): un cambio de escena .* su pico cae 37 ms después del momento/);
     expect(papeles).toMatch(/· golpe \(\d+\):.*la música baja antes/);
-    expect(papeles).toMatch(/Los automáticos \(sin lista\): whoosh_fast-crisp/);
+    expect(papeles).toMatch(/Los automáticos \(sin lista\) VARÍAN/);
     expect(await h.efectos_sonido({ papel: "transicion" })).toMatch(/· whoosh_fast-crisp — Whoosh rápido · crisp · 0,41 s · transicion/);
     expect(await h.efectos_sonido({ buscar: "carrito" })).toMatch(/ui-add-to-cart — Interfaz · Añadir al carrito/);
     expect(await h.efectos_sonido({ papel: "inventado" })).toMatch(/No hay efectos del papel «inventado»/);

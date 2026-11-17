@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { limpiarSonido, nivelDe, hablandoPorVentana, curvaDeDucking, mezclarMusica, mezclarClip, MUSICA_BAJO_LA_VOZ, FUNDIDO_MUSICA, FUNDIDO_CLIP } from "./sonidoVideo.js";
 import { sintetizar, mezclarColocados, DURACION_EFECTO } from "./efectosSonido.js";
-import { colocadosAutomaticos, momentosColocados, EFECTO_AUTOMATICO } from "./efectosColocados.js";
+import { colocadosAutomaticos, momentosColocados, EFECTO_AUTOMATICO, SONIDOS_DE_TRANSICION, SONIDOS_DE_CAPA } from "./efectosColocados.js";
 import { BYTES_MUESTRA } from "./renderVideo.js";
 import { validarGuion, lineaDeTiempo } from "./videoEscenas.js";
 import { EJEMPLO_GUION } from "./videoFormatoIA.js";
@@ -82,21 +82,29 @@ describe("los efectos de sonido", () => {
   const guion = validarGuion(JSON.parse(JSON.stringify(EJEMPLO_GUION))).guion;
   const linea = lineaDeTiempo(guion);
 
-  it("los automáticos: un whoosh en cada transición que no es un corte y un pop al entrar cada sello y el llamado", () => {
+  it("los automáticos: el sonido de su familia en cada transición que no es un corte y un pop al entrar cada sello y el llamado", () => {
     const l = colocadosAutomaticos(guion, linea);
-    const conTransicion = guion.escenas.slice(1).filter((e) => e.transicion.tipo !== "corte").length;
-    expect(l.filter((x) => x.sonido === EFECTO_AUTOMATICO.transicion)).toHaveLength(conTransicion);
+    const conTransicion = guion.escenas.slice(1).filter((e) => e.transicion.tipo !== "corte");
+    const deTransicion = l.filter((x) => x.escena && !x.capa && !("segundo" in x));
+    expect(deTransicion).toHaveLength(conTransicion.length);
+    deTransicion.forEach((x, i) => expect(SONIDOS_DE_TRANSICION[conTransicion[i].transicion.tipo]).toContain(x.sonido));
     const sellosYLlamados = guion.escenas.flatMap((e) => e.capas).filter((c) => c.tipo === "sello" || c.tipo === "llamado").length;
-    const pops = l.filter((x) => x.sonido === EFECTO_AUTOMATICO.sello);
+    const pops = l.filter((x) => SONIDOS_DE_CAPA.sello.includes(x.sonido));
+    expect(pops[0]?.sonido).toBe(EFECTO_AUTOMATICO.sello);
     expect(pops.length).toBeLessThanOrEqual(sellosYLlamados);
     expect(pops.every((x) => x.escena && x.capa)).toBe(true);
     expect(l.length).toBeGreaterThan(0);
-    // En orden y sin dos pegados (por el momento de su ancla).
+    // En orden y sin dos de la misma clase pegados (dos transiciones, o dos cosas que entran; un whoosh y el pop del sello
+    // que entra con él sí suenan juntos).
     const datos = () => ({ papel: "propio", pico: 0, nombre: "x" });
     const { momentos } = momentosColocados(l, guion, linea, datos);
-    for (let i = 1; i < momentos.length; i++) expect(momentos[i].evento - momentos[i - 1].evento).toBeGreaterThanOrEqual(0.15);
+    for (const deTransicion of [true, false]) {
+      const m = momentos.filter((x) => Boolean(l[x.i].escena && !l[x.i].capa && !("segundo" in l[x.i])) === deTransicion);
+      for (let i = 1; i < m.length; i++) expect(m[i].golpe - m[i - 1].golpe).toBeGreaterThanOrEqual(0.15);
+    }
     // Sin transiciones ni sellos, nada.
-    const liso = { escenas: guion.escenas.map((e) => ({ ...e, transicion: { tipo: "corte", dur: 0 }, capas: e.capas.filter((c) => !["sello", "llamado"].includes(c.tipo)) })) };
+    const conSonido = ["sello", "llamado", "logo", "cifra", "lista", "busqueda", "comentario", "icono"];
+    const liso = { escenas: guion.escenas.map((e) => ({ ...e, transicion: { tipo: "corte", dur: 0 }, capas: e.capas.filter((c) => !conSonido.includes(c.tipo)) })) };
     expect(colocadosAutomaticos(liso, linea)).toEqual([]);
     // Con un efecto de la biblioteca para un sitio, ése en su lugar.
     const propio = colocadosAutomaticos(guion, linea, { sello: { archivoId: "ding", nombre: "Ding" } });

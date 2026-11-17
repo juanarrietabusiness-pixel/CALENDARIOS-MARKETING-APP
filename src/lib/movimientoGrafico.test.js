@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { validarGuion, lineaDeTiempo, TRANSICIONES, FONDOS, ENTRADAS, CAMARAS, RESALTES } from "./videoEscenas.js";
 import { dibujarFrame, estadoDeCapa, camaraEn, visibleSobreElFondo, conAlfa, esTextoRico, TRANSICIONES_CON_MOVIMIENTO } from "./motorVideo.js";
 import { sintetizar, DURACION_EFECTO } from "./efectosSonido.js";
-import { colocadosAutomaticos, momentosColocados, EFECTO_AUTOMATICO, REALCE_IMPACTO } from "./efectosColocados.js";
+import { colocadosAutomaticos, momentosColocados, EFECTO_AUTOMATICO, REALCE_IMPACTO, SONIDOS_DE_TRANSICION } from "./efectosColocados.js";
 
 // ============================================================
 // El MOVIMIENTO GRÁFICO del video animado: transiciones que mueven las dos escenas, fondos vivos, cámara, viñeta, letra
@@ -199,11 +199,17 @@ describe("el impacto", () => {
       escena("d", "oscuro", { transicion: { tipo: "glitch", dur: 0.26 } }),
     ]);
     const linea = lineaDeTiempo(g);
-    const lista = colocadosAutomaticos(g, linea);
-    expect(lista.map((x) => x.sonido)).toEqual([EFECTO_AUTOMATICO.impacto, EFECTO_AUTOMATICO.transicion, EFECTO_AUTOMATICO.impacto]);
+    // El golpe lleva además su subida y su grave (CAPAS_DEL_GOLPE): aquí se mira lo de cada transición.
+    const lista = colocadosAutomaticos(g, linea).filter((c) => c.escena && !c.capa);
+    // Cada una de su familia (la primera vez, su variante más suya): el golpe, un impacto; el empuje, un barrido grave;
+    // el glitch, un tartamudeo digital.
+    expect(lista.map((x) => x.sonido)).toEqual([SONIDOS_DE_TRANSICION.golpe[0], SONIDOS_DE_TRANSICION.empuje[0], SONIDOS_DE_TRANSICION.glitch[0]]);
+    expect(lista[0].sonido).toBe(EFECTO_AUTOMATICO.impacto);
     expect(lista[0].volumen).toBe(REALCE_IMPACTO);
+    expect(lista[2].volumen).toBe(REALCE_IMPACTO);
     // El impacto es un golpe: empieza (por su arranque) en el destello, la mitad de la transición.
-    const { momentos } = momentosColocados(lista, g, linea, (c) => ({ papel: c.sonido === EFECTO_AUTOMATICO.impacto ? "golpe" : "transicion", pico: 0, nombre: "x" }));
+    const deImpacto = new Set([...SONIDOS_DE_TRANSICION.golpe, ...SONIDOS_DE_TRANSICION.glitch]);
+    const { momentos } = momentosColocados(lista, g, linea, (c) => ({ papel: deImpacto.has(c.sonido) ? "golpe" : "transicion", pico: 0, nombre: "x" }));
     expect(momentos[0].en).toBeCloseTo(3.17, 2);
     expect(momentos[2].en).toBeCloseTo(9.13, 2);
   });
