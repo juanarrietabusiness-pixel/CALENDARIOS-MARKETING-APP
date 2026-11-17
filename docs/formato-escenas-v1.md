@@ -79,6 +79,7 @@ tu canción». La pone la aplicación (`video_con_cancion`); no se escribe a man
 | `grano` | 0–1 (0,25) |
 | `ritmo` | `calmado`, `medio`, `rapido` |
 | `ilustracion` | `plana`, `papel`, `linea`, `poster` |
+| `vineta` | 0–1, opcional: oscurece las esquinas (una viñeta de objetivo de cine) y lleva la mirada al centro. 0,3–0,5 se nota sin ensuciar |
 | `personaje` | El aspecto del personaje en ESTE video: `{ piel, pelo, ropa, accesorio, nombre, imagenes }` (opcional; sin él, el del kit del cliente). `imagenes` es la MASCOTA propia de la marca, una imagen de la galería por pose (`{ "saluda": "<id>" }`): con ella la pieza dibuja la mascota y no la figura |
 
 ## Escena
@@ -90,8 +91,9 @@ tu canción». La pone la aplicación (`video_con_cancion`); no se escribe a man
 | `habla` | Lo que se dice (≤ 400). Las indicaciones de emoción de ElevenLabs v3 van entre corchetes: `[emocionada]`. No cuentan como palabras |
 | `pantalla` | El texto principal en pantalla, para leer el guion de un vistazo y aprobarlo (≤ 80) |
 | `pausa` | Segundos de silencio **detrás** del habla (0–3). Una escena muda necesita `pausa`. El render inserta ese silencio en el audio |
-| `fondo` | `{ tipo: plano/degradado/papel/rayas/puntos/estrellas/lineas, color, color2 }`. En `puntos`, `estrellas` (titilan) y `lineas` (curvas suaves), `color2` es el del adorno; vacío, el claro u oscuro que contraste |
-| `transicion` | Cómo ENTRA la escena: `{ tipo: corte/fundido/barrido/zoom/deslizar, dur: 0–1 }` |
+| `fondo` | `{ tipo: plano/degradado/papel/rayas/puntos/estrellas/lineas/malla/rayos/foco, color, color2 }`. En `puntos`, `estrellas` (titilan) y `lineas` (curvas suaves), `color2` es el del adorno; vacío, el claro u oscuro que contraste. Los VIVOS (se mueven): `malla` (manchas difusas de `color2` que derivan, un degradado de malla), `rayos` (haces de `color2` que giran despacio) y `foco` (luz cenital de `color2` y motas desenfocadas que suben). Ver «El movimiento gráfico» |
+| `transicion` | Cómo ENTRA la escena: `{ tipo, dur: 0–1, dir?, color? }`. `tipo`: corte/fundido/barrido/zoom/deslizar (la anterior se queda quieta) o empuje/golpe/cortina/circulo/persiana/glitch (se mueven las dos). `dir` (izq/der/arriba/abajo) para empuje, cortina, persiana y deslizar; `color` (token o #hex) para cortina, golpe (el destello), circulo (el aro), persiana (el filo) y glitch |
+| `camara` | Opcional: `acercar`, `alejar` o `deriva` (un poco de zoom y de lado), a velocidad constante toda la escena; el fondo se mueve la mitad (paralaje) |
 | `capas` | Hasta 8 componentes, en orden de dibujo (el primero, al fondo) |
 
 ## Capa (componente)
@@ -105,13 +107,13 @@ Todas llevan:
 | `pos`, `tam` | Dónde y de qué ancho (ver reglas) — `centro`, `0.6` |
 | `entra`, `sale` | `{ "palabra": n }` (la n-ésima palabra que se dice en la escena, desde 0) o `{ "s": segundos }` desde que empieza. `sale` vacío = hasta el final |
 | `pulso` | Opcional (sólo `true`): en un video con canción, la capa late un 4 % en cada GOLPE del ritmo (los saca el Container al sincronizar la canción) |
-| `animacion` | `entrada` (aparece, fundido, sube, baja, escala, rebote, escribe, barrido, dibuja, golpe), `salida` (ninguna, fundido, baja, escala), `bucle` (ninguno, flota, pulso, gira, late). `golpe`: seca, entera desde el primer cuadro y de 1,15 a 1 en 0,12 s, sin rebote (la letra que entra cuando se canta) |
+| `animacion` | `entrada` (aparece, fundido, sube, baja, escala, rebote, escribe, barrido, dibuja, golpe, mascara, escalonado, latigo, desenfoque), `salida` (ninguna, fundido, baja, escala), `bucle` (ninguno, flota, pulso, gira, late). `golpe`: seca, entera desde el primer cuadro y de 1,15 a 1 en 0,12 s, sin rebote (la letra que entra cuando se canta) |
 
 Los 17 componentes de la librería v1 y lo propio de cada uno:
 
 | Componente | Propiedades |
 |---|---|
-| `texto` | `texto`*, `rol` (titular/apoyo/dato/etiqueta/gigante), `color`, `placa` (color de fondo o vacío), `alinear`. Opcionales: `mayusculas`, `porPalabra`. Lo que va entre `*asteriscos*` lleva énfasis. Ver «El texto con carácter» abajo |
+| `texto` | `texto`*, `rol` (titular/apoyo/dato/etiqueta/gigante), `color`, `placa` (color de fondo o vacío), `alinear`. Opcionales: `mayusculas`, `porPalabra`, `resalte` (color/marcador/subrayado: cómo se marca el énfasis). Lo que va entre `*asteriscos*` lleva énfasis. Ver «El texto con carácter» abajo |
 | `sello` | `texto`* (≤ 24), `color`, `rotacion` (−20 a 20) |
 | `telefono` | `pantalla` (chat/imagen/color/notificacion), `mensajes` [{ `de`: cliente/marca, `texto` }] (≤ 6), `archivo`, `notificacion`, `color` |
 | `burbuja` | `texto`*, `lado` (izq/der), `color` |
@@ -188,6 +190,39 @@ La **letra de impacto** (el gigante y el énfasis) es la del kit si el cliente t
 ```jsonc
 { "tipo": "texto", "id": "coro", "texto": "Las manos *más bellas* de la historia", "rol": "gigante", "porPalabra": true,
   "animacion": { "entrada": "golpe" }, "pos": "arriba" }
+```
+
+### El movimiento gráfico (transiciones, fondos vivos, cámara y letra cinética)
+
+Lo que separa un video de plantilla de uno de editor: que NO se repita el mismo efecto, que las dos escenas se muevan en
+el cambio y que el corte caiga en el golpe de la música.
+
+- **Transiciones que mueven las dos escenas.** `empuje` (lo nuevo empuja a lo viejo, con desenfoque de movimiento y un
+  leve acercamiento), `golpe` (lo viejo se dispara a cámara, destello del `color` —claro por defecto— y lo nuevo cae y se
+  asienta; suena un IMPACTO grave en el destello, a mitad de la transición), `cortina` (dos paños: el del `color` —acento
+  por defecto— y otro que contrasta, cruzan en la `dir`), `circulo` (se abre desde el centro con un aro del `color`),
+  `persiana` (siete bandas escalonadas con filo del `color`) y `glitch` (tiras desplazadas y barras de color; también
+  suena a impacto). Cada una dura su `dur` (0,25–0,5 s). Una por escena, sin repetir la misma dos veces seguidas.
+- **Al compás.** Sin voz, la `pausa` decide cuánto dura cada escena: múltiplos del pulso de la música (122 BPM = 0,49 s;
+  95 BPM = 0,63 s). Un `golpe` o un `glitch` impactan en `desde + dur/2`: empiezan medio `dur` antes del bombo.
+- **Fondos vivos.** `malla`, `rayos` y `foco` se mueven solos (con su propio periodo; nunca dos cuadros iguales).
+  Alternar oscuro y claro de una escena a otra da ritmo visual.
+- **Cámara** (`camara` en la escena): acercar, alejar o deriva, con paralaje (el fondo, a la mitad).
+- **Viñeta** (`estilo.vineta`): las esquinas más oscuras, como un objetivo de cine.
+- **Letra cinética.** Entradas `mascara` (cada línea sube desde detrás de su renglón, una tras otra), `escalonado` (cada
+  palabra entra en cascada con un rebote seco), `latigo` (entra de lado y frena con rebote) y `desenfoque` (de borroso y
+  algo grande a nítido). Con `porPalabra` y voz, `mascara` y `escalonado` entran palabra a palabra cuando se dicen.
+- **Resalte del énfasis** (`resalte` en un texto): `marcador` (un bloque del acento se pinta detrás de la palabra y la
+  palabra cambia al color que contrasta) o `subrayado` (una línea del acento se traza debajo). Si el acento casi no se
+  distingue del fondo de la escena (rojo sobre rojo), el motor usa el claro u oscuro que contrasta; lo mismo con las
+  viñetas de una lista.
+
+```jsonc
+{ "id": "e2", "pausa": 2.88, "camara": "acercar",
+  "fondo": { "tipo": "foco", "color": "oscuro", "color2": "apoyo" },
+  "transicion": { "tipo": "golpe", "dur": 0.34 },
+  "capas": [{ "tipo": "texto", "id": "t", "texto": "Sí. *De verdad.*", "rol": "gigante", "resalte": "marcador",
+              "animacion": { "entrada": "mascara" }, "pos": "arriba" }] }
 ```
 
 ### Los fondos por crear (imágenes de fondo por sección)

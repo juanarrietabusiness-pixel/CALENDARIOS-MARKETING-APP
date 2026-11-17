@@ -38,7 +38,7 @@ export function dibujarLista(ctx, capa, h) {
   ctx.font = `700 ${Math.round(tam)}px ${cuerpo}`;
   const ancho = Math.min(w, marca() + sep() + Math.max(0, ...lineas.flat().map((l) => ctx.measureText(l).width)));
   const x0 = -ancho / 2;
-  const acento = h.color("acento");
+  const acento = h.acento ?? h.color("acento");
   let y = -alto / 2;
   lineas.forEach((ls, i) => {
     const fila = Math.max(marca(), ls.length * tam * 1.2);

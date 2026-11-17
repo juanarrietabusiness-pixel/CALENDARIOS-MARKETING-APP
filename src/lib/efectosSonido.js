@@ -20,7 +20,11 @@ import { nivelDe } from "./sonidoVideo.js";
 export const EFECTOS_BAJO_LA_VOZ = 12;
 
 /** Lo que dura cada efecto (s). */
-export const DURACION_EFECTO = Object.freeze({ whoosh: 0.42, pop: 0.09 });
+export const DURACION_EFECTO = Object.freeze({ whoosh: 0.42, pop: 0.09, impacto: 0.8 });
+/** Las transiciones que suenan a IMPACTO (un golpe grave en el destello), no a whoosh. */
+export const TRANSICIONES_DE_IMPACTO = Object.freeze(["golpe", "glitch"]);
+/** El impacto suena algo más que los demás (dB): lo grave se oye menos a igual RMS. */
+const REALCE_DB = Object.freeze({ impacto: 5 });
 
 const r3 = (n) => Math.round(n * 1000) / 1000;
 
@@ -44,7 +48,10 @@ export function momentosDeEfectos(guion, linea, { duraciones = DURACION_EFECTO }
   (guion?.escenas ?? []).forEach((e, k) => {
     const esc = linea?.escenas?.[k];
     if (!esc) return;
-    if (k > 0 && e.transicion?.tipo && e.transicion.tipo !== "corte") {
+    if (k > 0 && TRANSICIONES_DE_IMPACTO.includes(e.transicion?.tipo)) {
+      // En el destello, que es la mitad de la transición.
+      out.push({ tipo: "impacto", en: r3(esc.desde + (Number(e.transicion.dur) || 0) / 2) });
+    } else if (k > 0 && e.transicion?.tipo && e.transicion.tipo !== "corte") {
       out.push({ tipo: "whoosh", en: r3(Math.max(0, esc.desde - antes)) });
     }
     for (const c of e.capas ?? []) {
@@ -85,6 +92,21 @@ export function sintetizar(tipo, muestreo = RENDER.muestreo, semilla = 7) {
       const corte = 0.02 + 0.25 * campana;
       lp += corte * (r() * 2 - 1 - lp);
       s[i] = lp * campana;
+    }
+  } else if (tipo === "impacto") {
+    // Un BOMBO de cine: un seno que cae de 110 a 38 Hz con caída larga, un chasquido de 4 ms encima y una cola de ruido
+    // grave filtrado (el aire del golpe).
+    const r = azar(semilla);
+    let fase = 0;
+    let lp = 0;
+    for (let i = 0; i < n; i++) {
+      const t = i / muestreo;
+      const f = 38 + 72 * Math.exp(-t * 14);
+      fase += (2 * Math.PI * f) / muestreo;
+      const cuerpo = Math.sin(fase) * Math.min(1, t / 0.003) * Math.exp(-t * 4.2);
+      const chasquido = t < 0.004 ? (r() * 2 - 1) * (1 - t / 0.004) * 0.8 : 0;
+      lp += 0.04 * (r() * 2 - 1 - lp);
+      s[i] = cuerpo + chasquido + lp * 1.6 * Math.exp(-t * 6);
     }
   } else {
     let fase = 0;
@@ -166,7 +188,7 @@ export function mezclarEfectos(pcm, momentos, { muestreo = RENDER.muestreo, bajo
   for (const m of momentos) {
     const propio = propios?.[m.tipo]?.length ? propios[m.tipo] : null;
     const s = (cache[m.tipo] ??= propio ?? sintetizar(m.tipo, muestreo));
-    const g = (ganancia[m.tipo] ??= objetivo / ((propio ? rmsSonando(s) : rms(s)) || 1));
+    const g = (ganancia[m.tipo] ??= (objetivo * 10 ** ((REALCE_DB[m.tipo] ?? 0) / 20)) / ((propio ? rmsSonando(s) : rms(s)) || 1));
     const desde = Math.round(m.en * muestreo);
     for (let i = 0; i < s.length; i++) {
       const j = desde + i;

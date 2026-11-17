@@ -89,9 +89,10 @@ describe("la validación: todo lo nuevo es opcional", () => {
     expect(validarGuion(v.guion).guion).toEqual(v.guion);
   });
 
-  it("«golpe» va al FINAL de las entradas (el orden de las de antes no cambia)", () => {
-    expect(ENTRADAS.at(-1)).toBe("golpe");
+  it("«golpe» va detrás de las de antes y las de movimiento gráfico detrás de él (el orden de las de antes no cambia)", () => {
+    expect(ENTRADAS[9]).toBe("golpe");
     expect(ENTRADAS.slice(0, 9)).toEqual(["aparece", "fundido", "sube", "baja", "escala", "rebote", "escribe", "barrido", "dibuja"]);
+    expect(ENTRADAS.slice(10)).toEqual(["mascara", "escalonado", "latigo", "desenfoque"]);
   });
 
   it("los asteriscos no cuentan en el largo del texto; gigante, mayúsculas y palabra por palabra se aceptan", () => {
