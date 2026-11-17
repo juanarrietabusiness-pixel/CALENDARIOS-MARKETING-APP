@@ -180,7 +180,7 @@ export const DEFINICIONES_VIDEO = Object.freeze([
   },
   {
     name: "editar_escena",
-    description: "Cambia escenas sin reescribir el guion. UNA: «escena» con el id de una que existe la reemplaza (con «posicion», además la mueve); con un id nuevo la añade en «posicion» (1 = la primera) o al final; «quitar» con un id la borra; «id» + «cambiar» cambia SÓLO esos campos (habla, pantalla, pausa, fondo, transicion, tipo, capas) sin mandar la escena entera. VARIAS A LA VEZ: «cambios», una lista de esos mismos cambios ({escena, posicion} | {quitar} | {id, cambiar, posicion}), hasta 20, que se aplican en orden y todos o ninguno: queda UNA versión nueva. El guion entero se valida y, si cambia, vuelve a borrador. No gasta nada.",
+    description: "Cambia escenas sin reescribir el guion. UNA: «escena» con el id de una que existe la reemplaza (con «posicion», además la mueve); con un id nuevo la añade en «posicion» (1 = la primera) o al final; «quitar» con un id la borra; «id» + «cambiar» cambia SÓLO esos campos (habla, pantalla, pausa, fondo, transicion, camara, maquetacion, tipo, capas) sin mandar la escena entera. VARIAS A LA VEZ: «cambios», una lista de esos mismos cambios ({escena, posicion} | {quitar} | {id, cambiar, posicion}), hasta 20, que se aplican en orden y todos o ninguno: queda UNA versión nueva. El guion entero se valida y, si cambia, vuelve a borrador. No gasta nada.",
     input_schema: {
       type: "object",
       properties: {
@@ -189,7 +189,7 @@ export const DEFINICIONES_VIDEO = Object.freeze([
         posicion: { type: "integer", description: "Dónde va: 1 = la primera." },
         quitar: { type: "string", description: "El id de la escena que se borra (en vez de «escena»)." },
         id: { type: "string", description: "El id de una escena que existe, para «cambiar» sólo algunos campos (o sólo moverla con «posicion»)." },
-        cambiar: { type: "object", description: "Los campos que cambian de la escena «id»: habla, pantalla, pausa, fondo, transicion, tipo o capas (capas va entera)." },
+        cambiar: { type: "object", description: "Los campos que cambian de la escena «id»: habla, pantalla, pausa, fondo, transicion, camara, maquetacion, tipo o capas (capas va entera)." },
         cambios: {
           type: "array", maxItems: 20,
           description: "Varios cambios en una sola versión, en orden. Cada uno: {escena, posicion?} | {quitar} | {id, cambiar?, posicion?}.",

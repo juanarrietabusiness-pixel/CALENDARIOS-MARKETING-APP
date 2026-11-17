@@ -319,8 +319,9 @@ export async function guardarSonido(acceso, cliente, fila, sonido) {
 
 /** Lo más que cambia una sola llamada (cada cambio es una escena). */
 export const MAX_CAMBIOS = 20;
-/** Lo que se puede cambiar de una escena sin mandarla entera (`cambiar`). */
-const CAMPOS_ESCENA = Object.freeze(["tipo", "habla", "pantalla", "pausa", "fondo", "transicion", "capas"]);
+/** Lo que se puede cambiar de una escena sin mandarla entera (`cambiar`). Con un campo nuevo de la escena en el formato
+ * (como `camara` o `maquetacion`), va aquí también: si no, editar_escena lo rechazaba aunque el guion lo admitiera. */
+export const CAMPOS_ESCENA = Object.freeze(["tipo", "habla", "pantalla", "pausa", "fondo", "transicion", "capas", "camara", "maquetacion"]);
 
 /**
  * Aplica UN cambio a la lista de escenas (la cambia) y devuelve la frase de lo hecho. Formas:
