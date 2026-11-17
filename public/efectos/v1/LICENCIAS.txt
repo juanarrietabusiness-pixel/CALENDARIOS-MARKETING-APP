@@ -1,0 +1,10 @@
+Efectos de sonido del catálogo de la aplicación
+
+1) Los que empiezan por un nombre de familia de earshot (todos menos «ui-*») se generaron con el código de earshot
+   (https://github.com/Leonxlnx/earshot, commit 4ac3d2a), licencia MIT, Copyright (c) 2026 Leon Lin. Son síntesis
+   por código: no contienen grabaciones. Los «fit-*» se ajustaron a grabaciones CC0 1.0 de Freesound (sin copiar sus
+   muestras); gracias a steffcaffrey, qubodup, michorvath, Sadiquecat, zrrion, bigmonmulgrew, jentlemen, kyles, IENBA,
+   deraj, CapsLok, IanStarGem, Macif y Kinoton (la lista con cada grabación: docs/CREDITS_FIT.md de earshot).
+
+2) Los «ui-*» son de uisfx (paquete «studio», distribuido con https://github.com/Clipwing/skills): el audio es
+   CC0 1.0 (dominio público) y su código, MIT.

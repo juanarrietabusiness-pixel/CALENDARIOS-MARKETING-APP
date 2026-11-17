@@ -16,8 +16,12 @@
 //                      zona segura, capas encimadas (con las fuentes reales)
 //   · renderizar_video el mp4 (voz, escenas, subtítulos, -14 LUFS) en el Container: a la galería y a su publicación
 //   · ligar_video      a qué publicación va (o ninguna); si el mp4 ya está hecho, se pone en ella ya
-//   · sonido_video     lo que suena debajo de la voz: efectos (whoosh y pop, o uno de la biblioteca para las transiciones y
-//                      otro para los sellos) y la música de fondo con su volumen; no toca el guion ni la voz (gratis)
+//   · sonido_video     lo que suena debajo de la voz: efectos (los automáticos —whoosh y pop, o uno de la biblioteca para
+//                      las transiciones y otro para los sellos— o la LISTA colocada: cada efecto anclado a una escena, una
+//                      capa, una palabra o un segundo) y la música de fondo con su volumen; no toca el guion ni la voz (gratis)
+//   · efectos_sonido   el CATÁLOGO DE EFECTOS de la aplicación (earshot y uisfx) por papel, con las reglas de cada papel
+//   · escuchar_video   ESCUCHA sin oídos: el mismo audio que el render, medido (cada efecto frente a la voz y la música,
+//                      qué palabra pisa, lo que se tapa, los 5 momentos para una persona) y una hoja (imagen)
 //   · musicas          la BIBLIOTECA DE SONIDO del cliente y la de la agencia: músicas (la de la marca, primero) y efectos
 //   · personaje_video  el aspecto del personaje de la casa en los videos del cliente (piel, pelo, ropa, accesorio): al kit
 //   · versiones_video  el historial del guion; volver_a_version vuelve a una (versión nueva, en borrador)
@@ -63,6 +67,11 @@ import { textoCosto } from "../../../src/lib/estudioCatalogo.js";
 import { instanteLleno } from "../../../src/lib/revisionEscenas.js";
 import { pedidoConClips, alContenedor, respuestaEnBase64 } from "./cuadros.js";
 import { pedirRender, renderAlDia, ligarAPublicacion } from "./render.js";
+import { escucharVideo } from "./escuchar.js";
+import { EFECTOS_CATALOGO, efectoDelCatalogo, buscarEnCatalogo, cuentaPorPapel } from "../../../src/lib/catalogoEfectos.js";
+import { PAPELES, EFECTO_AUTOMATICO, momentosColocados, textoDeColocado } from "../../../src/lib/efectosColocados.js";
+import { reloj } from "../../../src/lib/escucharSonido.js";
+import { palabrasParaLinea } from "../../../src/lib/videoCancion.js";
 import { conMusicaSegun } from "./conMusica.js";
 import { DURACIONES_FOTO, MOVIMIENTOS_FOTO, TRANSICIONES_CARRUSEL, textoDeCancion } from "../../../src/lib/conMusica.js";
 import { vistaDe, piezaDe } from "../mcpVista/modelo.js";
@@ -253,19 +262,55 @@ export const DEFINICIONES_VIDEO = Object.freeze([
   },
   {
     name: "sonido_video",
-    description: `Lo que suena DEBAJO de la voz del video animado: «efectos» (un whoosh suave en cada transición que no es un corte y un pop cuando entra un sello o el llamado; bajitos, encendidos por defecto; con «efecto_transicion_id» y «efecto_sello_id», un efecto de la BIBLIOTECA del cliente o de la agencia —de musicas— suena en su lugar, al mismo nivel) y la MÚSICA de fondo («musica_id», de musicas: del cliente o de la agencia; vacío para quitarla) con su «volumen» en dB (${VOLUMEN_MUSICA.min} a +${VOLUMEN_MUSICA.max}; 0 por defecto). La música baja sola mientras se habla y sube en los huecos (ducking), entra y sale con fundido y se repite si es corta. Va APARTE del guion: no sube la versión ni pide otra voz. Para oírlo hay que volver a renderizar (renderizar_video, no gasta IA). Sin parámetros, dice cómo está. No gasta nada.`,
+    description: `Lo que suena DEBAJO de la voz del video animado: los EFECTOS y la MÚSICA de fondo («musica_id», de musicas: del cliente o de la agencia; vacío para quitarla) con su «volumen» en dB (${VOLUMEN_MUSICA.min} a +${VOLUMEN_MUSICA.max}; 0 por defecto; baja sola mientras se habla, entra y sale con fundido y se repite si es corta). EFECTOS: por defecto los AUTOMÁTICOS (un whoosh en cada transición que no es un corte y un pop cuando entra un sello o el llamado; «efecto_transicion_id» / «efecto_sello_id» ponen uno de la biblioteca en su lugar). Con «colocados» los pones TÚ: una lista de efectos (ids de efectos_sonido, el catálogo de la aplicación, o de musicas), cada uno ANCLADO a un momento que el calendario sabe al milisegundo —una escena que entra o se va, una capa que aparece o se va, una PALABRA que se dice, o un segundo—. No calcules segundos ni volúmenes: cada papel se coloca con sus reglas medidas (el pico de un whoosh cae 37 ms después del corte, un toque se adelanta 60 ms, la música baja antes de un golpe) y se nivela solo contra la voz y la música. Con lista, los automáticos callan; [] vuelve a ellos. Método: un efecto por cada MOVIMIENTO que se ve (transición, algo que entra o se va, un precio o una palabra clave) y no por cada frase; la voz manda; en una racha (un contador, texto que se teclea) usa un papel de racha (tic, tecla). Después: escuchar_video (mide sin oídos) y renderizar_video. Va APARTE del guion: no sube la versión ni pide otra voz. Sin parámetros, dice cómo está. No gasta nada.`,
     input_schema: {
       type: "object",
       properties: {
         ...clienteParam, ...videoParam,
-        efectos: { type: "boolean", description: "Encender o apagar los efectos." },
+        efectos: { type: "boolean", description: "Encender o apagar TODOS los efectos (los automáticos y la lista)." },
         musica_id: { type: "string", description: "El id de una música de musicas (del cliente o de la agencia); vacío («») para quitarla." },
         volumen: { type: "number", description: "El volumen de la música en dB respecto a lo normal (-12 a 12)." },
-        efecto_transicion_id: { type: "string", description: "El id de un EFECTO de musicas para las transiciones (en vez del whoosh); vacío («») vuelve al de la aplicación." },
-        efecto_sello_id: { type: "string", description: "El id de un EFECTO de musicas para los sellos y llamados (en vez del pop); vacío («») vuelve al de la aplicación." },
+        efecto_transicion_id: { type: "string", description: "Sin lista: el id de un EFECTO de musicas para las transiciones (en vez del whoosh); vacío («») vuelve al de la aplicación." },
+        efecto_sello_id: { type: "string", description: "Sin lista: el id de un EFECTO de musicas para los sellos y llamados (en vez del pop); vacío («») vuelve al de la aplicación." },
+        colocados: {
+          type: "array", maxItems: 120,
+          description: "La lista ENTERA de efectos colocados (reemplaza la de antes; [] la quita y vuelven los automáticos). Cada uno: «efecto» y UN ancla: «escena» (su id; con «capa» el de una capa suya; con momento «sale», cuando se va), «palabra» (cuando se dice; con «escena» para buscarla sólo ahí y «n» para la 2.ª, 3.ª vez…) o «segundo».",
+          items: {
+            type: "object",
+            properties: {
+              efecto: { type: "string", description: "El id de un efecto de efectos_sonido (catálogo) o de musicas (biblioteca)." },
+              escena: { type: "string", description: "El id de la escena (de ver_video)." },
+              capa: { type: "string", description: "El id de una capa de esa escena (un sello, un texto, un precio…)." },
+              momento: { type: "string", enum: ["entra", "sale"], description: "Con escena o capa: cuando entra (por defecto) o cuando se va." },
+              palabra: { type: "string", description: "Una palabra de lo que se dice: suena cuando se dice." },
+              n: { type: "integer", description: "Con palabra: la vez que se dice (1 la primera)." },
+              segundo: { type: "number", description: "Un segundo del video, si el momento no es ningún evento." },
+              ajuste_ms: { type: "integer", description: "Sólo si hace falta: milisegundos más tarde (+) o antes (-) que su regla (-1000 a 1000)." },
+              volumen: { type: "number", description: "Sólo si hace falta: dB sobre su nivel (-12 a +6)." },
+              nota: { type: "string", description: "Para qué está (opcional)." },
+            },
+            required: ["efecto"],
+          },
+        },
       },
       required: ["video_id"],
     },
+  },
+  {
+    name: "efectos_sonido",
+    description: "El CATÁLOGO DE EFECTOS de la aplicación: más de 280 efectos gratis y sin derechos que pagar (los de earshot, hechos con código, MIT; los de interfaz de uisfx, CC0), por PAPEL (transición, golpe, pop, clic, campana, subida, tic, tecla, interfaz…). Sin parámetros: los papeles, para qué sirve cada uno, sus reglas y cuántos hay. Con «papel» o «buscar» (palabras: whoosh, campana, carrito, error…): los efectos con su id, nombre, duración y para qué. Para ponerlos en un video: sonido_video con «colocados». Los subidos por la agencia o el cliente están en musicas. No gasta nada.",
+    input_schema: {
+      type: "object",
+      properties: {
+        papel: { type: "string", description: "Un papel (de la lista sin parámetros): transicion, golpe, pop, clic, campana…" },
+        buscar: { type: "string", description: "Palabras que buscar en el nombre o en para qué sirve." },
+      },
+    },
+  },
+  {
+    name: "escuchar_video",
+    description: "ESCUCHA el sonido del video sin oídos: arma el MISMO audio que el render (voz, música y efectos, cada uno en su pista) y lo MIDE: cada efecto con su segundo, cuántos dB queda bajo la voz y sobre la música, qué palabra pisa y si se tapa, compite o se pisa con otro; la música bajo la voz y en los huecos; los efectos cada 10 s frente a lo medido en videos profesionales; los huecos sin sonido; el volumen antes del final; y los 5 MOMENTOS que debe escuchar una persona. Devuelve el informe y una HOJA (imagen): escenas, palabras, el nivel de cada pista en el tiempo, el espectrograma y cada efecto numerado (en rojo, los que tienen aviso). Úsalo tras sonido_video y antes de renderizar_video; sirve antes de la voz (con tiempos estimados). Mide, no juzga el gusto: enséñale a la persona esos 5 momentos. No gasta IA.",
+    input_schema: { type: "object", properties: { ...clienteParam, ...videoParam }, required: ["video_id"] },
   },
   {
     name: "musicas",
@@ -483,6 +528,28 @@ function mudasDe(video) {
   return ` · OJO: la voz NO dijo «${mudas.map((i) => textoDeSubtitulo(dichas[i] ?? "")).filter(Boolean).join(" ")}» (sin tiempo al final): hay que generar la locución otra vez o acortar el cierre`;
 }
 
+/** La lista de efectos colocados, numerada, con el segundo en que cae cada uno (y por qué no suena el que no tiene sitio). */
+function textoDeLaLista(video, colocados) {
+  const guion = video.guion;
+  if (!guion?.escenas?.length || !colocados?.length) return "";
+  const linea = lineaDeTiempo(guion, palabrasParaLinea(guion, video.locucion ?? {}));
+  const datosDe = (c) => {
+    if (c.propio) return { papel: "propio", pico: 0, nombre: c.propio.nombre || "Efecto de la biblioteca" };
+    const e = efectoDelCatalogo(c.sonido);
+    return e ? { papel: e.papel, pico: e.pico, nombre: e.nombre } : null;
+  };
+  const { momentos, sinSitio } = momentosColocados(colocados, guion, linea, datosDe);
+  const porI = new Map(momentos.map((m) => [m.i, m]));
+  return [
+    `La lista (cuándo cae cada uno; ${linea.estimado ? "tiempos ESTIMADOS: aún no hay voz" : "con los tiempos de la voz"}):`,
+    ...colocados.map((c, i) => {
+      const m = porI.get(i);
+      const nombre = datosDe(c)?.nombre;
+      return `${i + 1}. ${m ? reloj(m.golpe) : "—"} · ${textoDeColocado(c, nombre ? `«${nombre}»` : null)}${m ? "" : ` · NO SUENA: ${sinSitio.find((x) => x.i === i)?.motivo ?? ""}`}`;
+    }),
+  ].join("\n");
+}
+
 /** El resumen que ve el modelo de un video. */
 function textoDelVideo(video, { conGuion = true } = {}) {
   const linea = video.guion?.escenas?.length ? lineaDeTiempo(video.guion, video.locucion?.palabras ?? null) : null;
@@ -501,7 +568,7 @@ function textoDelVideo(video, { conGuion = true } = {}) {
   return [
     `Video «${video.titulo}» (ID ${video.id}) — ${NOMBRE_ESTADO_VIDEO[video.estado] ?? video.estado}, versión ${video.version}${video.aprobadaVersion ? ` (aprobada la ${video.aprobadaVersion})` : ""}.`,
     video.postId ? `Ligado a la publicación ${video.postId}.` : "Sin publicación ligada.",
-    `Sonido: efectos ${video.sonido?.efectos === false ? "apagados" : "encendidos"}; ${video.sonido?.musica ? `música «${video.sonido.musica.nombre}»` : "sin música"} (sonido_video).`,
+    `Sonido: efectos ${video.sonido?.efectos === false ? "apagados" : video.sonido?.colocados?.length ? `encendidos (la lista colocada: ${video.sonido.colocados.length})` : "encendidos (los automáticos)"}; ${video.sonido?.musica ? `música «${video.sonido.musica.nombre}»` : "sin música"} (sonido_video; escúchalo con escuchar_video).`,
     render,
     linea ? `Duración: ${linea.total.toFixed(1)} s${linea.estimado ? " (estimada: aún no hay voz)" : ""}, ${linea.escenas.length} escenas.` : "Sin escenas válidas.",
     video.guion && fondosPendientes(video.guion).length ? `Imágenes de fondo POR CREAR: ${fondosPendientes(video.guion).length} (mientras tanto se ve el fondo de la escena). fondos_video las crea con el director (dice el costo antes).` : "",
@@ -853,29 +920,75 @@ export function crearHerramientasVideo({ env, acceso, resolverCliente, usuario, 
       });
     },
 
-    async sonido_video({ cliente, video_id: id, efectos, musica_id: musicaId, volumen, efecto_transicion_id: transicion, efecto_sello_id: sello }) {
+    async sonido_video({ cliente, video_id: id, efectos, musica_id: musicaId, volumen, efecto_transicion_id: transicion, efecto_sello_id: sello, colocados }) {
       const c = await resolverCliente(cliente);
       return conErrores(async () => {
         const fila = await proyectoDe(acceso, c.id, id);
         const antes = deFila(fila).sonido;
-        const cambia = [efectos, musicaId, volumen, transicion, sello].some((x) => x !== undefined);
+        const cambia = [efectos, musicaId, volumen, transicion, sello, colocados].some((x) => x !== undefined);
         let ahora = antes;
         if (cambia) {
           const musica = musicaId === undefined ? antes.musica : musicaId ? { archivoId: musicaId, volumen: volumen ?? (antes.musica?.archivoId === musicaId ? antes.musica.volumen : 0) } : null;
           if (musica && volumen !== undefined) musica.volumen = volumen;
-          // Los efectos de la biblioteca: un id lo pone; «» lo quita (vuelve el sintetizado); sin pasarlo, se queda el de antes.
+          // Los efectos de la biblioteca: un id lo pone; «» lo quita (vuelve el de la aplicación); sin pasarlo, se queda el de antes.
           const propio = (nuevo, sitio) => (nuevo === undefined ? antes.efectosPropios?.[sitio] ?? null : nuevo || null);
           const efectosPropios = { transicion: propio(transicion, "transicion"), sello: propio(sello, "sello") };
-          ahora = (await guardarSonido(acceso, c, fila, { efectos: efectos ?? antes.efectos, musica, efectosPropios })).video.sonido;
+          // La lista: cada «efecto» es del catálogo (efectos_sonido) o, si no, de la biblioteca (lo comprueba guardarSonido).
+          const lista = colocados === undefined ? antes.colocados ?? []
+            : (Array.isArray(colocados) ? colocados : []).map((x) => {
+              const e = String(x?.efecto ?? "").trim();
+              return efectoDelCatalogo(e) ? { ...x, sonido: e } : { ...x, propio: { archivoId: e } };
+            });
+          ahora = (await guardarSonido(acceso, c, fila, { efectos: efectos ?? antes.efectos, musica, efectosPropios, colocados: lista })).video.sonido;
           avisar(c.id, id);
         }
         const m = ahora.musica;
         const ef = ahora.efectosPropios ?? {};
-        const efectosTexto = !ahora.efectos ? "efectos apagados" : `efectos encendidos (transiciones: ${ef.transicion ? `«${ef.transicion.nombre}»` : "el whoosh de la aplicación"}; sellos y llamados: ${ef.sello ? `«${ef.sello.nombre}»` : "el pop de la aplicación"})`;
+        const efectosTexto = !ahora.efectos ? "efectos apagados"
+          : ahora.colocados?.length ? `efectos encendidos: la lista colocada (${ahora.colocados.length}; los automáticos callan)`
+            : `efectos encendidos, los automáticos (transiciones: ${ef.transicion ? `«${ef.transicion.nombre}»` : "el whoosh de la aplicación"}; sellos y llamados: ${ef.sello ? `«${ef.sello.nombre}»` : "el pop de la aplicación"})`;
         return [
           `${cambia ? "Guardado. " : ""}Sonido de «${fila.titulo}»: ${efectosTexto}; ${m ? `música «${m.nombre}»${m.de === "agencia" ? " (de la agencia)" : ""} (${m.volumen > 0 ? "+" : ""}${m.volumen} dB)` : "sin música"}.`,
+          ahora.efectos && ahora.colocados?.length ? textoDeLaLista(deFila(fila), ahora.colocados) : "",
+          cambia ? "Escúchalo con escuchar_video (mide sin oídos, gratis) y renderiza con renderizar_video." : "",
           cambia && fila.estado === "renderizado" ? "El mp4 que ya hay es de antes: renderizar_video para oírlo (no gasta IA ni pide otra voz)." : "",
-        ].filter(Boolean).join(" ");
+        ].filter(Boolean).join("\n");
+      });
+    },
+
+    async efectos_sonido({ papel, buscar } = {}) {
+      if (!papel && !buscar) {
+        const cuenta = cuentaPorPapel();
+        const regla = (r) => `${r.alinear === "pico" ? "su pico cae" : "empieza"} ${r.ajusteMs ? `${Math.abs(r.ajusteMs)} ms ${r.ajusteMs > 0 ? "después del" : "antes del"}` : "justo en el"} momento; ${r.sobreFondo} dB sobre la música${r.separacionMs ? `; en racha, cada ${r.separacionMs} ms como poco` : ""}${r.bajaMusica ? "; la música baja antes" : ""}${r.medido ? "" : " (regla prudente, sin medir)"}`;
+        return [
+          `El catálogo de efectos de la aplicación: ${EFECTOS_CATALOGO.length}, gratis (earshot, MIT; uisfx, CC0). Los papeles (y cuántos hay):`,
+          ...Object.entries(PAPELES).filter(([k]) => cuenta[k]).map(([k, r]) => `· ${k} (${cuenta[k]}): ${r.para} — ${regla(r)}.`),
+          `Los automáticos (sin lista): ${EFECTO_AUTOMATICO.transicion} en cada transición y ${EFECTO_AUTOMATICO.sello} en cada sello o llamado.`,
+          "Para ver los de un papel: efectos_sonido con «papel» (o «buscar» palabras). Para ponerlos: sonido_video con «colocados».",
+        ].join("\n");
+      }
+      const lista = buscarEnCatalogo({ papel: papel || null, texto: buscar || "" });
+      if (!lista.length) return `No hay efectos${papel ? ` del papel «${papel}»` : ""}${buscar ? ` con «${buscar}»` : ""}. Los papeles: ${Object.keys(cuentaPorPapel()).join(", ")}.`;
+      const max = 80;
+      return [
+        `${lista.length} efecto${lista.length === 1 ? "" : "s"}${papel ? ` del papel «${papel}»` : ""}${buscar ? ` con «${buscar}»` : ""}${lista.length > max ? ` (los primeros ${max})` : ""}:`,
+        ...lista.slice(0, max).map((e) => `· ${e.id} — ${e.nombre} · ${String(Math.round(e.dur * 100) / 100).replace(".", ",")} s · ${e.papel}${e.para ? ` · ${e.para}` : ""}`),
+      ].join("\n");
+    },
+
+    async escuchar_video({ cliente, video_id: id }) {
+      const c = await resolverCliente(cliente);
+      return conErrores(async () => {
+        const fila = await proyectoDe(acceso, c.id, id);
+        const r = await escucharVideo(env, acceso, c, fila);
+        return {
+          vista: r.hoja ? vistaDe({
+            tipo: "cuadros", titulo: fila.titulo || "Video animado", cliente: { id: c.id, nombre: c.name },
+            piezas: [piezaDe({ id: "sonido", titulo: `El sonido (${r.informe.efectos?.length ?? 0} efectos)`, imagen: 0, archivo: false })],
+          }) : undefined,
+          texto: r.texto,
+          imagenes: r.hoja ? [{ mime: r.hoja.mime, datos: r.hoja.datos }] : [],
+        };
       });
     },
 

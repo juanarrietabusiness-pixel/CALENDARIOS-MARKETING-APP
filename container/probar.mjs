@@ -8,7 +8,9 @@
 //   · /miniatura reduce una imagen a JPEG (y una que no lo es, 400); /acabado pone el texto de la plantilla y el logo
 //     encima; /hoja da una imagen; /revisar da la revisión en JSON;
 //   · /render da un mp4 de verdad, de la duración de la línea de tiempo, con el volumen en -14 LUFS (±1) aunque la voz
-//     llegue mucho más baja (una voz sintética: un tono que sube y baja, en WAV);
+//     llegue mucho más baja (una voz sintética: un tono que sube y baja, en WAV), con los efectos automáticos del
+//     catálogo y con una lista colocada;
+//   · /escuchar da el informe (cada efecto con su segundo y sus dB; los momentos para escuchar) y la hoja en PNG;
 //   · un guion roto es un 400 con el motivo, no un 500.
 // Sale con código 1 al primer fallo, diciendo cuál.
 // ============================================================
@@ -136,7 +138,30 @@ if (!(Math.abs(lufs - RENDER.lufs) <= 1)) falla(`/render: el volumen quedó en $
 // La pista de video y la de audio están dentro (las cajas «avc1» y «mp4a» del moov).
 const texto = Buffer.from(v.bytes).toString("latin1");
 if (!texto.includes("avc1") || !texto.includes("mp4a")) falla("/render: al mp4 le falta la pista de video o la de audio");
-console.log(`✓ /render (${(v.bytes.length / 1048576).toFixed(1)} MB, ${cuadros} cuadros, ${lufs} LUFS desde ${v.cabeceras.get("x-lufs-antes")}, ${v.cabeceras.get("x-ms")} ms)`);
+if (!(Number(v.cabeceras.get("x-efectos")) > 0)) falla(`/render: con los efectos encendidos no sonó ninguno (X-Efectos ${v.cabeceras.get("x-efectos")})`);
+console.log(`✓ /render (${(v.bytes.length / 1048576).toFixed(1)} MB, ${cuadros} cuadros, ${lufs} LUFS desde ${v.cabeceras.get("x-lufs-antes")}, ${v.cabeceras.get("x-efectos")} efectos, ${v.cabeceras.get("x-ms")} ms)`);
+
+// ESCUCHAR: el mismo audio, medido. Una lista colocada (escena, capa, palabra) con un efecto sin sitio.
+const colocados = [
+  { sonido: "whoosh_fast-crisp", escena: "e2" }, { sonido: "ui_pop-soft", escena: "e2", capa: "s" },
+  { sonido: "cut_hit-punch", palabra: "precio" }, { sonido: "ui-success", escena: "no-existe" },
+];
+const e = await post("/escuchar", { audio: vozDePrueba(Math.max(1, linea.total - 1)), efectos: true, colocados, titulo: "Ejemplo" });
+const inf = e.estado === 200 ? JSON.parse(new TextDecoder().decode(e.bytes)) : null;
+if (!inf) falla(`/escuchar devolvió ${e.estado}: ${new TextDecoder().decode(e.bytes).slice(0, 300)}`);
+if (inf.informe.efectos.length !== 3) falla(`/escuchar: ${inf.informe.efectos.length} efectos medidos, se esperaban 3`);
+if (!inf.informe.efectos.every((x) => Number.isFinite(x.golpe) && Number.isFinite(x.sobreVoz))) falla("/escuchar: a algún efecto le falta su segundo o sus dB");
+if (!inf.informe.avisos.some((a) => /no-existe/.test(a))) falla("/escuchar: el efecto sin sitio debería decirse");
+if (!inf.informe.escuchar.length || inf.informe.escuchar.length > 5) falla(`/escuchar: ${inf.informe.escuchar.length} momentos para escuchar`);
+if (!/Medido, no oído/.test(inf.informe.texto)) falla("/escuchar: falta el texto del informe");
+const png = Buffer.from(inf.hoja?.datos ?? "", "base64");
+if (inf.hoja?.mime !== "image/png" || png.subarray(1, 4).toString("latin1") !== "PNG" || png.length < 5000) falla("/escuchar: la hoja no es un PNG");
+console.log(`✓ /escuchar (${inf.informe.efectos.length} efectos, ${inf.informe.escuchar.length} momentos, hoja de ${(png.length / 1024).toFixed(0)} kB, ${e.cabeceras.get("x-ms")} ms)`);
+const vl = await post("/render", { audio: vozDePrueba(Math.max(1, linea.total - 1)), efectos: true, colocados });
+if (vl.estado !== 200 || Number(vl.cabeceras.get("x-efectos")) !== 3 || Number(vl.cabeceras.get("x-efectos-sin-sitio")) !== 1) {
+  falla(`/render con la lista: ${vl.estado}, ${vl.cabeceras.get("x-efectos")} efectos y ${vl.cabeceras.get("x-efectos-sin-sitio")} sin sitio (se esperaban 3 y 1)`);
+}
+console.log("✓ /render con una lista colocada");
 
 // El texto con carácter: un titular GIGANTE con énfasis (la letra de la casa, Anton) y un fondo por crear se dibujan.
 const gigante = JSON.parse(JSON.stringify(EJEMPLO_GUION));

@@ -22,6 +22,8 @@ COPY container/package.json container/package-lock.json ./container/
 RUN cd container && npm ci --omit=dev --no-audit --no-fund
 
 COPY src/lib ./src/lib
+# El CATÁLOGO DE EFECTOS de la aplicación (src/lib/catalogoEfectos.js): los MP3, en la misma ruta que en el repositorio.
+COPY public/efectos ./public/efectos
 COPY container/*.mjs ./container/
 
 ENV PORT=8080 NODE_ENV=production

@@ -316,8 +316,11 @@ describe("las dos bibliotecas en el video animado", () => {
     expect(listo.estado).toBe("listo");
     const claveMusica = db.sqlite.prepare("select clave from biblioteca_sonidos where id = ?").get(musica.id).clave;
     expect(recibidos[0].musica.audio).toBe(Buffer.from(env.MEDIA.objetos.get(claveMusica).bytes).toString("base64"));
-    expect(Object.keys(recibidos[0].efectosPropios).sort()).toEqual(["pop", "whoosh"]);
-    expect(recibidos[0].efectosPropios.pop).toBe(Buffer.from(env.MEDIA.objetos.get(ding.src.replace("/api/media/", "")).bytes).toString("base64"));
+    // Los automáticos con sus sustitutos de la biblioteca: quién va dónde (`propios`) y sus bytes (`libreria`).
+    expect(recibidos[0].propios).toEqual({ transicion: { archivoId: efecto.id, nombre: "Whoosh agencia" }, sello: { archivoId: ding.id, nombre: "Ding" } });
+    expect(Object.keys(recibidos[0].libreria).sort()).toEqual([efecto.id, ding.id].sort());
+    expect(recibidos[0].libreria[ding.id]).toBe(Buffer.from(env.MEDIA.objetos.get(ding.src.replace("/api/media/", "")).bytes).toString("base64"));
+    expect(recibidos[0].colocados).toBeUndefined();
     expect(listo.efectosPropios).toEqual({ transicion: "Whoosh agencia", sello: "Ding" });
   });
 
@@ -335,8 +338,9 @@ describe("las dos bibliotecas en el video animado", () => {
     const recibidos = [];
     const MP4 = new Uint8Array([0, 0, 0, 0x18, 0x66, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6f, 0x6d, 0, 0, 2, 0, 1, 2, 3]);
     const listo = await ejecutarRender(env, encargos[0], async (ruta, cuerpo) => { recibidos.push(cuerpo); return new Response(MP4); });
-    expect(recibidos[0].efectosPropios).toBeUndefined();
-    expect(listo.aviso).toMatch(/El efecto «Ding» ya no está: sonó el de la aplicación/);
+    expect(recibidos[0].libreria).toBeUndefined();
+    expect(recibidos[0].propios).toBeUndefined();
+    expect(listo.aviso).toMatch(/El efecto «Ding» ya no está en la biblioteca: sonó el de la aplicación/);
   });
 
   it("un video nuevo nace con la música de la marca (la favorita del cliente); sin favorita, como siempre", async () => {
@@ -368,6 +372,91 @@ describe("las dos bibliotecas en el video animado", () => {
     s = await h.sonido_video({ cliente: "bc", video_id: v.id, efecto_sello_id: "" });
     expect(s).toMatch(/sellos y llamados: el pop de la aplicación/);
     expect(s).toMatch(/música «Agencia alegre»/);
+  });
+});
+
+describe("los EFECTOS COLOCADOS y escuchar sin oídos", () => {
+  const herramientas = () => crearHerramientasEstudio({ env, acceso: crearAcceso(db, JEFE), resolverCliente: async () => db.sqlite.prepare("select * from clients where id = 'bc'").get(), usuario: { id: JEFE, nombre: "Juan" }, origen: "claude" });
+  const nuevoVideo = async () => (await (await pedir("/videos/bc", { method: "POST", body: { guion: ejemplo() } })).json()).video;
+
+  it("la lista: del catálogo y de la biblioteca, anclada a escenas, capas y palabras; dice cuándo cae cada uno y cuál no tiene sitio", async () => {
+    const ding = (await (await subir("/sonidos/bc", mp3(6, 31), { nombre: "Ding.mp3", categoria: "efecto" })).json()).pista;
+    const v = await nuevoVideo();
+    const h = herramientas();
+    const s = await h.sonido_video({ cliente: "bc", video_id: v.id, colocados: [
+      { efecto: "whoosh_fast-crisp", escena: "e2" }, { efecto: ding.id, palabra: "alcohol", n: 2 },
+      { efecto: "ui_pop-soft", escena: "e1", capa: "sello-2" }, { efecto: "ui-success", escena: "zz" },
+    ] });
+    expect(s).toMatch(/efectos encendidos: la lista colocada \(4; los automáticos callan\)/);
+    expect(s).toMatch(/1\. 0:\d\d,\d · «Whoosh rápido · crisp» al entrar la escena e2/);
+    expect(s).toMatch(/2\. 0:\d\d,\d · «Ding» al decir «alcohol» \(la vez 2\)/);
+    expect(s).toMatch(/4\. — · «Interfaz · Éxito» al entrar la escena zz · NO SUENA: No hay ninguna escena «zz»/);
+    expect(s).toMatch(/escuchar_video/);
+    const sonido = JSON.parse(db.sqlite.prepare("select sonido from videos_proyectos where id = ?").get(v.id).sonido);
+    expect(sonido.colocados[1].propio).toMatchObject({ archivoId: ding.id, nombre: "Ding" });
+    expect(sonido.colocados[1].propio.clave).toMatch(/^clientes\/bc\//);
+    // Uno que no está en el catálogo ni en la biblioteca no se guarda.
+    await expect(h.sonido_video({ cliente: "bc", video_id: v.id, colocados: [{ efecto: "no-existe-nada", segundo: 1 }] })).rejects.toThrow(/no está en el catálogo/);
+    // La pantalla de antes (un PUT sin `colocados`) no la borra; [] la quita y vuelven los automáticos.
+    let r = await pedir(`/videos/bc/${v.id}/sonido`, { method: "PUT", body: { efectos: true, musica: null } });
+    expect((await r.json()).video.sonido.colocados).toHaveLength(4);
+    // Quitar de la biblioteca un efecto que usa la lista lo dice (409).
+    expect((await pedir(`/sonidos/bc/${ding.id}`, { method: "DELETE" })).status).toBe(409);
+    r = await pedir(`/videos/bc/${v.id}/sonido`, { method: "PUT", body: { efectos: true, musica: null, colocados: [] } });
+    expect((await r.json()).video.sonido.colocados).toBeUndefined();
+  });
+
+  it("el render manda la lista y los efectos de la biblioteca que usa (y no los automáticos)", async () => {
+    const ding = (await (await subir("/sonidos/bc", mp3(6, 32), { nombre: "Ding.mp3", categoria: "efecto" })).json()).pista;
+    const v = await nuevoVideo();
+    await pedir(`/videos/bc/${v.id}/sonido`, { method: "PUT", body: { efectos: true, efectosPropios: { sello: ding.id }, colocados: [{ sonido: "cut_hit-punch", palabra: "perfume" }, { propio: { archivoId: ding.id }, escena: "e4" }] } });
+    db.sqlite.prepare("update videos_proyectos set estado = 'aprobado', aprobada_version = 1, locucion = ? where id = ?")
+      .run(JSON.stringify({ estado: "lista", clave: "clientes/bc/estudio/voz.mp3", version: 1 }), v.id);
+    env.MEDIA.objetos.set("clientes/bc/estudio/voz.mp3", { bytes: mp3(4, 33), tipo: "audio/mpeg" });
+    const encargos = [];
+    env.RENDER = { idFromName: (n) => n, get: () => ({ fetch: async (req) => { encargos.push(await req.json()); return new Response("{}", { status: 202 }); } }) };
+    expect((await pedir(`/videos/bc/${v.id}/render`, { method: "POST", body: { version: 1 } })).status).toBe(202);
+    const recibidos = [];
+    const MP4 = new Uint8Array([0, 0, 0, 0x18, 0x66, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6f, 0x6d, 0, 0, 2, 0, 1, 2, 3]);
+    const listo = await ejecutarRender(env, encargos[0], async (ruta, cuerpo) => { recibidos.push(cuerpo); return new Response(MP4, { headers: { "X-Duracion": "10", "X-Efectos": "2", "X-Efectos-Sin-Sitio": "0" } }); });
+    expect(listo.estado).toBe("listo");
+    expect(recibidos[0].colocados).toHaveLength(2);
+    expect(Object.keys(recibidos[0].libreria)).toEqual([ding.id]);
+    expect(recibidos[0].propios).toBeUndefined();
+    expect(listo).toMatchObject({ efectos: true, cuantosEfectos: 2, colocados: 2 });
+  });
+
+  it("escuchar_video: el mismo pedido al Container (/escuchar), sin voz todavía; devuelve el informe y la hoja", async () => {
+    const v = await nuevoVideo();
+    await pedir(`/videos/bc/${v.id}/sonido`, { method: "PUT", body: { efectos: true, colocados: [{ sonido: "ui_pop-soft", escena: "e2" }] } });
+    const pedidos = [];
+    env.VIDEO = { idFromName: () => "x", get: () => ({ fetch: async (req) => {
+      pedidos.push({ ruta: new URL(req.url).pathname, cuerpo: await req.json() });
+      return Response.json({ informe: { texto: "Sonido de «x» (13 s).\nMedido, no oído.", efectos: [{ n: 1 }], avisos: [], escuchar: [] }, hoja: { mime: "image/png", datos: "iVBORw0KGgo=" } });
+    } }) };
+    const r = await herramientas().escuchar_video({ cliente: "bc", video_id: v.id });
+    expect(pedidos[0].ruta).toBe("/escuchar");
+    expect(pedidos[0].cuerpo).toMatchObject({ efectos: true, colocados: [{ sonido: "ui_pop-soft", escena: "e2" }], titulo: expect.any(String) });
+    expect(pedidos[0].cuerpo.audio).toBeUndefined();
+    expect(pedidos[0].cuerpo.guion.escenas).toHaveLength(4);
+    expect(r.texto).toMatch(/OJO: Aún no hay voz: se escucha sin ella/);
+    expect(r.texto).toMatch(/Medido, no oído/);
+    expect(r.imagenes).toEqual([{ mime: "image/png", datos: "iVBORw0KGgo=" }]);
+    // Y la ruta de la pantalla.
+    const j = await (await pedir(`/videos/bc/${v.id}/escuchar`, { method: "POST", body: {} })).json();
+    expect(j.texto).toMatch(/Sonido de «x»/);
+    expect(j.hoja.mime).toBe("image/png");
+  });
+
+  it("efectos_sonido: los papeles con sus reglas; por papel o por palabras, los efectos con su id", async () => {
+    const h = herramientas();
+    const papeles = await h.efectos_sonido({});
+    expect(papeles).toMatch(/· transicion \(\d+\): un cambio de escena .* su pico cae 37 ms después del momento/);
+    expect(papeles).toMatch(/· golpe \(\d+\):.*la música baja antes/);
+    expect(papeles).toMatch(/Los automáticos \(sin lista\): whoosh_fast-crisp/);
+    expect(await h.efectos_sonido({ papel: "transicion" })).toMatch(/· whoosh_fast-crisp — Whoosh rápido · crisp · 0,41 s · transicion/);
+    expect(await h.efectos_sonido({ buscar: "carrito" })).toMatch(/ui-add-to-cart — Interfaz · Añadir al carrito/);
+    expect(await h.efectos_sonido({ papel: "inventado" })).toMatch(/No hay efectos del papel «inventado»/);
   });
 });
 

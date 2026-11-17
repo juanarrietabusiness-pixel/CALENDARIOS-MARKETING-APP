@@ -1,7 +1,8 @@
-# Lo único que necesita la imagen del Container: container/ y src/lib (ver container/Dockerfile).
+# Lo único que necesita la imagen del Container: container/, src/lib y el catálogo de efectos (ver container/Dockerfile).
 *
 !container/package.json
 !container/package-lock.json
 !container/*.mjs
 !src/lib/**
+!public/efectos/**
 src/lib/**/*.test.js

@@ -43,10 +43,8 @@ const SISTEMA = { userId: "sistema", nombre: "Render", color: "", tab: null };
 const TOPE_VOZ = 20 * 1024 * 1024;
 /** Lo que pesa como mucho la música de fondo (va en el mismo pedido que la voz). */
 const TOPE_MUSICA = 15 * 1024 * 1024;
-/** Lo que pesa como mucho un efecto de la biblioteca (los dos van en el pedido, en base64). */
+/** Lo que pesa como mucho un efecto de la biblioteca (van en el pedido, en base64). */
 const TOPE_EFECTO = MAX_BYTES_SONIDO.efecto;
-/** El efecto sintetizado al que sustituye cada efecto de la biblioteca (src/lib/efectosSonido.js). */
-const SINTETIZADO = Object.freeze({ transicion: "whoosh", sello: "pop" });
 
 const avisar = (env, ownerId, clienteId, id, por = SISTEMA) => difundir(env, ownerId, { tipo: "videos", clienteId, id, por });
 
@@ -209,63 +207,9 @@ export async function ejecutarRender(env, { ownerId, clienteId, videoId, intento
       fallaron.length ? `No se pudo cargar ${fallaron.length === 1 ? "un clip de video" : `${fallaron.length} clips de video`}: ${fallaron.length === 1 ? "salió" : "salieron"} con el cuadro de espera.` : "",
       imagenesFallidas.length ? `No se pudo cargar ${imagenesFallidas.length === 1 ? "una imagen" : `${imagenesFallidas.length} imágenes`}: ${imagenesFallidas.length === 1 ? "salió" : "salieron"} como marcador.` : "",
     ].filter(Boolean).join(" ") || null;
-    // Un montaje sin habla no tiene locución: el audio es el de los clips (y la música).
-    let audio = null;
-    // Con una CANCIÓN ya grabada (src/lib/videoCancion.js) la toma ES la canción: del cliente o de la biblioteca de la
-    // agencia de este espacio. Sin silencios (la línea de tiempo no los pone) y el video dura lo que ella.
-    const locucion = leerJSON(fila.locucion, {});
-    const conCancion = esCancion(locucion);
-    if (tieneHabla(guion)) {
-      const claveVoz = conCancion ? claveDeSonido(locucion.clave, clienteId, ownerId) : claveDelCliente(locucion.clave, clienteId);
-      const voz = claveVoz ? await env.MEDIA.get(claveVoz) : null;
-      if (!voz) throw new Error(conCancion ? "No encontré el audio de la canción: ¿se quitó de la biblioteca de sonido?" : "No encontré el audio de la locución: genérala otra vez.");
-      if (voz.size > TOPE_VOZ) throw new Error(conCancion ? "La canción pesa demasiado." : "El audio de la locución pesa demasiado.");
-      audio = aBase64(new Uint8Array(await voz.arrayBuffer()));
-    }
-
-    // El sonido de debajo (efectos y música): aparte del guion. Una música que ya no está no tumba el render: va sin ella.
-    const sonido = limpiarSonido(leerJSON(fila.sonido, {}));
-    // Con una canción, la música de «Sonido» (y la del guion) se ignora: la canción ya es la música. Los efectos siguen.
-    const sinMusicaPorCancion = conCancion && sonido.musica ? `La música de «Sonido» («${sonido.musica.nombre || "Música"}») no sonó: la canción ya es la música.` : null;
-    if (conCancion) sonido.musica = null;
-    // Sin música escogida en «Sonido», la que el GUION trae por su clave (con su volumen 0–1 pasado a dB).
-    if (!sonido.musica && !conCancion) {
-      const delGuion = leerJSON(fila.guion, {})?.musica;
-      if (delGuion?.clave && claveDelCliente(delGuion.clave, clienteId)) {
-        sonido.musica = { archivoId: "guion", clave: delGuion.clave, nombre: "La música del guion", volumen: dbDeVolumenGuion(delGuion.volumen ?? 0.35) };
-      }
-    }
-    let musica = null;
-    let sinMusica = null;
-    // La música puede ser de la biblioteca del cliente o de la de la AGENCIA (de este espacio): `claveDeSonido`.
-    const claveMusica = sonido.musica ? claveDeSonido(sonido.musica.clave, clienteId, ownerId) : null;
-    if (sonido.musica) {
-      const obj = claveMusica ? await env.MEDIA.get(claveMusica) : null;
-      if (!obj) sinMusica = "La música de fondo ya no está en la galería: salió sin ella.";
-      else if (obj.size > TOPE_MUSICA) sinMusica = "La música de fondo pesa más de 15 MB: salió sin ella.";
-      else musica = { audio: aBase64(new Uint8Array(await obj.arrayBuffer())), volumen: sonido.musica.volumen };
-    }
-
-    // Los EFECTOS de la biblioteca (en vez del whoosh y del pop sintetizados), sólo con los efectos encendidos. Uno que ya
-    // no está no tumba el render: suena el sintetizado y se dice.
-    const efectosPropios = {};
-    const sinEfecto = [];
-    if (sonido.efectos) {
-      for (const sitio of SITIOS_EFECTO) {
-        const e = sonido.efectosPropios?.[sitio];
-        if (!e) continue;
-        const clave = claveDeSonido(e.clave, clienteId, ownerId);
-        const obj = clave ? await env.MEDIA.get(clave) : null;
-        if (!obj || obj.size > TOPE_EFECTO * 1.1) sinEfecto.push(e.nombre || "un efecto");
-        else efectosPropios[SINTETIZADO[sitio]] = aBase64(new Uint8Array(await obj.arrayBuffer()));
-      }
-    }
-    const avisoEfectos = sinEfecto.length ? `${sinEfecto.length === 1 ? `El efecto «${sinEfecto[0]}» ya no está` : `Los efectos ${sinEfecto.map((x) => `«${x}»`).join(" y ")} ya no están`}: sonó el de la aplicación.` : null;
-
-    const r = await enviar("/render", {
-      ...pedido, ...(audio ? { audio } : {}), efectos: sonido.efectos, ...(musica ? { musica } : {}),
-      ...(Object.keys(efectosPropios).length ? { efectosPropios } : {}),
-    });
+    const son = await sonidoParaElContainer(env, fila, guion, { clienteId, ownerId });
+    const { musica, sonido } = son;
+    const r = await enviar("/render", { ...pedido, ...cuerpoDeSonido(son) });
     if (!r.ok) {
       const j = await r.json().catch(() => ({}));
       throw new Error(j.error || `El Container respondió ${r.status}.`);
@@ -287,10 +231,14 @@ export async function ejecutarRender(env, { ownerId, clienteId, videoId, intento
       duracion, cuadros: num("X-Cuadros"), lufs: num("X-Lufs"), lufsAntes: num("X-Lufs-Antes"),
       ms: { audio: num("X-Ms-Audio"), video: num("X-Ms-Video"), total: Date.now() - inicio }, videoId: fila.id, version: render.version,
       efectos: sonido.efectos, musica: musica ? sonido.musica.nombre || "Música" : null,
-      ...(Object.keys(efectosPropios).length ? {
-        efectosPropios: Object.fromEntries(SITIOS_EFECTO.filter((x) => efectosPropios[SINTETIZADO[x]]).map((x) => [x, sonido.efectosPropios[x].nombre || "Efecto"])),
+      ...(sonido.efectos ? { cuantosEfectos: num("X-Efectos") ?? 0, ...(sonido.colocados?.length ? { colocados: sonido.colocados.length } : {}) } : {}),
+      ...(Object.keys(son.propios).length && !sonido.colocados?.length ? {
+        efectosPropios: Object.fromEntries(Object.entries(son.propios).filter(([, e]) => son.libreria[e.archivoId]).map(([x, e]) => [x, e.nombre || "Efecto"])),
       } : {}),
     };
+    let avisoContainer = "";
+    try { avisoContainer = decodeURIComponent(h("X-Efectos-Avisos") || ""); } catch { avisoContainer = ""; }
+    const sinSitio = num("X-Efectos-Sin-Sitio") ?? 0;
     // En la galería, junto a lo suyo: en la carpeta del video (o de su reel) si la tiene; si no, como VERSIÓN del render
     // anterior de este video (worker/lib/estudio/carpetaVideo.js). Antes cada render quedaba suelto.
     const carpetaId = await carpetaDelVideo(acceso, clienteId, fila).catch(() => null);
@@ -304,7 +252,7 @@ export async function ejecutarRender(env, { ownerId, clienteId, videoId, intento
     const listo = {
       ...render, estado: "listo", clave, archivoId, bytes: bytes.byteLength, ancho, alto, ...datos, terminadoAt: momento,
       adjunto: puesto?.postId ? { calendarId: puesto.calendarId, postId: puesto.postId } : null,
-      aviso: [sinClips, sinMusicaPorCancion, sinMusica, avisoEfectos, puesto?.aviso].filter(Boolean).join(" ") || null,
+      aviso: [sinClips, ...son.avisos, avisoContainer, sinSitio ? `${sinSitio === 1 ? "Un efecto de la lista no sonó" : `${sinSitio} efectos de la lista no sonaron`}: su momento ya no existe (míralo con escuchar_video).` : "", puesto?.aviso].filter(Boolean).join(" ") || null,
     };
     delete listo.anterior;
     const escrito = await terminar(acceso, clienteId, videoId, intento, "renderizado", listo);
@@ -313,6 +261,95 @@ export async function ejecutarRender(env, { ownerId, clienteId, videoId, intento
     if (escrito) await avisarRender(env, acceso, fila, listo);
     return listo;
   }
+}
+
+/**
+ * Lo que SUENA, listo para el Container (el render y la escucha mandan lo mismo): la toma de la voz (o la canción ya
+ * grabada), la música de fondo (la de «Sonido» o, sin ella, la del guion) y los efectos: la lista colocada, los de la
+ * biblioteca que usa (en base64, como mucho 2 MB cada uno) y los que sustituyen a los automáticos. Lo que ya no está no
+ * tumba nada: va en `avisos`. `vozOpcional`: sin locución todavía no falla (escuchar antes de pagar la voz).
+ * → { audio, musica, nombreMusica, sonido, propios, libreria, avisos, conCancion }.
+ */
+export async function sonidoParaElContainer(env, fila, guion, { clienteId, ownerId, vozOpcional = false }) {
+  // Un montaje sin habla no tiene locución: el audio es el de los clips (y la música).
+  let audio = null;
+  const avisos = [];
+  // Con una CANCIÓN ya grabada (src/lib/videoCancion.js) la toma ES la canción: del cliente o de la biblioteca de la
+  // agencia de este espacio. Sin silencios (la línea de tiempo no los pone) y el video dura lo que ella.
+  const locucion = leerJSON(fila.locucion, {});
+  const conCancion = esCancion(locucion);
+  if (tieneHabla(guion)) {
+    const claveVoz = conCancion ? claveDeSonido(locucion.clave, clienteId, ownerId) : claveDelCliente(locucion.clave, clienteId);
+    const voz = claveVoz && (!vozOpcional || locucion.estado === "lista" || conCancion) ? await env.MEDIA.get(claveVoz) : null;
+    if (!voz && !vozOpcional) throw new Error(conCancion ? "No encontré el audio de la canción: ¿se quitó de la biblioteca de sonido?" : "No encontré el audio de la locución: genérala otra vez.");
+    if (voz && voz.size > TOPE_VOZ) throw new Error(conCancion ? "La canción pesa demasiado." : "El audio de la locución pesa demasiado.");
+    if (voz) audio = aBase64(new Uint8Array(await voz.arrayBuffer()));
+    else avisos.push("Aún no hay voz: se escucha sin ella, con los tiempos estimados.");
+  }
+
+  // El sonido de debajo (efectos y música): aparte del guion. Una música que ya no está no tumba el render: va sin ella.
+  const sonido = limpiarSonido(leerJSON(fila.sonido, {}));
+  // Con una canción, la música de «Sonido» (y la del guion) se ignora: la canción ya es la música. Los efectos siguen.
+  if (conCancion && sonido.musica) avisos.push(`La música de «Sonido» («${sonido.musica.nombre || "Música"}») no sonó: la canción ya es la música.`);
+  if (conCancion) sonido.musica = null;
+  // Sin música escogida en «Sonido», la que el GUION trae por su clave (con su volumen 0–1 pasado a dB).
+  if (!sonido.musica && !conCancion) {
+    const delGuion = leerJSON(fila.guion, {})?.musica;
+    if (delGuion?.clave && claveDelCliente(delGuion.clave, clienteId)) {
+      sonido.musica = { archivoId: "guion", clave: delGuion.clave, nombre: "La música del guion", volumen: dbDeVolumenGuion(delGuion.volumen ?? 0.35) };
+    }
+  }
+  let musica = null;
+  // La música puede ser de la biblioteca del cliente o de la de la AGENCIA (de este espacio): `claveDeSonido`.
+  const claveMusica = sonido.musica ? claveDeSonido(sonido.musica.clave, clienteId, ownerId) : null;
+  if (sonido.musica) {
+    const obj = claveMusica ? await env.MEDIA.get(claveMusica) : null;
+    if (!obj) avisos.push("La música de fondo ya no está en la galería: salió sin ella.");
+    else if (obj.size > TOPE_MUSICA) avisos.push("La música de fondo pesa más de 15 MB: salió sin ella.");
+    else musica = { audio: aBase64(new Uint8Array(await obj.arrayBuffer())), volumen: sonido.musica.volumen };
+  }
+
+  // Los EFECTOS de la biblioteca que se usan (los de la lista colocada y los que sustituyen a los automáticos), sólo con
+  // los efectos encendidos. Uno que ya no está no tumba nada: un automático suena con el de la aplicación; uno de la
+  // lista, no suena. Se dice.
+  const propios = {};
+  const libreria = {};
+  if (sonido.efectos) {
+    const conLista = Boolean(sonido.colocados?.length);
+    const piden = new Map();
+    if (!conLista) {
+      for (const sitio of SITIOS_EFECTO) {
+        const e = sonido.efectosPropios?.[sitio];
+        if (!e) continue;
+        propios[sitio] = { archivoId: e.archivoId, nombre: e.nombre || "Efecto" };
+        piden.set(e.archivoId, e);
+      }
+    }
+    for (const c of sonido.colocados ?? []) if (c.propio) piden.set(c.propio.archivoId, c.propio);
+    const sinEfecto = [];
+    for (const e of piden.values()) {
+      const clave = claveDeSonido(e.clave, clienteId, ownerId);
+      const obj = clave ? await env.MEDIA.get(clave) : null;
+      if (!obj || obj.size > TOPE_EFECTO * 1.1) sinEfecto.push(e.nombre || "un efecto");
+      else libreria[e.archivoId] = aBase64(new Uint8Array(await obj.arrayBuffer()));
+    }
+    // Un sustituto que no se pudo leer no se manda: suena el automático de la aplicación (y aquí se dice).
+    for (const sitio of Object.keys(propios)) if (!libreria[propios[sitio].archivoId]) delete propios[sitio];
+    if (sinEfecto.length) {
+      avisos.push(`${sinEfecto.length === 1 ? `El efecto «${sinEfecto[0]}» ya no está` : `Los efectos ${sinEfecto.map((x) => `«${x}»`).join(" y ")} ya no están`} en la biblioteca: ${conLista ? "no sonó" : "sonó el de la aplicación"}.`);
+    }
+  }
+  return { audio, musica, nombreMusica: musica ? sonido.musica.nombre || "Música" : null, sonido, propios, libreria, avisos, conCancion };
+}
+
+/** El sonido de `sonidoParaElContainer` como va en el cuerpo del pedido al Container. */
+export function cuerpoDeSonido(son) {
+  return {
+    ...(son.audio ? { audio: son.audio } : {}), efectos: son.sonido.efectos, ...(son.musica ? { musica: son.musica } : {}),
+    ...(son.sonido.colocados?.length ? { colocados: son.sonido.colocados } : {}),
+    ...(Object.keys(son.propios).length ? { propios: son.propios } : {}),
+    ...(Object.keys(son.libreria).length ? { libreria: son.libreria } : {}),
+  };
 }
 
 /** ¿El render se cortó porque el Container se reinició (no por el video)? «signal 15» / SIGTERM, o se cayó la conexión. */

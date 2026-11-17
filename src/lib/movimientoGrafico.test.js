@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { validarGuion, lineaDeTiempo, TRANSICIONES, FONDOS, ENTRADAS, CAMARAS, RESALTES } from "./videoEscenas.js";
 import { dibujarFrame, estadoDeCapa, camaraEn, visibleSobreElFondo, conAlfa, esTextoRico, TRANSICIONES_CON_MOVIMIENTO } from "./motorVideo.js";
-import { momentosDeEfectos, sintetizar, DURACION_EFECTO } from "./efectosSonido.js";
+import { sintetizar, DURACION_EFECTO } from "./efectosSonido.js";
+import { colocadosAutomaticos, momentosColocados, EFECTO_AUTOMATICO, REALCE_IMPACTO } from "./efectosColocados.js";
 
 // ============================================================
 // El MOVIMIENTO GRÁFICO del video animado: transiciones que mueven las dos escenas, fondos vivos, cámara, viñeta, letra
@@ -197,10 +198,14 @@ describe("el impacto", () => {
       escena("c", "fondo", { transicion: { tipo: "empuje", dur: 0.4 } }),
       escena("d", "oscuro", { transicion: { tipo: "glitch", dur: 0.26 } }),
     ]);
-    const m = momentosDeEfectos(g, lineaDeTiempo(g));
-    expect(m.map((x) => x.tipo)).toEqual(["impacto", "whoosh", "impacto"]);
-    expect(m[0].en).toBeCloseTo(3.17, 2);
-    expect(m[2].en).toBeCloseTo(9.13, 2);
+    const linea = lineaDeTiempo(g);
+    const lista = colocadosAutomaticos(g, linea);
+    expect(lista.map((x) => x.sonido)).toEqual([EFECTO_AUTOMATICO.impacto, EFECTO_AUTOMATICO.transicion, EFECTO_AUTOMATICO.impacto]);
+    expect(lista[0].volumen).toBe(REALCE_IMPACTO);
+    // El impacto es un golpe: empieza (por su arranque) en el destello, la mitad de la transición.
+    const { momentos } = momentosColocados(lista, g, linea, (c) => ({ papel: c.sonido === EFECTO_AUTOMATICO.impacto ? "golpe" : "transicion", pico: 0, nombre: "x" }));
+    expect(momentos[0].en).toBeCloseTo(3.17, 2);
+    expect(momentos[2].en).toBeCloseTo(9.13, 2);
   });
 
   it("se sintetiza igual cada vez, con el pico en 1 y lo que dura", () => {

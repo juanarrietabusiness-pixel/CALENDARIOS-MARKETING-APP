@@ -56,6 +56,8 @@ import { dibujarTextoPlantilla, dibujarLogo, letraDe } from "../src/lib/acabadoL
 import { encajarEn, reducirEn } from "../src/lib/encajarLienzo.js";
 import { LADO_PUBLICAR } from "../src/lib/prepararRedes.js";
 import { renderizar } from "./render.mjs";
+import { escuchar } from "./escuchar.mjs";
+import { propiosDelPedido, libreriaDelPedido } from "./efectos.mjs";
 import { unir, muestraDeColor, fotograma } from "./unir.mjs";
 import { golpesDeCancion } from "./golpes.mjs";
 import { conGolpes, limpiarGolpes } from "../src/lib/golpes.js";
@@ -267,14 +269,13 @@ async function atender(ruta, p) {
     const musica = typeof p.musica?.audio === "string" && p.musica.audio
       ? { audio: Buffer.from(p.musica.audio, "base64"), volumen: Number(p.musica.volumen) || 0 } : null;
     const efectos = p.efectos === true;
-    // Los efectos de la biblioteca de sonido (sus bytes en base64), en vez del whoosh y del pop sintetizados.
-    const efectosPropios = {};
-    for (const tipo of ["whoosh", "pop"]) {
-      if (typeof p.efectosPropios?.[tipo] === "string" && p.efectosPropios[tipo]) efectosPropios[tipo] = Buffer.from(p.efectosPropios[tipo], "base64");
-    }
-    const turno = renderEnCurso.then(() => renderizar(base, { audio, musica, efectos, efectosPropios }));
+    // Los efectos: la lista colocada (o los automáticos), los de la biblioteca de sonido (sus bytes en base64) y los que
+    // sustituyen a los automáticos.
+    const sonido = { colocados: Array.isArray(p.colocados) ? p.colocados : [], propios: propiosDelPedido(p), libreria: libreriaDelPedido(p) };
+    const turno = renderEnCurso.then(() => renderizar(base, { audio, musica, efectos, ...sonido }));
     renderEnCurso = turno.catch(() => {});
     const r = await turno;
+    const fx = r.audio?.efectos;
     return {
       cuerpo: r.mp4, tipo: "video/mp4",
       cabeceras: {
@@ -282,9 +283,16 @@ async function atender(ruta, p) {
         "X-Ms-Audio": String(r.ms.audio), "X-Ms-Video": String(r.ms.video),
         "X-Lufs": r.audio?.lufs === null || r.audio?.lufs === undefined ? "" : String(r.audio.lufs),
         "X-Lufs-Antes": r.audio?.antes === null || r.audio?.antes === undefined ? "" : String(r.audio.antes),
+        "X-Efectos": String(fx?.cuantos ?? 0), "X-Efectos-Sin-Sitio": String(fx?.sinSitio ?? 0),
+        "X-Efectos-Avisos": encodeURIComponent((fx?.avisos ?? []).join(" ").slice(0, 600)),
         "X-Faltan": base.faltan.join(","),
       },
     };
+  }
+  // ESCUCHAR sin oídos: el mismo audio que el render, por pistas, medido (src/lib/escucharSonido.js) y en una hoja.
+  if (ruta === "/escuchar") {
+    const r = await escuchar(base, p);
+    return { cuerpo: Buffer.from(JSON.stringify(r)), tipo: "application/json", cabeceras: {} };
   }
   if (ruta === "/revisar") {
     const formatos = (Array.isArray(p.formatos) && p.formatos.length ? p.formatos : [base.formato]).filter((f) => FORMATOS_VIDEO[f]);

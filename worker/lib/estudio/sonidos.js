@@ -250,7 +250,8 @@ export async function cambiarSonido(acceso, { clienteId = null, id, cambios }) {
 /** ¿Este sonido de un video usa la pista `id` (como música o como efecto)? */
 const usa = (sonido, id) => {
   const s = leerJSON(sonido, {}) ?? {};
-  return s.musica?.archivoId === id || s.efectosPropios?.transicion?.archivoId === id || s.efectosPropios?.sello?.archivoId === id;
+  return s.musica?.archivoId === id || s.efectosPropios?.transicion?.archivoId === id || s.efectosPropios?.sello?.archivoId === id
+    || (Array.isArray(s.colocados) && s.colocados.some((c) => c?.propio?.archivoId === id));
 };
 
 /** Los videos animados que usan una pista (de un cliente, o de todo el espacio si es de la agencia). → [{ id, titulo, clienteId }]. */

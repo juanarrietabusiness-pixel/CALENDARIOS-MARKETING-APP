@@ -143,8 +143,19 @@ src/
                           pistas, el costo (puro; también el Worker)
     directorMusical.js    El DIRECTOR MUSICAL: lo que el código cuenta del video (BPM por los cortes, silencios, momentos), el
                           pedido a la IA con la música de la marca delante, leer su propuesta (sin artistas) y el respaldo (puro)
-    efectosSonido.js      Los efectos del video animado: whoosh en las transiciones, impacto en golpe y glitch, y pop en sellos y llamados, sintetizados
-                          (sin archivos) y mezclados bajitos; o los de la biblioteca (`muestrasDeEfecto`, `propios`) (puro: el Container)
+    efectosSonido.js      Los efectos del video animado: leerlos (`muestrasDeEfecto`), su pico (`picoDeEfecto`) y el AUDIO POR
+                          PISTAS (`armarSonido`: voz, música y efectos; cada efecto nivelado contra la voz y contra la música del
+                          segundo de antes, con techo bajo la voz; la música baja antes de un golpe); el whoosh, el impacto
+                          (golpe y glitch) y el pop sintetizados son el respaldo (puro: el Container)
+    efectosColocados.js   Los EFECTOS COLOCADOS: la lista de efectos anclados a un evento (escena, capa, palabra o segundo), las
+                          REGLAS de cada papel medidas por earshot (alinear por arranque o pico, adelanto, dB sobre la música,
+                          rachas, bajada de la música) y los automáticos como lista (puro: Worker, Container y pantalla)
+    catalogoEfectos.js    El CATÁLOGO DE EFECTOS de la aplicación (283 MP3 en public/efectos/v1: earshot, MIT; uisfx, CC0): buscar
+                          por papel o palabras (puro; sus datos pesan 80 kB: sólo Worker, Container y un chunk perezoso)
+    catalogoEfectos.datos.js  Los datos del catálogo, GENERADOS por scripts/efectos/armar-catalogo.mjs (no se editan a mano)
+    escucharSonido.js     ESCUCHAR SIN OÍDOS: con las pistas sueltas y los tiempos de cada palabra, el informe (cada efecto
+                          frente a la voz y la música, qué palabra pisa, lo que se tapa o compite, densidad, huecos, volumen y los
+                          5 momentos para una persona) y su texto (puro: el Container en /escuchar)
     bibliotecaSonido.js   La BIBLIOTECA DE SONIDO (música y efectos de cada cliente y de la agencia): la categoría por el modelo,
                           limpiar nombre, etiquetas, BPM y duración, el orden (la música de la marca primero) y qué pista encaja
                           con lo que propone el director musical (`pistasQueEncajan`) (puro: Worker, herramientas y pantalla)
@@ -838,7 +849,8 @@ worker/
                           higgsfield-schemas.json (SU documentación: campos, valores, obligatorios), elevenlabs.js (la voz
                           directo con la llave oficial), ideas.js
                           («Dame ideas»), lote.js (la producción en lote: niveles, matriz, tipos y mes), encargos.js
-                          (la cadena del lote que sigue en el servidor) y bomba.js (lo avanza sin pantalla)
+                          (la cadena del lote que sigue en el servidor), bomba.js (lo avanza sin pantalla) y escuchar.js
+                          (escuchar un video animado sin oídos: el mismo pedido que el render a /escuchar del Container)
     cerebro/              El cerebro de un cliente: conocimiento.js (BM25 por pasajes) y
                           memoria.js (grafo, presupuesto, sinapsis) portados de Agents
                           Office; notas.js (tipos, partir un archivo en notas);
@@ -963,10 +975,15 @@ container/                El Container del video animado (Node + @napi-rs/canvas
                           /render (render.mjs) con el MISMO motor de src/lib; los clips de video (clips.mjs, PUT /clip/<id>);
                           /golpes (golpes.mjs: el ritmo de una canción, con ffmpeg y src/lib/golpes.js); /unir (unir.mjs: la
                           imagen de «Mejorar mi video» con el AUDIO que toca por tramo, el color y el texto del gancho;
-                          /muestra-color y /fotograma);
+                          /muestra-color y /fotograma); efectos.mjs (los efectos del catálogo, que la imagen trae en
+                          public/efectos/v1, y los de la biblioteca; el audio por pistas del render y de la escucha);
+                          /escuchar (escuchar.mjs: el mismo audio medido y su HOJA en PNG, con el espectrograma de ffmpeg);
                           probar.mjs, probarAudio.mjs, probarClips.mjs y probarUnir.mjs son sus pruebas (job «contenedor»)
 migraciones/d1/           Esquema de D1: una migración por cambio, numeradas (`ls migraciones/d1` las lista con su nombre)
 scripts/migracion/        Volcado desde Supabase, conversión e importación
+scripts/efectos/          El catálogo de efectos: renderizar-earshot.py (el banco de earshot SIN sus modelos, sólo numpy y
+                          scipy) y armar-catalogo.mjs (MP3, medidas con el código del render, licencias). Se corre a mano
+                          una vez; lo generado se versiona (public/efectos/v1 y src/lib/catalogoEfectos.datos.js)
 tests/
   utils/                  Lector de wrangler.jsonc y _headers, fallos e informe
   despliegue/             Plantillas, secretos, migraciones, funciones, acceso,

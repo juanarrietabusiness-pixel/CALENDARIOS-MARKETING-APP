@@ -1,9 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { limpiarSonido } from "./sonidoVideo.js";
-import { momentosDeEfectos, sintetizar, mezclarEfectos, muestrasDeEfecto, DURACION_EFECTO, MAX_ANTES_DEL_CAMBIO, MAX_EFECTO_PROPIO } from "./efectosSonido.js";
+import { sintetizar, mezclarColocados, muestrasDeEfecto, MAX_EFECTO_PROPIO } from "./efectosSonido.js";
 import { BYTES_MUESTRA } from "./renderVideo.js";
-import { validarGuion, lineaDeTiempo } from "./videoEscenas.js";
-import { EJEMPLO_GUION } from "./videoFormatoIA.js";
 
 // ============================================================
 // Los EFECTOS de la biblioteca de sonido: suenan en vez del whoosh y del pop sintetizados, en el mismo instante y al
@@ -67,35 +65,32 @@ describe("los efectos de la biblioteca en el video animado", () => {
     expect(muestrasDeEfecto(new Uint8Array(400), M)).toHaveLength(0);
   });
 
-  it("suena en el mismo instante y al mismo nivel que el sintetizado al que sustituye", () => {
+  it("suena en su instante y al mismo nivel que el de la aplicación al que sustituye (por el RMS de lo que suena)", () => {
     const voz = pcm(5, { a: 0.4 });
-    const conSintetizado = mezclarEfectos(new Uint8Array(voz), [{ tipo: "pop", en: 2 }], { muestreo: M });
+    const m = { i: 0, clave: "x", en: 2, golpe: 2, db: 0, sobreFondo: 6, volumen: 0 };
+    const mezclar = (s) => {
+      const pista = new Uint8Array(voz.byteLength);
+      mezclarColocados(pista, [m], new Map([["x", s]]), { habla: voz, muestreo: M });
+      return pista;
+    };
     // Un «ding» de 0,4 s con medio segundo de silencio delante y otro detrás.
     const ding = muestrasDeEfecto(pcm(1.4, { a: 0.9, silencio: 0.5, hasta: 0.9 }), M);
-    const conPropio = mezclarEfectos(new Uint8Array(voz), [{ tipo: "pop", en: 2 }], { muestreo: M, propios: { pop: ding } });
-    const diferencia = (b, d, h) => Math.abs(rmsEntre(b, d, h) - rmsEntre(voz, d, h));
-    // Antes del instante, nada cambia; justo después, sí (el silencio del principio del archivo no lo retrasa).
-    expect(diferencia(conPropio, 1, 1.99)).toBe(0);
-    expect(diferencia(conPropio, 2, 2.1)).toBeGreaterThan(0.001);
+    const conPropio = mezclar(ding);
+    const conSintetizado = mezclar(sintetizar("pop", M));
+    // Antes del instante, nada; justo después, sí (el silencio del principio del archivo no lo retrasa).
+    expect(rmsEntre(conPropio, 1, 1.99)).toBe(0);
+    expect(rmsEntre(conPropio, 2, 2.1)).toBeGreaterThan(0.001);
     // El mismo nivel: el RMS de lo que suena del efecto, no el del archivo entero con sus silencios.
     const sint = sintetizar("pop", M);
-    const propio = rmsDelEfecto(conPropio, voz, 2, 2 + ding.length / M);
-    const sintetizado = rmsDelEfecto(conSintetizado, voz, 2, 2 + sint.length / M);
+    const silencio = new Uint8Array(voz.byteLength);
+    const propio = rmsDelEfecto(conPropio, silencio, 2, 2 + ding.length / M);
+    const sintetizado = rmsDelEfecto(conSintetizado, silencio, 2, 2 + sint.length / M);
     expect(propio / sintetizado).toBeGreaterThan(0.8);
     expect(propio / sintetizado).toBeLessThan(1.25);
     expect(conSintetizado).not.toEqual(conPropio);
-    // Sin propio para ese tipo, el sintetizado de siempre.
-    const igual = mezclarEfectos(new Uint8Array(voz), [{ tipo: "pop", en: 2 }], { muestreo: M, propios: { whoosh: ding } });
-    expect(igual).toEqual(conSintetizado);
-  });
-
-  it("un whoosh de la biblioteca más largo se centra en el cambio, pero no arranca más de medio segundo antes", () => {
-    const g = validarGuion(JSON.parse(JSON.stringify(EJEMPLO_GUION))).guion;
-    const l = lineaDeTiempo(g, null);
-    const corto = momentosDeEfectos(g, l).filter((m) => m.tipo === "whoosh");
-    const largo = momentosDeEfectos(g, l, { duraciones: { whoosh: 3 } }).filter((m) => m.tipo === "whoosh");
-    expect(corto.length).toBeGreaterThan(0);
-    const cambio = corto[0].en + DURACION_EFECTO.whoosh / 2;
-    expect(largo[0].en).toBeCloseTo(Math.max(0, cambio - MAX_ANTES_DEL_CAMBIO), 2);
+    // Sin sus muestras, no suena y se dice.
+    const sin = mezclarColocados(new Uint8Array(voz.byteLength), [m], new Map(), { habla: voz, muestreo: M });
+    expect(sin.sinArchivo).toHaveLength(1);
+    expect(sin.medidas).toHaveLength(0);
   });
 });

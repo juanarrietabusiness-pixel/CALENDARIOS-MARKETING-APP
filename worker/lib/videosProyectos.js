@@ -25,6 +25,7 @@ import { esCancion, conPalabrasDeCancion, estadoDeCancion } from "../../src/lib/
 import { limpiarSonido, SITIOS_EFECTO } from "../../src/lib/sonidoVideo.js";
 import { aplicarLexicoAlGuion } from "../../src/lib/lexico.js";
 import { sonidoParaVideo, musicaDeLaMarca } from "./estudio/sonidos.js";
+import { efectoDelCatalogo } from "../../src/lib/catalogoEfectos.js";
 
 export const ID_VIDEO = /^[\w-]{1,80}$/;
 export const MAX_PROYECTOS = 200;
@@ -293,7 +294,11 @@ export async function vozQueSigueValiendo(acceso, clienteId, fila, guion) {
   return textoParaVoz(guion, l.modelo) === trabajo.prompt;
 }
 
-/** Cambia el sonido del video (efectos y música; ver src/lib/sonidoVideo.js). No toca la versión ni la voz. → { video }. */
+/**
+ * Cambia el sonido del video (efectos, música y la lista de efectos colocados; ver src/lib/sonidoVideo.js y
+ * src/lib/efectosColocados.js). No toca la versión ni la voz. Cada efecto de la lista es del CATÁLOGO de la aplicación o
+ * de la BIBLIOTECA de sonido (del cliente o de la agencia; la clave la pone el servidor). → { video }.
+ */
 export async function guardarSonido(acceso, cliente, fila, sonido) {
   if (fila.estado === "renderizando") throw new ErrorVideo("Se está renderizando: espera a que termine para cambiar el sonido.", 409);
   const limpio = limpiarSonido(sonido);
@@ -310,6 +315,18 @@ export async function guardarSonido(acceso, cliente, fila, sonido) {
     const a = await sonidoParaVideo(acceso, cliente.id, e.archivoId, "efecto");
     if (!a) throw new ErrorVideo("Ese efecto no está en la biblioteca de este cliente ni en la de la agencia.", 404);
     limpio.efectosPropios[sitio] = { archivoId: a.archivoId, clave: a.clave, nombre: a.nombre, ...(a.de ? { de: a.de } : {}) };
+  }
+  const deLaBiblioteca = new Map();
+  for (const [n, c] of (limpio.colocados ?? []).entries()) {
+    if (c.sonido) {
+      if (!efectoDelCatalogo(c.sonido)) throw new ErrorVideo(`El efecto ${n + 1} («${c.sonido}») no está en el catálogo de efectos (efectos_sonido) ni en la biblioteca.`, 404);
+      continue;
+    }
+    const id = c.propio.archivoId;
+    if (!deLaBiblioteca.has(id)) deLaBiblioteca.set(id, await sonidoParaVideo(acceso, cliente.id, id, "efecto"));
+    const a = deLaBiblioteca.get(id);
+    if (!a) throw new ErrorVideo(`El efecto ${n + 1} («${id}») no está en el catálogo de efectos ni en la biblioteca de este cliente o de la agencia.`, 404);
+    c.propio = { archivoId: a.archivoId, clave: a.clave, nombre: a.nombre, ...(a.de ? { de: a.de } : {}) };
   }
   const momento = ahora();
   const n = await acceso.actualizar("videos_proyectos", { id: fila.id, client_id: cliente.id, estado: fila.estado }, { sonido: JSON.stringify(limpio), updated_at: momento });
