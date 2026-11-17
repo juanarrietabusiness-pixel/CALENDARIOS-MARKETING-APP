@@ -958,3 +958,15 @@ contradicen, manda la de más abajo (la más nueva). Una trampa nueva de esta á
   (del lado de Kie, ya con el pedido aceptado: el formato es el bueno). Sin un resultado todavía, no se sabe si es el modelo
   recién salido, la edición a 1080p o la duración. Si sigue pasando: probar a 720p o un video más corto antes de culpar al
   pedido; Seedance 2.5 (de 15 a 30 s) es el otro camino para «look» y «cambiar algo».
+  · **El movimiento gráfico (17-11-2026): transiciones que mueven las DOS escenas, fondos vivos, cámara, viñeta, letra
+  cinética y resalte del énfasis** (`docs/formato-escenas-v1.md`, «El movimiento gráfico»). Lo que ya pasó al hacerlo:
+  el marcador del énfasis en acento sobre un fondo del acento (rojo sobre rojo) no se veía, igual que las viñetas de una
+  lista: el motor pasa ese acento al claro u oscuro que contrasta (`visibleSobreElFondo`). Un marcador del alto estimado
+  dejaba asomar las mayúsculas de impacto o pisaba el renglón de abajo de un gigante (blanco sobre blanco): se mide con
+  `actualBoundingBoxAscent/Descent`. La máscara de línea, si se queda puesta, corta la tilde de «SÍ»: sólo recorta
+  mientras sube. Una malla con un TERCER color salía sucia (rojo y dorado sobre negro = marrón; acento sobre crema =
+  mancha rosa): sólo usa `color2` y un brillo. El desenfoque es `ctx.filter` por llamada (no hay desenfoque direccional en
+  Canvas 2D); en Safari no existe y la vista previa sale sin desenfoque (el render sí lo lleva). Un render de 17 s con
+  seis transiciones tarda ~35 s en el Container. Sin voz, la duración de cada escena es su `pausa` (máx. 3 s): para cortar
+  en el bombo hay que medir la canción (sus golpes) y poner las pausas en múltiplos del pulso; un `golpe`/`glitch`
+  impacta a mitad de su `dur`.

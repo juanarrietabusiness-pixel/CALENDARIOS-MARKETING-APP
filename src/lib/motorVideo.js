@@ -103,7 +103,18 @@ export const suave = {
   sale: (p) => 1 - (1 - p) ** 3,
   entraSale: (p) => (p < 0.5 ? 4 * p ** 3 : 1 - (-2 * p + 2) ** 3 / 2),
   rebote: (p) => { const c = 1.70158; const c3 = c + 1; return 1 + c3 * (p - 1) ** 3 + c * (p - 1) ** 2; },
+  // Exponenciales: arrancan o frenan en seco, como las curvas de un editor de movimiento (no como una rampa de CSS).
+  expo: (p) => (p >= 1 ? 1 : 1 - 2 ** (-10 * p)),
+  expoEntra: (p) => (p <= 0 ? 0 : 2 ** (10 * p - 10)),
+  expoEntraSale: (p) => (p <= 0 ? 0 : p >= 1 ? 1 : p < 0.5 ? 2 ** (20 * p - 10) / 2 : (2 - 2 ** (-20 * p + 10)) / 2),
 };
+
+/** Lo que tarda cada línea de un texto con «mascara» en subir, y cuánto espera cada línea a la anterior (s). */
+export const MASCARA = Object.freeze({ dura: 0.55, entreLineas: 0.09 });
+/** «Escalonado»: lo que tarda cada palabra en entrar y lo que espera cada una a la anterior (s). */
+export const ESCALONADO = Object.freeze({ dura: 0.42, entrePalabras: 0.065 });
+/** El resalte de una palabra de énfasis (marcador o subrayado): cuánto espera tras entrar la palabra y lo que tarda (s). */
+export const RESALTE = Object.freeze({ espera: 0.22, dura: 0.32 });
 
 /** Lo que dura la entrada de una capa según el ritmo del estilo. */
 export const DURACION_ENTRADA = Object.freeze({ calmado: 0.6, medio: 0.4, rapido: 0.25 });
@@ -553,6 +564,18 @@ export function estadoDeCapa(capa, momento, t, { ritmo = "medio", lado = 1080 } 
     case "escala": e.alfa = suave.sale(pe); e.escala = 0.6 + 0.4 * suave.sale(pe); break;
     case "rebote": e.alfa = limitar(pe * 3); e.escala = Math.max(0, suave.rebote(pe)); break;
     case "escribe": case "barrido": case "dibuja": e.revelado = suave.sale(pe); break;
+    // Un texto con carácter hace la máscara línea a línea y el escalonado palabra a palabra (ver `dibujarTextoRico`);
+    // lo demás sube entero desde detrás de su caja (la máscara la recorta `dibujarEscena`) o sube a secas.
+    case "mascara": if (!esTextoRico(capa)) e.mascara = 1 - suave.expo(limitar((t - desde) / MASCARA.dura)); break;
+    case "escalonado": if (!esTextoRico(capa)) { e.alfa = suave.sale(pe); e.dy = desp * (1 - suave.sale(pe)); } break;
+    case "latigo": {
+      const q = suave.rebote(limitar((t - desde) / (dEntra * 1.3)));
+      e.alfa = limitar((t - desde) / 0.08); e.dx = -lado * 0.6 * (1 - q); break;
+    }
+    case "desenfoque": {
+      const q = suave.expo(limitar((t - desde) / (dEntra * 1.5)));
+      e.alfa = suave.sale(limitar((t - desde) / dEntra)); e.escala = 1.14 - 0.14 * q; e.desenfoque = lado * 0.03 * (1 - q); break;
+    }
     default: break;
   }
   if (conSalida) {
@@ -906,7 +929,8 @@ function dibujarImagenCompleta(ctx, capa, estado, c, cuando) {
 // ------------------------------------------------------------
 
 /** ¿Va por el camino del texto con carácter? (rol gigante, *énfasis* o palabra por palabra). Pura. */
-export const esTextoRico = (capa) => capa?.tipo === "texto" && (capa.rol === "gigante" || capa.porPalabra === true || tieneEnfasis(capa.texto));
+export const esTextoRico = (capa) => capa?.tipo === "texto" && (capa.rol === "gigante" || capa.porPalabra === true || tieneEnfasis(capa.texto)
+  || ["mascara", "escalonado"].includes(capa.animacion?.entrada) || Boolean(capa.resalte && capa.resalte !== "color"));
 
 /**
  * Cómo queda un texto en `ancho` (las líneas, sus palabras y su tamaño), con la letra de cada rol y la de impacto (la
@@ -952,42 +976,112 @@ function dibujarTextoRico(ctx, capa, estado, c, w) {
   }
   const conPlaca = (tok) => (capa.placa ? colorLegible(tok, capa.placa, paleta) : colorDe(tok, paleta));
   const normal = conPlaca(capa.color);
-  const resaltado = conPlaca(capa.color === "acento" ? "texto" : "acento");
+  // El énfasis en acento sobre un fondo del acento no se veía (un marcador rojo sobre rojo): pasa al que contrasta.
+  const resaltado = capa.placa ? conPlaca(capa.color === "acento" ? "texto" : "acento") : visibleSobreElFondo(conPlaca(capa.color === "acento" ? "texto" : "acento"), c);
   ctx.textBaseline = "middle";
   ctx.textAlign = "center";
   const total = lay.lineas.reduce((n, l) => n + l.palabras.length, 0);
-  const visibles = capa.animacion?.entrada === "escribe" && !capa.porPalabra ? Math.round(total * (estado.revelado ?? 1)) : total;
+  const entrada = capa.animacion?.entrada;
+  const visibles = entrada === "escribe" && !capa.porPalabra ? Math.round(total * (estado.revelado ?? 1)) : total;
   const tiempos = Array.isArray(estado.palabras) && Number.isFinite(estado.vida) ? estado.palabras : null;
+  const vida = Number.isFinite(estado.vida) ? estado.vida : Infinity;
+  // Movimiento gráfico sin voz que marque: la máscara va por LÍNEAS y el escalonado por PALABRAS, cada una a su tiempo.
+  const mascara = entrada === "mascara" && !tiempos;
+  const escalonado = entrada === "escalonado" && !tiempos;
+  const resalte = capa.resalte && capa.resalte !== "color" ? capa.resalte : null;
+  // Con marcador, la palabra se lee en el color que contrasta con él (dentro del marcador ya pintado).
+  const sobreMarcador = HEX.test(resaltado) ? contraste(resaltado, colorDe("claro", paleta), colorDe("oscuro", paleta)) : normal;
   let k = 0;
   let y = -alto / 2;
-  for (const linea of lay.lineas) {
+  lay.lineas.forEach((linea, li) => {
     let x = capa.alinear === "izq" ? -w / 2 : capa.alinear === "der" ? w / 2 - linea.ancho : -linea.ancho / 2;
     const espacio = linea.espacio ?? lay.espacio;
     const cy = y + linea.alto / 2;
+    const x0Linea = x;
+    // Cuándo entra esta línea (máscara) y qué tan arriba va ya (0: abajo, oculta; 1: en su sitio).
+    const lineaDesde = li * MASCARA.entreLineas;
+    const subida = mascara ? suave.expo(limitar((vida - lineaDesde) / MASCARA.dura)) : 1;
     for (const p of linea.palabras) {
       const cx = x + p.ancho / 2;
       x += p.ancho + espacio;
       const i = k++;
       if (i >= visibles) continue;
       let e = null;
+      let entro = 0;
       if (tiempos && tiempos[i] != null) {
         if (estado.vida < tiempos[i]) continue;
-        e = estadoDeCapa({ animacion: { entrada: capa.animacion?.entrada ?? "aparece" } }, { desde: tiempos[i], hasta: Infinity }, estado.vida, { ritmo: c.ritmo, lado });
+        // Con voz, la máscara y el escalonado entran como «sube» y «golpe»: cada palabra cuando se dice.
+        const porVoz = entrada === "mascara" ? "sube" : entrada === "escalonado" ? "golpe" : entrada ?? "aparece";
+        e = estadoDeCapa({ animacion: { entrada: porVoz } }, { desde: tiempos[i], hasta: Infinity }, estado.vida, { ritmo: c.ritmo, lado });
         if (!e) continue;
+        entro = tiempos[i];
+      } else if (escalonado) {
+        entro = i * ESCALONADO.entrePalabras;
+        const pp = limitar((vida - entro) / ESCALONADO.dura);
+        if (pp <= 0) continue;
+        const q = suave.rebote(pp);
+        e = { alfa: limitar(pp * 2.5), dx: 0, dy: linea.alto * 0.6 * (1 - q), escala: 0.88 + 0.12 * q };
+      } else if (mascara) {
+        if (subida <= 0) continue;
+        entro = lineaDesde;
       }
       ctx.save();
+      if (mascara && subida < 1) {
+        // La línea sube desde detrás de su propio renglón: lo de debajo no se ve. Sólo mientras sube (con aire arriba
+        // para las tildes de las mayúsculas, que si no se quedaban cortadas).
+        ctx.beginPath();
+        ctx.rect(x0Linea - lado * 0.05, y - linea.alto * 0.3, linea.ancho + lado * 0.1, linea.alto * 1.38);
+        ctx.clip();
+      }
       if (e) {
         ctx.globalAlpha *= e.alfa;
         ctx.translate(cx + e.dx, cy + e.dy);
         if (e.escala !== 1) ctx.scale(e.escala, e.escala);
-      } else ctx.translate(cx, cy);
+      } else ctx.translate(cx, cy + (mascara ? linea.alto * 1.1 * (1 - subida) : 0));
       ctx.font = p.fuente;
-      ctx.fillStyle = p.enfasis ? resaltado : normal;
-      ctx.fillText(p.texto, 0, 0);
+      if (p.enfasis && resalte) {
+        const tam = p.tam ?? linea.tam ?? lay.tam ?? linea.alto * 0.8;
+        const r = suave.expoEntraSale(limitar((vida - entro - (mascara ? MASCARA.dura * 0.6 : RESALTE.espera)) / RESALTE.dura));
+        const padX = tam * 0.14;
+        if (resalte === "marcador") {
+          // Más alto que el cuerpo de la letra (las tildes y las mayúsculas de impacto llegan arriba) y un poco subido.
+          // La caja REAL de las letras (con sus tildes y sus mayúsculas de impacto) más un margen: estimarla con el
+          // tamaño dejaba asomar las letras altas o pisaba el renglón de abajo en un gigante.
+          const m = ctx.measureText(p.texto);
+          const sube = Number.isFinite(m?.actualBoundingBoxAscent) ? m.actualBoundingBoxAscent : tam * 0.55;
+          const baja = Number.isFinite(m?.actualBoundingBoxDescent) ? m.actualBoundingBoxDescent : tam * 0.45;
+          const margen = tam * 0.07;
+          const y0 = -sube - margen;
+          const h = sube + baja + margen * 2;
+          ctx.fillStyle = normal;
+          ctx.fillText(p.texto, 0, 0);
+          if (r > 0) {
+            // El marcador se pinta de izquierda a derecha y, por donde pasa, la palabra cambia al color que contrasta.
+            ctx.fillStyle = resaltado;
+            ctx.save();
+            ctx.beginPath(); ctx.rect(-p.ancho / 2 - padX, y0, (p.ancho + padX * 2) * r, h); ctx.clip();
+            rectRedondo(ctx, -p.ancho / 2 - padX, y0, p.ancho + padX * 2, h, tam * 0.08);
+            ctx.fill();
+            ctx.fillStyle = sobreMarcador;
+            ctx.fillText(p.texto, 0, 0);
+            ctx.restore();
+          }
+        } else {
+          ctx.fillStyle = resaltado;
+          ctx.fillText(p.texto, 0, 0);
+          if (r > 0) {
+            const grosor = Math.max(2, tam * 0.085);
+            ctx.fillRect(-p.ancho / 2, tam * 0.5, p.ancho * r, grosor);
+          }
+        }
+      } else {
+        ctx.fillStyle = p.enfasis ? resaltado : normal;
+        ctx.fillText(p.texto, 0, 0);
+      }
       ctx.restore();
     }
     y += linea.alto;
-  }
+  });
   return capa.placa ? { w: Math.max(w, pw), h: alto + pad * 1.4 } : { w, h: alto };
 }
 
@@ -1245,6 +1339,8 @@ function dibujarCapa(ctx, capa, estado, c, ancho = capa.tam * c.lado) {
       const h = {
         w, lado, maxAlto, vida: estado.vida, titular, cuerpo, rect: rectRedondo, partir: partirEnLineas,
         color: (t) => colorDe(t, paleta), legible: (pedido, fondo) => colorLegible(pedido, fondo, paleta),
+        // El acento de las marcas (viñetas, números), visible sobre el fondo de la escena (rojo sobre rojo no se veía).
+        acento: visibleSobreElFondo(colorDe("acento", paleta), c),
         imagen: (id) => recursos?.imagen?.(id) ?? null,
       };
       if (capa.tipo === "lista") return dibujarLista(ctx, capa, h);
@@ -1293,6 +1389,51 @@ function dibujarFondo(ctx, fondo, ancho, alto, paleta, id, t = 0) {
     const color = fondo?.color2 && fondo.color2 !== "superficie" ? b : contraste(a, colorDe("claro", paleta), colorDe("oscuro", paleta));
     if (fondo.tipo === "estrellas") dibujarEstrellas(ctx, { ancho, alto, color, semilla: semilla(`estrellas:${id}`), t });
     else dibujarLineas(ctx, { ancho, alto, color, semilla: semilla(`lineas:${id}`) });
+  } else if (fondo?.tipo === "malla") {
+    // Degradado de MALLA: manchas grandes y difusas del color2 que derivan despacio (cada una con su periodo: nunca se
+    // repite el mismo cuadro), y un brillo claro muy tenue. Sólo dos colores: un tercero las ensuciaba (rojo y dorado
+    // sobre negro salían marrones; el acento sobre crema, una mancha rosa).
+    const brillo = contraste(a, colorDe("claro", paleta), colorDe("oscuro", paleta)) === colorDe("claro", paleta) ? colorDe("claro", paleta) : b;
+    const manchas = [[b, 0.9, 0.8, 0, 9], [b, 0.65, 0.65, 2.1, 11], [brillo, 0.12, 0.55, 4.2, 13]];
+    for (const [color, fuerza, radio, fase, periodo] of manchas) {
+      const w = (Math.PI * 2) / periodo;
+      const x = ancho * (0.5 + 0.38 * Math.sin(t * w + fase));
+      const y = alto * (0.5 + 0.34 * Math.cos(t * w * 0.8 + fase * 1.3));
+      const g = ctx.createRadialGradient(x, y, 0, x, y, lado * radio);
+      g.addColorStop(0, conAlfa(color, fuerza)); g.addColorStop(1, conAlfa(color, 0));
+      ctx.fillStyle = g; ctx.fillRect(0, 0, ancho, alto);
+    }
+  } else if (fondo?.tipo === "rayos") {
+    // HACES de luz desde un poco por encima del centro, girando despacio, con un halo en medio.
+    const cx = ancho / 2; const cy = alto * 0.42; const largo = Math.hypot(ancho, alto);
+    const halo = ctx.createRadialGradient(cx, cy, 0, cx, cy, lado * 0.85);
+    halo.addColorStop(0, conAlfa(b, 0.55)); halo.addColorStop(1, conAlfa(b, 0));
+    ctx.fillStyle = halo; ctx.fillRect(0, 0, ancho, alto);
+    ctx.fillStyle = conAlfa(b, 0.09);
+    const n = 14; const giro = t * 0.09;
+    for (let i = 0; i < n; i++) {
+      const a0 = giro + (i / n) * Math.PI * 2; const a1 = a0 + Math.PI / n * 0.55;
+      ctx.beginPath(); ctx.moveTo(cx, cy);
+      ctx.lineTo(cx + Math.cos(a0) * largo, cy + Math.sin(a0) * largo);
+      ctx.lineTo(cx + Math.cos(a1) * largo, cy + Math.sin(a1) * largo);
+      ctx.closePath(); ctx.fill();
+    }
+  } else if (fondo?.tipo === "foco") {
+    // Luz CENITAL (un foco de estudio) y motas desenfocadas que suben despacio: la profundidad de un plano de producto.
+    const luz = ctx.createRadialGradient(ancho / 2, -alto * 0.08, 0, ancho / 2, -alto * 0.08, alto * 0.95);
+    luz.addColorStop(0, conAlfa(b, 0.6)); luz.addColorStop(0.55, conAlfa(b, 0.16)); luz.addColorStop(1, conAlfa(b, 0));
+    ctx.fillStyle = luz; ctx.fillRect(0, 0, ancho, alto);
+    const al = aleatorio(semilla(`foco:${id}`));
+    const mota = contraste(a, colorDe("claro", paleta), colorDe("oscuro", paleta));
+    for (let i = 0; i < 16; i++) {
+      const x0 = al() * ancho; const y0 = al() * alto; const r = lado * (0.02 + al() * 0.07);
+      const v = alto * (0.01 + al() * 0.025); const fuerza = 0.05 + al() * 0.13;
+      const x = x0 + Math.sin(t * 0.5 + i) * lado * 0.02;
+      const y = (((y0 - t * v) % (alto + 2 * r)) + alto + 2 * r) % (alto + 2 * r) - r;
+      const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+      g.addColorStop(0, conAlfa(mota, fuerza)); g.addColorStop(0.7, conAlfa(mota, fuerza * 0.6)); g.addColorStop(1, conAlfa(mota, 0));
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+    }
   } else if (fondo?.tipo === "papel") {
     // Fibras del papel: la semilla es la escena, así no «hierven» de un fotograma a otro.
     const al = aleatorio(semilla(`papel:${id}`));
@@ -1304,6 +1445,54 @@ function dibujarFondo(ctx, fondo, ancho, alto, paleta, id, t = 0) {
     }
   }
   ctx.restore();
+}
+
+/**
+ * Un color que se ve sobre el fondo de la escena: si casi no se distingue de él (contraste < 1,6, como el acento sobre
+ * un fondo del acento), el claro u oscuro que más contrasta. Lo demás, tal cual.
+ */
+export function visibleSobreElFondo(color, c) {
+  const f = c?.colorFondo;
+  if (!HEX.test(String(f ?? "")) || !HEX.test(String(color ?? ""))) return color;
+  return razonDeContraste(color, f) < 1.6 ? contraste(f, colorDe("claro", c.paleta), colorDe("oscuro", c.paleta)) : color;
+}
+
+/** Un color #RRGGBB con alfa (rgba): para degradados que se desvanecen. Lo que no es hex, tal cual. */
+export function conAlfa(hex, alfa) {
+  if (!HEX.test(String(hex ?? ""))) return hex;
+  const n = parseInt(String(hex).slice(1), 16);
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${Math.max(0, Math.min(1, alfa))})`;
+}
+
+/**
+ * La CÁMARA de una escena en `t`: { escala, dx, dy } (dx, dy en píxeles). Se mueve a velocidad constante todo lo que dura
+ * la escena (una cámara de verdad no acelera): acercar 6 %, alejar 6 % y deriva (un poco de zoom y de lado). Pura.
+ */
+export function camaraEn(tipo, momento, t, lado = 1080) {
+  if (!tipo || tipo === "ninguna" || !momento) return null;
+  const dura = Math.max(0.1, momento.hasta - momento.desde);
+  const u = limitar((t - momento.desde) / dura);
+  if (tipo === "acercar") return { escala: 1 + 0.06 * u, dx: 0, dy: 0 };
+  if (tipo === "alejar") return { escala: 1.06 - 0.06 * u, dx: 0, dy: 0 };
+  if (tipo === "deriva") return { escala: 1.03 + 0.02 * u, dx: lado * 0.025 * (u * 2 - 1), dy: -lado * 0.012 * u };
+  return null;
+}
+
+function aplicarCamara(ctx, cam, c, fuerza = 1) {
+  if (!cam) return;
+  const e = 1 + (cam.escala - 1) * fuerza;
+  ctx.translate(c.ancho / 2 + cam.dx * fuerza, c.alto / 2 + cam.dy * fuerza);
+  ctx.scale(e, e);
+  ctx.translate(-c.ancho / 2, -c.alto / 2);
+}
+
+/** La VIÑETA: oscurece las esquinas (0–1) y lleva la mirada al centro, como un objetivo de cine. */
+function dibujarVineta(ctx, fuerza, ancho, alto) {
+  if (!(fuerza > 0)) return;
+  const r = Math.hypot(ancho, alto) / 2;
+  const g = ctx.createRadialGradient(ancho / 2, alto / 2, r * 0.5, ancho / 2, alto / 2, r);
+  g.addColorStop(0, "rgba(0, 0, 0, 0)"); g.addColorStop(1, `rgba(0, 0, 0, ${Math.min(0.8, fuerza * 0.6)})`);
+  ctx.save(); ctx.fillStyle = g; ctx.fillRect(0, 0, ancho, alto); ctx.restore();
 }
 
 /**
@@ -1380,8 +1569,18 @@ function estadoACompleta(capa, cuando, momento, t, c) {
 }
 
 function dibujarEscena(ctx, escena, momento, t, cGuion, primera = false) {
-  const c = { ...cGuion, tipoEscena: escena.tipo, luzFondo: luzDelFondo(escena, cGuion.paleta), escenaId: escena.id, exacta: Boolean(cGuion.exacta || escena.maquetacion === "exacta") };
+  const c = {
+    ...cGuion, tipoEscena: escena.tipo, luzFondo: luzDelFondo(escena, cGuion.paleta), escenaId: escena.id, exacta: Boolean(cGuion.exacta || escena.maquetacion === "exacta"),
+    colorFondo: colorDe(escena.fondo?.color ?? "fondo", cGuion.paleta),
+  };
+  // La cámara mueve el fondo a la mitad que lo demás: paralaje, la sensación de profundidad.
+  const cam = camaraEn(escena.camara, momento, t, c.lado);
+  ctx.save();
+  aplicarCamara(ctx, cam, c, 0.5);
   dibujarFondo(ctx, escena.fondo, c.ancho, c.alto, c.paleta, escena.id, t);
+  ctx.restore();
+  ctx.save();
+  aplicarCamara(ctx, cam, c, 1);
   const todas = capasDe(escena);
   const tiempos = tiemposDeEscena(todas, momento, primera);
   // Los videos y las imágenes a sangre, encima del fondo y detrás de todo lo demás.
@@ -1417,9 +1616,17 @@ function dibujarEscena(ctx, escena, momento, t, cGuion, primera = false) {
     }
     // Palabra por palabra: cuándo se dice cada palabra, desde que entró la capa (lo que dibuja cada una).
     const conTiempos = capa.tipo === "texto" && capa.porPalabra ? { ...estado, palabras: tiemposRelativos(capa, momento, tiempos.get(capa.id)) } : estado;
+    // Máscara de una capa entera: sube desde detrás de su propia caja.
+    if (estado.mascara > 0) {
+      const m = medirCapa(ctx, capa, c, s.ancho);
+      ctx.beginPath(); ctx.rect(-m.w / 2 - c.lado * 0.04, -m.h / 2 - c.lado * 0.02, m.w + c.lado * 0.08, m.h + c.lado * 0.04); ctx.clip();
+      ctx.translate(0, m.h * 1.1 * estado.mascara);
+    }
+    if (estado.desenfoque > 0.5) ctx.filter = `blur(${estado.desenfoque.toFixed(1)}px)`;
     dibujarCapa(ctx, capa, conTiempos, c, s.ancho);
     ctx.restore();
   }
+  ctx.restore();
 }
 
 // ------------------------------------------------------------
@@ -1652,24 +1859,192 @@ export function dibujarFrame(ctx, { guion, linea, t = 0, formato, paleta, recurs
   const tr = escena.transicion ?? { tipo: "corte", dur: 0 };
   const p = k > 0 && tr.tipo !== "corte" && tr.dur > 0 ? limitar((t - momento.desde) / tr.dur) : 1;
   if (p < 1) {
-    // La anterior se queda quieta en su último fotograma mientras entra la nueva.
+    // La anterior, en su último fotograma (la mueve la transición, si es de las que mueven las dos).
     const previa = linea.escenas[k - 1];
-    dibujarEscena(ctx, escenas[k - 1], previa, previa.hasta - 1 / FPS, c, k - 1 === 0);
-    const q = suave.entraSale(p);
-    ctx.save();
-    if (tr.tipo === "fundido") ctx.globalAlpha = q;
-    if (tr.tipo === "barrido") { ctx.beginPath(); ctx.rect(0, 0, ancho * q, alto); ctx.clip(); }
-    if (tr.tipo === "deslizar") ctx.translate(ancho * (1 - q), 0);
-    if (tr.tipo === "zoom") {
-      ctx.globalAlpha = q;
-      const s = 1.15 - 0.15 * q;
-      ctx.translate(ancho / 2, alto / 2); ctx.scale(s, s); ctx.translate(-ancho / 2, -alto / 2);
+    const vieja = () => dibujarEscena(ctx, escenas[k - 1], previa, previa.hasta - 1 / FPS, c, k - 1 === 0);
+    const nueva = () => dibujarEscena(ctx, escena, momento, t, c, k === 0);
+    if (TRANSICIONES_CON_MOVIMIENTO.has(tr.tipo)) dibujarTransicion(ctx, tr, p, c, vieja, nueva, Math.round(t * FPS));
+    else {
+      vieja();
+      const q = suave.entraSale(p);
+      ctx.save();
+      if (tr.tipo === "fundido") ctx.globalAlpha = q;
+      if (tr.tipo === "barrido") { ctx.beginPath(); ctx.rect(0, 0, ancho * q, alto); ctx.clip(); }
+      if (tr.tipo === "deslizar") {
+        const d = VECTOR[tr.dir ?? "izq"] ?? VECTOR.izq;
+        ctx.translate(-d.x * ancho * (1 - q), -d.y * alto * (1 - q));
+      }
+      if (tr.tipo === "zoom") {
+        ctx.globalAlpha = q;
+        const s = 1.15 - 0.15 * q;
+        ctx.translate(ancho / 2, alto / 2); ctx.scale(s, s); ctx.translate(-ancho / 2, -alto / 2);
+      }
+      nueva();
+      ctx.restore();
     }
-    dibujarEscena(ctx, escena, momento, t, c, k === 0);
-    ctx.restore();
   } else dibujarEscena(ctx, escena, momento, t, c, k === 0);
+  dibujarVineta(ctx, guion?.estilo?.vineta ?? 0, ancho, alto);
   dibujarSubtitulos(ctx, c, linea, t);
   dibujarGrano(ctx, recursos.grano, guion?.estilo?.grano ?? 0, Math.round(t * FPS), ancho, alto);
+  ctx.restore();
+}
+
+// ------------------------------------------------------------
+// Las transiciones que MUEVEN las dos escenas (las de un editor de movimiento, no un fundido de presentación)
+// ------------------------------------------------------------
+
+/** Hacia dónde se mueve el contenido: «izq» = lo nuevo entra por la derecha y empuja hacia la izquierda. */
+const VECTOR = Object.freeze({ izq: { x: -1, y: 0 }, der: { x: 1, y: 0 }, arriba: { x: 0, y: -1 }, abajo: { x: 0, y: 1 } });
+export const TRANSICIONES_CON_MOVIMIENTO = new Set(["empuje", "golpe", "cortina", "circulo", "persiana", "glitch"]);
+
+/** Envuelve un dibujo con desenfoque (en píxeles; nada por debajo de medio píxel). */
+function conDesenfoque(ctx, px, dibujo) {
+  ctx.save();
+  if (px > 0.5) ctx.filter = `blur(${px.toFixed(1)}px)`;
+  dibujo();
+  ctx.restore();
+}
+
+function escalarDesdeElCentro(ctx, c, s) {
+  ctx.translate(c.ancho / 2, c.alto / 2); ctx.scale(s, s); ctx.translate(-c.ancho / 2, -c.alto / 2);
+}
+
+/**
+ * Un rectángulo que cubre la franja [s0, s1] del recorrido (0 = el borde por donde ENTRA lo que cruza, 1 = el de enfrente),
+ * en la dirección `d`. Para las cortinas y las persianas.
+ */
+function franja(c, d, s0, s1) {
+  if (d.x < 0) return [c.ancho * (1 - s1), 0, c.ancho * (s1 - s0), c.alto];
+  if (d.x > 0) return [c.ancho * s0, 0, c.ancho * (s1 - s0), c.alto];
+  if (d.y < 0) return [0, c.alto * (1 - s1), c.ancho, c.alto * (s1 - s0)];
+  return [0, c.alto * s0, c.ancho, c.alto * (s1 - s0)];
+}
+
+function dibujarTransicion(ctx, tr, p, c, vieja, nueva, frame) {
+  const { ancho, alto, lado, paleta } = c;
+  const d = VECTOR[tr.dir ?? (tr.tipo === "persiana" ? "der" : tr.tipo === "cortina" ? "izq" : "arriba")] ?? VECTOR.arriba;
+  const color = colorDe(tr.color ?? (tr.tipo === "golpe" ? "claro" : "acento"), paleta);
+  ctx.save();
+  // Debajo de todo, negro: lo que deje ver un borde desenfocado es sombra, no el cuadro anterior.
+  ctx.fillStyle = "#000000"; ctx.fillRect(0, 0, ancho, alto);
+  switch (tr.tipo) {
+    case "empuje": {
+      // Lo nuevo EMPUJA a lo viejo: las dos se mueven juntas, con desenfoque de movimiento en lo más rápido y un leve
+      // acercamiento que tapa los bordes del desenfoque.
+      const q = suave.expoEntraSale(p);
+      const borroso = lado * 0.035 * Math.sin(Math.PI * p) ** 2;
+      const s = 1 + 0.06 * Math.sin(Math.PI * p);
+      const W = d.x ? ancho : 0; const H = d.y ? alto : 0;
+      ctx.save(); escalarDesdeElCentro(ctx, c, s); ctx.translate(d.x * W * q, d.y * H * q); conDesenfoque(ctx, borroso, vieja); ctx.restore();
+      ctx.save(); escalarDesdeElCentro(ctx, c, s); ctx.translate(-d.x * W * (1 - q), -d.y * H * (1 - q)); conDesenfoque(ctx, borroso, nueva); ctx.restore();
+      break;
+    }
+    case "golpe": {
+      // Zoom de IMPACTO: lo viejo se dispara hacia la cámara, destello, y lo nuevo cae desde cerca y se asienta.
+      if (p < 0.5) {
+        const a = suave.expoEntra(p / 0.5);
+        ctx.save(); escalarDesdeElCentro(ctx, c, 1 + 0.6 * a); conDesenfoque(ctx, lado * 0.045 * a, vieja); ctx.restore();
+      } else {
+        const b = suave.expo((p - 0.5) / 0.5);
+        ctx.save(); escalarDesdeElCentro(ctx, c, 1.35 - 0.35 * b); conDesenfoque(ctx, lado * 0.04 * (1 - b), nueva); ctx.restore();
+      }
+      const destello = Math.max(0, 1 - Math.abs(p - 0.5) / 0.12) ** 2;
+      if (destello > 0) { ctx.globalAlpha = 0.75 * destello; ctx.fillStyle = color; ctx.fillRect(0, 0, ancho, alto); ctx.globalAlpha = 1; }
+      break;
+    }
+    case "cortina": {
+      // Dos PAÑOS de marca cruzan la pantalla: el del color tapa, el segundo (que contrasta) lo sigue; detrás, la escena
+      // nueva, que todavía se desliza un poco al descubrirse.
+      const segundo = contraste(color, colorDe("oscuro", paleta), colorDe("claro", paleta));
+      const tramo = (x, a, b) => suave.expoEntraSale(limitar((x - a) / (b - a)));
+      if (p < 0.5) {
+        vieja();
+        const e1 = tramo(p, 0, 0.4); const e2 = tramo(p, 0.1, 0.5);
+        ctx.fillStyle = color; ctx.fillRect(...franja(c, d, 0, e1));
+        ctx.fillStyle = segundo; ctx.fillRect(...franja(c, d, 0, e2));
+      } else {
+        const x2 = tramo(p, 0.5, 0.85); const x1 = tramo(p, 0.6, 1);
+        ctx.save();
+        const empuje = (1 - x1) * 0.12;
+        ctx.translate(-d.x * ancho * empuje, -d.y * alto * empuje);
+        nueva();
+        ctx.restore();
+        ctx.fillStyle = color; ctx.fillRect(...franja(c, d, x1, 1));
+        ctx.fillStyle = segundo; ctx.fillRect(...franja(c, d, x2, 1));
+      }
+      break;
+    }
+    case "circulo": {
+      // Un círculo se abre desde el centro con un aro de marca en su borde; lo nuevo se asienta de un poco más cerca.
+      vieja();
+      const q = suave.expoEntraSale(p);
+      const r = (Math.hypot(ancho, alto) / 2) * 1.02 * q;
+      ctx.save();
+      ctx.beginPath(); ctx.arc(ancho / 2, alto / 2, Math.max(0.1, r), 0, Math.PI * 2); ctx.clip();
+      escalarDesdeElCentro(ctx, c, 1.12 - 0.12 * q);
+      nueva();
+      ctx.restore();
+      if (q < 1) {
+        ctx.strokeStyle = color; ctx.lineWidth = lado * 0.03 * (1 - q) + 1;
+        ctx.beginPath(); ctx.arc(ancho / 2, alto / 2, Math.max(0.1, r), 0, Math.PI * 2); ctx.stroke();
+      }
+      break;
+    }
+    case "persiana": {
+      // Bandas que entran escalonadas, cada una con un filo de marca: lo nuevo aparece en una sola pasada.
+      vieja();
+      const n = 7; const retraso = 0.05;
+      ctx.save();
+      ctx.beginPath();
+      const filos = [];
+      for (let i = 0; i < n; i++) {
+        const q = suave.expoEntraSale(limitar((p - i * retraso) / (1 - retraso * (n - 1))));
+        if (q <= 0) continue;
+        // La banda i: un trozo del lado perpendicular; dentro, se descubre a lo largo del recorrido.
+        const [x, y, w, h] = franja(c, d, 0, q);
+        const banda = d.x ? [x, (alto / n) * i, w, alto / n + 1] : [(ancho / n) * i, y, ancho / n + 1, h];
+        ctx.rect(...banda);
+        if (q < 1) filos.push(banda);
+      }
+      ctx.clip();
+      nueva();
+      ctx.restore();
+      ctx.fillStyle = color;
+      const g = lado * 0.012;
+      for (const [x, y, w, h] of filos) {
+        if (d.x < 0) ctx.fillRect(x, y, g, h); else if (d.x > 0) ctx.fillRect(x + w - g, y, g, h);
+        else if (d.y < 0) ctx.fillRect(x, y, w, g); else ctx.fillRect(x, y + h - g, w, g);
+      }
+      break;
+    }
+    case "glitch": {
+      // Corte de SEÑAL: la escena salta en tiras desplazadas, con barras de color y un desfase de canal.
+      const base = p < 0.5 ? vieja : nueva;
+      const otra = p < 0.5 ? nueva : vieja;
+      base();
+      const al = aleatorio(semilla(`glitch:${frame}`));
+      const fuerza = Math.sin(Math.PI * p);
+      for (const [dibujo, veces] of [[otra, 5], [base, 4]]) {
+        ctx.save();
+        ctx.beginPath();
+        for (let i = 0; i < veces; i++) ctx.rect(0, al() * alto, ancho, alto * (0.015 + al() * 0.09));
+        ctx.clip();
+        ctx.translate((al() - 0.5) * ancho * 0.18 * fuerza, 0);
+        dibujo();
+        ctx.restore();
+      }
+      ctx.save();
+      ctx.globalCompositeOperation = "screen";
+      for (const tono of [color, colorDe("apoyo", paleta), "#FFFFFF"]) {
+        ctx.globalAlpha = 0.55 * fuerza;
+        ctx.fillStyle = tono;
+        ctx.fillRect((al() - 0.3) * ancho * 0.5, al() * alto, ancho * (0.3 + al() * 0.7), alto * (0.006 + al() * 0.02));
+      }
+      ctx.restore();
+      break;
+    }
+    default: vieja(); nueva();
+  }
   ctx.restore();
 }
 

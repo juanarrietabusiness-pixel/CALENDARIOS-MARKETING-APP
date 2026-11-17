@@ -96,8 +96,10 @@ src/
                           de tiempo anclada a palabras (`lineaDeTiempo`, `tiempoDeCapa`) y el ciclo del proyecto (puro;
                           lo leerán el motor de Canvas, el Worker y el render del Container). Ver docs/formato-escenas-v1.md
     motorVideo.js         El MOTOR del video animado: dibuja el instante t de un guion en un Canvas 2D (paleta del kit,
-                          posiciones, entradas, salidas, bucles, transiciones, fondo, grano). Puro y determinista: lo
-                          comparten la vista previa y el render del Container
+                          posiciones, entradas, salidas, bucles, transiciones, fondo, grano; y el movimiento gráfico:
+                          transiciones que mueven las dos escenas, fondos vivos, cámara, viñeta, letra cinética y
+                          resalte; sus pruebas en movimientoGrafico.test.js). Puro y determinista: lo comparten la
+                          vista previa y el render del Container
     motorPiezas.js        Las PIEZAS del motor: iconos dibujados, cifra que cuenta, el dibujo libre (formas), los fondos de
                           estrellas y líneas, quitar el fondo liso del logo y su tono (puro: navegador y Container)
     motorComponentes.js   Los componentes del video animado que eran marcador: lista (escalonada), burbuja, reloj, antes y
@@ -141,7 +143,7 @@ src/
                           pistas, el costo (puro; también el Worker)
     directorMusical.js    El DIRECTOR MUSICAL: lo que el código cuenta del video (BPM por los cortes, silencios, momentos), el
                           pedido a la IA con la música de la marca delante, leer su propuesta (sin artistas) y el respaldo (puro)
-    efectosSonido.js      Los efectos del video animado: whoosh en las transiciones y pop en sellos y llamados, sintetizados
+    efectosSonido.js      Los efectos del video animado: whoosh en las transiciones, impacto en golpe y glitch, y pop en sellos y llamados, sintetizados
                           (sin archivos) y mezclados bajitos; o los de la biblioteca (`muestrasDeEfecto`, `propios`) (puro: el Container)
     bibliotecaSonido.js   La BIBLIOTECA DE SONIDO (música y efectos de cada cliente y de la agencia): la categoría por el modelo,
                           limpiar nombre, etiquetas, BPM y duración, el orden (la música de la marca primero) y qué pista encaja
