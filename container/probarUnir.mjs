@@ -88,6 +88,36 @@ try {
   if (Math.abs(s2.duracion - 6) > 0.3) falla(`ángulos: dura ${s2.duracion} s, se esperaban 6`);
   console.log(`✓ ángulos: ${s2.ancho}×${s2.alto}, ${s2.duracion.toFixed(2)} s, con el audio del original`);
 
+  // Un gancho: el momento fuerte primero (con SU audio), luego el video desde el principio, con texto y color.
+  const gancho = await unir({
+    original: "unir-original", color: "calido", texto: { texto: "¿Duermes con calor? Mira esto", hasta: 1.5 },
+    tramos: [{ clip: "unir-original", desde: 4, hasta: 5.5 }, { clip: "unir-original", desde: 0, hasta: 6 }],
+  });
+  if (gancho.estado !== 200) falla(`/unir (gancho) respondió ${gancho.estado}: ${Buffer.from(gancho.bytes).toString()}`);
+  await writeFile(join(carpeta, "gancho.mp4"), gancho.bytes);
+  const s3 = sonda(join(carpeta, "gancho.mp4"));
+  if (!s3.audio || Math.abs(s3.duracion - 7.5) > 0.3) falla(`gancho: ${s3.duracion} s, audio ${s3.audio}; se esperaban 7,5 s con audio`);
+  console.log(`✓ gancho con texto y color: ${s3.duracion.toFixed(2)} s, con audio`);
+
+  // Un tramo nuevo SIN sonido (lo que hizo el modelo) seguido del original: silencio y luego el audio del original.
+  const nuevo = await unir({
+    original: "unir-original",
+    tramos: [{ clip: "unir-mejora", desde: 0, hasta: 3, audio: { clip: "unir-mejora", desde: 0 } }, { clip: "unir-original", desde: 2, hasta: 6 }],
+  });
+  if (nuevo.estado !== 200) falla(`/unir (entrada nueva) respondió ${nuevo.estado}: ${Buffer.from(nuevo.bytes).toString()}`);
+  await writeFile(join(carpeta, "nuevo.mp4"), nuevo.bytes);
+  const s4 = sonda(join(carpeta, "nuevo.mp4"));
+  if (!s4.audio || Math.abs(s4.duracion - 7) > 0.3) falla(`entrada nueva: ${s4.duracion} s, audio ${s4.audio}; se esperaban 7 s con audio`);
+  console.log(`✓ entrada nueva sin sonido + el original: ${s4.duracion.toFixed(2)} s`);
+
+  // La muestra de un color y un fotograma.
+  for (const [ruta, cuerpo] of [["/muestra-color", { clip: "unir-original", color: "cine", t: 1 }], ["/fotograma", { clip: "unir-original", t: -0.05 }]]) {
+    const r = await fetch(`${base}${ruta}`, { method: "POST", body: JSON.stringify(cuerpo) });
+    const b = new Uint8Array(await r.arrayBuffer());
+    if (r.status !== 200 || b[0] !== 0xff || b[1] !== 0xd8) falla(`${ruta} no devolvió un JPEG (${r.status})`);
+  }
+  console.log("✓ muestra de color y fotograma en JPEG");
+
   const sinClip = await unir({ original: "unir-original", tramos: [{ clip: "no-esta", desde: 0, hasta: 2 }] });
   if (sinClip.estado !== 400) falla(`un clip que no está debía ser 400 y fue ${sinClip.estado}`);
   console.log("✓ un clip que no está es un 400");

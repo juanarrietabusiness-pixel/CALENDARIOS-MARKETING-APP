@@ -21,6 +21,8 @@ const DesgloseVideo = lazy(() => import("./DesgloseVideo"));
 const PonerEnPublicacion = lazy(() => import("./PonerEnPublicacion"));
 // «Mejorar mi video» y «Varios ángulos» (escalar, look, cambiar algo, ángulos), con el audio original.
 const MejorarVideo = lazy(() => import("./MejorarVideo"));
+// «Nuevos ganchos»: versiones de la entrada (o del cierre) del mismo anuncio, para probarlas en Meta.
+const NuevosGanchos = lazy(() => import("./NuevosGanchos"));
 // «Variaciones para anuncios»: de esta pieza maestra, las de un conjunto de anuncios (sólo se descarga al pulsarlo).
 const VariacionesAnuncio = lazy(() => import("./VariacionesAnuncio"));
 
@@ -203,6 +205,7 @@ export default function Visor({
   const [poniendo, setPoniendo] = useState(false);
   const [variando, setVariando] = useState(false);
   const [mejorando, setMejorando] = useState(false);
+  const [ganchos, setGanchos] = useState(false);
   const m = modeloPorId(a.modelo);
   const puedeOtra = !lectura && !a.subido && costoOtra != null && onOtraIgual;
   const video = a.tipo === "video";
@@ -261,6 +264,11 @@ export default function Visor({
           {video && !lectura && clienteId && esVideoReal(a) && (
             <button type="button" className="btn btn-secondary est-barra-boton" onClick={() => setMejorando(true)} title="Escalar, cambiar la luz, cambiar algo o sacar varios ángulos de la toma, con el audio original">
               <Icon name="wand" size={18} /> <span>Mejorar</span>
+            </button>
+          )}
+          {video && !lectura && clienteId && esVideoReal(a) && (
+            <button type="button" className="btn btn-secondary est-barra-boton" onClick={() => setGanchos(true)} title="Varias versiones de la entrada del anuncio para probarlas en Meta">
+              <Icon name="sparkles" size={18} /> <span>Ganchos</span>
             </button>
           )}
           <a className="btn btn-secondary est-barra-boton" href={a.src} download={nombreDeDescarga(a)}><Icon name="download" size={18} /> <span>Descargar</span></a>
@@ -434,6 +442,11 @@ export default function Visor({
       {extrayendo && (
         <Suspense fallback={null}>
           <ExtraerUgc client={cliente} inicial={{ id: a.id, src: a.src, nombre: "Este video" }} onCerrar={() => setExtrayendo(false)} />
+        </Suspense>
+      )}
+      {ganchos && (
+        <Suspense fallback={null}>
+          <NuevosGanchos clienteId={clienteId} archivo={a} cliente={cliente} onCerrar={() => setGanchos(false)} />
         </Suspense>
       )}
       {mejorando && (

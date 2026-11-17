@@ -478,13 +478,16 @@ export const MODELOS = Object.freeze([
     },
   },
   {
-    id: "seedance-2-5-kie", motor: "kie", tipo: "video", nombre: "Seedance 2.5 (Kie)", cola: true,
+    // `soloFinal`: admite la imagen FINAL sin la inicial (el gancho nuevo que termina en el cuadro donde sigue el video).
+    id: "seedance-2-5-kie", motor: "kie", tipo: "video", nombre: "Seedance 2.5 (Kie)", cola: true, soloFinal: true,
     creador: "ByteDance", calidad: 4, velocidad: "normal", costo: 0.1, por: "s", referencias: 14, inicial: 1, final: 1, video: 1, estimado: true,
     costoSegun: { ajuste: "resolution", valores: { "480p": 0.06, "720p": 0.1, "1080p": 0.16 } },
     nota: "Seedance 2.5 por Kie.ai: hasta 14 referencias y videos de referencia, de 4 a 30 s, con sonido. Precio aproximado.",
     para: ["muchas referencias", "videos largos"],
     ajustes: {
-      aspectRatio: enumerado(["9:16", "16:9", "1:1", "3:4", "4:3"], "9:16"), duration: enumerado(["5", "6", "8", "10", "12", "15", "20", "30"], "10"),
+      // Kie admite cualquier entero de 4 a 30: más valores para no pagar 30 s por un video de 21 («Mejorar mi video»).
+      aspectRatio: enumerado(["9:16", "16:9", "1:1", "3:4", "4:3"], "9:16"),
+      duration: enumerado(["5", "6", "8", "10", "12", "15", "18", "20", "22", "25", "28", "30", "4"], "10"),
       resolution: enumerado(["720p", "1080p", "480p"], "720p"), sonido: enumerado(["si", "no"], "si"),
     },
   },
@@ -973,7 +976,7 @@ export function validarPedido(entrada = {}) {
   if (final.length > (modelo.final ?? 0)) {
     return { ok: false, error: modelo.final ? `${modelo.nombre} lleva una sola imagen final.` : `${modelo.nombre} no admite imagen final.` };
   }
-  if (final.length && !inicial.length) return { ok: false, error: "La imagen final necesita también una inicial." };
+  if (final.length && !inicial.length && !modelo.soloFinal) return { ok: false, error: "La imagen final necesita también una inicial." };
   if (modelo.necesitaImagen && !inicial.length && !referencias.length) {
     return { ok: false, error: `${modelo.nombre} no crea desde texto solo: necesita ${modelo.inicial ? "una imagen inicial" : "al menos una imagen de referencia"}.` };
   }

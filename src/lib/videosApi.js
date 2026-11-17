@@ -152,3 +152,13 @@ export async function ligarVideo(clienteId, id, { postId = "", calendarId = "" }
   avisar(clienteId, id);
   return r;
 }
+
+/**
+ * Un borrador desde una PLANTILLA de movimiento gráfico (src/lib/plantillasVideo.js): el guion lo arma el servidor, sin
+ * IA. `datos` según la plantilla. → { video, avisos }.
+ */
+export async function crearDesdePlantilla(clienteId, { plantilla, datos, titulo, calendarId, postId } = {}) {
+  const r = await pedir(`${base(clienteId)}/plantilla`, json("POST", { plantilla, datos, titulo, calendarId, postId }));
+  avisar(clienteId, r?.video?.id);
+  return r;
+}

@@ -72,6 +72,7 @@ import { paraDe, tramosEnDuracion, USOS_ESTRUCTURA, estructuraDeTramosConPeso } 
 import { estilosDelCliente, estiloDelCliente, guardarEstilo, aplicarEstiloAVideo, ErrorEstilo } from "./estilosVideo.js";
 import { aplicarEstilo, lineaDeEstilo, USOS_ESTILO_VIDEO } from "../../../src/lib/estilosVideo.js";
 import { conFondosPorCrear } from "../../../src/lib/fondosVideo.js";
+import { PLANTILLAS_VIDEO, guionDePlantilla } from "../../../src/lib/plantillasVideo.js";
 
 const clienteParam = { cliente: { type: "string", description: "Nombre del cliente. En el asistente de un cliente se puede omitir: es ese cliente." } };
 const videoParam = { video_id: { type: "string", description: "ID del proyecto de video (de listar_videos o crear_video)." } };
@@ -413,6 +414,23 @@ export const DEFINICIONES_VIDEO = Object.freeze([
     },
   },
   {
+    name: "plantilla_video",
+    description: "Crea un video animado (borrador) desde una PLANTILLA de movimiento gráfico: el guion lo arma el código con el kit del cliente, sin voz y sin IA (gratis; el render, céntimos de céntimo). Plantillas: " +
+      PLANTILLAS_VIDEO.map((p) => `«${p.id}» (${p.detalle})`).join(" ") +
+      " Datos de cada una — comentarios: { usuario?, comentario, likes?, respuestas: [hasta 4 frases cortas, una por pantalla], producto? (ID de una foto de la galería), llamado? }; busqueda: { busqueda, resultados: [hasta 4, el último es el de la marca], producto?, nombre?, precio?, llamado? }; producto: { fotos: [1 a 3 IDs de fotos del producto], textos?: [hasta 8 palabras o frases muy cortas], precio?, llamado? }; logo: { fotos: [3 a 12 IDs de fotos de la marca], llamado? }. Los textos los escribes TÚ con el método. Después: sonido_video para la música, ver_escenas para mirarlo y renderizar_video.",
+    input_schema: {
+      type: "object",
+      properties: {
+        ...clienteParam,
+        plantilla: { type: "string", enum: PLANTILLAS_VIDEO.map((p) => p.id) },
+        datos: { type: "object", description: "Lo de esa plantilla (arriba)." },
+        titulo: { type: "string" },
+        publicacion_id: { type: "string", description: "Opcional: la publicación a la que va." },
+      },
+      required: ["plantilla", "datos"],
+    },
+  },
+  {
     name: "ligar_video",
     description: "Liga el video animado a una publicación del calendario del cliente (de ver_calendario), o lo desliga con publicacion_id vacío. Si el mp4 ya está renderizado, se pone en esa publicación YA (primero en sus medios, o en el sitio del mp4 anterior de este video); si no, se pondrá al terminar el render. Desligar no quita el mp4 del post de antes. No gasta nada.",
     input_schema: {
@@ -424,7 +442,7 @@ export const DEFINICIONES_VIDEO = Object.freeze([
 ]);
 
 /** Las que escriben (en el MCP van como escritura; las demás, de sólo lectura). */
-export const ESCRIBEN_VIDEO = Object.freeze(["guardar_estructura", "eliminar_estructura", "voz_de_marca", "lexico_de_marca", "guardar_estilo_video", "aplicar_estilo_video", "fondos_video", "video_con_cancion", "publicar_con_musica", "crear_video", "guardar_video", "editar_escena", "aprobar_video", "renderizar_video", "ligar_video", "sonido_video", "volver_a_version", "personaje_video"]);
+export const ESCRIBEN_VIDEO = Object.freeze(["plantilla_video", "guardar_estructura", "eliminar_estructura", "voz_de_marca", "lexico_de_marca", "guardar_estilo_video", "aplicar_estilo_video", "fondos_video", "video_con_cancion", "publicar_con_musica", "crear_video", "guardar_video", "editar_escena", "aprobar_video", "renderizar_video", "ligar_video", "sonido_video", "volver_a_version", "personaje_video"]);
 
 /** Lo que falta para el siguiente paso, en una frase para el modelo. Pura. */
 /** ¿La locución es de la versión aprobada? (un video «aprobado» con voz de esa versión ya no la necesita otra vez). */
@@ -754,6 +772,24 @@ export function crearHerramientasVideo({ env, acceso, resolverCliente, usuario, 
         return [
           `Creado el video «${r.video.titulo}» (ID ${r.video.id}), versión 1, en borrador. Se ve en el Estudio de ${c.name} → Video → Animado con código.`,
           estilo ? `Con el estilo guardado «${estilo.nombre}»: su forma ya está impuesta.` : "",
+          r.avisos.length ? `Avisos: ${r.avisos.map((a) => `${a.donde}: ${a.mensaje}`).join("; ")}` : "",
+          textoDelVideo(r.video, { conGuion: false }),
+        ].filter(Boolean).join("\n");
+      });
+    },
+
+    async plantilla_video({ cliente, plantilla, datos, titulo, publicacion_id: postId }) {
+      const c = await resolverCliente(cliente);
+      const p = guionDePlantilla(String(plantilla ?? ""), datos ?? {});
+      if (p.error) throw new Fallo(p.error);
+      return conErrores(async () => {
+        const liga = postId ? await publicacionDelCliente(acceso, c.id, postId) : null;
+        if (postId && !liga) throw new ErrorVideo(`No encontré la publicación «${postId}» en los calendarios de ${c.name} (los IDs salen de ver_calendario).`, 404);
+        const r = await crearProyecto(acceso, c, { guion: p.guion, titulo: titulo || p.guion.titulo, calendarId: liga?.calendarId, postId: liga?.postId, usuario });
+        avisar(c.id, r.video.id);
+        return [
+          `Creado desde la plantilla «${plantilla}» el video «${r.video.titulo}» (ID ${r.video.id}), versión 1, en borrador.`,
+          "Ponle música con sonido_video (de musicas), míralo con ver_escenas y renderízalo con renderizar_video.",
           r.avisos.length ? `Avisos: ${r.avisos.map((a) => `${a.donde}: ${a.mensaje}`).join("; ")}` : "",
           textoDelVideo(r.video, { conGuion: false }),
         ].filter(Boolean).join("\n");

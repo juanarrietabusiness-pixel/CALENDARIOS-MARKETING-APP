@@ -58,6 +58,8 @@
 //                                           sangre con su movimiento y la música en su sonido), aprobado y renderizándose;
 //                                           al terminar la publicación es un reel con la foto de portada. No gasta IA
 //                                           (worker/lib/estudio/conMusica.js). 503 sin Container, 409 `sin_musica`
+//   POST   /api/videos/<c>/plantilla        { plantilla: comentarios|busqueda|producto|logo, datos, titulo?, calendarId?, postId? }:
+//                                           un borrador desde una PLANTILLA de movimiento gráfico (el código arma el guion; gratis)
 //   POST   /api/videos/<c>/cancion          { musicaId, letra, confirmado }: «Video con tu canción»: SINCRONIZA la letra con
 //                                           una canción ya grabada de la biblioteca de sonido (del cliente o de la agencia):
 //                                           ElevenLabs alinea la letra (y aísla la voz si hace falta), si no Gemini la oye.
@@ -96,6 +98,7 @@
 // y siempre con su confirmación de costo.
 // ============================================================
 
+import { guionDePlantilla } from "../../src/lib/plantillasVideo.js";
 import { json, error, cuerpo, noEncontrado } from "../lib/respuesta.js";
 import { difundir, firma } from "../lib/vivo.js";
 import {
@@ -224,6 +227,17 @@ async function rutasDelCliente(req, env, { acceso, usuario, partes, metodo }) {
       return json(r, 201);
     }
     return error("Método no permitido.", 405);
+  }
+
+  // Una PLANTILLA de movimiento gráfico (src/lib/plantillasVideo.js): el guion lo arma el código, sin IA (gratis).
+  if (id === "plantilla" && !accion) {
+    if (metodo !== "POST") return error("Método no permitido.", 405);
+    const b = (await cuerpo(req)) ?? {};
+    const p = guionDePlantilla(String(b.plantilla ?? ""), b.datos ?? {});
+    if (p.error) return error(p.error, 400);
+    const r = await crearProyecto(acceso, cliente, { guion: p.guion, titulo: b.titulo || p.guion.titulo, calendarId: b.calendarId, postId: b.postId, usuario });
+    avisar(env, acceso, usuario, req, clienteId, r.video.id);
+    return json(r, 201);
   }
 
   // Escribir el guion con IA (no guarda: lo revisa la persona en la pantalla).

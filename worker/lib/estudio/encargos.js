@@ -262,7 +262,8 @@ export async function crearEncargo(env, acceso, cliente, cuerpo = {}, { usuario 
     if (!pasos.length && !datos.propuesta) throw new ErrorEstudio("El carrusel no trae ninguna lámina.", 400);
   } else {
     pasos = (Array.isArray(cuerpo.pasos) ? cuerpo.pasos : []).slice(0, MAX_PASOS).map(limpiarPaso).filter(Boolean);
-    if (!pasos.length) throw new ErrorEstudio("El encargo no trae ninguna pieza.", 400);
+    // Una mejora sin IA (el color, el gancho con el momento fuerte) no tiene piezas: sólo la unión en el Container.
+    if (!pasos.length && tipo !== "mejora") throw new ErrorEstudio("El encargo no trae ninguna pieza.", 400);
     const ids = new Set();
     for (const p of pasos) { if (ids.has(p.id)) p.id = `${p.id}-${ids.size}`; ids.add(p.id); }
   }
@@ -327,7 +328,7 @@ export async function avanzarEncargo(env, acceso, id) {
   }
   const listos = fila.tipo === "reel"
     ? reelTerminado(datos, pasos)
-    : pasos.length > 0 && pasos.every(terminado) && !pasos.some((p) => porAcabar(env, p)) && unionTerminada(datos);
+    : (pasos.length > 0 || fila.tipo === "mejora") && pasos.every(terminado) && !pasos.some((p) => porAcabar(env, p)) && unionTerminada(datos);
   // Un carrusel terminado queda ORDENADO en su carpeta (la galería lo enseña como una tarjeta, en este orden). Si la
   // pantalla pone después el texto de la plantilla, vuelve a ordenarlo con las finales.
   if (listos && r.estado == null && fila.tipo === "carrusel" && datos.carpetaId) {
@@ -340,7 +341,9 @@ export async function avanzarEncargo(env, acceso, id) {
     if (orden.length) await ordenarCarpeta(acceso, fila.client_id, datos.carpetaId, orden).catch(() => null);
   }
   const delReel = fila.tipo === "reel" && listos && r.estado == null ? estadoDelReel(datos, pasos) : null;
-  const estado = r.estado ?? delReel?.estado ?? (listos ? (pasos.every((p) => p.fase === "fallido") ? "fallido" : "hecho") : "en_marcha");
+  // Una mejora sin pasos se juzga por su unión.
+  const sinPasos = fila.tipo === "mejora" && !pasos.length;
+  const estado = r.estado ?? delReel?.estado ?? (listos ? ((sinPasos ? datos.mejora?.union?.fase === "fallido" : pasos.every((p) => p.fase === "fallido")) ? "fallido" : "hecho") : "en_marcha");
   // Las piezas que pidió Claude con su post_id se ponen solas en su publicación, una vez, al terminar.
   if (estado === "hecho" && datos.poner && fila.tipo !== "reel" && !datos.puestos) {
     try { datos.puestos = await ponerResultados(env, acceso, fila, pasos, datos); } catch (e) { console.error("encargo: poner en la publicación", e); datos.puestos = []; }
@@ -360,7 +363,7 @@ export async function avanzarEncargo(env, acceso, id) {
     nota: texto(r.nota ?? (fila.tipo === "reel" ? notaDelReel(datos, pasos)
       : (fila.tipo === "mejora" && textoDeMejora(datos.mejora)) || notaDe(pasos)), 300), estado,
     ...(estado !== "en_marcha" ? { terminado_at: ahora() } : {}),
-    ...(estado === "fallido" ? { error: texto(r.error ?? delReel?.error ?? pasos.find((p) => p.error)?.error ?? "No salió ninguna pieza.", 400) } : {}),
+    ...(estado === "fallido" ? { error: texto(r.error ?? delReel?.error ?? pasos.find((p) => p.error)?.error ?? datos.mejora?.union?.error ?? "No salió ninguna pieza.", 400) } : {}),
   };
   await acceso.actualizar("estudio_encargos", { id, bloqueado_hasta: permiso }, cambios);
   const actual = await acceso.leerUno("estudio_encargos", { id });
@@ -815,7 +818,7 @@ export async function encargoConArchivos(acceso, fila) {
     ...e.pasos.flatMap((p) => [...p.opciones.map((o) => o.id), ...(p.finales ?? [])]),
     ...(fila.tipo === "reel" ? archivosDelReel(leerJSON(fila.datos, {}), leerJSON(fila.pasos, [])) : []),
     // La mejora: el video final (con el audio original) y el original.
-    ...(fila.tipo === "mejora" ? [e.mejora?.union?.archivoId, e.mejora?.archivoId] : []),
+    ...(fila.tipo === "mejora" ? [...(e.mejora?.union?.archivoIds ?? []), e.mejora?.archivoId] : []),
   ].filter(Boolean))];
   const archivos = ids.length ? await acceso.leerVarios("estudio_archivos", COLUMNAS_ARCHIVO, "id", ids, { client_id: fila.client_id }) : [];
   return { encargo: e, archivos: archivos.map(archivoPublico) };

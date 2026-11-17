@@ -10,7 +10,7 @@
 // aplicación al abrirse (`terminarPendientes`).
 // ============================================================
 
-import { pedir } from "./db";
+import { pedir, pedirImagen } from "./db";
 import { terminadoEncargo } from "./encargos";
 import { ponerTexto } from "./loteEstudio";
 import { conLogoSiToca } from "./logoEstudio";
@@ -212,3 +212,7 @@ export const listarEncargos = (clienteId) => pedir(ruta(clienteId)).then((r) => 
  * video pregunta siempre). → { encargo, archivos }.
  */
 export const mejorarVideo = (clienteId, datos) => pedir(`/estudio/${encodeURIComponent(clienteId)}/mejorar-video`, post(datos));
+/** Los textos de los ganchos (o lo que pasa en una entrada o un cierre nuevos), escritos por la IA. No crea nada. */
+export const textosDeGancho = (clienteId, datos) => pedir(`/estudio/${encodeURIComponent(clienteId)}/mejorar-video/textos`, post(datos));
+/** La muestra de un color: un cuadro del video con ese grade → una dirección `blob:` para un <img>. Gratis. */
+export const muestraDeColor = (clienteId, datos) => pedirImagen(`/estudio/${encodeURIComponent(clienteId)}/mejorar-video/muestra`, datos);

@@ -32,7 +32,7 @@ import { gruposDeSubtitulos, grupoEn, estadoDePalabras } from "./subtitulos.js";
 import {
   dibujarIcono, dibujarFormas, dibujarEstrellas, dibujarLineas, formatearCifra, avanceDeCuenta, logoNecesitaPlaca,
 } from "./motorPiezas.js";
-import { dibujarLista, dibujarBurbuja, dibujarReloj, dibujarAntesDespues, dibujarTelefono } from "./motorComponentes.js";
+import { dibujarLista, dibujarBurbuja, dibujarComentario, dibujarBusqueda, dibujarReloj, dibujarAntesDespues, dibujarTelefono } from "./motorComponentes.js";
 import {
   partirEnfasis, tieneEnfasis, encajarRico, encajarGigante, tiemposDePalabras, impactoDe,
 } from "./motorTexto.js";
@@ -44,7 +44,7 @@ export { FUENTE_CASA, ARCHIVO_FUENTE_CASA, FUENTE_IMPACTO, impactoDe } from "./m
 /** Los componentes que este motor ya dibuja (todos los del formato v1). Uno desconocido sale como marcador. */
 export const COMPONENTES_LISTOS = Object.freeze([
   "texto", "sello", "imagen", "forma", "logo", "llamado", "cifra", "icono", "anillo", "dibujo", "personaje",
-  "lista", "burbuja", "reloj", "antes_despues", "telefono", "video",
+  "lista", "burbuja", "reloj", "antes_despues", "telefono", "video", "comentario", "busqueda",
 ]);
 
 /** Una capa de video a sangre (`encuadre` «completo»): va detrás de todo, a todo el cuadro, y no entra en el reparto. */
@@ -1240,7 +1240,7 @@ function dibujarCapa(ctx, capa, estado, c, ancho = capa.tam * c.lado) {
       lineas.forEach((l, i) => ctx.fillText(l, 0, -((lineas.length - 1) * tam * 1.2) / 2 + i * tam * 1.2));
       return { w, h };
     }
-    case "lista": case "burbuja": case "reloj": case "antes_despues": case "telefono": {
+    case "lista": case "burbuja": case "reloj": case "antes_despues": case "telefono": case "comentario": case "busqueda": {
       // Los de motorComponentes.js, con los ayudantes de aquí (importarlos allí sería circular).
       const h = {
         w, lado, maxAlto, vida: estado.vida, titular, cuerpo, rect: rectRedondo, partir: partirEnLineas,
@@ -1251,6 +1251,8 @@ function dibujarCapa(ctx, capa, estado, c, ancho = capa.tam * c.lado) {
       if (capa.tipo === "burbuja") return dibujarBurbuja(ctx, capa, h);
       if (capa.tipo === "reloj") return dibujarReloj(ctx, capa, h, avanceDeCuenta(estado.vida, true));
       if (capa.tipo === "antes_despues") return dibujarAntesDespues(ctx, capa, h);
+      if (capa.tipo === "comentario") return dibujarComentario(ctx, capa, h);
+      if (capa.tipo === "busqueda") return dibujarBusqueda(ctx, capa, h);
       return dibujarTelefono(ctx, capa, h);
     }
     default: {

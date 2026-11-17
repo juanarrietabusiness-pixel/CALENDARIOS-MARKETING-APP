@@ -26,6 +26,8 @@ import SelectorEstiloVideo from "./SelectorEstiloVideo";
 
 const FORMATOS = [["9:16", "Vertical 9:16"], ["1:1", "Cuadrado 1:1"], ["16:9", "Horizontal 16:9"]];
 const CrearConCancion = lazy(() => import("./CrearConCancion"));
+// «Plantillas de moda»: reels de movimiento gráfico armados por el código (sin IA ni voz).
+const CrearConPlantilla = lazy(() => import("./CrearConPlantilla"));
 
 export default function CrearVideoAnimado({ client, publicacion = null, onListo, onPlantilla, onCancelar, onCreado, formaInicial = "idea" }) {
   const ids = useId();
@@ -66,8 +68,20 @@ export default function CrearVideoAnimado({ client, publicacion = null, onListo,
     <div className="va-opciones" role="group" aria-label="De qué sale el video">
       <button type="button" className="filter-chip" aria-pressed={forma === "idea"} onClick={() => setForma("idea")}><Icon name="sparkles" /> Con una idea</button>
       <button type="button" className="filter-chip" aria-pressed={forma === "cancion"} onClick={() => setForma("cancion")}><Icon name="music" /> Con tu canción</button>
+      <button type="button" className="filter-chip" aria-pressed={forma === "plantilla"} onClick={() => setForma("plantilla")}><Icon name="video" /> Plantillas de moda</button>
     </div>
   );
+  if (forma === "plantilla") {
+    return (
+      <section className="va-crear" aria-labelledby={`${ids}-t`}>
+        <h3 id={`${ids}-t`}>Video nuevo con una plantilla de moda</h3>
+        {formas}
+        <Suspense fallback={<p className="hint">Cargando…</p>}>
+          <CrearConPlantilla client={client} publicacion={publicacion} onCreado={onCreado} onCancelar={onCancelar} />
+        </Suspense>
+      </section>
+    );
+  }
   if (forma === "cancion") {
     return (
       <section className="va-crear" aria-labelledby={`${ids}-t`}>

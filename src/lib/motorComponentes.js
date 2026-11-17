@@ -336,3 +336,140 @@ export function dibujarTelefono(ctx, capa, h) {
   ctx.fill();
   return { w: pw, h: ph };
 }
+
+/** El «me gusta» de un comentario: «1.234» → «1,2 mil». Pura. */
+export const likesCortos = (n) => {
+  const x = Math.max(0, Math.round(Number(n) || 0));
+  return x >= 1000 ? `${(x / 1000).toFixed(x >= 10000 ? 0 : 1).replace(".", ",")} mil` : String(x);
+};
+
+/**
+ * COMENTARIO como los de Instagram: la inicial del usuario en su círculo, el usuario en negrita, el texto y debajo
+ * «Responder»; a la derecha el corazón con los «me gusta». Sobre una tarjeta del color pedido (blanca por defecto).
+ */
+export function dibujarComentario(ctx, capa, h) {
+  const { lado, cuerpo, titular } = h;
+  const tam = lado * 0.04;
+  const pad = tam * 0.9;
+  const av = tam * 2.3;
+  const ancho = h.w;
+  const fondo = h.color(capa.color || "claro");
+  const tinta = h.legible("texto", fondo);
+  ctx.font = `500 ${Math.round(tam)}px ${cuerpo}`;
+  const lineas = h.partir(ctx, capa.texto, ancho - pad * 3 - av - tam * 1.6).slice(0, 4);
+  const alto = Math.max(av, tam * 1.3 * (lineas.length + 2)) + pad * 2;
+  ctx.fillStyle = fondo;
+  h.rect(ctx, -ancho / 2, -alto / 2, ancho, alto, tam * 0.9);
+  ctx.fill();
+  const x0 = -ancho / 2 + pad;
+  const y0 = -alto / 2 + pad;
+  // La foto: un círculo con la inicial.
+  const usuario = String(capa.usuario || "cliente").replace(/^@/, "");
+  ctx.fillStyle = h.color("acento");
+  ctx.beginPath(); ctx.arc(x0 + av / 2, y0 + av / 2, av / 2, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = h.legible("claro", h.color("acento"));
+  ctx.font = `700 ${Math.round(tam * 1.1)}px ${titular}`;
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.fillText(usuario.slice(0, 1).toLocaleUpperCase("es"), x0 + av / 2, y0 + av / 2);
+  // El usuario y el texto.
+  const xt = x0 + av + pad * 0.8;
+  ctx.textAlign = "left";
+  ctx.fillStyle = tinta;
+  ctx.font = `700 ${Math.round(tam)}px ${cuerpo}`;
+  ctx.fillText(usuario, xt, y0 + tam * 0.65);
+  ctx.font = `500 ${Math.round(tam)}px ${cuerpo}`;
+  lineas.forEach((l, i) => ctx.fillText(l, xt, y0 + tam * 0.65 + tam * 1.3 * (i + 1)));
+  ctx.globalAlpha *= 0.6;
+  ctx.font = `600 ${Math.round(tam * 0.8)}px ${cuerpo}`;
+  ctx.fillText("Responder", xt, y0 + tam * 0.65 + tam * 1.3 * (lineas.length + 1));
+  ctx.globalAlpha /= 0.6;
+  // El corazón y sus «me gusta».
+  const xc = ancho / 2 - pad - tam * 0.6;
+  const yc = y0 + tam;
+  const r = tam * 0.32;
+  ctx.fillStyle = h.color("acento");
+  ctx.beginPath();
+  ctx.moveTo(xc, yc + r * 1.6);
+  ctx.bezierCurveTo(xc - r * 2.2, yc + r * 0.2, xc - r * 1.2, yc - r * 1.5, xc, yc - r * 0.4);
+  ctx.bezierCurveTo(xc + r * 1.2, yc - r * 1.5, xc + r * 2.2, yc + r * 0.2, xc, yc + r * 1.6);
+  ctx.fill();
+  if (capa.likes > 0) {
+    ctx.fillStyle = tinta;
+    ctx.globalAlpha *= 0.7;
+    ctx.font = `600 ${Math.round(tam * 0.7)}px ${cuerpo}`;
+    ctx.textAlign = "center";
+    ctx.fillText(likesCortos(capa.likes), xc, yc + r * 3.4);
+    ctx.globalAlpha /= 0.7;
+  }
+  return { w: ancho, h: alto };
+}
+
+/** Lo que se ve escrito de la búsqueda a los `vida` segundos (16 letras por segundo; sin vida, entera). Pura. */
+export const escritoHasta = (texto, vida) => (Number.isFinite(vida) ? String(texto).slice(0, Math.max(0, Math.floor(vida * 16))) : String(texto));
+
+/**
+ * BÚSQUEDA: una barra redondeada con la lupa donde la búsqueda se ESCRIBE sola (con su cursor) y, cuando termina,
+ * los resultados entran uno tras otro debajo; el último, destacado con el acento.
+ */
+export function dibujarBusqueda(ctx, capa, h) {
+  const { lado, cuerpo } = h;
+  const tam = lado * 0.042;
+  const ancho = h.w;
+  const barra = tam * 2.6;
+  const fondo = h.color(capa.color || "claro");
+  const tinta = h.legible("texto", fondo);
+  const resultados = (capa.resultados ?? []).slice(0, 4);
+  const filaAlto = tam * 2.1;
+  const sep = tam * 0.5;
+  const alto = barra + (resultados.length ? sep + resultados.length * (filaAlto + sep * 0.6) : 0);
+  const y0 = -alto / 2;
+  ctx.fillStyle = fondo;
+  h.rect(ctx, -ancho / 2, y0, ancho, barra, barra / 2);
+  ctx.fill();
+  // La lupa.
+  const xl = -ancho / 2 + barra * 0.5;
+  const yl = y0 + barra / 2;
+  ctx.strokeStyle = tinta; ctx.lineWidth = tam * 0.16;
+  ctx.beginPath(); ctx.arc(xl - tam * 0.1, yl - tam * 0.1, tam * 0.42, 0, Math.PI * 2); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(xl + tam * 0.22, yl + tam * 0.22); ctx.lineTo(xl + tam * 0.55, yl + tam * 0.55); ctx.stroke();
+  // Lo escrito y el cursor (parpadea mientras escribe).
+  const escrito = escritoHasta(capa.texto, h.vida);
+  const maxTexto = ancho - barra * 1.3;
+  // La letra se achica (una vez, con el texto entero) para que la búsqueda completa quepa en la barra.
+  let tamTexto = tam;
+  ctx.font = `500 ${Math.round(tamTexto)}px ${cuerpo}`;
+  while (tamTexto > lado * 0.026 && ctx.measureText(String(capa.texto)).width > maxTexto) {
+    tamTexto *= 0.92;
+    ctx.font = `500 ${Math.round(tamTexto)}px ${cuerpo}`;
+  }
+  ctx.textAlign = "left"; ctx.textBaseline = "middle";
+  ctx.fillStyle = tinta;
+  let visible = escrito;
+  while (visible.length > 1 && ctx.measureText(visible).width > maxTexto) visible = visible.slice(1);
+  const xt = xl + tam * 0.9;
+  ctx.fillText(visible, xt, yl);
+  const termino = escrito.length >= String(capa.texto).length;
+  const vida = Number.isFinite(h.vida) ? h.vida : 99;
+  if (!termino || Math.floor(vida * 2) % 2 === 0) ctx.fillRect(xt + ctx.measureText(visible).width + tam * 0.1, yl - tam * 0.6, tam * 0.1, tam * 1.2);
+  // Los resultados, cuando acabó de escribir: uno cada 0,35 s.
+  const desde = String(capa.texto).length / 16 + 0.3;
+  resultados.forEach((r, i) => {
+    const p = Math.min(1, Math.max(0, (vida - desde - i * 0.35) / 0.25));
+    if (p <= 0) return;
+    const y = y0 + barra + sep + i * (filaAlto + sep * 0.6);
+    const ultimo = i === resultados.length - 1;
+    ctx.save();
+    ctx.globalAlpha *= p;
+    ctx.translate(0, (1 - p) * tam);
+    ctx.fillStyle = fondo;
+    h.rect(ctx, -ancho / 2, y, ancho, filaAlto, tam * 0.6);
+    ctx.fill();
+    if (ultimo) { ctx.strokeStyle = h.color("acento"); ctx.lineWidth = tam * 0.18; h.rect(ctx, -ancho / 2, y, ancho, filaAlto, tam * 0.6); ctx.stroke(); }
+    ctx.fillStyle = ultimo ? h.legible("acento", fondo) : tinta;
+    ctx.font = `${ultimo ? 700 : 500} ${Math.round(tam * 0.9)}px ${cuerpo}`;
+    const linea = h.partir(ctx, r, ancho - tam * 2)[0] ?? "";
+    ctx.fillText(linea, -ancho / 2 + tam, y + filaAlto / 2);
+    ctx.restore();
+  });
+  return { w: ancho, h: alto };
+}

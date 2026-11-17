@@ -213,6 +213,12 @@ export const COMPONENTES = Object.freeze({
     },
   },
   burbuja: { nombre: "Burbuja de chat", props: { texto: T(90, true), lado: E(["izq", "der"], "izq"), color: C("superficie") } },
+  // Un COMENTARIO como los de Instagram (la plantilla «Respondo tu comentario»): la foto (la inicial), el usuario, el
+  // texto, el corazón con los «me gusta» y «Responder». `usuario` sin @; vacío, «cliente».
+  comentario: { nombre: "Comentario de Instagram", props: { usuario: T(30), texto: T(140, true), likes: N(0, 999999, 0), color: C("claro") } },
+  // Una BARRA DE BÚSQUEDA que se escribe sola (a unas 16 letras por segundo) y debajo, uno tras otro, los resultados;
+  // el último sale destacado con el acento (el de la marca). La plantilla «Búsqueda».
+  busqueda: { nombre: "Barra de búsqueda", props: { texto: T(60, true), resultados: { t: "textos", max: 4, maxTexto: 50, def: [] }, color: C("claro") } },
   // Una IMAGEN de la galería. En su caja por defecto; con `encuadre` «completo», A SANGRE detrás de todo (como un video):
   // `recorte` cubrir llena el cuadro, contener la enseña entera sobre ella misma ampliada, difuminada y oscurecida.
   // `movimiento` la mueve despacio todo el rato que se ve (acercar, alejar o paneo: un «Ken Burns»), `dura` hace que la
