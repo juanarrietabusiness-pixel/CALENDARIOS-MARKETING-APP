@@ -389,6 +389,9 @@ no aquí.
   la lista de modelos ordenable). Pendiente: toda la parte de Meta como proveedor de texto, y
   probar fal.ai y Higgsfield con una llave real.
 - `DEPLOY.md` — puesta en producción en Cloudflare: Worker, D1, R2 y el corte.
+- `docs/auditoria-estudio-mcp.md` — auditoría del Estudio por MCP (2026-11-18): errores del diseño, del video y del
+  sonido, el director, el contexto que le llega a Claude, los cuellos de botella y lo que la app hace y el MCP no, con
+  el plan en siete entregas. Auditoría; nada implementado.
 - `docs/auditoria-ux-ui.md` — auditoría de UX, UI, responsive y accesibilidad,
   con lo corregido y lo pendiente.
 - `docs/migracion-cloudflare.md` — plan para mover la aplicación de Supabase +
