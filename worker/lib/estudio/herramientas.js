@@ -51,9 +51,12 @@ import { estadoMotores } from "./motores.js";
 import { crearTrabajo, trabajoPublico, ErrorEstudio } from "./trabajos.js";
 import { buscar as buscarCerebro } from "../cerebro/cerebro.js";
 import { pack } from "../cerebro/memoria.js";
+import { NO_NULO } from "../acceso.js";
 import { kitDe } from "./kit.js";
-import { pedidoConMarca, ponerLogo, kitVacio, IDS_PRESET, TIPOS_PRESET } from "../../../src/lib/kitMarca.js";
-import { productosActivos } from "../../../src/lib/estudioMercado.js";
+// La papelera y las carpetas: las MISMAS funciones que las rutas (galeria.js no importa esto: no hay ciclo).
+import { variasAPapelera, recuperar, borrarCarpeta, vaciarPapelera, MAX_LOTE } from "./galeria.js";
+import { pedidoConMarca, ponerLogo, kitVacio, clavesDeLaMarca, IDS_PRESET, TIPOS_PRESET } from "../../../src/lib/kitMarca.js";
+import { productosActivos, fotosDelCatalogo } from "../../../src/lib/estudioMercado.js";
 import { lineasDeReferencias } from "../../../src/lib/referencias.js";
 import { ajustarFicha, esFicha, textoDeLaFicha } from "../../../src/lib/director.js";
 import { listarVoces, pedirMuestra, pedirLocucion, pedirLocucionSuelta, MAX_TEXTO_SUELTA, ErrorVoz } from "./locucion.js";
@@ -162,6 +165,55 @@ export const DEFINICIONES_ESTUDIO = Object.freeze([
         archivo_ids: { type: "array", items: { type: "string" }, description: "IDs de la galería (de 1 a 6)." },
       },
       required: ["cliente", "archivo_ids"],
+    },
+  },
+  {
+    name: "mover_a_papelera",
+    description:
+      "Manda piezas de la galería del Estudio a la PAPELERA (no las borra: se recuperan 30 días con recuperar_de_papelera). Los IDs salen de " +
+      "ver_estudio. Lo que usa la MARCA (el logo, las fotos del catálogo, las plantillas, los personajes) NO se puede: se queda y la respuesta " +
+      "dice cuál y por qué. Úsala cuando pidan quitar, borrar o limpiar piezas. No gasta.",
+    input_schema: {
+      type: "object",
+      properties: { ...clienteParam, archivo_ids: { type: "array", items: { type: "string" }, description: `IDs de la galería (hasta ${MAX_LOTE}).` } },
+      required: ["archivo_ids"],
+    },
+  },
+  {
+    name: "recuperar_de_papelera",
+    description: "Saca piezas de la papelera y las devuelve a la galería. Los IDs salen de ver_estudio (la papelera). No gasta.",
+    input_schema: {
+      type: "object",
+      properties: { ...clienteParam, archivo_ids: { type: "array", items: { type: "string" }, description: "IDs de la papelera." } },
+      required: ["archivo_ids"],
+    },
+  },
+  {
+    name: "borrar_carpeta",
+    description:
+      "Quita una CARPETA de la galería. Por defecto sus piezas no se borran: quedan en «Sin carpeta». Con con_piezas=true van antes a la " +
+      "papelera (30 días para recuperarlas), salvo las de la marca, que se quedan y se dicen. Los IDs de las carpetas salen de ver_estudio. " +
+      "La carpeta de un carrusel o un reel agrupa sus piezas: quitarla las deja sueltas. No gasta.",
+    input_schema: {
+      type: "object",
+      properties: {
+        ...clienteParam,
+        carpeta_id: { type: "string", description: "ID de la carpeta." },
+        con_piezas: { type: "boolean", description: "Mandar también sus piezas a la papelera (por defecto no)." },
+      },
+      required: ["carpeta_id"],
+    },
+  },
+  {
+    name: "vaciar_papelera",
+    description:
+      "Borra PARA SIEMPRE lo que está en la papelera de un cliente: el archivo desaparece y no se recupera. Lo que usa una publicación y lo de " +
+      "la marca se quedan, y la respuesta dice qué y por qué. NO SE PUEDE DESHACER, así que la primera llamada no borra nada: dice cuántas " +
+      "piezas se irían y tienes que preguntarle al usuario; sólo si responde que sí, vuelve a llamar con confirmado=true. Nunca pongas " +
+      "confirmado=true por tu cuenta. No gasta.",
+    input_schema: {
+      type: "object",
+      properties: { ...clienteParam, confirmado: { type: "boolean", description: "Sólo tras oír «sí» del usuario a cuántas piezas se borran para siempre." } },
     },
   },
   {
@@ -551,6 +603,15 @@ export function crearHerramientasEstudio({ env, acceso, resolverCliente, usuario
     return { texto, imagenes, vista };
   }
 
+  /** Lo que la MARCA usa (el logo, el catálogo, las plantillas, los personajes): la papelera no se lo lleva. */
+  async function marcaProtegida(cliente) {
+    const fila = await acceso.leerUno("mercado_clientes", { client_id: cliente.id }).catch(() => null);
+    return clavesDeLaMarca(kitDe(cliente), fotosDelCatalogo(catalogoDeLaFila(fila)));
+  }
+
+  /** Los ids que llegan de una herramienta: limpios, sin repetidos y con tope. */
+  const idsDe = (ids) => [...new Set((Array.isArray(ids) ? ids : [ids]).map((x) => String(x ?? "").trim()).filter(Boolean))].slice(0, MAX_LOTE);
+
   const acciones = {
     async ver_estudio({ cliente }) {
       const c = await resolverCliente(cliente);
@@ -777,6 +838,71 @@ export function crearHerramientasEstudio({ env, acceso, resolverCliente, usuario
       ].filter(Boolean).join("\n");
       const vista = vistaDe({ tipo: "piezas", titulo: fichas.length === 1 ? "La pieza" : `${fichas.length} piezas`, cliente: { id: c.id, nombre: c.name }, piezas });
       return imagenes.length ? { texto, imagenes, vista } : texto;
+    },
+
+    async mover_a_papelera({ cliente, archivo_ids: ids = [] }) {
+      const c = await resolverCliente(cliente);
+      const lista = idsDe(ids);
+      if (!lista.length) throw new ErrorHerramientaEstudio("Dime los IDs de las piezas (de ver_estudio).");
+      const r = await variasAPapelera(acceso, c.id, lista, { protegidas: await marcaProtegida(c) });
+      const marca = (r.quedan ?? []).map((q) => `${q.id} (${q.que})`);
+      return [
+        r.hechas ? `${r.hechas} ${r.hechas === 1 ? "pieza" : "piezas"} de ${c.name} a la papelera. Se recuperan 30 días (recuperar_de_papelera).` : `No se movió nada de ${c.name}.`,
+        marca.length ? `Se ${marca.length === 1 ? "queda" : "quedan"} en la galería porque ${marca.length === 1 ? "la usa" : "las usa"} la marca: ${marca.join(", ")}. Hay que cambiarlas antes en el kit o en el catálogo.` : "",
+        r.mas ? `Sólo caben ${MAX_LOTE} por llamada: repite con las que falten.` : "",
+      ].filter(Boolean).join(" ");
+    },
+
+    async recuperar_de_papelera({ cliente, archivo_ids: ids = [] }) {
+      const c = await resolverCliente(cliente);
+      const lista = idsDe(ids);
+      if (!lista.length) throw new ErrorHerramientaEstudio("Dime los IDs de las piezas de la papelera (de ver_estudio).");
+      let hechas = 0;
+      const sin = [];
+      for (const id of lista) {
+        if (await recuperar(acceso, c.id, id)) hechas += 1; else sin.push(id);
+      }
+      return [
+        hechas ? `${hechas} ${hechas === 1 ? "pieza" : "piezas"} de vuelta en la galería de ${c.name}.` : "No se recuperó nada.",
+        sin.length ? `No están en ${c.name}: ${sin.join(", ")}.` : "",
+      ].filter(Boolean).join(" ");
+    },
+
+    async borrar_carpeta({ cliente, carpeta_id: id, con_piezas: conPiezas }) {
+      const c = await resolverCliente(cliente);
+      const cid = String(id ?? "").trim();
+      if (!cid) throw new ErrorHerramientaEstudio("Dime el ID de la carpeta (de ver_estudio).");
+      const con = conPiezas === true;
+      const r = await borrarCarpeta(acceso, c.id, cid, { conArchivos: con, protegidas: con ? await marcaProtegida(c) : null });
+      if (!r) throw new ErrorHerramientaEstudio(`No encontré la carpeta «${cid}» de ${c.name}.`);
+      const marca = (r.quedan ?? []).length;
+      return [
+        `Carpeta quitada de ${c.name}.`,
+        con ? `${r.aPapelera} ${r.aPapelera === 1 ? "pieza" : "piezas"} a la papelera (se recuperan 30 días).` : "Sus piezas siguen en la galería, en «Sin carpeta».",
+        marca ? `${marca} se ${marca === 1 ? "queda" : "quedan"} en la galería: ${marca === 1 ? "es" : "son"} de la marca.` : "",
+      ].filter(Boolean).join(" ");
+    },
+
+    async vaciar_papelera({ cliente, confirmado }) {
+      const c = await resolverCliente(cliente);
+      if (confirmado !== true) {
+        const enPapelera = await acceso.leerColumnas("estudio_archivos", ["id"], { client_id: c.id, borrado_at: NO_NULO }, "borrado_at asc", MAX_LOTE);
+        if (!enPapelera.length) return `La papelera de ${c.name} está vacía: no hay nada que borrar.`;
+        return [
+          `NO SE BORRÓ NADA. En la papelera de ${c.name} hay ${enPapelera.length} ${enPapelera.length === 1 ? "pieza" : "piezas"}.`,
+          "Borrarlas es PARA SIEMPRE: el archivo desaparece y no se recupera (lo que usa una publicación y lo de la marca se queda).",
+          "Dile al usuario cuántas son y pregúntale si lo hago. Sólo si responde que sí, vuelve a llamar con confirmado=true.",
+        ].join(" ");
+      }
+      const r = await vaciarPapelera(env, acceso, c.id, { protegidas: await marcaProtegida(c) });
+      const enUso = (r.quedan ?? []).filter((q) => q.motivo === "publicacion").length;
+      const marca = (r.quedan ?? []).filter((q) => q.motivo === "marca").length;
+      return [
+        r.borrados ? `${r.borrados} ${r.borrados === 1 ? "pieza borrada" : "piezas borradas"} del todo de ${c.name}.` : `No se borró nada de ${c.name}.`,
+        enUso ? `${enUso} se ${enUso === 1 ? "queda" : "quedan"}: ${enUso === 1 ? "la usa" : "las usa"} una publicación (quítala de ahí primero).` : "",
+        marca ? `${marca} se ${marca === 1 ? "queda" : "quedan"}: ${marca === 1 ? "es" : "son"} de la marca.` : "",
+        r.mas ? "Quedan más: vuelve a llamarla con confirmado=true." : "",
+      ].filter(Boolean).join(" ");
     },
 
     async listar_voces({ cliente }) {

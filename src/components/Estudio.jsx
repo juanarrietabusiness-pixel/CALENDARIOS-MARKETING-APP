@@ -788,10 +788,11 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
   };
 
   // ---------- La galería ----------
+  // `exito` puede ser una función de lo que devolvió `hacer`: para decir una cifra que sólo sabe el servidor.
   const accion = async (hacer, exito) => {
     try {
-      await hacer();
-      if (exito) avisar(true, exito);
+      const r = await hacer();
+      if (exito) avisar(true, typeof exito === "function" ? exito(r) : exito);
       await cargar();
     } catch (e) {
       avisar(false, e.message);

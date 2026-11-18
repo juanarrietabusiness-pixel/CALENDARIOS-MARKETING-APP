@@ -176,18 +176,17 @@ export async function vaciarDelTodo(clienteId) {
 }
 
 /**
- * Varias piezas a la papelera, una por una (cada una es su fila), salvo las de la marca. → lo que hay que decir. Si una
- * falla a mitad, el error dice cuántas se mandaron.
+ * Varias piezas a la papelera en UNA llamada (antes era una petición por pieza: 60 imágenes tardaban y un fallo a la
+ * mitad dejaba el lote partido). Las de la marca las deja el SERVIDOR, que es quien sabe cuáles son; aquí se quitan
+ * antes sólo para decirlo sin esperar. → lo que hay que decir.
  */
 export async function variasALaPapelera(clienteId, ids, archivos = []) {
   const { lista, nota } = sinLasDeLaMarca(ids, archivos);
-  let hechas = 0;
-  try {
-    for (const id of lista) { await mandarAPapelera(clienteId, id); hechas += 1; }
-  } catch (e) {
-    throw new Error(hechas ? `Se mandaron ${hechas} de ${lista.length}: ${e.message}` : e.message);
-  }
-  return `${hechas} a la papelera. Puedes recuperarlas 30 días.${nota}`;
+  if (!lista.length) return `Nada a la papelera.${nota}`;
+  const r = await pedir(`${base(clienteId)}/papelera`, post({ ids: lista }));
+  const marca = (r.quedan ?? []).length;
+  const suyas = marca ? ` ${marca === 1 ? "Una se queda: es" : `${marca} se quedan: son`} de la marca (kit o catálogo).` : "";
+  return `${r.hechas ?? 0} a la papelera. Puedes recuperarlas 30 días.${nota || suyas}${r.mas ? " Hay más: repite para las que falten." : ""}`;
 }
 
 /** De unas piezas para la papelera, las que no son de la marca y lo que se dice de las que se quedan. Pura. */
@@ -262,7 +261,9 @@ export function moverEnOrden(ids = [], id, paso) {
   return nuevo;
 }
 export const renombrarCarpeta = (clienteId, id, nombre) => pedir(`${base(clienteId)}/carpetas/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify({ nombre }) });
-export const borrarCarpeta = (clienteId, id) => pedir(`${base(clienteId)}/carpetas/${encodeURIComponent(id)}`, { method: "DELETE" });
+/** Quitar la carpeta. Con `conArchivos`, sus piezas van ANTES a la papelera (30 días para recuperarlas). */
+export const borrarCarpeta = (clienteId, id, { conArchivos = false } = {}) =>
+  pedir(`${base(clienteId)}/carpetas/${encodeURIComponent(id)}${conArchivos ? "?con_archivos=1" : ""}`, { method: "DELETE" });
 
 // ------------------------------------------------------------
 // El modelo FIJADO de un cliente: el que se usa casi siempre con él

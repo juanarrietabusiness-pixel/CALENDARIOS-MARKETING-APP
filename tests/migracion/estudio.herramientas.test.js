@@ -531,3 +531,99 @@ describe("el cerebro para imagen", () => {
     expect(fueraDeUso({ t: "marca", i: 0, ti: "Brand guidelines — Paleta de marca" }, "imagen")).toBe(false);
   });
 });
+
+// ============================================================
+// La papelera y las carpetas desde el asistente y desde Claude: lo que importa es que
+// NADA se borre de verdad sin un sí (la papelera se recupera 30 días; vaciarla, no), que
+// lo de la MARCA se quede, y que un cliente ajeno no exista.
+// ============================================================
+describe("mover a la papelera, carpetas y vaciar", () => {
+  const enPapelera = () => db.sqlite.prepare("select id from estudio_archivos where borrado_at is not null order by id").all().map((f) => f.id);
+  const carpeta = (id, cliente, nombre) =>
+    db.sqlite.prepare("insert into estudio_carpetas (id, owner_id, client_id, nombre) values (?,?,?,?)").run(id, cliente === "c9" ? OTRO : ANA, cliente, nombre);
+
+  it("mover_a_papelera manda varias de una vez y se recuperan", async () => {
+    archivo("f1", "c1");
+    archivo("f2", "c1");
+    const r = await usar(asistente(), "mover_a_papelera", { cliente: "Dcasa", archivo_ids: ["f1", "f2"] });
+    expect(r.error).toBe(false);
+    expect(r.texto).toMatch(/2 piezas de Dcasa a la papelera/);
+    expect(enPapelera()).toEqual(["f1", "f2"]);
+    // Siguen en R2: la papelera no borra nada.
+    expect(objetos.has("clientes/c1/estudio/f1.png")).toBe(true);
+
+    const v = await usar(asistente(), "recuperar_de_papelera", { cliente: "Dcasa", archivo_ids: ["f1"] });
+    expect(v.texto).toMatch(/1 pieza de vuelta/);
+    expect(enPapelera()).toEqual(["f2"]);
+  });
+
+  it("lo que usa la MARCA se queda y lo dice", async () => {
+    const logo = archivo("f1", "c1");
+    archivo("f2", "c1");
+    db.sqlite.prepare("update clients set kit_marca = ? where id = 'c1'").run(JSON.stringify({ logo }));
+    const r = await usar(asistente(), "mover_a_papelera", { cliente: "Dcasa", archivo_ids: ["f1", "f2"] });
+    expect(r.texto).toMatch(/1 pieza de Dcasa a la papelera/);
+    expect(r.texto).toMatch(/el logo del kit/);
+    expect(enPapelera()).toEqual(["f2"]);
+  });
+
+  it("borrar_carpeta deja sus piezas en la galería; con con_piezas van a la papelera", async () => {
+    archivo("f1", "c1");
+    carpeta("k1", "c1", "Enero");
+    carpeta("k2", "c1", "Febrero");
+    db.sqlite.prepare("update estudio_archivos set carpeta_id = 'k1' where id = 'f1'").run();
+
+    const sin = await usar(asistente(), "borrar_carpeta", { cliente: "Dcasa", carpeta_id: "k2" });
+    expect(sin.texto).toMatch(/siguen en la galería/);
+    expect(enPapelera()).toEqual([]);
+
+    const con = await usar(asistente(), "borrar_carpeta", { cliente: "Dcasa", carpeta_id: "k1", con_piezas: true });
+    expect(con.error).toBe(false);
+    expect(con.texto).toMatch(/1 pieza a la papelera/);
+    expect(enPapelera()).toEqual(["f1"]);
+    expect(db.sqlite.prepare("select count(*) as n from estudio_carpetas").get().n).toBe(0);
+  });
+
+  it("vaciar_papelera NO borra nada hasta que llega confirmado=true, y sólo el booleano cuenta", async () => {
+    const clave = archivo("f1", "c1", { borrado: new Date().toISOString() });
+    for (const falso of [undefined, "true", 1, "sí"]) {
+      const r = await usar(asistente(), "vaciar_papelera", { cliente: "Dcasa", ...(falso === undefined ? {} : { confirmado: falso }) });
+      expect(r.texto).toMatch(/NO SE BORRÓ NADA/);
+      expect(r.texto).toMatch(/confirmado=true/);
+    }
+    expect(objetos.has(clave)).toBe(true);
+
+    const si = await usar(asistente(), "vaciar_papelera", { cliente: "Dcasa", confirmado: true });
+    expect(si.texto).toMatch(/1 pieza borrada del todo/);
+    expect(objetos.has(clave)).toBe(false);
+  });
+
+  it("un cliente de otro espacio no existe para ninguna de ellas", async () => {
+    archivo("f9", "c9");
+    carpeta("k9", "c9", "Ajena");
+    for (const [name, input] of [
+      ["mover_a_papelera", { cliente: "Ajeno", archivo_ids: ["f9"] }],
+      ["recuperar_de_papelera", { cliente: "Ajeno", archivo_ids: ["f9"] }],
+      ["borrar_carpeta", { cliente: "Ajeno", carpeta_id: "k9" }],
+      ["vaciar_papelera", { cliente: "Ajeno", confirmado: true }],
+    ]) {
+      const r = await usar(asistente(), name, input);
+      expect(r.error, name).toBe(true);
+    }
+    expect(enPapelera()).toEqual([]);
+    expect(db.sqlite.prepare("select count(*) as n from estudio_carpetas where id = 'k9'").get().n).toBe(1);
+  });
+
+  it("Claude (MCP) las tiene, y las que borran de verdad van marcadas como destructivas", async () => {
+    const porNombre = Object.fromEntries(HERRAMIENTAS_MCP.map((h) => [h.name, h]));
+    for (const n of ["mover_a_papelera", "recuperar_de_papelera", "borrar_carpeta", "vaciar_papelera"]) {
+      expect(porNombre[n], n).toBeTruthy();
+      expect(porNombre[n].annotations.readOnlyHint, n).toBe(false);
+      // Por el MCP el cliente SIEMPRE se indica: nada se borra «del cliente que toque».
+      expect(porNombre[n].inputSchema.required, n).toContain("cliente");
+    }
+    expect(porNombre.vaciar_papelera.annotations.destructiveHint).toBe(true);
+    expect(porNombre.borrar_carpeta.annotations.destructiveHint).toBe(true);
+    expect(porNombre.mover_a_papelera.annotations.destructiveHint).toBe(false);
+  });
+});

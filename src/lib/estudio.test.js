@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { filtrarArchivos, contarFiltros, trabajosVisibles, fraseDeTrabajo, hace, textoPapelera, nombreDeDescarga, archivoDesdeSrc, promptDeEdicion, modeloParaEditar, originalDe, ranurasLibres, RANURAS, pedidoDeCorreccion, agruparGaleria, piezasDeGrupo, textoDeGrupo, nombresParaZip, estaUsado } from "./estudio.js";
+import { describe, it, expect, vi, afterEach } from "vitest";
+import { filtrarArchivos, contarFiltros, trabajosVisibles, fraseDeTrabajo, hace, textoPapelera, nombreDeDescarga, archivoDesdeSrc, promptDeEdicion, modeloParaEditar, originalDe, ranurasLibres, RANURAS, pedidoDeCorreccion, agruparGaleria, piezasDeGrupo, textoDeGrupo, nombresParaZip, estaUsado, variasALaPapelera, borrarCarpeta } from "./estudio.js";
 
 const A = (o) => ({ id: "a", prompt: "una taza", modelo: "nano-banana", favorito: false, subido: false, carpetaId: null, ...o });
 
@@ -339,5 +339,49 @@ describe("las versiones de una pieza van en UNA tarjeta", async () => {
     const trabajos = [{ id: "t9", prompt: "Edita la imagen de referencia: más luz. Conserva todo lo demás.", medios: { reference: ["clientes/c1/vieja.png"] } }];
     const vista = apilarVersiones([a("nueva", { trabajoId: "t9" }), a("vieja")], [], trabajos);
     expect(vista.map((x) => x.id)).toEqual(["nueva"]);
+  });
+});
+
+describe("varias a la papelera: UNA llamada, no una por pieza", () => {
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  /** Un `fetch` que apunta cada petición y contesta como el Worker. */
+  const finge = (respuesta) => {
+    const vistas = [];
+    vi.stubGlobal("fetch", async (url, opciones = {}) => {
+      vistas.push({ url: String(url), metodo: opciones.method ?? "GET", cuerpo: opciones.body ? JSON.parse(opciones.body) : null });
+      return new Response(JSON.stringify(respuesta), { status: 200, headers: { "Content-Type": "application/json" } });
+    });
+    return vistas;
+  };
+
+  it("manda los ids en un solo POST y dice lo que contestó el servidor", async () => {
+    const vistas = finge({ hechas: 3, quedan: [], mas: false });
+    const texto = await variasALaPapelera("c1", ["a", "b", "c"], []);
+    expect(vistas).toHaveLength(1);
+    expect(vistas[0].metodo).toBe("POST");
+    expect(vistas[0].url).toMatch(/\/api\/estudio\/c1\/papelera$/);
+    expect(vistas[0].cuerpo).toEqual({ ids: ["a", "b", "c"] });
+    expect(texto).toMatch(/^3 a la papelera/);
+  });
+
+  it("lo de la marca no se manda, y con nada que mandar no se llama al servidor", async () => {
+    const vistas = finge({ hechas: 1, quedan: [], mas: false });
+    const archivos = [{ id: "a" }, { id: "logo", deLaMarca: "el logo del kit" }];
+    expect(await variasALaPapelera("c1", ["a", "logo"], archivos)).toMatch(/Una se queda: es de la marca/);
+    expect(vistas[0].cuerpo).toEqual({ ids: ["a"] });
+
+    const solas = finge({ hechas: 0, quedan: [], mas: false });
+    expect(await variasALaPapelera("c1", ["logo"], archivos)).toMatch(/Nada a la papelera/);
+    expect(solas).toHaveLength(0);
+  });
+
+  it("quitar la carpeta sólo pide las piezas con la opción puesta", async () => {
+    const vistas = finge({ ok: true, aPapelera: 0, quedan: [] });
+    await borrarCarpeta("c1", "f1");
+    await borrarCarpeta("c1", "f1", { conArchivos: true });
+    expect(vistas[0].url).toMatch(/\/carpetas\/f1$/);
+    expect(vistas[1].url).toMatch(/\/carpetas\/f1\?con_archivos=1$/);
+    expect(vistas.every((v) => v.metodo === "DELETE")).toBe(true);
   });
 });

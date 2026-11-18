@@ -444,6 +444,7 @@ describe("cada espacio y cada colaborador ve sólo lo suyo", () => {
       ["POST", "/api/estudio/c9/trabajos/x/avanzar"],
       ["POST", "/api/estudio/c9/archivos/x/papelera"],
       ["POST", "/api/estudio/c9/carpetas", { nombre: "x" }],
+      ["POST", "/api/estudio/c9/papelera", { ids: ["x"] }],
       ["POST", "/api/estudio/c9/papelera/vaciar"],
     ];
     for (const [metodo, ruta, body] of rutas) {
@@ -610,6 +611,45 @@ describe("subir a mano, carpetas y papelera", () => {
     expect(g.carpetas).toEqual([]);
   });
 
+  it("VARIAS a la papelera en UNA llamada, y lo que no es de este cliente no cuenta", async () => {
+    const a = (await (await subir(JEFE, "c1", pngDistinto(71), "a.png", "image/png")).json()).archivo;
+    const b = (await (await subir(JEFE, "c1", pngDistinto(72), "b.png", "image/png")).json()).archivo;
+    const c = (await (await subir(JEFE, "c1", pngDistinto(73), "c.png", "image/png")).json()).archivo;
+
+    expect((await pedir(JEFE, "/api/estudio/c1/papelera", { method: "POST", body: { ids: [] } })).status).toBe(400);
+
+    const r = await (await pedir(JEFE, "/api/estudio/c1/papelera", { method: "POST", body: { ids: [a.id, b.id, c.id, "no-existe"] } })).json();
+    expect(r).toMatchObject({ hechas: 3, quedan: [], mas: false });
+    const g = await galeria(JEFE, "c1");
+    expect(g.archivos).toEqual([]);
+    expect(g.papelera).toHaveLength(3);
+
+    // Repetirlo no las cuenta otra vez ni les cambia la fecha: ya estaban en la papelera.
+    const fecha = db.sqlite.prepare("select borrado_at from estudio_archivos where id = ?").get(a.id).borrado_at;
+    expect((await (await pedir(JEFE, "/api/estudio/c1/papelera", { method: "POST", body: { ids: [a.id] } })).json()).hechas).toBe(0);
+    expect(db.sqlite.prepare("select borrado_at from estudio_archivos where id = ?").get(a.id).borrado_at).toBe(fecha);
+  });
+
+  it("quitar la carpeta con sus piezas las manda a la papelera; sin la opción, siguen en la galería", async () => {
+    const carpeta = (await (await pedir(JEFE, "/api/estudio/c1/carpetas", { method: "POST", body: { nombre: "Enero" } })).json()).carpeta;
+    const dentro = (await (await subir(JEFE, "c1", pngDistinto(81), "d.png", "image/png")).json()).archivo;
+    const fuera = (await (await subir(JEFE, "c1", pngDistinto(82), "f.png", "image/png")).json()).archivo;
+    await pedir(JEFE, `/api/estudio/c1/archivos/${dentro.id}/cambiar`, { method: "POST", body: { carpetaId: carpeta.id } });
+
+    const otra = (await (await pedir(JEFE, "/api/estudio/c1/carpetas", { method: "POST", body: { nombre: "Febrero" } })).json()).carpeta;
+    expect(await (await pedir(JEFE, `/api/estudio/c1/carpetas/${otra.id}`, { method: "DELETE" })).json()).toMatchObject({ ok: true, aPapelera: 0 });
+
+    const r = await (await pedir(JEFE, `/api/estudio/c1/carpetas/${carpeta.id}?con_archivos=1`, { method: "DELETE" })).json();
+    expect(r).toMatchObject({ ok: true, aPapelera: 1 });
+    const g = await galeria(JEFE, "c1");
+    expect(g.archivos.map((x) => x.id)).toEqual([fuera.id]);
+    expect(g.papelera.map((x) => x.id)).toEqual([dentro.id]);
+    expect(g.carpetas).toEqual([]);
+    // Se recuperan: la papelera es de verdad una papelera.
+    await pedir(JEFE, `/api/estudio/c1/archivos/${dentro.id}/recuperar`, { method: "POST" });
+    expect((await galeria(JEFE, "c1")).archivos).toHaveLength(2);
+  });
+
   /** Un calendario de c1 con publicaciones que llevan esos archivos ({ postId: src }). */
   const conCalendario = (posts) => {
     db.sqlite.prepare("insert or replace into calendars (id, client_id, owner_id, name, month, year, days) values ('cal1', 'c1', ?, 'Octubre 2026', 9, 2026, ?)")
@@ -724,6 +764,18 @@ describe("subir a mano, carpetas y papelera", () => {
       expect(r.status).toBe(409);
       expect(await r.json()).toMatchObject({ codigo: "de_la_marca", que: "el logo del kit" });
       expect((await galeria(JEFE, "c1")).papelera).toEqual([]);
+    });
+
+    it("en el LOTE a la papelera, lo de la marca se queda y el resto se va (el lote no se parte por una)", async () => {
+      const logo = (await (await subir(JEFE, "c1", pngDistinto(61), "logo.png", "image/png")).json()).archivo;
+      const otra = (await (await subir(JEFE, "c1", pngDistinto(62), "otra.png", "image/png")).json()).archivo;
+      marca({ logo: logo.clave });
+      const r = await (await pedir(JEFE, "/api/estudio/c1/papelera", { method: "POST", body: { ids: [logo.id, otra.id] } })).json();
+      expect(r.hechas).toBe(1);
+      expect(r.quedan).toEqual([{ id: logo.id, motivo: "marca", que: "el logo del kit" }]);
+      const g = await galeria(JEFE, "c1");
+      expect(g.archivos.map((x) => x.id)).toEqual([logo.id]);
+      expect(g.papelera.map((x) => x.id)).toEqual([otra.id]);
     });
 
     it("«Quitarlas del kit»: lo que ya no existe sale del kit y del catálogo guardados, y el aviso se va", async () => {

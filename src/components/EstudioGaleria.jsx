@@ -46,6 +46,7 @@ export default function EstudioGaleria({
   const [poner, setPoner] = useState(null);
   const [carpetaNueva, setCarpetaNueva] = useState(null);
   const [renombrando, setRenombrando] = useState(null);
+  const [quitarConPiezas, setQuitarConPiezas] = useState(false); // «Quitar con sus piezas»: a la espera del segundo toque
   const [borrando, setBorrando] = useState(null);
   const [subiendo, setSubiendo] = useState(false);
   const [cargandoMas, setCargandoMas] = useState(false);
@@ -153,7 +154,18 @@ export default function EstudioGaleria({
     e.preventDefault();
     accion(async () => { await api.renombrarCarpeta(client.id, renombrando.id, renombrando.nombre); setRenombrando(null); });
   };
-  const quitarCarpeta = (c) => accion(async () => { await api.borrarCarpeta(client.id, c.id); setFiltro("todas"); }, `Carpeta «${c.nombre}» quitada. Sus archivos siguen en la galería.`);
+  /**
+   * Quitar la carpeta. Por defecto sus piezas siguen en la galería («Sin carpeta»), que es lo de siempre; con `conPiezas`
+   * van a la papelera (30 días) salvo las de la marca, que las deja el servidor y las dice.
+   */
+  const quitarCarpeta = (c, conPiezas = false) => accion(async () => {
+    const r = await api.borrarCarpeta(client.id, c.id, { conArchivos: conPiezas });
+    setQuitarConPiezas(false);
+    setFiltro("todas");
+    return r;
+  }, conPiezas
+    ? (r) => `Carpeta «${c.nombre}» quitada. ${r?.aPapelera ?? 0} a la papelera (30 días para recuperarlas).${(r?.quedan ?? []).length ? ` ${r.quedan.length} de la marca se quedan.` : ""}`
+    : `Carpeta «${c.nombre}» quitada. Sus archivos siguen en la galería.`);
 
   /** «Subir a la galería»: sueltas, sin tocar el pedido; a la carpeta que se mira. */
   const subirSueltas = async (fs) => {
@@ -238,7 +250,10 @@ export default function EstudioGaleria({
           ) : (
             <div className="est-carpeta-acciones">
               <button type="button" className="btn btn-ghost btn-sm" onClick={() => setRenombrando({ id: carpetaActiva.id, nombre: carpetaActiva.nombre })}><Icon name="pencil" size={14} /> Renombrar «{carpetaActiva.nombre}»</button>
-              <button type="button" className="btn btn-ghost btn-sm" onClick={() => quitarCarpeta(carpetaActiva)}><Icon name="trash" size={14} /> Quitar la carpeta</button>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setQuitarConPiezas(false); quitarCarpeta(carpetaActiva); }}><Icon name="trash" size={14} /> Quitar la carpeta</button>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => (quitarConPiezas ? quitarCarpeta(carpetaActiva, true) : setQuitarConPiezas(true))}>
+                <Icon name="trash" size={14} /> {quitarConPiezas ? "Toca otra vez: también sus piezas" : "Quitar con sus piezas"}
+              </button>
             </div>
           )
         )}

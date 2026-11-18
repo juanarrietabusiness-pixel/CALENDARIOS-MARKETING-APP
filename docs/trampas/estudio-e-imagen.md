@@ -682,6 +682,17 @@ contradicen, manda la de más abajo (la más nueva). Una trampa nueva de esta á
   petición) y la pantalla repite mientras `mas`.
   · **No decía por qué se quedaba algo**: devuelve `quedan` con el motivo (la usa la publicación del día X, es el logo…),
   y cada tarjeta de la papelera lo dice.
+- **Mandar VARIAS a la papelera era una petición por pieza** (`variasAPapelera` y `MAX_LOTE` en
+  worker/lib/estudio/galeria.js, `POST /api/estudio/<c>/papelera { ids }`, `variasALaPapelera` en lib/estudio.js):
+  seleccionar 60 imágenes eran 60 POST en serie, tardaba, y si una fallaba a la mitad el lote quedaba partido con el
+  mensaje «Se mandaron 12 de 60». Ahora los ids van en UNA llamada y las filas se marcan en un lote de D1
+  (`acceso.actualizarVarios`); lo de la MARCA no corta el lote: se salta y se dice en `quedan` (como al vaciar), y lo
+  que ya estaba en la papelera no se vuelve a fechar. Tope `MAX_LOTE` (500) por llamada, con `mas` para repetir.
+- **Quitar una carpeta y querer que se vayan sus piezas** (`borrarCarpeta(…, { conArchivos, protegidas })`,
+  `DELETE …/carpetas/<id>?con_archivos=1`): la carpeta es una ETIQUETA y quitarla nunca borró nada —sus piezas vuelven a
+  «Sin carpeta»—, que es lo que necesitan «Desagrupar» y los carruseles. Eso se queda igual por defecto; la opción manda
+  sus piezas a la papelera ANTES de quitarla (30 días para recuperarlas) y las de la marca se quedan. En la pantalla son
+  DOS botones («Quitar la carpeta» y «Quitar con sus piezas», éste con segundo toque), no un `confirm()` del navegador.
 - **Lo de la marca no va a la papelera** (`enviarAPapelera(…, { protegidas })`, 409 `de_la_marca`; `deLaMarca` en cada
   archivo de GET /api/estudio). El logo, las fotos del catálogo, las plantillas, la muestra de la letra y los personajes
   llevan «Marca» con un candado y sin botón de papelera; seleccionadas en grupo, se saltan y se dice (`sinLasDeLaMarca`).
