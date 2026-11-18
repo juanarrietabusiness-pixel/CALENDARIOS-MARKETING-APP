@@ -77,6 +77,9 @@ const esDelEstudio = (f) => f.origen === "estudio" || Boolean(f.subido);
 /** Lo que se lee de la papelera de una vez (y lo que «Vaciar» borra por llamada: si quedan más, la pantalla repite). */
 export const MAX_PAPELERA = 500;
 
+/** Cuántas piezas manda a la papelera UNA llamada (la selección de la galería, o lo que había en una carpeta). */
+export const MAX_LOTE = 500;
+
 /**
  * Lo que de verdad usa cada archivo: `usado_en` se apunta al ponerlo en una publicación y NUNCA se quitaba, así que una
  * imagen que se cambió por otra, o de una publicación que se borró, quedaba «en uso» para siempre y «Vaciar la papelera»
@@ -274,6 +277,29 @@ export async function enviarAPapelera(acceso, clientId, id, { protegidas = null 
   }
   if (!f.borrado_at) await acceso.actualizar("estudio_archivos", { id, client_id: clientId }, { borrado_at: new Date().toISOString() });
   return archivoPublico(await archivoDe(acceso, clientId, id));
+}
+
+/**
+ * VARIAS a la papelera de una vez, en UN lote de D1: antes era una petición por pieza (60 imágenes, 60 POST, y un fallo a
+ * la mitad dejaba el lote partido). Las de la MARCA se saltan y se dicen, como al vaciar, en vez de cortar el lote.
+ * → `{ hechas, quedan: [{ id, motivo: "marca", que }], mas }`.
+ */
+export async function variasAPapelera(acceso, clientId, ids, { protegidas = null } = {}) {
+  const lista = [...new Set((ids ?? []).map(String))].slice(0, MAX_LOTE);
+  if (!lista.length) return { hechas: 0, quedan: [], mas: false };
+  const filas = await acceso.leerVarios("estudio_archivos", ["id", "clave", "borrado_at"], "id", lista, { client_id: clientId });
+  const quedan = [];
+  const fuera = [];
+  for (const f of filas) {
+    const marca = protegidas?.get(f.clave);
+    if (marca && !f.borrado_at) quedan.push({ id: f.id, motivo: "marca", que: marca.que });
+    else if (!f.borrado_at) fuera.push(f.id);
+  }
+  const borrado_at = new Date().toISOString();
+  if (fuera.length) {
+    await acceso.actualizarVarios("estudio_archivos", fuera.map((id) => ({ where: { id, client_id: clientId }, cambios: { borrado_at } })));
+  }
+  return { hechas: fuera.length, quedan, mas: (ids ?? []).length > MAX_LOTE };
 }
 
 /** De la papelera a la galería. */
@@ -543,12 +569,21 @@ export async function renombrarCarpeta(acceso, clientId, id, nombre) {
   return n ? carpetaPublica(await acceso.leerUno("estudio_carpetas", { id, client_id: clientId })) : null;
 }
 
-/** Quitar una carpeta no borra sus archivos: vuelven a «Sin carpeta». */
-export async function borrarCarpeta(acceso, clientId, id) {
-  if (!(await acceso.leerUno("estudio_carpetas", { id, client_id: clientId }))) return false;
+/**
+ * Quitar una carpeta NO borra sus archivos: vuelven a «Sin carpeta». Con `conArchivos`, los manda ANTES a la papelera (se
+ * recuperan 30 días) salvo los de la marca, que se quedan en «Sin carpeta» y se dicen. Sin la opción, lo de siempre.
+ * → `null` si la carpeta no es de este cliente; si no, `{ aPapelera, quedan }`.
+ */
+export async function borrarCarpeta(acceso, clientId, id, { conArchivos = false, protegidas = null } = {}) {
+  if (!(await acceso.leerUno("estudio_carpetas", { id, client_id: clientId }))) return null;
+  let papelera = { hechas: 0, quedan: [] };
+  if (conArchivos) {
+    const dentro = await acceso.leerColumnas("estudio_archivos", ["id"], { carpeta_id: id, client_id: clientId, borrado_at: NULO }, "created_at asc", MAX_LOTE);
+    if (dentro.length) papelera = await variasAPapelera(acceso, clientId, dentro.map((f) => f.id), { protegidas });
+  }
   await acceso.actualizar("estudio_archivos", { carpeta_id: id, client_id: clientId }, { carpeta_id: null });
   await acceso.borrar("estudio_carpetas", { id, client_id: clientId });
-  return true;
+  return { aPapelera: papelera.hechas, quedan: papelera.quedan };
 }
 
 /** Cuántas imágenes de la marca se comprueban en R2 por lectura, como mucho: cada una cuenta como petición. */

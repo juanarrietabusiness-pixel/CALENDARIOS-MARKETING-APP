@@ -58,6 +58,7 @@
 //   POST   /<cliente>/archivos/<id>/recuperar      De la papelera
 //   POST   /<cliente>/archivos/<id>/perdido        Quitar la ficha de un archivo que ya no está en R2
 //   DELETE /<cliente>/archivos/<id>?forzar=1       Borrar del todo (sólo desde la papelera)
+//   POST   /<cliente>/papelera                    { ids } VARIAS a la papelera de una vez (lo de la marca se queda y se dice)
 //   POST   /<cliente>/papelera/vaciar           Todo lo que no se usa de verdad; dice qué se queda y por qué
 //   POST   /<cliente>/kit/perdidas              Quita del kit y del catálogo lo de la marca que ya no existe
 //   POST   /<cliente>/archivos/<id>/control         { texto? }: el control de calidad (la IA mira la pieza; queda en la ficha)
@@ -74,7 +75,7 @@
 //   POST   /<cliente>/carpetas                     { nombre, tipo?, reusar? } (tipo «carrusel» | «reel»: la galería la agrupa;
 //                                                   «auto»: la pone la aplicación y no gasta las 30 de la persona)
 //   PUT    /<cliente>/carpetas/<id>                { nombre?, orden? } (orden: ids de sus piezas, en orden)
-//   DELETE /<cliente>/carpetas/<id>
+//   DELETE /<cliente>/carpetas/<id>[?con_archivos=1]  (con la opción, sus piezas van ANTES a la papelera)
 //
 // Todo pasa por `clienteDe()`: el cliente tiene que ser de este espacio y, si
 // quien pregunta es un colaborador, de los suyos. Uno ajeno da «no
@@ -114,7 +115,7 @@ import {
   crearTrabajo, avanzarTrabajo, cancelarTrabajo, reintentarTrabajo, trabajoPublico, ErrorEstudio,
 } from "../lib/estudio/trabajos.js";
 import {
-  leerGaleria, subirArchivo, cambiarArchivo, marcarUso, enviarAPapelera, recuperar, borrarParaSiempre, quitarPerdido,
+  leerGaleria, subirArchivo, cambiarArchivo, marcarUso, enviarAPapelera, variasAPapelera, recuperar, borrarParaSiempre, quitarPerdido,
   vaciarPapelera, crearCarpeta, renombrarCarpeta, ordenarCarpeta, borrarCarpeta, archivoPublico, clavesPerdidas,
   paginaDeGaleria, buscarEnGaleria,
 } from "../lib/estudio/galeria.js";
@@ -656,6 +657,16 @@ export async function rutasEstudio(req, env, { acceso, usuario, partes, metodo }
     }
 
     // ---------- La papelera ----------
+    // Varias de una vez: la selección de la galería era una petición por pieza.
+    if (b === "papelera" && !c && metodo === "POST") {
+      const datos = (await cuerpo(req)) ?? {};
+      const ids = Array.isArray(datos.ids) ? datos.ids.map(String) : [];
+      if (!ids.length) return error("Dime qué piezas.", 400);
+      const { protegidas } = await marcaDe();
+      const r = await variasAPapelera(acceso, cliente.id, ids, { protegidas });
+      avisar();
+      return json(r);
+    }
     if (b === "papelera" && c === "vaciar" && metodo === "POST") {
       const { protegidas } = await marcaDe();
       const r = await vaciarPapelera(env, acceso, cliente.id, { protegidas });
@@ -682,9 +693,13 @@ export async function rutasEstudio(req, env, { acceso, usuario, partes, metodo }
         return json({ carpeta });
       }
       if (metodo === "DELETE") {
-        if (!(await borrarCarpeta(acceso, cliente.id, c))) return noEncontrado("Carpeta");
+        // Con `con_archivos`, sus piezas van antes a la papelera (se recuperan 30 días); sin ella, lo de siempre.
+        const conArchivos = new URL(req.url).searchParams.get("con_archivos") === "1";
+        const { protegidas } = conArchivos ? await marcaDe() : { protegidas: null };
+        const r = await borrarCarpeta(acceso, cliente.id, c, { conArchivos, protegidas });
+        if (!r) return noEncontrado("Carpeta");
         avisar();
-        return json({ ok: true });
+        return json({ ok: true, ...r });
       }
     }
 

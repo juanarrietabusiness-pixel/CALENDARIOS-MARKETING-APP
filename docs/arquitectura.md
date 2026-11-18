@@ -841,7 +841,9 @@ worker/
                           compartida con /api/generar-imagen), galeria.js (archivos, carpetas,
                           papelera), archivos.js (claves de R2, tipo por bytes), descarga.js (bajar un
                           resultado a R2 por flujo, con topes), herramientas.js (ver_estudio,
-                          crear_en_estudio y estado_trabajo: las mismas para el asistente y el MCP),
+                          crear_en_estudio, estado_trabajo y la papelera —mover_a_papelera,
+                          recuperar_de_papelera, borrar_carpeta, vaciar_papelera con su confirmación—:
+                          las mismas para el asistente y el MCP),
                           miniaturas.js (la copia reducida que VE Claude, por el Container),
                           herramientasDiseno.js (el DIRECTOR por MCP: guía, diseñar, estado del encargo, corregir, poner en
                           un post), catalogoDiseno.js (el catálogo para quien diseña: chat y MCP),
