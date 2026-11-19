@@ -28,7 +28,8 @@ import { conVideoEnPost, rellenarVacios } from "../../../src/lib/resultadoEnPost
 import { pedidoDelVideo, aBase64, subirClips, subirImagenes, sinLoQueNoSubio } from "./cuadros.js";
 import { claveDeArchivo, claveDelCliente, slugCorto } from "./archivos.js";
 import { puedeRenderizar, esMp4, PLAZO_RENDER_MS } from "../../../src/lib/renderVideo.js";
-import { tieneHabla } from "../../../src/lib/videoEscenas.js";
+import { tieneHabla, lineaDeTiempo } from "../../../src/lib/videoEscenas.js";
+import { instanteLleno } from "../../../src/lib/revisionEscenas.js";
 import { limpiarSonido, SITIOS_EFECTO } from "../../../src/lib/sonidoVideo.js";
 import { claveDeSonido } from "./sonidos.js";
 import { MAX_BYTES_SONIDO } from "../../../src/lib/bibliotecaSonido.js";
@@ -100,7 +101,7 @@ async function terminar(acceso, clienteId, id, intento, estado, render) {
  * { aviso } si no se pudo (la publicación ya no está, o ya se publicó). Con `rellenar` ({ descripcion, guion, portada }),
  * además pone esos textos donde la publicación los tiene VACÍOS.
  */
-export async function ponerEnPublicacion(env, acceso, fila, medio, { rellenar = null } = {}) {
+export async function ponerEnPublicacion(env, acceso, fila, medio, { rellenar = null, portadaMs = null } = {}) {
   if (!fila.calendar_id || !fila.post_id) return null;
   const origen = leerJSON(fila.origen, {});
   const esSuyo = (m) => m?.videoAnimado === fila.id || (origen.encargoId && m?.deReel === origen.encargoId);
@@ -111,7 +112,7 @@ export async function ponerEnPublicacion(env, acceso, fila, medio, { rellenar = 
     clienteId: fila.client_id, calendarId: fila.calendar_id, postId: fila.post_id, por: SISTEMA,
     cambiar: (post) => {
       if (deFoto) return postConMusica(post, medio, { videoId: fila.id, foto: origen.foto ?? "", ahora: ahora() });
-      const con = conVideoEnPost(post, medio, esSuyo);
+      const con = conConPortada(conVideoEnPost(post, medio, esSuyo), portadaMs);
       // La estructura de guion que siguió la voz: la publicación la recuerda (si no tenía otra).
       const campos = { ...(rellenar ?? {}), ...(origen.estructuraId ? { estructura: origen.estructuraId } : {}) };
       return Object.keys(campos).length ? rellenarVacios(con, campos).post : con;
@@ -125,6 +126,32 @@ export async function ponerEnPublicacion(env, acceso, fila, medio, { rellenar = 
   }
   if (deFoto && r?.sinCambios) return { aviso: "La foto de la publicación cambió mientras se hacía el video: quedó en la galería, sin tocarla." };
   return { calendarId: r.calendarId, postId: fila.post_id };
+}
+
+/**
+ * El instante (ms) en que la PRIMERA escena está llena —su texto principal ya entero—: el cuadro que Instagram enseña
+ * de portada del reel si no tiene imagen de portada (`thumb_offset`, publicador.js). Sin él enseñaba el primer cuadro,
+ * donde el texto del gancho todavía no ha entrado (alfa 0): en el perfil se veía sólo el fondo. El mismo instante que
+ * usa la hoja de escenas (`instanteLleno`). null si no se puede calcular. Pura.
+ */
+export function portadaDelVideo(guion, palabras = null) {
+  try {
+    if (!guion?.escenas?.length) return null;
+    const ms = Math.round(instanteLleno(guion, lineaDeTiempo(guion, palabras), 0) * 1000);
+    return Number.isFinite(ms) && ms > 0 ? ms : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * El reel sin IMAGEN de portada (la que pone la persona en la pestaña Pieza, o la del Estudio) toma `portadaMs`, el
+ * cuadro lleno de su video: en cada render, porque el guion pudo cambiar. Con imagen de portada no se toca nada (la
+ * imagen manda en el publicador). Pura.
+ */
+export function conConPortada(post, portadaMs) {
+  if (!Number.isFinite(portadaMs) || post?.format !== "reel" || String(post.portada ?? "").trim()) return post;
+  return post.portadaMs === portadaMs ? post : { ...post, portadaMs };
 }
 
 /** El medio de la publicación con el mp4 de un video (`videoAnimado` dice de qué video es: el siguiente render lo cambia). */
@@ -152,7 +179,7 @@ export async function ligarAPublicacion(env, acceso, cliente, fila, { calendarId
   let aviso = null;
   const render = leerJSON(fila.render, {});
   if (liga && render.estado === "listo" && render.clave) {
-    const r = await ponerEnPublicacion(env, acceso, actual, medioDelRender(actual, render));
+    const r = await ponerEnPublicacion(env, acceso, actual, medioDelRender(actual, render), { portadaMs: render.portadaMs ?? null });
     puesto = r?.postId ? r : null;
     aviso = r?.aviso ?? null;
     if (puesto && render.archivoId) await marcarUso(acceso, cliente.id, render.archivoId, puesto).catch(() => null);
@@ -197,7 +224,7 @@ export async function ejecutarRender(env, { ownerId, clienteId, videoId, intento
     const cliente = await acceso.leerUno("clients", { id: clienteId });
     if (!cliente) throw new Error("El cliente ya no existe.");
     const armado = await pedidoDelVideo(env, acceso, cliente, fila);
-    const { clips, porSubir, guion } = armado;
+    const { clips, porSubir, guion, palabras } = armado;
     // Los clips de video y las imágenes que no cabían en el pedido, al Container del render por flujo ANTES del pedido.
     // Un clip que no sube sale con su «Video» de espera; una imagen, con su marcador.
     const fallaron = clips.length && pedir ? await subirClips(env, clips, pedir) : clips.map((c) => c.id);
@@ -223,12 +250,13 @@ export async function ejecutarRender(env, { ownerId, clienteId, videoId, intento
     const clave = claveDeArchivo(clienteId, `video ${fila.titulo}`, "video/mp4");
     const bytes = { byteLength: await guardarMp4(env, clave, r) };
     const medio = medioDelRender(fila, { clave, ancho, alto, duracion });
-    const puesto = await ponerEnPublicacion(env, acceso, fila, medio);
+    const portadaMs = portadaDelVideo(guion, palabras);
+    const puesto = await ponerEnPublicacion(env, acceso, fila, medio, { portadaMs });
     const momento = ahora();
     const archivoId = uuid();
     const usos = puesto?.postId ? [{ clave: `${puesto.calendarId}:${puesto.postId}`, calendarId: puesto.calendarId, postId: puesto.postId, en: momento }] : [];
     const datos = {
-      duracion, cuadros: num("X-Cuadros"), lufs: num("X-Lufs"), lufsAntes: num("X-Lufs-Antes"),
+      duracion, cuadros: num("X-Cuadros"), ...(portadaMs ? { portadaMs } : {}), lufs: num("X-Lufs"), lufsAntes: num("X-Lufs-Antes"),
       ms: { audio: num("X-Ms-Audio"), video: num("X-Ms-Video"), total: Date.now() - inicio }, videoId: fila.id, version: render.version,
       efectos: sonido.efectos, musica: musica ? sonido.musica.nombre || "Música" : null,
       ...(sonido.efectos ? { cuantosEfectos: num("X-Efectos") ?? 0, ...(sonido.colocados?.length ? { colocados: sonido.colocados.length } : {}) } : {}),

@@ -29,6 +29,7 @@
 
 import { uuid, ahora } from "./ids.js";
 import { difundir } from "./vivo.js";
+import { cambiarCalendario } from "./estudio/ponerEnPost.js";
 import { obtenerOCrearMes, ErrorMes } from "./meses.js";
 import { crearAcceso, tareasScPendientes, espaciosPorClasificar } from "./acceso.js";
 import { llamarIA, ErrorIA } from "./cerebro/ia.js";
@@ -596,17 +597,23 @@ async function meterPublicacion(env, acceso, cliente, fecha, post) {
     if (e instanceof ErrorMes) throw new ErrorLoMejor(e.message, e.estado);
     throw e;
   }
-  const days = leerJSON(cal.days, []);
-  let dia = days.find((d) => d.date === fecha);
-  if (!dia) {
-    dia = { date: fecha, dayName: DIAS_SEMANA[new Date(`${fecha}T12:00:00Z`).getUTCDay()], posts: [] };
-    days.push(dia);
-    days.sort((a, b) => (a.date < b.date ? -1 : 1));
-  }
-  dia.posts = [...(dia.posts ?? []), post];
-  await acceso.actualizar("calendars", { id: cal.id }, { days: JSON.stringify(days), updated_at: ahora() });
-  // Sin pestaña: también la que pidió la recreación relee el mes (el eco de la propia pestaña se descarta).
-  difundir(env, acceso.ownerId, { tipo: "calendario:recargar", id: cal.id, clientId: cliente.id, por: { userId: "sistema", nombre: "Lo mejor", color: "", tab: null } });
+  // Con la versión del mes (`cambiarCalendario`): lo que alguien guardara a la vez en ese mes ya no se pisa. Avisa a
+  // todas las pestañas, también la que pidió la recreación (el eco de la propia se descarta).
+  const r = await cambiarCalendario(env, acceso, {
+    clienteId: cliente.id, calendarId: cal.id, por: { userId: "sistema", nombre: "Lo mejor", color: "", tab: null },
+    cambiar: (mes) => {
+      const days = mes.days ?? [];
+      let dia = days.find((d) => d.date === fecha);
+      if (!dia) {
+        dia = { date: fecha, dayName: DIAS_SEMANA[new Date(`${fecha}T12:00:00Z`).getUTCDay()], posts: [] };
+        days.push(dia);
+        days.sort((a, b) => (a.date < b.date ? -1 : 1));
+      }
+      dia.posts = [...(dia.posts ?? []), post];
+      return { ...mes, days };
+    },
+  });
+  if (r?.aviso) throw new ErrorLoMejor(r.aviso, 409);
   return { calendarId: cal.id };
 }
 

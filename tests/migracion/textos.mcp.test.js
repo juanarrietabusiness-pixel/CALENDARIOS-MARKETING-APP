@@ -3,6 +3,7 @@ import worker from "../../worker/index.js";
 import { d1EnMemoria } from "../utils/d1Memoria.js";
 import { COOKIE } from "../../worker/lib/sesion.js";
 import { sha256 } from "../../worker/lib/ids.js";
+import { fechaEnZona, sumarDias } from "../../src/lib/agenda.js";
 import { crearAcceso } from "../../worker/lib/acceso.js";
 import { crearHerramientasMCP, HERRAMIENTAS_MCP } from "../../worker/lib/mcp.js";
 import { olvidarModelos } from "../../worker/lib/configIA.js";
@@ -239,6 +240,27 @@ describe("ficha_de_textos (el modo híbrido)", () => {
     expect(r.texto).toMatch(/editar_publicacion/);
     expect(JSON.stringify(posts())).toBe(antes);
     expect(peticiones).toHaveLength(0);
+  });
+});
+
+describe("ficha_de_textos y los días que ya pasaron", () => {
+  // Decisión de la agencia (19-11-2026): lo que no salió su día ya no sale; escribirlo gastaba la tanda. Una concreta sí.
+  it("no ofrece los días pasados del mes; una publicación concreta de un día pasado sí", async () => {
+    const hoy = fechaEnZona();
+    const ayer = sumarDias(hoy, -1);
+    const manana = sumarDias(hoy, 1);
+    sembrarMes([
+      { date: ayer, posts: [{ id: "pasada", format: "post", status: "pending", idea: "Lo de ayer", pilar: "anuncio" }] },
+      { date: manana, posts: [{ id: "futura", format: "post", status: "pending", idea: "Lo de mañana", pilar: "anuncio" }] },
+    ], { year: Number(ayer.slice(0, 4)), month: Number(ayer.slice(5, 7)) - 1 });
+    anthropic(undefined);
+    const mesDeAyer = ayer.slice(0, 7);
+    const r = await llamar("ficha_de_textos", { cliente: "Dcasa", mes: mesDeAyer });
+    expect(r.error).toBe(false);
+    expect(r.texto).not.toContain("Lo de ayer");
+    if (manana.slice(0, 7) === mesDeAyer) expect(r.texto).toContain("Lo de mañana");
+    const una = await llamar("ficha_de_textos", { publicacion_id: "pasada" });
+    expect(una.texto).toContain("Lo de ayer");
   });
 });
 

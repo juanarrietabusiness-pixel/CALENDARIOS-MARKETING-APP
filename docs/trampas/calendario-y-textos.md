@@ -632,3 +632,12 @@ contradicen, manda la de más abajo (la más nueva). Una trampa nueva de esta á
 - **El control razona poco a propósito** (`esfuerzo` en worker/lib/estudio/control.js: «low» sin ficha, «medium» con la ficha
   del director) y pide un JSON compacto: con el nivel «alto» del espacio cada revisión escribía ~3.300 tokens (casi todo
   razonamiento) para un veredicto. Una clave omitida se lee como vacía (el contrato con quien lo usa no cambió).
+- **Las reglas de estilo del cliente van enteras** (`textoDelCliente`, src/lib/loteAnuncios.js): estilo de textos y de
+  locución hasta `MAX_ESTILO_CLIENTE` (1.500), hashtags hasta 600. A 300 se cortaban a media palabra (la de D'CASA terminaba
+  en «emocional/familias (I»).
+- **Una pieza sin tipo no está «decidida»**: `lineaDePieza` imprimía «· : » y «nivel: —» bajo una cabecera que decía «YA
+  decidido». Ahora dice «tipo de contenido: SIN DECIDIR (escógelo tú…)» y la cabecera avisa de que lo «SIN DECIDIR» lo escoge
+  quien escribe. Por qué hay piezas sin tipo (las crea `crear_publicacion` sin él) no se tocó.
+- **La ficha (y escribir_textos) no ofrecen los días que ya pasaron** (decisión de la agencia, 19-11-2026, `seleccionar` en
+  worker/lib/herramientasTextos.js, con el «hoy» de Panamá): lo que no salió su día ya no sale y escribirlo gastaba la tanda.
+  Una publicación concreta (`publicacion_id`) sí se escribe. Si un día la agencia quiere rellenar el pasado, es esa línea.

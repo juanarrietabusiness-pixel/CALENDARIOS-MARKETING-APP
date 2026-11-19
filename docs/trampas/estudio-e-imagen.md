@@ -1117,3 +1117,15 @@ contradicen, manda la de más abajo (la más nueva). Una trampa nueva de esta á
   cargada) se encuentra, «beige» (sólo en el bloque de la marca) no, «Cargar más» llega a 414 tarjetas, tocar el carrusel
   con la selección lo marca, a 390 px sin desplazamiento lateral; el selector, igual. No se probó en un iPhone ni con la D1
   de producción.
+- **La revisión del director no corría en NINGUNA pieza suelta** (hasta el 19-11-2026). `fichaDelPedido` buscaba «Pieza:»
+  al principio de una línea, pero el pedido compuesto (`componerPedido`, src/lib/kitMarca.js) pone la ficha detrás de
+  «Escena: », en la misma línea: devolvía "" y `controlarPieza` iba sin ficha (sin `puntajeDiseno`, sin arreglos y sin la
+  corrección por debajo de `NOTA_MINIMA`) en `disenar_piezas`, el lote, «Producir el mes» y `crear_en_estudio`. Sólo los
+  carruseles se revisaban (`carrusel.js` pone «Pieza:» en su línea). El test de antes pasaba con una ficha SUELTA; ahora hay
+  uno con un pedido compuesto de verdad (`pedidoDePieza` + `conEscena`, src/lib/director.emocion.test.js). Al arreglarlo
+  SUBE el gasto: el control con ficha razona algo más y la pieza por debajo de 8 lleva una edición (como mucho una; se
+  queda sólo si `mejoro`). La agencia lo aceptó a condición de mirar los datos: si casi ninguna corrección se queda, se
+  apaga la corrección automática y se deja la nota.
+  · **Las de 2K tampoco se controlaban**: más de 3,6 MB (un PNG de 2K pesa de 4 a 8) daba un 413 que el encargo se tragaba.
+  Ahora se mira la COPIA en JPEG de 1568 px de lado (`miniaturaDe`, el Container; sobre blanco: el JPEG no tiene alfa). Sin
+  Container y grande, sigue el 413.

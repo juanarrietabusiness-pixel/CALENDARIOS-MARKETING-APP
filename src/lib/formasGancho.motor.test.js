@@ -87,6 +87,15 @@ describe("el pedido del motor", () => {
     expect(lineaDePieza({ n: 1, tipo: "anuncio", nivel: "problema" })).not.toMatch(/forma del gancho|ángulo de venta/);
   });
 
+  // Una publicación creada sin tipo salía «· : » y «nivel: —» bajo «YA decidido»: ahora dice que lo escoge quien escribe.
+  it("una pieza sin tipo ni nivel dice que está sin decidir, no deja el hueco", () => {
+    const linea = lineaDePieza({ n: 1, fecha: "2026-11-02" });
+    expect(linea).toMatch(/tipo de contenido: SIN DECIDIR \(escógelo tú/);
+    expect(linea).toMatch(/nivel de consciencia: SIN DECIDIR/);
+    expect(linea).not.toMatch(/ · : |nivel: —/);
+    expect(lineaDePieza({ n: 1, tipo: "anuncio", nivel: "problema" })).not.toMatch(/SIN DECIDIR/);
+  });
+
   it("pide «porque», los ganchos de las UGC, la regla del gancho y el lenguaje del cliente", () => {
     const t = pedidoDeProduccion({ marca: "Dcasa", plan, productos: { sofa: "Sofá cama" }, lenguaje: "«ya no sé dónde poner a mi suegra»" });
     expect(t).toMatch(/"porque": en UNA línea/);

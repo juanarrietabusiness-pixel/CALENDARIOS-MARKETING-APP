@@ -365,6 +365,10 @@ const nombreDeFormato = (f) => FORMATOS_LOTE[f]?.nombre ?? (f === "live" ? "Dire
  * La línea de una pieza en el pedido: todo lo que ya está decidido. `formato`: el del lote, para la pieza que no trae el
  * suyo (dice dónde va su gancho). Pura.
  */
+/** Lo que dice la línea de una pieza a la que el plan no le dio tipo o nivel: lo escoge quien escribe. */
+const SIN_TIPO = "tipo de contenido: SIN DECIDIR (escógelo tú: lo que comunica esta pieza, según la estrategia del mes y sin repetir el de la vecina)";
+const SIN_NIVEL = "nivel de consciencia: SIN DECIDIR (escógelo tú, según su tipo y su etapa)";
+
 export function lineaDePieza(r, productos = {}, formato = "") {
   const p = pilarDe(r.tipo ?? r.pilar);
   const nv = NIVELES_CONSCIENCIA.find((n) => n.clave === r.nivel);
@@ -373,8 +377,10 @@ export function lineaDePieza(r, productos = {}, formato = "") {
   // Las opciones que la IA puede escoger (darForma): sólo las que traen más de una.
   const op = r.opciones ?? {};
   return [
-    `${r.n}. ${fmt}${r.fecha ? `${fechaLegible(r.fecha)} · ` : ""}${nombreDePilar(r.tipo ?? r.pilar, r.pilarSub)}: ${p?.regla ?? ""}`,
-    `   ${nv ? `nivel: ${nv.nombre} (${nv.ayuda}; por ${nv.angulo === "dolor" ? "el DOLOR, lo que quiere evitar" : "la GANANCIA, lo que quiere lograr"})` : "nivel: —"} · gancho: ${lineaDe(TACTICAS, r.tactica)}${op.tacticas ? ` [${r.tactica}]` : ""} · composición: ${composicionDe(r.composicion)?.nombre ?? ""}`,
+    // Sin tipo (una publicación creada sin él) NO está decidido: antes salía «· : » y «nivel: —» bajo una cabecera que
+    // decía que sí, y nadie lo escogía.
+    `${r.n}. ${fmt}${r.fecha ? `${fechaLegible(r.fecha)} · ` : ""}${p ? `${nombreDePilar(r.tipo ?? r.pilar, r.pilarSub)}: ${p.regla ?? ""}` : SIN_TIPO}`,
+    `   ${nv ? `nivel: ${nv.nombre} (${nv.ayuda}; por ${nv.angulo === "dolor" ? "el DOLOR, lo que quiere evitar" : "la GANANCIA, lo que quiere lograr"})` : SIN_NIVEL} · gancho: ${lineaDe(TACTICAS, r.tactica)}${op.tacticas ? ` [${r.tactica}]` : ""} · composición: ${composicionDe(r.composicion)?.nombre ?? ""}`,
     // Las OTRAS tácticas que también valen (la IA escoge y dice cuál en "tactica").
     op.tacticas ? `   otras tácticas que también valen aquí: ${op.tacticas.filter((x) => x !== r.tactica).map((x) => `${lineaDe(TACTICAS, x)} [${x}]`).join(" · ")}` : "",
     // La forma del gancho (lib/formasGancho.js) y, en una UGC, la de cada uno de sus 3 ganchos.
@@ -440,6 +446,8 @@ export function bloqueDeLenguaje(texto) {
 }
 
 /** Un texto largo de la ficha (las instrucciones pueden ir en varias líneas): sin espacios de más y con tope. */
+/** Lo más largo que entra de cada regla de estilo del cliente (de sus textos y de su locución). */
+const MAX_ESTILO_CLIENTE = 1500;
 const largo = (t, max) => String(t ?? "").replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim().slice(0, max).trim();
 
 /**
@@ -459,10 +467,15 @@ export function textoDelCliente(c = null) {
     de("phone", "phone", 60) ? `teléfono ${de("phone", "phone", 60)}` : "",
   ].filter(Boolean).join(" · ");
   const lugares = [de("sucursales", "sucursales", 300), de("direcciones", "direcciones", 300)].filter(Boolean).join(" · ");
+  // Las reglas de estilo que escribió la agencia van ENTERAS: a 300 caracteres se cortaban a media palabra (la ficha de
+  // D'CASA terminaba en «emocional/familias (I») y lo de detrás no le llegaba a nadie.
+  const estiloGuion = de("estilo_guion", "estiloGuion", MAX_ESTILO_CLIENTE);
+  const estiloLocucion = de("estilo_locucion", "estiloLocucion", MAX_ESTILO_CLIENTE);
+  const hashtags = de("hashtags", "hashtags", 600);
   const lineas = [
-    de("estilo_guion", "estiloGuion") ? `- Estilo de sus textos: ${de("estilo_guion", "estiloGuion")}` : "",
-    de("estilo_locucion", "estiloLocucion") ? `- Estilo de su locución (lo que se dice en voz en un video): ${de("estilo_locucion", "estiloLocucion")}` : "",
-    de("hashtags", "hashtags") ? `- Hashtags de la marca: ${de("hashtags", "hashtags")} (van SIEMPRE en «hashtags», junto a los del tema; nunca dentro del caption)` : "",
+    estiloGuion ? `- Estilo de sus textos: ${estiloGuion}` : "",
+    estiloLocucion ? `- Estilo de su locución (lo que se dice en voz en un video): ${estiloLocucion}` : "",
+    hashtags ? `- Hashtags de la marca: ${hashtags} (van SIEMPRE en «hashtags», junto a los del tema; nunca dentro del caption)` : "",
     contacto ? `- Contacto para el llamado a la acción: ${contacto} (el que encaje; no inventes otro)` : "",
     lugares ? `- Dónde está: ${lugares}` : "",
   ].filter(Boolean);
@@ -591,7 +604,8 @@ export function partesDeProduccion({
   const perfilesUsados = [...new Set(todo.map((r) => r.perfil).filter(Boolean))].filter((n) => perfiles[n]);
   const cuantas = plan.length === 1 ? "UNA publicación" : `${plan.length} publicaciones`;
   const escoge = g.opciones.tacticas || g.opciones.formas || g.opciones.angulos;
-  const decidido = `su tipo de contenido (lo que comunica), su nivel de consciencia, ${escoge ? "" : "su gancho y "}su composición (la de la portada o el primer plano): respétalos.`;
+  const sinDecidir = plan.some((r) => !pilarDe(r.tipo ?? r.pilar) || !NIVELES_CONSCIENCIA.some((n) => n.clave === r.nivel));
+  const decidido = `su tipo de contenido (lo que comunica), su nivel de consciencia, ${escoge ? "" : "su gancho y "}su composición (la de la portada o el primer plano): respétalos.${sinDecidir ? " Lo que diga «SIN DECIDIR» no está decidido: lo escoges tú." : ""}`;
   const encabezado = g.mixto
     ? `Escribe ${cuantas} para ${marca}${mes ? " del mes" : ""}. ${plan.length === 1 ? "Tiene" : "Cada una tiene"} YA decidido su FORMATO (entre corchetes), ${decidido} La idea de cada una es de SU formato, nunca de otro.`
     : `Escribe ${cuantas} ${esGuiado(formato) ? `de formato ${FORMATOS_LOTE[formato].nombre}` : `de una imagen (${FORMATOS_LOTE[formato]?.nombre ?? "post"})`} para ${marca}${mes ? ", una por día del mes" : ""}. ${plan.length === 1 ? "Tiene" : "Cada una tiene"} YA decidido ${decidido}`;

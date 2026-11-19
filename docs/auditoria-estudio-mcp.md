@@ -20,6 +20,9 @@ referencia: se hará, si se hace, después de medirlo.
 
 ### 1. Seguro: fallo comprobado, efecto concreto, arreglo sin contrapartida
 
+**Implementado el 2026-11-19** (S1–S10, más las dos decisiones: la corrección del director sigue y se revisan sus datos
+en una semana; la ficha ya no ofrece días pasados). Cada arreglo tiene un test que falla con el código de antes.
+
 | # | Qué | Prueba | Qué mejora |
 |---|---|---|---|
 | S1 | La revisión del director no corre en las piezas sueltas | Ejecutado: con un pedido real (`pedidoDePieza` + `conEscena`), `fichaDelPedido` devuelve "" también sin kit. Rompe una decisión escrita de la agencia (estudio-e-imagen.md: «El DIRECTOR revisa cada pieza») | Toda pieza de `disenar_piezas`, el lote y «Producir el mes» recibe nota, arreglos y la corrección automática por debajo de 8. **Sube el gasto**: un control algo más largo por pieza y, en las que saquen menos de 8, una edición más (tope: una por pieza) |

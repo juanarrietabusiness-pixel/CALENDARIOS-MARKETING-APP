@@ -15,6 +15,7 @@ import { llamarIA } from "../cerebro/ia.js";
 import { ErrorEstudio } from "./trabajos.js";
 import { aBase64 } from "./gemini.js";
 import { archivoPublico } from "./galeria.js";
+import { miniaturaDe } from "./miniaturas.js";
 import { leerMercado } from "../mercado.js";
 import { productosActivos } from "../../../src/lib/estudioMercado.js";
 import { limpiarKit, pideLogoDeReferencia } from "../../../src/lib/kitMarca.js";
@@ -24,9 +25,15 @@ import { pedidoDeSistema, leerSistema, lineaDeSistema } from "../../../src/lib/s
 const leerJSON = (t, d) => { try { return JSON.parse(t) ?? d; } catch { return d; } };
 /** Lo que Anthropic admite por imagen (5 MB en base64): con margen. */
 const MAX_BYTES = 3_600_000;
+/** El lado de la copia que se mira cuando la original no cabe: el mayor que la IA ve sin reducirla ella misma. */
+const LADO_CONTROL = 1568;
 const MAX_TEXTO = 400;
 
-/** La ficha y los bytes de UNA imagen de la galería de este cliente (para que la IA la mire). */
+/**
+ * La ficha y la imagen de UNA pieza de la galería de este cliente (para que la IA la mire) → { fila, datos (base64), mime }.
+ * Una pieza de 2K en PNG pesa de 4 a 8 MB y no cabe: se mira su COPIA en JPEG de `LADO_CONTROL` (el Container la
+ * reduce). Antes se rechazaba con un 413 que el encargo se tragaba, y justo las de los mejores modelos salían sin control.
+ */
 async function imagenDeLaGaleria(env, acceso, cliente, archivoId) {
   const fila = await acceso.leerUno("estudio_archivos", { id: String(archivoId), client_id: cliente.id });
   if (!fila || fila.borrado_at) throw new ErrorEstudio("Esa pieza no está en la galería de este cliente.", 404);
@@ -36,8 +43,12 @@ async function imagenDeLaGaleria(env, acceso, cliente, archivoId) {
   const obj = await env.MEDIA.get(fila.clave);
   if (!obj) throw new ErrorEstudio("La imagen ya no está en el almacenamiento.", 404);
   const bytes = new Uint8Array(await obj.arrayBuffer());
-  if (bytes.byteLength > MAX_BYTES) throw new ErrorEstudio("La imagen es demasiado grande para controlarla (más de 3,5 MB).", 413);
-  return { fila, bytes };
+  if (bytes.byteLength <= MAX_BYTES) return { fila, datos: aBase64(bytes), mime: fila.mime };
+  const copia = await miniaturaDe(env, fila.clave, { mime: fila.mime, lado: LADO_CONTROL }).catch(() => null);
+  if (!copia?.datos || copia.datos.length * 0.75 > MAX_BYTES) {
+    throw new ErrorEstudio("La imagen es demasiado grande para controlarla (más de 3,5 MB) y no se pudo reducir.", 413);
+  }
+  return { fila, datos: copia.datos, mime: copia.mime };
 }
 
 /**
@@ -48,9 +59,11 @@ async function imagenDeLaGaleria(env, acceso, cliente, archivoId) {
 export function fichaDelPedido(prompt) {
   const t = String(prompt ?? "");
   if (/^Edita la imagen de referencia/.test(t)) return "";
-  const i = t.search(/(^|\n)Pieza: /);
-  if (i < 0 || !/\nComposición: /.test(t)) return "";
-  return t.slice(i).trim().split("\n\n")[0].slice(0, 2500);
+  // El pedido COMPUESTO (kitMarca.js `componerPedido`) pone la ficha detrás de «Escena: », en la misma línea: buscar
+  // «Pieza:» sólo al principio de una línea la perdía, y la revisión del director no corría en ninguna pieza suelta.
+  const m = /(^|\n)(?:Escena: )?Pieza: /.exec(t);
+  if (!m || !/\nComposición: /.test(t)) return "";
+  return t.slice(t.indexOf("Pieza: ", m.index)).trim().split("\n\n")[0].slice(0, 2500);
 }
 
 /**
@@ -59,7 +72,7 @@ export function fichaDelPedido(prompt) {
  * se sale de la serie). → { control, archivo } con el control apuntado en la ficha.
  */
 export async function controlarPieza(env, acceso, cliente, archivoId, { texto = null, sistema = null, ficha = null } = {}) {
-  const { fila, bytes } = await imagenDeLaGaleria(env, acceso, cliente, archivoId);
+  const { fila, datos, mime } = await imagenDeLaGaleria(env, acceso, cliente, archivoId);
 
   const ajustes = leerJSON(fila.ajustes, {});
   // El texto esperado: el que manda la pantalla, el de la plantilla puesta encima, o el que se le pidió al motor.
@@ -77,7 +90,7 @@ export async function controlarPieza(env, acceso, cliente, archivoId, { texto = 
   const laFicha = fichaDelPedido(fila.prompt) || String(ficha ?? "").trim();
   const r = await llamarIA(env, acceso, cliente, {
     prompt: [
-      { type: "image", source: { type: "base64", media_type: fila.mime, data: aBase64(bytes) } },
+      { type: "image", source: { type: "base64", media_type: mime, data: datos } },
       { type: "text", text: pedidoDeControl({ marca: cliente.name, texto: esperado, precios, logo, evitar: kit.evitar, reglas: kit.reglas, sistema: lineaDeSistema(sistema), ficha: laFicha }) },
     ],
     // Un veredicto, no un ensayo: respuesta corta y poco razonamiento (transcribir lo que se ve no lo necesita; la
@@ -100,13 +113,13 @@ export async function controlarPieza(env, acceso, cliente, archivoId, { texto = 
  * nadie. `texto`: el de la portada. → { sistema }.
  */
 export async function sistemaDePortada(env, acceso, cliente, archivoId, { texto = "", para = "portada" } = {}) {
-  const { fila, bytes } = await imagenDeLaGaleria(env, acceso, cliente, archivoId);
+  const { fila, datos, mime } = await imagenDeLaGaleria(env, acceso, cliente, archivoId);
   const ajustes = leerJSON(fila.ajustes, {});
   const ya = leerSistema(ajustes.sistema);
   if (ya) return { sistema: ya };
   const r = await llamarIA(env, acceso, cliente, {
     prompt: [
-      { type: "image", source: { type: "base64", media_type: fila.mime, data: aBase64(bytes) } },
+      { type: "image", source: { type: "base64", media_type: mime, data: datos } },
       { type: "text", text: pedidoDeSistema({ marca: cliente.name, texto: String(texto ?? "").slice(0, MAX_TEXTO), para }) },
     ],
     salida: 900,
