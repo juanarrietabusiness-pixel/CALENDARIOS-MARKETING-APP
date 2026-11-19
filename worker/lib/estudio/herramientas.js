@@ -43,6 +43,7 @@
 import {
   MODELOS, modeloPorId, modeloPorDefecto, nombreDelModelo, textoCosto, MAX_VIDEOS_POR_PEDIDO, NOMBRE_ESTADO, estaVivo, MAX_PROMPT,
   modeloQueRespeta, validarPedido, estimar, ajustesDe,
+  diasQueQuedan,
 } from "../../../src/lib/estudioCatalogo.js";
 import { bloqueoPorPresupuesto, topeSinPreguntar } from "../configIA.js";
 import { decidirConfirmacion, textoSinPreguntar, textoSugerencia, textoDelMotivo } from "../../../src/lib/sinPreguntar.js";
@@ -77,6 +78,8 @@ import { vistaDe, piezaDe } from "../mcpVista/modelo.js";
 // 15 s: lo que dura un clip de MiniMax H3 o Kling 3.0 (la receta «Video del producto»). El gasto lo frena la confirmación.
 export const LIMITES = Object.freeze({ imagenes: 4, videos: MAX_VIDEOS_POR_PEDIDO, segundos: 15 });
 
+/** Cuántas de la papelera enseña ver_estudio (las últimas que se mandaron). */
+const PAPELERA_A_MOSTRAR = 15;
 const GALERIA_A_MOSTRAR = 12;
 /** Los videos más viejos que se enseñan además (para las capas «video» de un video animado). */
 const VIDEOS_A_MOSTRAR = 10;
@@ -182,7 +185,7 @@ export const DEFINICIONES_ESTUDIO = Object.freeze([
   },
   {
     name: "recuperar_de_papelera",
-    description: "Saca piezas de la papelera y las devuelve a la galería. Los IDs salen de ver_estudio (la papelera). No gasta.",
+    description: "Saca piezas de la papelera y las devuelve a la galería. Los IDs salen de ver_estudio (su apartado PAPELERA, con los días que le quedan a cada una). No gasta.",
     input_schema: {
       type: "object",
       properties: { ...clienteParam, archivo_ids: { type: "array", items: { type: "string" }, description: "IDs de la papelera." } },
@@ -628,14 +631,22 @@ export function crearHerramientasEstudio({ env, acceso, resolverCliente, usuario
           `${m.prioridad ? ` · PRIORIDAD ${m.prioridad}` : ""}${porDefecto[m.tipo]?.id === m.id ? " · PREDETERMINADO" : ""}${valores ? ` · ${valores}` : ""}${apoyo ? ` · admite ${apoyo}` : ""}`;
       };
 
-      const [filas, trabajos, guia, mercado, encargos] = await Promise.all([
+      const [filas, trabajos, guia, mercado, encargos, carpetas] = await Promise.all([
         acceso.leer("estudio_archivos", { client_id: c.id }, "created_at desc"),
         acceso.leer("estudio_trabajos", { client_id: c.id }, "created_at desc", 20),
         guiaVisual(c.id),
         acceso.leerUno("mercado_clientes", { client_id: c.id }).catch(() => null),
         // Lo que lleva el servidor (las imágenes de crear_en_estudio, el lote, los carruseles): también está en marcha.
         acceso.leer("estudio_encargos", { client_id: c.id, estado: "en_marcha" }, "created_at desc", 10).catch(() => []),
+        // Las carpetas, con su ID: borrar_carpeta lo pide y antes no había de dónde sacarlo.
+        acceso.leer("estudio_carpetas", { client_id: c.id }, "created_at asc").catch(() => []),
       ]);
+      // La PAPELERA (lo último que se mandó, con los días que le quedan): recuperar_de_papelera y vaciar_papelera piden
+      // estos IDs, y ver_estudio no los daba.
+      const papelera = filas.filter((f) => f.borrado_at).sort((a, b) => String(b.borrado_at).localeCompare(String(a.borrado_at))).slice(0, PAPELERA_A_MOSTRAR);
+      const enPapelera = filas.filter((f) => f.borrado_at).length;
+      const porCarpeta = new Map();
+      for (const f of filas) if (!f.borrado_at && f.carpeta_id) porCarpeta.set(f.carpeta_id, (porCarpeta.get(f.carpeta_id) ?? 0) + 1);
       const galeria = filas.filter((f) => !f.borrado_at).slice(0, GALERIA_A_MOSTRAR);
       // Los VIDEOS aparte (los que grabó el cliente, los de Kie, los de Drive): un clip de hace semanas no sale entre lo
       // último, y es lo que necesita una capa «video» del video animado.
@@ -665,6 +676,12 @@ export function crearHerramientasEstudio({ env, acceso, resolverCliente, usuario
           : "GALERÍA: todavía no hay nada.",
         videos.length
           ? `MÁS VIDEOS DE LA GALERÍA (para una capa «video» de un video animado, o de referencia):\n${videos.map((f) => `· ${f.id} · ${f.modelo || "subido"}${f.ancho && f.alto ? ` · ${f.ancho}×${f.alto}` : ""} · «${String(f.prompt || "").slice(0, 70)}»`).join("\n")}`
+          : "",
+        carpetas.length
+          ? `CARPETAS (el ID sirve para borrar_carpeta):\n${carpetas.map((k) => `· ${k.id} · «${String(k.nombre).slice(0, 60)}» · ${porCarpeta.get(k.id) ?? 0} pieza${porCarpeta.get(k.id) === 1 ? "" : "s"}`).join("\n")}`
+          : "",
+        papelera.length
+          ? `PAPELERA (${enPapelera}${enPapelera > papelera.length ? `; las ${papelera.length} últimas` : ""}; el ID sirve para recuperar_de_papelera):\n${papelera.map((f) => `· ${f.id} · ${f.tipo} · «${String(f.prompt || "").slice(0, 60)}» · se borra en ${diasQueQuedan(f.borrado_at)} día${diasQueQuedan(f.borrado_at) === 1 ? "" : "s"}`).join("\n")}`
           : "",
         vivos.length || encargos.length
           ? `EN MARCHA:\n${[...vivos.map((t) => `· ${t.id} · ${t.tipo} · ${NOMBRE_ESTADO[t.estado]} · «${String(t.prompt).slice(0, 70)}»`), ...encargos.map((f) => `· ${f.id} · encargo · ${f.nota || "en marcha"} · «${deEncargo(f)}»`)].join("\n")}`

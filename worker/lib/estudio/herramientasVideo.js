@@ -73,7 +73,7 @@ import { PAPELES, SONIDOS_DE_TRANSICION, momentosColocados, textoDeColocado } fr
 import { reloj } from "../../../src/lib/escucharSonido.js";
 import { palabrasParaLinea } from "../../../src/lib/videoCancion.js";
 import { conMusicaSegun } from "./conMusica.js";
-import { DURACIONES_FOTO, MOVIMIENTOS_FOTO, TRANSICIONES_CARRUSEL, textoDeCancion } from "../../../src/lib/conMusica.js";
+import { DURACIONES_FOTO, MOVIMIENTOS_FOTO, MOVIMIENTOS_CARRUSEL, SEGUNDOS_LAMINA, TRANSICIONES_CARRUSEL, textoDeCancion } from "../../../src/lib/conMusica.js";
 import { vistaDe, piezaDe } from "../mcpVista/modelo.js";
 import { vistaDeVideo, lineasDeMedios } from "./vistaMedios.js";
 import { leerEstructuras, estructuraExistente, guardarEstructura, quitarEstructura, ErrorEstructura } from "../estructurasGuion.js";
@@ -381,15 +381,16 @@ export const DEFINICIONES_VIDEO = Object.freeze([
     description: `«Publicar CON MÚSICA». La API de Instagram no deja poner música de su biblioteca en fotos ni en carruseles; hay dos caminos según la publicación (ofrécelos cuando pidan un post «con música»):
 · Un POST DE UNA FOTO se convierte en un REEL corto: la foto a sangre con un movimiento suave (${MOVIMIENTOS_FOTO.map((m) => `«${m.id}»: ${m.nombre.toLowerCase()}`).join("; ")}) de ${DURACIONES_FOTO.join(", ")} s y una música de la galería del cliente (musica_id de musicas; sin él, la favorita, la de la marca o la más nueva). Crea el video, lo aprueba y lo renderiza ligado a la publicación; al terminar es un reel con el video y la foto de PORTADA (en Instagram, «audio original»). En la pestaña Pieza, «Volver a la foto» lo deshace. NO gasta IA (0 $): el video lo hace el servidor. Sin música en la galería, dilo: se sube o se genera en «Sonido» (no generes música nueva salvo que la pidan).
   Con musica_id="generar" la música la escribe el DIRECTOR MUSICAL MIRANDO la foto y la hace Suno: eso SÍ cuesta y pide confirmar (sin confirmado=true devuelve el costo y NO SE CREA NADA); al llegar la música el reel se hace solo. movimiento «ninguno» deja la foto quieta.
-· Un CARRUSEL tiene dos caminos: con reel=true se CONVIERTE en un reel con sus láminas una tras otra (transicion, segundos por lámina 2-5, movimiento «alternar» o uno fijo), la música (musica_id, «generar» o «ninguna») y, con voz=true, una VOZ: la IA escribe una frase por lámina con lo que dice la publicación y la voz de la marca la dice con subtítulos (cuesta: pide confirmar y enseña lo que dirá). Sin reel, se marca para publicarlo A MANO desde el teléfono con la música de Instagram («La publico yo»): a su hora llega un aviso con la pantalla del teléfono (las imágenes en orden, el texto para copiar y una CANCIÓN SUGERIDA de la lista de Marca → Kit y voz).`,
+· Un CARRUSEL tiene dos caminos: con reel=true se CONVIERTE en un reel con sus láminas una tras otra (transicion, segundos_lamina de 2 a 5, movimiento «alternar» o uno fijo), la música (musica_id, «generar» o «ninguna») y, con voz=true, una VOZ: la IA escribe una frase por lámina con lo que dice la publicación y la voz de la marca la dice con subtítulos (cuesta: pide confirmar y enseña lo que dirá). Sin reel, se marca para publicarlo A MANO desde el teléfono con la música de Instagram («La publico yo»): a su hora llega un aviso con la pantalla del teléfono (las imágenes en orden, el texto para copiar y una CANCIÓN SUGERIDA de la lista de Marca → Kit y voz).`,
     input_schema: {
       type: "object",
       properties: {
         ...clienteParam,
         publicacion_id: { type: "string", description: "La publicación del calendario (de ver_calendario): un post de una foto o un carrusel." },
         musica_id: { type: "string", description: "Sólo para el reel: el id de una música de musicas. Si se omite, la favorita, la de la marca o la más nueva." },
-        segundos: { type: "number", enum: [...DURACIONES_FOTO], description: "Sólo para el reel: lo que dura (10 por defecto)." },
-        movimiento: { type: "string", enum: MOVIMIENTOS_FOTO.map((m) => m.id), description: "Sólo para el reel: cómo se mueve la foto (acercar por defecto)." },
+        segundos: { type: "number", enum: [...DURACIONES_FOTO], description: "Sólo para el reel de UNA foto: lo que dura (10 por defecto)." },
+        segundos_lamina: { type: "number", enum: [...SEGUNDOS_LAMINA], description: "Carrusel en reel: los segundos de cada lámina (3 por defecto)." },
+        movimiento: { type: "string", enum: MOVIMIENTOS_CARRUSEL.map((m) => m.id), description: "Cómo se mueve la imagen: en una foto, acercar por defecto; en un carrusel, «alternar» (dentro, fuera, paneo) por defecto o uno fijo. «alternar» es sólo del carrusel." },
         logo: { type: "boolean", description: "Sólo para el reel: el logo del kit encima. Si se omite, sólo si el kit lo estampa y la foto no salió ya del Estudio con él." },
         reel: { type: "boolean", description: "Sólo para un carrusel: true lo convierte en un reel con sus láminas (si no, a mano con la música de Instagram)." },
         transicion: { type: "string", enum: TRANSICIONES_CARRUSEL.map((t) => t.id), description: "Carrusel en reel: la transición entre láminas (fundido por defecto)." },
@@ -992,13 +993,13 @@ export function crearHerramientasVideo({ env, acceso, resolverCliente, usuario, 
       });
     },
 
-    async publicar_con_musica({ cliente, publicacion_id: postId, musica_id: musicaId = "", segundos, movimiento, logo, reel = false, transicion, voz = false, confirmado }) {
+    async publicar_con_musica({ cliente, publicacion_id: postId, musica_id: musicaId = "", segundos, segundos_lamina: segundosLamina, movimiento, logo, reel = false, transicion, voz = false, confirmado }) {
       const c = await resolverCliente(cliente);
       return conErrores(async () => {
         let r;
         try {
           r = await conMusicaSegun(env, acceso, c, {
-            postId, musicaId, segundos, movimiento, logo: typeof logo === "boolean" ? logo : undefined, reel: reel === true, transicion, voz: voz === true,
+            postId, musicaId, segundos, segundosLamina, movimiento, logo: typeof logo === "boolean" ? logo : undefined, reel: reel === true, transicion, voz: voz === true,
             confirmado: confirmado === true, usuario, por,
           });
         } catch (e) {

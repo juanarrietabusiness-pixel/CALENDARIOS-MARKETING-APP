@@ -355,7 +355,8 @@ Lo que rompe en silencio, en todas las áreas. El porqué de cada una está en `
     enciende, `useDialogA11y` en todo diálogo, `--tap` en lo pulsable, nunca por debajo de `--fs-3xs`.
 15. **Lo que no se ha probado contra el servicio real se dice** (en el código, en la trampa y al entregar).
 16. **Guardar un mes va con su versión:** el PUT del calendario lleva el `updated_at` que se leyó y contesta 409 si otra
-    persona guardó; la pantalla junta por publicación y vuelve a guardar. Un guardado sin versión (lo de antes, el MCP) sigue.
+    persona guardó; la pantalla junta por publicación y vuelve a guardar. El MCP también va con versión (`guardarDias`: si otro guardó,
+    repite la herramienta). Un guardado sin versión (lo de antes) sigue.
 17. **Las páginas públicas tienen su propia entrada** (`vite.publico.config.js`, `npm run build` hace las dos): /aprobar y
     compañía no cargan la aplicación de la agencia. Lo que se añada ahí, ligero.
 18. **El cron se escribe en `correrCron`** (`worker/lib/salud.js`): cada tarea con su nombre; su salud (último éxito, error,
@@ -389,6 +390,10 @@ no aquí.
   la lista de modelos ordenable). Pendiente: toda la parte de Meta como proveedor de texto, y
   probar fal.ai y Higgsfield con una llave real.
 - `DEPLOY.md` — puesta en producción en Cloudflare: Worker, D1, R2 y el corte.
+- `docs/auditoria-estudio-mcp.md` — auditoría del Estudio por MCP (2026-11-18): errores del diseño, del video y del
+  sonido, el director, el contexto que le llega a Claude, los cuellos de botella y lo que la app hace y el MCP no; lo que
+  se toma de rea-video, HyperFrames y lemo-opuscar (y por qué no se instalan), el plan en nueve entregas y cómo se
+  usa después. Revisada el 2026-11-19: arriba, lo SEGURO (S1–S10, implementado), lo que hay que medir y lo que queda fuera.
 - `docs/auditoria-ux-ui.md` — auditoría de UX, UI, responsive y accesibilidad,
   con lo corregido y lo pendiente.
 - `docs/migracion-cloudflare.md` — plan para mover la aplicación de Supabase +

@@ -19,6 +19,7 @@
 import { crearEjecutor } from "./herramientasServidor.js";
 import { difundir } from "./vivo.js";
 import { uuid, ahora } from "./ids.js";
+import { NULO } from "./acceso.js";
 import { programarLote, cancelarPendientes, resincronizarCalendario, filaPublica, filaConResumen, ErrorPublicar } from "./publicador.js";
 import { prepararYProgramar, crearLoteProgramar, avanzarMientras, lotePublico } from "./programarServidor.js";
 import { diasConRespuestas } from "../../src/lib/aprobacion.js";
@@ -61,6 +62,15 @@ const soloLectura = { readOnlyHint: true, openWorldHint: false };
 const escribe = (destructiva = false) => ({ readOnlyHint: false, destructiveHint: destructiva, openWorldHint: false });
 
 /** La lista de herramientas, con la forma de MCP (`inputSchema`, `annotations`). */
+/** Las del Estudio que no son de un cliente: el resto lo exigen (y lo declaran en su esquema). */
+/**
+ * Lo que una descripción compartida con el asistente dice de herramientas que SÓLO tiene él (generar_imagen): por MCP
+ * mandaba a Claude a buscar una herramienta que no existe. Se quita la frase; el resto es el mismo texto.
+ */
+const soloDelAsistente = (d) => String(d).replace("Para una imagen suelta que deba verse aquí mismo en el chat, usa generar_imagen; esta es para video, para varias variantes, para elegir modelo o para partir de imágenes de la galería. ", "");
+
+const SIN_CLIENTE = new Set(["estado_trabajo", "formato_video", "ver_estructuras", "guardar_estructura", "eliminar_estructura", "efectos_sonido"]);
+
 export const HERRAMIENTAS_MCP = Object.freeze([
   { name: "listar_clientes", description: "Los clientes de la agencia, con su rubro, su Instagram, sus calendarios (mes y nombre) y sus días fijos de la semana (los de Mi día). Empieza por aquí si no sabes el nombre exacto.", inputSchema: { type: "object", properties: {} }, annotations: soloLectura },
   { name: "ver_calendario", description: "Las publicaciones de un calendario de un cliente: fecha, ID, formato, hora, estado de aprobación, idea, descripción y guion, y si están EN PAUTA de verdad en su Ads Manager (etapa y costo por resultado, de la última revisión de campañas).", inputSchema: { type: "object", properties: { ...clienteParam, mes: { type: "string", description: "AAAA-MM. Si se omite, el más reciente." } }, required: ["cliente"] }, annotations: soloLectura },
@@ -132,8 +142,8 @@ export const HERRAMIENTAS_MCP = Object.freeze([
   // El Estudio (y la voz del video animado): las mismas herramientas que el asistente (worker/lib/estudio/herramientas.js). Aquí el cliente siempre se indica.
   ...DEFINICIONES_ESTUDIO.map(({ name, description, input_schema: inputSchema }) => ({
     name,
-    description,
-    inputSchema: { ...inputSchema, required: [...new Set([...(inputSchema.required ?? []), ...(["estado_trabajo", "formato_video", "ver_estructuras", "guardar_estructura", "eliminar_estructura"].includes(name) ? [] : ["cliente"])])] },
+    description: soloDelAsistente(description),
+    inputSchema: { ...inputSchema, required: [...new Set([...(inputSchema.required ?? []), ...(SIN_CLIENTE.has(name) ? [] : ["cliente"])])] },
     annotations: ["eliminar_estructura", "borrar_carpeta", "vaciar_papelera"].includes(name)
       ? escribe(true)
       : ["crear_en_estudio", "previsualizar_voz", "generar_locucion", "generar_musica", "mejorar_video", "mover_a_papelera", "recuperar_de_papelera", ...ESCRIBEN_VIDEO].includes(name)
@@ -167,6 +177,10 @@ export const HERRAMIENTAS_MCP = Object.freeze([
 
 /** Un error de lo pedido: vuelve a Claude como resultado con `isError`, no como fallo del servidor. */
 class ErrorHerramienta extends Error {}
+/** Otro guardó el mes entre que se leyó y se escribió (`guardarDias`): la herramienta se repite sobre lo nuevo. */
+class ConflictoMes extends Error {
+  constructor() { super("El mes se estaba guardando a la vez y no se pudo escribir: vuelve a intentarlo en un momento."); }
+}
 
 // Los días fijos de cada empresa en Mi día (`clients.dias_trabajo`, 1 = lunes … 6 = sábado). La agenda personal de Juan
 // los lee de aquí para decirle qué empresa toca hoy en su bloque de Trabajo.
@@ -220,9 +234,16 @@ export function crearHerramientasMCP({ env, acceso, usuario, origen = "" }) {
     throw new ErrorHerramienta(`No encontré la publicación «${postId}». Usa ver_calendario para ver los IDs.`);
   }
 
-  /** Escribe los días del calendario, mueve la cola y avisa al espacio. Lo mismo que el PUT de la API. */
+  /**
+   * Escribe los días del calendario, mueve la cola y avisa al espacio. Lo mismo que el PUT de la API, CON SU VERSIÓN: sólo
+   * escribe si nadie guardó el mes desde que se leyó (`updated_at`). Antes ganaba la última escritura: dos
+   * editar_publicacion a la vez en el mismo mes, o una persona guardando mientras poner_en_publicacion esperaba al
+   * Container, perdían un cambio sin aviso. Si alguien guardó, `ConflictoMes`: `llamar` repite la herramienta entera
+   * (vuelve a leer el mes y a aplicar SU cambio sobre lo nuevo).
+   */
   async function guardarDias(cal, days) {
-    await acceso.actualizar("calendars", { id: cal.id }, { days: JSON.stringify(days), updated_at: ahora() });
+    const n = await acceso.actualizar("calendars", { id: cal.id, updated_at: cal.updated_at ?? NULO }, { days: JSON.stringify(days), updated_at: ahora() });
+    if (!n) throw new ConflictoMes();
     const crudo = await acceso.leerUno("calendars", { id: cal.id });
     try { await resincronizarCalendario(env, acceso, crudo, por); } catch (e) { console.error("mcp resincronizar:", e); }
     difundir(env, acceso.ownerId, { tipo: "calendario:recargar", id: cal.id, clientId: cal.client_id, por });
@@ -236,6 +257,10 @@ export function crearHerramientasMCP({ env, acceso, usuario, origen = "" }) {
   };
   const fechaValida = (f) => {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(String(f ?? ""))) throw new ErrorHerramienta("La fecha va como AAAA-MM-DD.");
+    // Que el día EXISTA: «2026-02-30» pasaba el formato y creaba un día que la rejilla del mes no enseña.
+    const [a, m, d] = f.split("-").map(Number);
+    const real = new Date(Date.UTC(a, m - 1, d));
+    if (real.getUTCFullYear() !== a || real.getUTCMonth() !== m - 1 || real.getUTCDate() !== d) throw new ErrorHerramienta(`El ${f} no existe en el calendario.`);
     return f;
   };
   const describir = (p, fecha) => `${fecha} · ${p.format} · «${p.title || p.idea || "sin título"}»${p.publishTime ? ` a las ${p.publishTime}` : ""}${vaAPauta(p) ? ` · va a pauta (${describirPauta(p.pauta)})` : ""} (ID ${p.id})`;
@@ -478,11 +503,22 @@ export function crearHerramientasMCP({ env, acceso, usuario, origen = "" }) {
     },
   };
 
+  /** Una herramienta que escribe un mes, repetida si otro guardó ese mes a la vez (`ConflictoMes`): hasta 3 vueltas. */
+  async function conVersion(nombre, entrada) {
+    for (let vuelta = 0; ; vuelta++) {
+      try {
+        return await acciones[nombre](entrada);
+      } catch (e) {
+        if (!(e instanceof ConflictoMes) || vuelta >= 2) throw e;
+      }
+    }
+  }
+
   /** Ejecuta una herramienta. Devuelve SIEMPRE el resultado de MCP: `content` y, si falló, `isError`. */
   async function llamar(nombre, entrada = {}) {
     try {
       if (acciones[nombre]) {
-        const r = await acciones[nombre](entrada ?? {});
+        const r = await conVersion(nombre, entrada ?? {});
         // Las que MIRAN piezas devuelven { texto, imagenes, vista? }: las imágenes van como bloques de imagen del MCP y
         // la vista, como `structuredContent` (la lee la vista previa del chat). El texto va TAMBIÉN dentro de la vista:
         // hay clientes (Claude Code) que al modelo le dan el `structuredContent` EN LUGAR del texto, y sin él Claude no
@@ -501,7 +537,7 @@ export function crearHerramientasMCP({ env, acceso, usuario, origen = "" }) {
       }
       return { content: [{ type: "text", text: `Herramienta desconocida: ${nombre}` }], isError: true };
     } catch (e) {
-      const delPedido = e instanceof ErrorHerramienta || e instanceof ErrorHerramientaEstudio || e instanceof ErrorDiseno || e instanceof ErrorReceta || e instanceof ErrorVista || e instanceof ErrorHerramientaLoMejor || e instanceof ErrorExportar || e instanceof ErrorSubida
+      const delPedido = e instanceof ConflictoMes || e instanceof ErrorHerramienta || e instanceof ErrorHerramientaEstudio || e instanceof ErrorDiseno || e instanceof ErrorReceta || e instanceof ErrorVista || e instanceof ErrorHerramientaLoMejor || e instanceof ErrorExportar || e instanceof ErrorSubida
         || e instanceof ErrorCerebro || e instanceof ErrorCampanas || e instanceof ErrorTextos || e instanceof ErrorEquipo;
       if (!delPedido) console.error("mcp:", nombre, e);
       return { content: [{ type: "text", text: delPedido ? e.message : `No se pudo: ${e?.message ?? e}` }], isError: true };

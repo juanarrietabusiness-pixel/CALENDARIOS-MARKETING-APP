@@ -330,7 +330,11 @@ export async function aManoConMusica(env, acceso, cliente, { postId, calendarId 
 export async function conMusicaSegun(env, acceso, cliente, opciones) {
   const { post } = await laPublicacion(acceso, cliente.id, opciones.postId, opciones.calendarId ?? null);
   // Un carrusel: en reel con sus láminas si se pide (`reel: true`, o ya lo es); si no, a mano con la música de Instagram.
-  if (opciones.reel === true || (Array.isArray(post.conMusica?.medios) && post.conMusica.medios.length > 1)) return { tipo: "reel", ...(await carruselAReel(env, acceso, cliente, opciones)) };
+  // En el carrusel los segundos son POR LÁMINA (`segundosLamina`, 2 a 5): antes llegaban los 7/10/15 del reel de una foto
+  // y `segundosDeLamina` los volvía 3 sin decirlo.
+  if (opciones.reel === true || (Array.isArray(post.conMusica?.medios) && post.conMusica.medios.length > 1)) {
+    return { tipo: "reel", ...(await carruselAReel(env, acceso, cliente, { ...opciones, segundos: opciones.segundosLamina ?? opciones.segundos })) };
+  }
   if (post.format === "carrusel") return { tipo: "a-mano", ...(await aManoConMusica(env, acceso, cliente, opciones)) };
   return { tipo: "reel", ...(await publicarConMusica(env, acceso, cliente, opciones)) };
 }

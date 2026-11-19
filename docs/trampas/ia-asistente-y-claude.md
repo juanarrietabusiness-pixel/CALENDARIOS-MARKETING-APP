@@ -379,3 +379,17 @@ contradicen, manda la de más abajo (la más nueva). Una trampa nueva de esta á
   · **Ninguna tarea va fija en Haiku:** «clasificar lo mejor» y «vigencia de historias» usaban Haiku siempre que había llave
     de Anthropic; ahora van con el modelo del espacio para «análisis» (Ajustes → IA). Si alguien vuelve a forzar un modelo
     en una llamada, gasta una API que la agencia decidió no usar.
+- **El MCP escribía el mes sin versión** (hasta el 19-11-2026; `guardarDias` en worker/lib/mcp.js): dos `editar_publicacion`
+  a la vez en el mismo mes —lo normal tras `ficha_de_textos`— o una persona guardando mientras `poner_en_publicacion`
+  esperaba al Container perdían un cambio sin aviso. Ahora escribe con el `updated_at` que leyó como condición; si alguien
+  guardó, `ConflictoMes` y `llamar` repite la herramienta ENTERA (hasta 3 vueltas): vuelve a leer y aplica su cambio sobre lo
+  nuevo. Una herramienta que escriba un mes por otro camino tiene que hacer lo mismo (o usar `cambiarCalendario`, como ya
+  hace `recrear`). Lo prueba tests/migracion/mcp.test.js metiendo un guardado entre la lectura y la escritura (con dos
+  llamadas en paralelo la D1 de memoria no se cruza: esa prueba pasaba también con el error).
+- **Lo que el esquema exige tiene que estar en el esquema**: `efectos_sonido` salía con `required: ["cliente"]` sin la
+  propiedad (la lista `SIN_CLIENTE` de mcp.js no lo tenía) y Claude tenía que inventarse el parámetro. Y las descripciones
+  del Estudio son las MISMAS que las del asistente: la de `crear_en_estudio` mandaba a `generar_imagen`, que el MCP no tiene
+  (`soloDelAsistente` quita esa frase). tests/migracion/mcp.definiciones.test.js comprueba las dos cosas para TODAS.
+- **La papelera y las carpetas por MCP no tenían IDs** (`recuperar_de_papelera`, `borrar_carpeta` y `vaciar_papelera` decían
+  «de ver_estudio», que filtraba lo borrado y no listaba carpetas). Ahora `ver_estudio` trae CARPETAS (con cuántas piezas) y
+  PAPELERA (las 15 últimas, con los días que les quedan).

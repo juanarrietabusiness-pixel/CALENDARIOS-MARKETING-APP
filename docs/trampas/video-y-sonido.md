@@ -1073,3 +1073,11 @@ contradicen, manda la de más abajo (la más nueva). Una trampa nueva de esta á
   servidor; en la pantalla se ve en el desglose («Con qué motor recrearlo»).
   · **Nada de esto se ha probado contra Kie**: ni Seedance 2.5 como motor de clips, ni la lectura de las tomas con un
   desglose real de Gemini (los tests usan un desglose escrito a mano, el del tsunami).
+- **El reel animado salía sin portada en el perfil** (hasta el 19-11-2026): el render no ponía `portada` ni `portadaMs`, el
+  publicador sólo manda `thumb_offset` si hay `portadaMs`, y en el primer cuadro el texto del gancho todavía no ha entrado
+  (alfa 0). Ahora cada render apunta `portadaMs` = el instante en que la primera escena está LLENA (`instanteLleno`, el de la
+  hoja; `portadaDelVideo` en worker/lib/estudio/render.js) y lo pone en la publicación sólo si no tiene IMAGEN de portada
+  (`conConPortada`): la imagen de la persona manda siempre en el publicador. Va también en el `render` del video (así lo usa
+  `ligarAPublicacion`). Que Instagram use el primer cuadro sin `thumb_offset` es su documentación: sin probar aquí.
+- **`publicar_con_musica` en un carrusel**: los segundos son POR LÁMINA (`segundos_lamina`, 2 a 5) y el movimiento admite
+  «alternar». Antes el esquema sólo dejaba los 7/10/15 del reel de una foto y `segundosDeLamina` los volvía 3 sin decirlo.

@@ -236,6 +236,44 @@ describe("el protocolo y las herramientas", () => {
     expect(dias().flatMap((d) => d.posts).map((p) => p.id)).toEqual(["p1"]);
   });
 
+  // Otra persona (o el Estudio, o otra llamada de Claude) guarda el mes ENTRE que la herramienta lo lee y lo escribe. Sin
+  // la versión del mes, la última escritura se llevaba ese cambio sin aviso; ahora la herramienta se repite sobre lo nuevo.
+  it("lo que otro guardó entre la lectura y la escritura no se pierde", async () => {
+    const { access_token: tk } = await conectar();
+    const dias = () => JSON.parse(db.sqlite.prepare("select days from calendars where id = 'cal1'").get().days);
+    db.sqlite.prepare("update calendars set updated_at = ? where id = 'cal1'").run("2026-10-01T00:00:00.000Z");
+    // La primera escritura del mes, justo antes de hacerse: alguien guardó el mes con un título nuevo para p1.
+    const preparar = db.prepare.bind(db);
+    let metido = false;
+    db.prepare = (sql) => {
+      if (!metido && /^update calendars set days/.test(sql)) {
+        metido = true;
+        const ahora = dias();
+        ahora[0].posts[0].title = "Latte de la persona";
+        db.sqlite.prepare("update calendars set days = ?, updated_at = ? where id = 'cal1'").run(JSON.stringify(ahora), "2026-10-02T00:00:00.000Z");
+      }
+      return preparar(sql);
+    };
+    const r = await llamar(tk, "editar_publicacion", { publicacion_id: "p1", descripcion: "Texto de Claude" });
+    db.prepare = preparar;
+    expect(metido).toBe(true);
+    expect(r.isError).toBeUndefined();
+    const p1 = dias()[0].posts[0];
+    expect(p1.title).toBe("Latte de la persona");
+    expect(p1.descripcion).toBe("Texto de Claude");
+  });
+
+  it("una fecha que no existe no crea un día fantasma", async () => {
+    const { access_token: tk } = await conectar();
+    for (const fecha of ["2026-02-30", "2026-13-01", "2026-04-31"]) {
+      const r = await llamar(tk, "crear_publicacion", { cliente: "Café Luna", fecha, formato: "post", titulo: "x" });
+      expect(r.isError).toBe(true);
+      expect(r.content[0].text).toMatch(/no existe/);
+    }
+    expect((await llamar(tk, "mover_publicacion", { publicacion_id: "p1", fecha: "2026-10-32" })).isError).toBe(true);
+    expect((await llamar(tk, "crear_publicacion", { cliente: "Café Luna", fecha: "2028-02-29", formato: "post", titulo: "bisiesto" })).isError).toBeUndefined();
+  });
+
   it("tareas e ideas", async () => {
     const { access_token: tk } = await conectar();
     const r = await llamar(tk, "crear_tarea", { cliente: "Café", titulo: "Grabar el reel", fecha_limite: "2026-10-07" });

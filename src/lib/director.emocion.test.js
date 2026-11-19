@@ -3,6 +3,10 @@ import {
   FORMATO_FICHA, RAZONA_COMO_DIRECTOR, MAX_FICHA, limpiarFicha, ajustarFicha, textoDeLaFicha, asegurarTexto, esFicha, pedidoDeFichas,
 } from "./director";
 import { fichaDelPedido } from "../../worker/lib/estudio/control.js";
+import { pedidoDePieza, apoyosDePieza } from "./pieza.js";
+import { modeloPorDefecto } from "./estudioCatalogo.js";
+import { ESCENA } from "./encargos.js";
+import { conEscena } from "../../worker/lib/estudio/encargos.js";
 
 // ============================================================
 // La línea «Emoción» de la ficha del director
@@ -87,5 +91,21 @@ describe("una ficha NUEVA, con Emoción", () => {
     const pedido = `${NUEVA}\n\nTipo de pieza: anuncio.`;
     expect(fichaDelPedido(pedido)).toContain(EMOCION);
     expect(fichaDelPedido(pedido)).not.toContain("Tipo de pieza");
+  });
+
+  // El pedido de VERDAD (disenar_piezas, el lote, «Producir el mes»): compuesto con la marca y con la ficha detrás de
+  // «Escena: ». Antes devolvía "" y ninguna pieza suelta tenía revisión del director.
+  it("la encuentra en un pedido compuesto de verdad, detrás de «Escena: »", () => {
+    const activos = { google: true, meta: true, kie: true, fal: true };
+    const modelo = modeloPorDefecto(activos, "imagen");
+    for (const kit of [{}, { paleta: [{ hex: "#112233", nombre: "azul", rol: "fondo" }], estilo: "limpio", logo: "clientes/c1/logo.png" }]) {
+      const p = pedidoDePieza({ kit, idea: ESCENA, preset: "", apoyos: apoyosDePieza({ kit, modelo }), modelo, marca: "X", proporcion: "4:5", activos });
+      const prompt = conEscena(p.prompt, NUEVA);
+      expect(prompt.startsWith("Escena: Pieza: ")).toBe(true);
+      const ficha = fichaDelPedido(prompt);
+      expect(ficha).toMatch(/^Pieza: post 4:5/);
+      expect(ficha).toContain(EMOCION);
+      expect(ficha).not.toMatch(/^Escena/);
+    }
   });
 });

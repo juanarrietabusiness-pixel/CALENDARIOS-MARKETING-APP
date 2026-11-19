@@ -50,6 +50,10 @@ describe("el pedido", () => {
   });
 
   it("sin ficha del cliente no inventa una", () => {
+    // Las reglas de estilo de la agencia llegan enteras (antes se cortaban a 300 caracteres, a media palabra).
+    const estilo = `Dos ángulos según segmento: ${"emocional para familias, racional para hoteles; ".repeat(10)}y el cierre siempre con WhatsApp.`;
+    expect(estilo.length).toBeGreaterThan(300);
+    expect(textoDelCliente({ estiloGuion: estilo, estiloLocucion: estilo })).toContain("y el cierre siempre con WhatsApp.");
     expect(textoDelCliente({})).toBe("");
     expect(textoDelCliente(null)).toBe("");
     expect(pedidoDeCampos({ plan })).not.toMatch(/FICHA DEL CLIENTE/);

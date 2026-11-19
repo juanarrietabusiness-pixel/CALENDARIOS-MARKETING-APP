@@ -338,22 +338,28 @@ export function crearHerramientasTextos({ env, acceso, resolverCliente, usuario,
     if (!fila || !(m.days ?? []).some((d) => (d.posts ?? []).length)) {
       return { ...base, nada: `${c.name} no tiene publicaciones en ${nombreMes(year, month)} (${texto}). Empieza con preparar_mes (el plan semanal de la empresa) o crea las publicaciones.` };
     }
-    const vacias = pedidos ? [] : casillasSinIdea(m).map((x) => ({ ...x, ...extra }));
-    const conIdeaFaltan = (m.days ?? []).flatMap((d) => (d.posts ?? [])
+    // Los días que YA PASARON no se ofrecen (decisión de la agencia, 19-11-2026): lo que no salió ese día ya no sale, y
+    // escribirlo gastaba la tanda. Una publicación concreta (publicacion_id) se sigue pudiendo escribir.
+    const hoy = fechaEnZona();
+    const vigente = (fecha) => String(fecha ?? "") >= hoy;
+    const todasVacias = pedidos ? [] : casillasSinIdea(m);
+    const vacias = todasVacias.filter((x) => vigente(x.fecha)).map((x) => ({ ...x, ...extra }));
+    const pasadas = todasVacias.length - vacias.length;
+    const conIdeaFaltan = (m.days ?? []).filter((d) => vigente(d.date)).flatMap((d) => (d.posts ?? [])
       .filter((p) => String(p.idea ?? "").trim() && p.status !== "published")
       .map((p) => {
         const lista = textosQueFaltan(p).filter((k) => !pedidos || pedidos.includes(k));
         return lista.length ? casillaDeCampos(p, d, { campos: lista, semana: conceptoDelDia(m, d), ...extra }) : null;
       })
       .filter(Boolean));
-    const sinIdeaConCampos = pedidos ? casillasSinIdea(m).length : 0;
+    const sinIdeaConCampos = pedidos ? casillasSinIdea(m).filter((x) => vigente(x.fecha)).length : 0;
     if (vacias.length) return { ...base, modo: "plan", candidatas: vacias, reemplazar: {}, usados: usadosDelPlan(m), otras: conIdeaFaltan.length };
     if (conIdeaFaltan.length) return { ...base, modo: "campos", candidatas: conIdeaFaltan, reemplazar: {}, usados: usadosDelMes(m), otras: 0, sinIdeaConCampos };
     return {
       ...base,
       nada: sinIdeaConCampos
         ? `No falta ninguno de esos campos en las publicaciones con idea. ${sinIdeaConCampos} ${sinIdeaConCampos === 1 ? "publicación no tiene" : "no tienen"} idea todavía: llama sin campos para escribirlas enteras.`
-        : `No le falta ningún texto a ${nombreMes(year, month)} de ${c.name}. Siguiente: revisar_mes.`,
+        : `No le falta ningún texto a ${nombreMes(year, month)} de ${c.name}${pasadas ? ` de hoy en adelante (${pasadas} de días que ya pasaron se quedan sin escribir; una concreta, con publicacion_id)` : ""}. Siguiente: revisar_mes.`,
     };
   }
 

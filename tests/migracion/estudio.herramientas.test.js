@@ -120,10 +120,20 @@ describe("ver_estudio", () => {
     expect(texto).toMatch(/PREDETERMINADO/);
     expect(texto).toContain("a1");
     expect(texto).toContain("sofá gris en sala");
-    // Ni lo de otro cliente ni lo que está en la papelera.
+    // Ni lo de otro cliente ni lo que está en la papelera… fuera de su apartado, que da su ID para recuperarla.
+    const [fuera, papelera = ""] = texto.split("PAPELERA (");
     expect(texto).not.toContain("a2");
-    expect(texto).not.toContain("a3");
+    expect(fuera).not.toContain("a3");
+    expect(papelera).toMatch(/^1; el ID sirve para recuperar_de_papelera\):\n· a3 · imagen · «ya borrada» · se borra en 0 días/);
     expect(texto).not.toContain("prueba (");
+  });
+
+  it("enseña las carpetas con su ID (borrar_carpeta lo pide) y cuántas piezas tiene cada una", async () => {
+    db.sqlite.prepare("insert into estudio_carpetas (id, owner_id, client_id, nombre) values (?,?,?,?)").run("k1", ANA, "c1", "Navidad");
+    archivo("a1", "c1");
+    db.sqlite.prepare("update estudio_archivos set carpeta_id = 'k1' where id = 'a1'").run();
+    const { texto } = await usar(asistente(), "ver_estudio", { cliente: "Dcasa" });
+    expect(texto).toMatch(/CARPETAS \(el ID sirve para borrar_carpeta\):\n· k1 · «Navidad» · 1 pieza\b/);
   });
 
   it("sin llave de ningún proveedor lo dice: lo que hay son tarjetas, no imágenes", async () => {
@@ -170,7 +180,7 @@ describe("ver_estudio", () => {
     expect(texto).toMatch(/Pañales Nateen tipo pants · \$55\.00 · fotos: foto-pants \(2 sin ficha/);
     expect(texto).toMatch(/Fular Moon \(de la marca Moon[^\n]*sin fotos/);
     expect(texto).not.toContain("Producto retirado");
-    expect(texto).not.toContain("foto-vieja");
+    expect(texto.split("PAPELERA (")[0]).not.toContain("foto-vieja");
     expect(texto).not.toContain("foto-ajena");
     expect(texto).toMatch(/LOGO DEL KIT: logo-bc\. [^\n]*imagen_final/);
     // Con fotos del catálogo, la receta del video del producto (la misma que el botón de la pantalla).
