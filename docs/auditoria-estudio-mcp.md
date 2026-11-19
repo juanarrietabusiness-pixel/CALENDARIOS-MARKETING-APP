@@ -1,6 +1,6 @@
 # Auditoría del Estudio por MCP: diseño, video, director y contexto
 
-*2026-11-18, sobre `main` en ad5bb5f (#271). Auditoría de sólo lectura: no se cambió código. Se leyó el código y las
+*2026-11-18, sobre `main` en ad5bb5f (#271); §7–9 añadidas el 2026-11-19. Auditoría de sólo lectura: no se cambió código. Se leyó el código y las
 trampas de cada área (para no marcar como fallo lo que es decisión). Se llamaron cinco herramientas de lectura del MCP en
 producción para medir tamaños (`listar_clientes`, `ficha_de_textos` de D'CASA 2026-11, `estrategia_del_mes`,
 `ver_estudio_mercado`). Nada se probó contra los modelos, ElevenLabs, Kie ni Cloudflare: lo que dependa de cómo se
@@ -320,104 +320,214 @@ revisar video; el catálogo en tres sitios; `post_id` en dos herramientas y `pub
 
 ---
 
-## 7. El plan, por entregas
+## 7. Lo que traemos de fuera (tres repositorios, 2026-11-19)
 
-Ordenado por impacto entre esfuerzo. Cada entrega es un pull request que se puede desplegar sola.
+Se leyeron tres repositorios que se recomiendan «para editar video con Claude». Ninguno se ejecutó. **Ninguno se instala
+en el calendario**: los tres corren en una máquina con terminal, y la agencia trabaja en claude.ai por el MCP. Se
+extraen técnicas y reglas, reescritas con nuestras palabras, y se meten en el motor que ya hay (canvas + ffmpeg + el JSON
+de escenas validado).
 
-### Entrega 1 — Arreglos que no se ven y valen mucho (pequeña)
+| | Qué es | Licencia | Qué traemos |
+|---|---|---|---|
+| **rea-video** (JuneYaooo) | Desarma un video de referencia toma por toma: si es grabado, IA o código, cortes, ritmo, efectos, subtítulos, y un plan para rehacerlo por modelo. Python + OpenCV + ONNX, en local | Apache-2.0 | El «por qué funciona» de cada toma (papel narrativo, gancho, trucos con su segundo), cortes y ritmo medidos antes de preguntar a la IA, efectos y textos con su segundo, juntar tomas en las menos generaciones según el modelo, lectura por capas. No transcribe español ni da informes en español |
+| **HyperFrames** (HeyGen) | Motor de video por HTML: Chrome graba cuadro a cuadro, ffmpeg codifica. Maduro (0.9.70, ~2.200 tests, en producción en HeyGen) | Apache-2.0 (GSAP, su librería de animación, no es abierta: no se copia) | Las reglas de movimiento con números (salidas 40–50 % más cortas, solape, curva por papel, títulos quietos), zona segura de 9:16 (texto entre 168 y 1330 px, nada bajo los botones), subtítulos (grupos de 2–3 palabras, nunca a 0 s, placa ajustada), comprobaciones (`dead_stretch`, texto pequeño, cuadro 0 vacío, video mudo), reglas de sonido (pico un cuadro después, rotar tomas), lo que delata un video de IA y las bandas en degradados oscuros |
+| **lemo-opuscar** (LemoLab) | 99 estilos de película para Claude Code: cada video es código a medida en Chrome, la mezcla en Python. GPU para lo 3D, sin tests | Código MIT. **Documentos CC BY-NC desde la v2.0 (12-nov)**; hasta `9eb7739` (10-nov) todo era MIT. Lo que se tome sale de `9eb7739`, con nuestras palabras y su aviso MIT. No es asesoría legal | Transición con las dos escenas vivas que empieza 0,1–0,15 s antes del corte, ducking con retención (baja ~150 ms antes de la voz, 8–10 dB), paneo según la dirección, −14 LUFS con pico real y un solo limitador, desenfoque por 5 submuestras sólo en lo rápido, revisión de lectura, hoja de contactos, las reglas del director (gancho en 3 s, una idea y un giro, dos silencios antes del giro, acelerar acortando escenas, no subtitular lo escrito, traducir «más premium» en decisiones) y cuatro estilos (suizo, keynote oscuro, pictograma, noticia con subtítulo) |
 
-1. I1: que `fichaDelPedido` reconozca «Escena: Pieza:» (o que `controlar` pase la ficha), con un test que use un pedido
-   compuesto de verdad. **La revisión de diseño empieza a correr en todo.**
-2. I2: controlar sobre una copia JPEG de 1568 px (`miniaturaDe`): se revisan las 2K y cuesta menos.
-3. D1: `guardarDias` con `updated_at` como condición y reintento (como `cambiarCalendario`), también en `recrear`; la
-   historia encajada, antes de leer.
-4. D2: generar las consultas del MCP desde las del asistente; `para_publicar` con `true` por defecto.
-5. D3: `registrarUsos` al guardar por MCP, con las fuentes que dio la ficha.
-6. D4–D8, I4, I6, I8: excepción de `cliente`, fecha real, hora antes del mes, anotaciones de escritura, días pasados
-   fuera, logo siempre último, avisar del `post_id` desconocido, no poner piezas con fallos graves.
-7. V13: separar el manual de video en común + por formato (animado / planos / UGC).
-8. Desfases de la §1.4 y alinear todas las descripciones con «PIENSAS Y ESCRIBES TÚ».
-
-### Entrega 2 — Menos vueltas y menos tokens (mediana)
-
-1. `ficha_de_textos` con huella del bloque fijo (`ya_tengo`): ~70 % menos por tanda; `MAX_FICHA` mide sólo lo variable.
-2. `guardar_textos` / `editar_publicaciones`: hasta 30 posts en una escritura y una revisión, con los campos de
-   objetivo (`pilar`, `nivel`, `perfil`, `deseo`, `producto_id`, `rostro`, `tactica`, `porque`) y los de publicar.
-3. `ver_publicacion` entera.
-4. Un solo `estado` para cualquier id con `esperar_segundos` (hasta ~20); retirar `estado_encargo` y `estado_reel`;
-   `renderizar_video` y la voz de ElevenLabs que esperen dentro de la llamada.
-5. Bajar `tools/list` a la mitad: tipos compartidos en vez de `anyOf` repetidos, la letra pequeña del video en
-   `formato_video`/`efectos_sonido`, agrupar versiones/estilos/estructuras.
-6. `buscar(postId)` sin leer todos los `days`; límites y paginación en galería, cola, tareas y banco.
-
-### Entrega 3 — El brief estratégico (mediana; la que más sube la calidad)
-
-1. **`brief_de_pieza`** (por post o por mes), para imagen y video: texto, idea, guion, pilar, nivel, deseo, perfil,
-   ángulo, forma del gancho, táctica, pauta, redes y formato; productos con sus fotos y la plantilla del tipo; objetivo
-   y ofertas del mes; ángulos del producto en el estudio; los 3–5 posts propios que mejor rindieron con su miniatura y
-   su composición; las 3 referencias de la competencia con su estructura; las reglas y conflictos («CONFLICTOS:» una
-   línea). Y una línea «Brief» en la ficha de diseño para que el control juzgue el encaje estratégico, no sólo la
-   maquetación.
-2. **«Lo que funcionó y lo que no»**, armado solo: medianas por forma de gancho, ángulo, pilar, formato, horario y nivel
-   normalizadas por alcance; los últimos 3 meses de aprobaciones frente a cambios pedidos, con las palabras exactas del
-   cliente; señales del equipo; costo por resultado de pauta; reglas propuestas pendientes. Un bloque de 10 líneas en
-   la ficha y en la guía de diseño.
-3. **El mes para Claude**: la primera llamada de la ficha con mes devuelve todas las casillas en una línea y las
-   instrucciones del planificador (sin llamar a la IA); `guardar_plan_mes` escribe el mismo plan que el planificador,
-   así las tandas siguientes llevan el arco.
-4. **`revisar_textos`** gratis: los 6 criterios del crítico, las piezas como quedaron y los choques de variedad.
-5. **`estrategia_del_mes` con `metodo: true`**: objetivos y etapas, semanas, fechas especiales (marcando las
-   delicadas), catálogo con ids, la estrategia del mes anterior con lo mejor y lo rechazado.
-6. Antirepetición de ideas, títulos y ángulos contra los 2–3 meses anteriores.
-
-### Entrega 4 — Diseño de nivel agencia (mediana)
-
-1. Presupuesto de pedido por modelo, bloque de marca compacto cuando hay ficha, y enseñarle a Claude la ficha **tal como
-   llegará** al modelo.
-2. Zonas seguras por formato y red en el código (no en el manual), logo estampado fuera de la zona de la interfaz en 9:16
-   y con variante clara/oscura, y que el control las verifique.
-3. Variantes A/B por eje con hipótesis (`variantes: [{eje, hipotesis}]`), etiquetadas en la galería para compararlas
-   con las métricas.
-4. Rúbrica y JSON del control en `estado_encargo`, control después de `corregir_pieza`, `rehacer_pieza` con tope de una.
-5. Personajes de marca por MCP; `referencias` en `disenar_piezas` (arregla «antes y después»).
-6. Paleta numérica contra el kit y contraste del texto en el Container; escalar Muse a ≥1080; hoja de contacto por MCP
-   (el Container ya tiene `/hoja`).
-
-### Entrega 5 — Sonido profesional (mediana)
-
-1. El corte de escena en el hueco antes de la palabra (ataque − ~0,1 s, nunca antes de la mitad del hueco), silencio en
-   la mitad del hueco con fundidos de 5 ms (V1, V2).
-2. Mezcla en coma flotante, una sola ganancia y un limitador al final (V3); bajar la música con anticipación de 100 ms y
-   retención de 250 ms, ~12 dB (V5); bucle con fundido en compás y entrada en el primer tiempo fuerte (V4).
-3. Rejilla de golpes para los videos con locución: `/golpes` sobre la música elegida, cortes y transiciones al golpe más
-   cercano (±120 ms, moviendo sólo silencios).
-4. Arreglar V6 y V7; efectos con paneo según la dirección; tratar la voz (paso alto, compresión suave, de-esser).
-
-### Entrega 6 — Movimiento con intención y video estratégico (grande, por partes)
-
-1. La escena que sale sigue viva en la transición (V12); desenfoque de movimiento en látigo y empuje; una escala
-   tipográfica por video; dither en degradados.
-2. Cuadro 0 con el gancho ya puesto y portada fijada (V8); subtítulos dentro de la zona (V11) y perfiles por red.
-3. Revisión de ritmo en `revisarEscenas`: escena >3,5 s sin cambio, primera palabra después de 0,3 s, demasiadas
-   palabras en los 2 primeros segundos, misma transición o fondo seguidos, escenas quietas; devuelta en `editar_escena`.
-4. El guion animado y el reel reciben `formaGancho`, `angulo`, pauta, red, estrategia y el resumen de los reels
-   anteriores; duración y palabras por segundo por red y objetivo, no fijas.
-5. El reel por planos usa transiciones, cámara y gancho cinético del animado; rampas de velocidad y acercamiento en el
-   énfasis.
-6. Velocidad: maquetación por escena en caché, imágenes reducidas al cargar, clips escalados por ffmpeg, audio en
-   paralelo, Container despierto unos minutos; audio por `PUT` como los clips (V9), caché de imágenes con tope (V10),
-   reintento al arrancar (V15), varios formatos y 4:5 (V14).
-
-### Entrega 7 — Paridad que falta
-
-Plan semanal y fechas especiales (ver y guardar), aprobar el estudio de mercado, `guardar_regla_de_marca`, ventas
-semanales, cancelar/reintentar trabajos y publicaciones, gasto de IA y saldos, galería con papelera y carpetas,
-resolver cambios del cliente, comentarios internos del mes; `recrear` y `extraer_guion_ugc` con modo «sólo el brief»
-para que piense Claude.
+**Para el equipo, fuera del calendario (opcional):** HyperFrames como laboratorio en Claude Code
+(`claude plugin install hyperframes@hyperframes`, con `HYPERFRAMES_NO_TELEMETRY=1`) para comparar calidad; lemo-opuscar
+sólo para una pieza de marca puntual, clonado a mano y fijado en un commit (su instalador se actualiza solo desde `main`
+cada vez y Claude sigue lo que diga ese archivo). Ninguno conoce el kit, el cerebro ni el calendario: lo que salga se
+sube con `subir_a_galeria`.
 
 ---
 
-## 8. Sin comprobar
+## 8. El plan completo, por entregas
+
+Cada entrega es un pull request que se despliega sola, en este orden. Las herramientas nuevas son propuestas: su nombre
+final se decide al hacerlas. Lo que no se pueda probar contra el servicio real se dice al entregar (regla de oro 15).
+
+| # | Entrega | Tamaño | Qué cambia para quien trabaja |
+|---|---|---|---|
+| 1 | Arreglos que no se ven | S | Nada que aprender: las piezas salen revisadas, nada se pisa, lo interno no se cuela |
+| 2 | Revisión y método del video | S–M | `editar_escena` y `revisar_video` dicen qué está mal y en qué segundo |
+| 3 | Menos vueltas y menos tokens | M | Un mes se hace con la mitad de llamadas y sin esperar a mano |
+| 4 | El brief estratégico y lo que funcionó | M | Claude escribe y diseña sabiendo para qué es cada pieza y qué le funcionó al cliente |
+| 5 | Sonido profesional | M | Los videos suenan mezclados, sin bombeo ni distorsión, sin hacer nada |
+| 6 | Movimiento con intención | M–L | Transiciones vivas, letra estable, cuadro 0 con gancho, cuatro estilos nuevos |
+| 7 | Diseño de nivel agencia | M | Fichas que llegan enteras, zonas seguras, variantes A/B con hipótesis |
+| 8 | Referencias y recrear | M | Desglosar un video de la competencia dice por qué funciona, y recrear lo escribe Claude |
+| 9 | Paridad que falta | M | Lo que hoy sólo se hace en la pantalla, también por Claude |
+
+### Entrega 1 — Arreglos que no se ven (S)
+
+1. **La revisión del director corre en todo** (I1): `fichaDelPedido` reconoce «Escena: Pieza:», con un test que use un
+   pedido compuesto de verdad. **Control sobre una copia JPEG de 1568 px** (I2) para que las 2K también se revisen.
+2. **El MCP escribe con versión** (D1): `guardarDias` con `updated_at` como condición y reintento, también en `recrear`;
+   la historia encajada se calcula antes de leer.
+3. **`para_publicar` en el MCP** (D2): las consultas del MCP salen de las del asistente, con `true` por defecto al escribir.
+4. **El cerebro vuelve a aprender** (D3): `registrarUsos` al guardar por MCP, con las fuentes que dio la ficha.
+5. Pequeños: `cliente` en `efectos_sonido` (D4), fecha que exista (D5), hora antes del mes (D6), anotar como escritura
+   `ver_avisos`/`numeros_del_negocio` (D7), días pasados fuera (D8), logo siempre la última referencia (I4), avisar del
+   `post_id` desconocido (I6), no poner en el post piezas con fallos graves (I8), 16:9 no es anuncio (I7).
+6. **Descripciones al día** (§1.4) y alineadas con «PIENSAS Y ESCRIBES TÚ».
+
+### Entrega 2 — Revisión y método del video (S–M)
+
+1. **Revisión de oficio**, pura, en `src/lib/revisionEscenas.js`, devuelta por `editar_escena` y `revisar_video` con el
+   formato «t=4,2 s · dónde · problema → cambio exacto», ordenada por gravedad:
+   - texto que no se alcanza a leer (calibrado para reel, no para película) o que nunca está entero en cuadro;
+   - escena de más de 3 s sin cambio; nada quieto más de 1 s en el gancho;
+   - texto por debajo del 2,6 % del lado corto; más de ~5 palabras por línea;
+   - cuadro 0 sin el texto del gancho; primera palabra después de 0,3 s; subtítulo a 0 s;
+   - misma entrada, transición o fondo seguidos; más de un tercio de cortes secos;
+   - escena que habla más de lo que cabe; video de más de 15 s sin sonido.
+2. **Hoja de contactos** por MCP (`hoja_de_video`): un cuadro cada 1–2 s en una imagen, más una tira de 0,2 s del
+   momento que se pida. El Container ya tiene `/hoja`.
+3. **El método del director de video**, en pocas líneas (vigilando tokens): `MANUAL_VIDEO_BASE` partido en común + por
+   formato (arregla V13), y en `videoFormatoIA.js`/`guionAnimadoIA.js` las reglas de §7 (lemo `9eb7739` y HyperFrames):
+   gancho en 3 s sin logo, una idea y un giro, un movimiento firma, transiciones con causa (3–5 tipos), cada acción con
+   su sonido, dos silencios antes del giro, acelerar acortando, no subtitular lo escrito, salir diseñado y no fundido,
+   la lista de lo que delata una IA, y la tabla «más premium / más joven / como nuestra marca» → decisiones.
+
+### Entrega 3 — Menos vueltas y menos tokens (M)
+
+1. `ficha_de_textos` con huella del bloque fijo (`ya_tengo`): ~70 % menos por tanda.
+2. **`guardar_textos`**: hasta 30 posts en una escritura con versión y una sola revisión, con los campos de objetivo
+   (`pilar`, `nivel`, `perfil`, `deseo`, `producto_id`, `rostro`, `tactica`, `porque`) y los de publicar.
+3. **`ver_publicacion`** entera.
+4. **Un solo `estado`** para cualquier id (trabajo, encargo, reel, render, voz) con `esperar_segundos` hasta ~20;
+   `renderizar_video` y la voz de ElevenLabs esperan dentro de la llamada. Se retiran `estado_encargo` y `estado_reel`.
+5. `tools/list` a la mitad: tipos compartidos, la letra pequeña del video en `formato_video`/`efectos_sonido`, agrupar
+   versiones, estilos y estructuras.
+6. `buscar(postId)` sin leer todos los `days`; límites y paginación en galería (con papelera y carpetas), cola, tareas y
+   banco.
+
+### Entrega 4 — El brief estratégico y lo que funcionó (M)
+
+1. **`brief_de_pieza`** (por post o por mes), para escribir, diseñar y hacer video: texto, idea, guion, pilar, nivel,
+   deseo, perfil, ángulo, forma del gancho, táctica, pauta, redes y formato; productos con sus fotos; objetivo y ofertas
+   del mes; ángulos del estudio; los 3–5 posts propios que mejor rindieron con su miniatura; 3 referencias de la
+   competencia; y «CONFLICTOS:» en una línea.
+2. **«Lo que funcionó y lo que no»**, armado solo: medianas por forma de gancho, ángulo, pilar, formato, horario y nivel
+   (normalizadas por alcance), aprobaciones frente a cambios pedidos con las palabras del cliente, señales del equipo,
+   costo por resultado de pauta. Diez líneas dentro de la ficha, la guía de diseño y el brief de video.
+3. **El mes para Claude**: la ficha con mes devuelve primero todas las casillas y el método del planificador;
+   `guardar_plan_mes` guarda el arco y las tandas lo llevan. **`revisar_textos`**: los 6 criterios del crítico y los
+   choques de variedad, gratis. **`estrategia_del_mes` con `metodo: true`**.
+4. El video recibe `formaGancho`, `angulo`, pauta, red, estrategia y el resumen de los reels anteriores; duración y
+   palabras por segundo por red y objetivo, no fijas. Antirepetición contra los 2–3 meses anteriores.
+
+### Entrega 5 — Sonido profesional (M)
+
+1. El corte de escena en el hueco antes de la palabra, silencio a mitad del hueco con fundidos de 5 ms (V1, V2).
+2. **Mezcla en coma flotante** con un solo limitador al final, −14 LUFS y pico real ≤ −1 dBTP medido tras el AAC (V3).
+3. **Ducking con anticipación y retención**: baja ~150 ms antes de la voz, se queda entre palabras, 8–10 dB (V5).
+4. Música que entra en el tiempo fuerte (salta la intro), bucle con fundido en compás, cierre en compás (V4).
+5. Efectos: pico un cuadro después de la imagen, rotar 2–3 tomas, paneo según la dirección del movimiento; arreglar V6
+   y V7. Cortes J/L: el sonido de la escena siguiente entra 0,2–0,4 s antes.
+6. Rejilla de golpes para los videos con locución: `/golpes` sobre la música elegida y cortes al golpe más cercano
+   (±120 ms, moviendo sólo silencios).
+7. Tratar la voz: paso alto, compresión suave, de-esser.
+
+### Entrega 6 — Movimiento con intención (M–L, por partes)
+
+1. **Transiciones vivas** (V12): la escena que sale se dibuja en su tiempo real y la transición empieza 0,1–0,15 s
+   antes del corte; curvas espejadas en la unión; tres transiciones nuevas: «dip cut», «blur swap», inundación de color.
+2. **Curvas por papel**: llegada `expo.out`, cámara `power2.inOut`, salida `power3.in`; salidas al 50–60 % de la
+   entrada; solape al 30–50 %; escalonado por palabra 60–120 ms. Títulos quietos al llegar: fuera el latido del llamado
+   y la entrada desde el 60 %.
+3. **Una escala tipográfica por video**: titular al 4–9 % del alto, apoyo al 2,5–4 %, suelo de 28 px; el ajuste encoge
+   el video entero, no escena por escena; «cortar palabras, nunca encoger».
+4. **Desenfoque de movimiento** por 5 submuestras sólo en látigo, empuje y transiciones con movimiento.
+5. **Zona segura y subtítulos de 9:16** (V11): texto entre 168 y 1330 px, nada bajo los botones; subtítulos en grupos
+   de 2–3 / 3–5 / 4–6 palabras según la energía, uno a la vez, placa ajustada. **Cuadro 0 con el gancho** ya armado y
+   portada fijada (V8).
+6. **Cuatro estilos nuevos** en `estilos_video`: suizo, keynote oscuro, pictograma y noticia con subtítulo.
+7. Bandas: evitar degradados lineales oscuros a pantalla completa; acento ≥ 15 %; dither cuando el grano es 0.
+8. El reel por planos usa transiciones, cámara y gancho cinético del animado. Velocidad del render, audio por `PUT`
+   (V9), caché de imágenes con tope (V10), reintento al arrancar (V15), varios formatos y 4:5 (V14).
+
+### Entrega 7 — Diseño de nivel agencia (M)
+
+1. Presupuesto de pedido por modelo, bloque de marca compacto cuando hay ficha, y enseñarle a Claude la ficha **tal como
+   llegará** al modelo (I3).
+2. Zonas seguras por formato y red en el código; logo estampado fuera de la interfaz de 9:16, con variante clara/oscura.
+3. Variantes A/B por eje con hipótesis, etiquetadas en la galería para compararlas con las métricas.
+4. La rúbrica y el resultado del control en `estado`; control después de `corregir_pieza`; `rehacer_pieza` (una vez).
+5. Personajes de marca y `referencias` en `disenar_piezas` (I5, I9).
+6. Paleta numérica contra el kit, contraste del texto, Muse escalado a ≥ 1080.
+
+### Entrega 8 — Referencias y recrear (M)
+
+1. `deconstruir_video` con una **segunda capa «por qué funciona»**, aparte de la descripción objetiva: el papel de cada
+   toma (enganchar, contexto, prueba, giro, cierre, llamado), el gancho de los primeros segundos y 2–4 trucos con su
+   segundo y su porqué.
+2. **Cortes medidos** en el Container (detector de escenas de ffmpeg) antes de preguntar a la IA, y **ritmo medido**
+   (`/golpes`: BPM y qué parte de los cortes cae en el golpe). Efectos y textos con su segundo.
+3. Lectura por capas: primero el resumen; cada toma, a pedido.
+4. `crear_reel` junta tomas seguidas en las menos generaciones que admita cada modelo de Kie.
+5. `recrear` y `extraer_guion_ugc` con modo «sólo el brief»: el calendario prepara, Claude escribe.
+
+### Entrega 9 — Paridad que falta (M)
+
+Plan semanal y fechas especiales (ver y guardar), aprobar el estudio de mercado, `guardar_regla_de_marca`, ventas
+semanales, cancelar o reintentar trabajos y publicaciones, gasto de IA y saldos, resolver los cambios que pidió el
+cliente, comentarios internos del mes.
+
+---
+
+## 9. Cómo se usa después del despliegue
+
+Se sigue trabajando igual: en claude.ai, con el conector del calendario, pidiendo en palabras. Lo que cambia es lo que
+Claude recibe y lo que el calendario hace solo.
+
+### Lo que mejora sin hacer nada
+
+- Toda pieza pasa por la revisión del director (nota, arreglos de diseño y una corrección automática por debajo de 8).
+- Dos personas, o Claude y una persona, pueden trabajar el mismo mes sin pisarse.
+- Los videos que ya están se vuelven a renderizar con la mezcla nueva, las transiciones vivas y la zona segura.
+- El cerebro vuelve a aprender de lo que aprueba el cliente y de lo que rinde, también de lo que escribió Claude.
+
+### Hacer un mes («hazme diciembre de D'CASA»)
+
+1. `estrategia_del_mes` con `metodo: true` → Claude propone la estrategia con las fechas especiales, el catálogo y lo
+   que funcionó el mes anterior → la persona dice que sí → se guarda.
+2. `preparar_mes` → `ficha_de_textos` del mes: la primera vez trae todas las casillas y «lo que funcionó»; Claude planea
+   el arco y lo guarda con `guardar_plan_mes`.
+3. `ficha_de_textos` por tandas (el bloque fijo, una sola vez) → `guardar_textos` con la tanda entera → los avisos.
+4. `revisar_textos` (los 6 criterios, gratis) → Claude corrige → `revisar_mes`.
+5. Diseño: `brief_de_pieza` del mes → `guia_de_diseno` → Claude escribe las fichas → `disenar_piezas` → `estado` con
+   espera → Claude mira las piezas con la nota del director y rehace una si hace falta.
+6. `enlace_del_cliente` para mandarlo a aprobar.
+
+Hoy son 45–60 llamadas y 150–200 mil caracteres antes de diseñar; la meta es la mitad.
+
+### Hacer un video animado («un reel de 20 s del colchón Ortopédico para pauta»)
+
+1. `brief_de_pieza` del post: gancho, ángulo, etapa de pauta, red y lo que les funcionó en reels anteriores.
+2. `formato_video` (con las reglas nuevas) y `estilos_video` (con los cuatro nuevos) → Claude escribe el guion →
+   `crear_video`.
+3. `editar_escena` devuelve la revisión («t=0,0 s · gancho · el cuadro 0 está vacío → que entre ya puesto») → Claude
+   corrige → `hoja_de_video` para ver todo el ritmo en una imagen.
+4. `sonido_video` (el ducking, el paneo y el volumen final ya son automáticos) → `escuchar_video` mide → la persona
+   escucha los momentos que se le indiquen.
+5. `aprobar_video` → `renderizar_video` espera hasta tener el mp4 → queda en el post con su portada.
+
+### Recrear algo que funciona («haz algo como este reel de la competencia»)
+
+1. `subir_a_galeria` o `ver_lo_mejor` → `deconstruir_video`: el resumen con el por qué funciona, los cortes y el ritmo
+   medidos; las tomas, a pedido.
+2. `recrear` en modo brief → Claude escribe la versión del cliente con su estructura y no su contenido →
+   `crear_reel` (planos juntados según el modelo) o `crear_video`.
+
+### En la pantalla
+
+Los mismos arreglos se ven en la aplicación: la nota del director en la galería, la revisión de ritmo en el editor del
+video, los estilos nuevos en la lista y el sonido nuevo en cada render. Nada de esto pide configurar algo.
+
+---
+
+## 10. Sin comprobar
 
 - El tiempo límite de una herramienta en claude.ai (el riesgo es `proponer_nota_cerebro` con `saber_del_rubro`, que
   busca en la web uno o dos minutos dentro de la petición).
