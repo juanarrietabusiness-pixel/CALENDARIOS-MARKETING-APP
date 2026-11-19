@@ -1081,3 +1081,29 @@ contradicen, manda la de más abajo (la más nueva). Una trampa nueva de esta á
   `ligarAPublicacion`). Que Instagram use el primer cuadro sin `thumb_offset` es su documentación: sin probar aquí.
 - **`publicar_con_musica` en un carrusel**: los segundos son POR LÁMINA (`segundos_lamina`, 2 a 5) y el movimiento admite
   «alternar». Antes el esquema sólo dejaba los 7/10/15 del reel de una foto y `segundosDeLamina` los volvía 3 sin decirlo.
+- **La IDENTIDAD DE VIDEO de un cliente** (`kit.identidadVideo`, src/lib/identidadVideo.js; decisión de la agencia,
+  19-11-2026: que todos los videos de un cliente se vean y suenen igual). Cuatro partes, todas opcionales: el ESTILO DE LA
+  MARCA (uno de sus estilos guardados), sus MÚSICAS (de la biblioteca, suya o de la agencia), sus EFECTOS por momento
+  (`MOMENTOS_EFECTO`: transicion, impacto, subida, sello, logo, item, cifra; ids del catálogo) y sus SUBTÍTULOS (estilo de
+  dibujo, posición, palabras, acento, mayúsculas).
+  · **Se aplica al CREAR** (`crearProyecto` en worker/lib/videosProyectos.js): los subtítulos y el sonido en todo video; el
+    estilo de la marca sólo en los animados que lo piden (`estiloDeMarca`: crear_video sin estilo_id, la pantalla, recrear
+    animado; la canción y el guion de la IA lo toman en `crearVideoConCancion` / `escribirGuion` si no se pide otro). La
+    foto con música, el carrusel en reel, las plantillas y el reel por planos NO toman el estilo (son otra forma): sí el
+    sonido y los subtítulos. Lo ya hecho no cambia y lo que se cambie luego en un video se queda en ese video.
+  · **La música** que toca es la de la lista que no sonó en los últimos 12 videos del cliente (`musicaQueToca`); si ya no
+    está en la biblioteca, la siguiente. Sin lista, la favorita, como antes.
+  · **Los efectos** van COPIADOS en el sonido del video (`sonido.efectosMarca`), no se leen del kit al renderizar: así un
+    video suena igual aunque la identidad cambie. Llegan al Container como `efectosMarca` (NO `paleta`: `paleta` del pedido
+    son los COLORES del kit, y con ese nombre la primera versión los pisaba). `colocadosAutomaticos` rota los suyos por
+    momento; un momento sin lista, como siempre. Un efecto de la biblioteca propio (`efectosPropios`) sigue mandando.
+  · **Los subtítulos** tienen cuatro estilos (`ESTILOS_SUBTITULOS` en videoEscenas.js; nombres en identidadVideo.js):
+    clásico (el de siempre, idéntico: un guion de antes sale igual), palabra a palabra, sobre placa y limpio (sin forzar
+    mayúsculas, con sombra). Se dibujan en `dibujarSubtitulos` (motorVideo.js), el mismo motor de la vista previa y del
+    render.
+  · **Sólo su ruta la escribe** (`guardarIdentidad`, worker/lib/estudio/identidadVideo.js; `guardarKit(…, { conIdentidad })`):
+    el PUT del kit la conserva. Guardar comprueba el estilo guardado, que cada música sea de la biblioteca del cliente o de
+    la agencia y que cada efecto exista en el catálogo; cambia sólo las partes que trae (null quita una).
+  · **La muestra** de los subtítulos (`identidad_video` con muestra, GET /api/videos/<c>/identidad/muestra) son cuadros del
+    Container con la paleta y la letra del cliente. **Nada de esto se ha probado contra el Container de producción** (los
+    tests dibujan en un lienzo de mentira): hay que mirar la muestra de verdad después de desplegar.

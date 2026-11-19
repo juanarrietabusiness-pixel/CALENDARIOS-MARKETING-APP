@@ -133,6 +133,8 @@ export const NOMBRE_TIPO_ESCENA = Object.freeze({
 
 /** Los colores con nombre que da el estilo (la paleta del kit de marca de cada cliente). */
 export const TOKENS_COLOR = Object.freeze(["fondo", "superficie", "texto", "acento", "apoyo", "claro", "oscuro"]);
+/** Los estilos de dibujo de los subtítulos (los nombres y qué es cada uno, en src/lib/identidadVideo.js). */
+export const ESTILOS_SUBTITULOS = Object.freeze(["clasico", "palabra", "placa", "limpio"]);
 const HEX = /^#[0-9a-f]{6}$/i;
 export const esColor = (c) => TOKENS_COLOR.includes(c) || HEX.test(String(c ?? ""));
 
@@ -648,6 +650,10 @@ export function validarGuion(entrada) {
     maxPalabras: validarProp(N(1, 4, 4), sub.maxPalabras, "subtitulos.maxPalabras", errores),
     maxCaracteres: validarProp(N(10, 30, 23), sub.maxCaracteres, "subtitulos.maxCaracteres", errores),
     acento: validarProp(C("acento"), sub.acento, "subtitulos.acento", errores),
+    // El estilo de dibujo (el de la identidad de video del cliente, o el clásico) y si van en mayúsculas (sin decirlo,
+    // según el estilo: el «limpio» va como se escribe). Un guion de antes, sin ellos, sale exactamente igual.
+    ...(sub.estilo !== undefined ? { estilo: validarProp(E([...ESTILOS_SUBTITULOS], "clasico"), sub.estilo, "subtitulos.estilo", errores) } : {}),
+    ...(sub.mayusculas !== undefined ? { mayusculas: validarProp(B(true), sub.mayusculas, "subtitulos.mayusculas", errores) } : {}),
   };
   const mu = esObjeto(g.musica) ? g.musica : null;
   // `estilo` e `instrumental` dicen QUÉ música lleva (lo lee generar_musica de Suno); `clave` es un archivo ya escogido

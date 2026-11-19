@@ -57,7 +57,7 @@ import { encajarEn, reducirEn } from "../src/lib/encajarLienzo.js";
 import { LADO_PUBLICAR } from "../src/lib/prepararRedes.js";
 import { renderizar } from "./render.mjs";
 import { escuchar } from "./escuchar.mjs";
-import { propiosDelPedido, libreriaDelPedido } from "./efectos.mjs";
+import { propiosDelPedido, libreriaDelPedido, efectosMarcaDelPedido } from "./efectos.mjs";
 import { unir, muestraDeColor, fotograma } from "./unir.mjs";
 import { golpesDeCancion } from "./golpes.mjs";
 import { conGolpes, limpiarGolpes } from "../src/lib/golpes.js";
@@ -271,7 +271,7 @@ async function atender(ruta, p) {
     const efectos = p.efectos === true;
     // Los efectos: la lista colocada (o los automáticos), los de la biblioteca de sonido (sus bytes en base64) y los que
     // sustituyen a los automáticos.
-    const sonido = { colocados: Array.isArray(p.colocados) ? p.colocados : [], propios: propiosDelPedido(p), libreria: libreriaDelPedido(p) };
+    const sonido = { colocados: Array.isArray(p.colocados) ? p.colocados : [], propios: propiosDelPedido(p), libreria: libreriaDelPedido(p), efectosMarca: efectosMarcaDelPedido(p) };
     const turno = renderEnCurso.then(() => renderizar(base, { audio, musica, efectos, ...sonido }));
     renderEnCurso = turno.catch(() => {});
     const r = await turno;

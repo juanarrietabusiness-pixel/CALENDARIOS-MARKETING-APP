@@ -12,7 +12,7 @@
 import {
   COMPONENTES, TIPOS_ESCENA, TOKENS_COLOR, POSICIONES, ENTRADAS, SALIDAS, BUCLES, TRANSICIONES, FONDOS, RITMOS,
   ILUSTRACIONES, FORMATOS_VIDEO, MIN_SEGUNDOS, MAX_SEGUNDOS, MAX_ESCENAS, MAX_CAPAS, MAX_HABLA, MAX_PANTALLA, MAX_PAUSA,
-  MAX_SEGUNDOS_CANCION, MAX_ESCENAS_CANCION,
+  MAX_SEGUNDOS_CANCION, MAX_ESCENAS_CANCION, ESTILOS_SUBTITULOS,
 } from "./videoEscenas.js";
 import { COMPONENTES_LISTOS } from "./motorVideo.js";
 
@@ -113,7 +113,7 @@ export function formatoParaLaIA() {
     "RAÍZ: version (1), titulo (≤ 120), formatos (el primero es el principal: " + Object.keys(FORMATOS_VIDEO).join(", ") + "), estilo, escenas, subtitulos, musica ({\"estilo\": \"la música con género Y subgénero concretos, 3–4 instrumentos, BPM y atmósfera (p. ej. «indie folk acústico, ukelele, palmas y contrabajo, 100 BPM, cálido y luminoso»; nada de «corporativa alegre», nunca artistas ni canciones)\", \"instrumental\": true} o null: es la PISTA del director musical, que escucha el video ya hecho y la música de la marca antes de pedirla a Suno; la mezcla va debajo de la voz).",
     `Duración total de ${MIN_SEGUNDOS} a ${MAX_SEGUNDOS} s; de 1 a ${MAX_ESCENAS} escenas; hasta ${MAX_CAPAS} capas por escena.`,
     `estilo: paleta {token: "#RRGGBB"} (opcional), fuentes {titular, cuerpo: "kit"}, grano (0–1), ritmo (${RITMOS.join("|")}), ilustracion (${ILUSTRACIONES.join("|")}), personaje {piel, pelo, ropa, accesorio} (opcional: sin él, el aspecto del kit del cliente, que fija personaje_video).`,
-    "subtitulos: activo (sí/no), pos (abajo|centro|arriba), maxPalabras (1–4), maxCaracteres (10–30), acento (color). Tienen su franja propia: nada se pone encima.",
+    `subtitulos: activo (sí/no), pos (abajo|centro|arriba), maxPalabras (1–4), maxCaracteres (10–30), acento (color), estilo (${ESTILOS_SUBTITULOS.join("|")}) y mayusculas (sí/no). Tienen su franja propia: nada se pone encima. Si el cliente tiene IDENTIDAD DE VIDEO (identidad_video), sus subtítulos, su estilo de marca, su música y sus efectos los pone la aplicación al crear el video: no los repitas a mano.`,
     "",
     "ESCENA",
     `id (único), tipo (${Object.keys(TIPOS_ESCENA).join("|")}), habla (≤ ${MAX_HABLA}: lo que se dice), pantalla (≤ ${MAX_PANTALLA}: el texto principal, para leer el guion de un vistazo), pausa (0–${MAX_PAUSA} s de silencio detrás del habla; una escena muda la necesita), fondo {tipo: ${FONDOS.join("|")}, color, color2}, transicion {tipo: ${TRANSICIONES.join("|")}, dur 0–1, dir?, color?}, camara? (acercar|alejar|deriva), capas.`,

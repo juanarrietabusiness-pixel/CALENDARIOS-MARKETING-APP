@@ -11,6 +11,7 @@
 // repite.
 // ============================================================
 
+import { limpiarPaleta } from "./identidadVideo.js";
 import { BYTES_MUESTRA, RENDER } from "./renderVideo.js";
 import { limpiarColocados } from "./efectosColocados.js";
 
@@ -69,9 +70,12 @@ export function limpiarSonido(s) {
     if (e) propios[sitio] = e;
   }
   const colocados = limpiarColocados(o.colocados);
+  // La PALETA de efectos de la identidad del cliente (src/lib/identidadVideo.js), copiada al crear el video: así un video
+  // suena siempre igual aunque la identidad cambie después.
+  const efectosMarca = limpiarPaleta(o.efectosMarca);
   return {
     efectos: o.efectos !== false, musica, ...(Object.keys(propios).length ? { efectosPropios: propios } : {}),
-    ...(colocados.length ? { colocados } : {}),
+    ...(colocados.length ? { colocados } : {}), ...(efectosMarca ? { efectosMarca } : {}),
   };
 }
 

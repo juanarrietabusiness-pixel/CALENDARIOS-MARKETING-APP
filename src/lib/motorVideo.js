@@ -27,7 +27,7 @@
 // ============================================================
 
 import { dibujarPersonaje, expresionDe, PROPORCION_PERSONAJE, imagenDePose } from "./personajeVideo.js";
-import { FORMATOS_VIDEO, FPS, tiempoDeCapa, segundoDelClip } from "./videoEscenas.js";
+import { FORMATOS_VIDEO, FPS, tiempoDeCapa, segundoDelClip, ESTILOS_SUBTITULOS } from "./videoEscenas.js";
 import { gruposDeSubtitulos, grupoEn, estadoDePalabras } from "./subtitulos.js";
 import {
   dibujarIcono, dibujarFormas, dibujarEstrellas, dibujarLineas, formatearCifra, avanceDeCuenta, logoNecesitaPlaca,
@@ -1686,17 +1686,23 @@ function dibujarSubtitulos(ctx, c, linea, t) {
   if (!sub?.activo || !linea) return;
   const g = grupoEn(gruposDe(linea, sub), t);
   if (!g) return;
+  const estilo = ESTILOS_SUBTITULOS.includes(sub.estilo) ? sub.estilo : "clasico";
   const area = areaSegura(c.formato, c.ancho, c.alto);
   const banda = bandaDeSubtitulos(c.formato, c.ancho, c.alto, sub.pos);
   const familia = c.fuentes?.cuerpo || c.fuentes?.titular || FUENTE_RESPALDO;
-  const palabras = g.palabras.map((p) => p.texto.toUpperCase());
-  const { tam, lineas, fuente } = encajarSubtitulo(ctx, palabras, { ancho: area.w * 0.94, alto: banda.h, lado: c.lado, familia });
+  // Las mayúsculas: lo que diga el guion; si no, según el estilo (el «limpio» va como se escribe).
+  const mayus = typeof sub.mayusculas === "boolean" ? sub.mayusculas : estilo !== "limpio";
   const estados = estadoDePalabras(g, t);
+  // «Palabra a palabra»: sólo la que se dice (o la última dicha), sola y grande en su franja.
+  const actual = Math.max(0, estados.findLastIndex((e) => e.estado !== "falta"));
+  const indices = estilo === "palabra" ? [actual] : g.palabras.map((_, i) => i);
+  const palabras = indices.map((i) => (mayus ? g.palabras[i].texto.toUpperCase() : g.palabras[i].texto));
+  const { tam, lineas, fuente } = encajarSubtitulo(ctx, palabras, { ancho: area.w * (estilo === "placa" ? 0.86 : 0.94), alto: banda.h, lado: c.lado * (estilo === "palabra" ? 1.25 : 1), familia });
   const claro = colorDe("claro", c.paleta);
   const oscuro = colorDe("oscuro", c.paleta);
   const acento = colorDe(sub.acento || "acento", c.paleta);
   const altoLinea = tam * TIPO_SUBTITULOS.alto;
-  const entrada = suave.sale(limitar((t - g.desde) / 0.08));
+  const entrada = suave.sale(limitar((t - (estilo === "palabra" ? g.palabras[actual].desde : g.desde)) / 0.08));
 
   ctx.save();
   ctx.font = fuente;
@@ -1705,27 +1711,48 @@ function dibujarSubtitulos(ctx, c, linea, t) {
   ctx.lineJoin = "round";
   ctx.globalAlpha *= entrada;
   const espacio = ctx.measureText(" ").width;
-  let i = 0;
+  const anchos = lineas.map((fila) => fila.map((p) => ctx.measureText(p).width));
+  const totales = anchos.map((a) => a.reduce((x, y) => x + y, 0) + espacio * (a.length - 1));
+  const yDe = (n) => banda.y + banda.h / 2 + (n - (lineas.length - 1) / 2) * altoLinea;
+  if (estilo === "placa") {
+    // La placa: una sola, del ancho de la línea más larga, redondeada, del oscuro de la marca casi opaco.
+    const margen = tam * 0.45;
+    const w = Math.max(...totales) + margen * 2;
+    const h = lineas.length * altoLinea + margen * 0.9;
+    ctx.save();
+    ctx.globalAlpha *= 0.86;
+    ctx.fillStyle = oscuro;
+    ctx.beginPath();
+    ctx.roundRect(c.ancho / 2 - w / 2, banda.y + banda.h / 2 - h / 2, w, h, Math.min(h / 2, tam * 0.5));
+    ctx.fill();
+    ctx.restore();
+  }
+  let k = 0;
   lineas.forEach((fila, n) => {
-    const anchos = fila.map((p) => ctx.measureText(p).width);
-    const total = anchos.reduce((a, b) => a + b, 0) + espacio * (fila.length - 1);
-    let x = c.ancho / 2 - total / 2;
-    const y = banda.y + banda.h / 2 + (n - (lineas.length - 1) / 2) * altoLinea;
+    let x = c.ancho / 2 - totales[n] / 2;
+    const y = yDe(n);
     fila.forEach((p, j) => {
+      const i = indices[k];
       const e = estados[i];
-      const centro = x + anchos[j] / 2;
+      const centro = x + anchos[n][j] / 2;
       ctx.save();
-      if (e.estado === "falta") ctx.globalAlpha *= 0.38;
+      if (e.estado === "falta" && estilo !== "palabra") ctx.globalAlpha *= estilo === "limpio" ? 0.45 : 0.38;
       ctx.translate(centro, y);
-      if (e.estado === "diciendo") { const s = 1 + 0.14 * (1 - suave.sale(e.salto)); ctx.scale(s, s); }
-      ctx.lineWidth = tam * 0.17;
-      ctx.strokeStyle = oscuro;
-      ctx.strokeText(p, 0, 0);
+      if (e.estado === "diciendo" && estilo !== "limpio") { const s = 1 + 0.14 * (1 - suave.sale(e.salto)); ctx.scale(s, s); }
+      if (estilo === "clasico" || estilo === "palabra") {
+        ctx.lineWidth = tam * 0.17;
+        ctx.strokeStyle = oscuro;
+        ctx.strokeText(p, 0, 0);
+      } else if (estilo === "limpio") {
+        ctx.shadowColor = "rgba(0,0,0,0.55)";
+        ctx.shadowBlur = tam * 0.25;
+        ctx.shadowOffsetY = tam * 0.06;
+      }
       ctx.fillStyle = i === g.clave ? acento : claro;
       ctx.fillText(p, 0, 0);
       ctx.restore();
-      x += anchos[j] + espacio;
-      i++;
+      x += anchos[n][j] + espacio;
+      k++;
     });
   });
   ctx.restore();

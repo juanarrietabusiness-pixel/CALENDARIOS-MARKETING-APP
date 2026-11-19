@@ -117,6 +117,9 @@ src/
                           (`estiloDeGuion`), contarlas a la persona y a la IA (`resumenDeEstilo`, `lineaDeEstilo`) e imponerlas a otro
                           guion (`aplicarEstilo`) sin tocar lo que se dice ni lo que se lee (puro; también el Worker)
     estilosVideoApi.js    Cliente de /api/videos/<c>/estilos y de «Guardar como estilo» / «Aplicar» de un video
+    identidadVideo.js     La IDENTIDAD DE VIDEO de un cliente (`kit.identidadVideo`): su estilo de marca, sus músicas, sus efectos por
+                          momento y el estilo de sus subtítulos; limpiarla, aplicarla a un guion y a un sonido nuevos, la música que
+                          toca y contarla (puro; también el Worker y el Container)
     golpes.js             El RITMO de una canción: el BPM y los golpes por energía (envolvente de ataques, picos, autocorrelación)
                           y el «pulso» de una capa (puro: Container, Worker y pantalla)
     motorVideoNavegador.js  Lo que ese motor necesita en el navegador: las imágenes de la galería, el logo, la letra del kit
@@ -911,6 +914,8 @@ worker/
                           al cerrarse, ponerlas en el guion guardado (`ponerFondosEnVideo`)
     estudio/estilosVideo.js  Los ESTILOS DE VIDEO guardados: guardar uno de un video, renombrar, quitar y aplicarlo a otro (el kit, sólo
                           por aquí: `guardarKit(…, { conEstilos: true })`)
+    estudio/identidadVideo.js  La IDENTIDAD DE VIDEO: leerla, guardarla por partes comprobando lo que nombra (el kit, sólo por aquí:
+                          `guardarKit(…, { conIdentidad: true })`) y la muestra de los estilos de subtítulos (cuadros del Container)
     estudio/guionVideo.js El contexto común de los guiones de video (`contextoDeGuion`): producto, cerebro, criterio, publicación
     estudio/herramientasReel.js  El video por MCP: crear_reel, estado_reel, continuar_reel, montar_reel, video_listo y
                           extraer_guion_ugc (sólo MCP: desde herramientas.js sería el ciclo de siempre)

@@ -15,6 +15,7 @@ import { NULO } from "../acceso.js";
 import { marcaParaElVideo } from "../../../src/lib/estiloVideo.js";
 import { galeriaParaLaIA, erroresDeFondos, fondosPendientes, MAX_GALERIA_FONDOS } from "../../../src/lib/fondosVideo.js";
 import { aplicarEstilo, lineaDeEstilo, TOPE_FONDOS_ESTILO } from "../../../src/lib/estilosVideo.js";
+import { estiloDeLaMarca } from "./estilosVideo.js";
 import { kitDe } from "./kit.js";
 import { contextoDeGuion } from "./guionVideo.js";
 import { leerMercado } from "../mercado.js";
@@ -168,7 +169,8 @@ export async function escribirGuion(env, acceso, cliente, datos = {}) {
   const permitidos = preciosPermitidos(catalogo.productos, [idea, delPost]);
   // Un ESTILO GUARDADO del cliente (src/lib/estilosVideo.js): la IA escribe el contenido y el código impone la forma.
   // Con fondos en el estilo, el video los lleva aunque no se marcara «Con imágenes de fondo».
-  const estilo = datos.estilo ?? null;
+  // Sin estilo pedido, el de la MARCA (identidad de video del cliente); `estilo: null` explícito, ninguno.
+  const estilo = datos.estilo === undefined ? estiloDeLaMarca(cliente, "voz") : datos.estilo;
   const conFondos = datos.conFondos === true || estilo?.fondo?.imagen === true;
   const maxFondos = estilo ? TOPE_FONDOS_ESTILO : undefined;
   const { kit, marcaVideo, imagenes, galeria } = await marcaDelGuion(env, acceso, cliente, { conFondos });
@@ -222,6 +224,7 @@ export async function escribirGuion(env, acceso, cliente, datos = {}) {
     guion: v.guion, avisos: v.avisos, corregido, modelo: r.modelo, aviso: juntar(r.aviso, avisoRefs), postId: post ? String(datos.postId) : null,
     estructura: usadaEn(eleccion, nombre), referencias: refs, fondos: fondosPendientes(v.guion).length,
     ...(secuencia ? { sigueVideo: { archivoId: secuencia.archivoId, tomas: secuencia.tomas } } : {}),
+    ...(estilo ? { estilo } : {}),
   };
 }
 

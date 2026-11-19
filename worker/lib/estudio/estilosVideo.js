@@ -12,6 +12,7 @@ import { kitDe, guardarKit } from "./kit.js";
 import { guardarProyecto, deFila, ErrorVideo } from "../videosProyectos.js";
 import { estiloDeGuion, limpiarEstiloVideo, aplicarEstilo, resumenDeEstilo, MAX_ESTILOS_VIDEO, USOS_ESTILO_VIDEO } from "../../../src/lib/estilosVideo.js";
 import { conFondosPorCrear } from "../../../src/lib/fondosVideo.js";
+import { estiloDeMarcaDelKit } from "../../../src/lib/identidadVideo.js";
 
 /** Un error de lo pedido, con su estado HTTP. */
 export class ErrorEstilo extends Error {
@@ -27,6 +28,15 @@ const texto = (v, n) => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().s
 
 /** Los estilos guardados del cliente, con su resumen en frases (lo que enseña la pantalla y lee Claude). */
 export const estilosDelCliente = (cliente) => (kitDe(cliente).estilosVideo ?? []).map((e) => ({ ...e, resumen: resumenDeEstilo(e) }));
+
+/**
+ * El ESTILO DE LA MARCA (el que la identidad de video del cliente marca, `kit.identidadVideo.estiloId`) si encaja con el
+ * uso («cancion» o «voz»), o null. Lo aplican solos los videos animados nuevos que no piden otro estilo. Un estilo que ya
+ * no está guardado no se aplica (la identidad lo dice en su resumen).
+ */
+export function estiloDeLaMarca(cliente, uso = "voz") {
+  return estiloDeMarcaDelKit(kitDe(cliente), uso);
+}
 
 /** Un estilo del cliente por su id. 404 si no está. */
 export function estiloDelCliente(cliente, estiloId) {

@@ -377,6 +377,8 @@ export function cuerpoDeSonido(son) {
     ...(son.sonido.colocados?.length ? { colocados: son.sonido.colocados } : {}),
     ...(Object.keys(son.propios).length ? { propios: son.propios } : {}),
     ...(Object.keys(son.libreria).length ? { libreria: son.libreria } : {}),
+    // Los efectos de la identidad de video del cliente, por momento (copiados al crear el video).
+    ...(son.sonido.efectosMarca && !son.sonido.colocados?.length ? { efectosMarca: son.sonido.efectosMarca } : {}),
   };
 }
 
