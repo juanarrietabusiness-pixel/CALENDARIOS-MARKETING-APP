@@ -392,7 +392,7 @@ no aquí.
 - `docs/auditoria-estudio-mcp.md` — auditoría del Estudio por MCP (2026-11-18): errores del diseño, del video y del
   sonido, el director, el contexto que le llega a Claude, los cuellos de botella y lo que la app hace y el MCP no; lo que
   se toma de rea-video, HyperFrames y lemo-opuscar (y por qué no se instalan), el plan en nueve entregas y cómo se
-  usa después. Auditoría; nada implementado.
+  usa después. Revisada el 2026-11-19: arriba, lo SEGURO (S1–S10), lo que hay que medir y lo que queda fuera. Nada implementado.
 - `docs/auditoria-ux-ui.md` — auditoría de UX, UI, responsive y accesibilidad,
   con lo corregido y lo pendiente.
 - `docs/migracion-cloudflare.md` — plan para mover la aplicación de Supabase +

@@ -11,6 +11,60 @@ puras.
 
 ---
 
+## Revisión del 2026-11-19: lo que es SEGURO
+
+La agencia pidió no tocar nada sin la seguridad de que mejora algo. Se revisó cada hallazgo otra vez, leyendo el código
+uno por uno y, donde se pudo, ejecutándolo o mirando el conector desplegado. Quedan tres grupos. **Sólo el primero se
+hace.** Lo demás de este documento (incluido lo de los tres repositorios y las entregas 2 a 9 de §8) queda como
+referencia: se hará, si se hace, después de medirlo.
+
+### 1. Seguro: fallo comprobado, efecto concreto, arreglo sin contrapartida
+
+| # | Qué | Prueba | Qué mejora |
+|---|---|---|---|
+| S1 | La revisión del director no corre en las piezas sueltas | Ejecutado: con un pedido real (`pedidoDePieza` + `conEscena`), `fichaDelPedido` devuelve "" también sin kit. Rompe una decisión escrita de la agencia (estudio-e-imagen.md: «El DIRECTOR revisa cada pieza») | Toda pieza de `disenar_piezas`, el lote y «Producir el mes» recibe nota, arreglos y la corrección automática por debajo de 8. **Sube el gasto**: un control algo más largo por pieza y, en las que saquen menos de 8, una edición más (tope: una por pieza) |
+| S2 | El MCP escribe el mes sin versión | Leído: `guardarDias` (mcp.js:223) escribe `days` sin condición; `poner_en_publicacion` espera al Container entre leer y escribir. La trampa del 409 dice que así «desaparecía sin aviso» y deja el MCP como pendiente («como siempre») | Dos ediciones a la vez, o Claude y una persona en el mismo mes, ya no se pisan |
+| S3 | `efectos_sonido` exige `cliente` sin declararlo | Visto en el conector desplegado: `required: ["cliente"]` sin la propiedad | Deja de obligar a Claude a inventar un parámetro (y un cliente estricto deja de fallar) |
+| S4 | `publicar_con_musica` no deja pedir lo que su descripción ofrece para un carrusel | Visto en el conector desplegado: `segundos` sólo admite 7/10/15 y `segundosDeLamina` convierte cualquiera de esos en 3; «alternar» no está en el `enum` | Claude puede pedir 2, 4 o 5 s por lámina |
+| S5 | La papelera por MCP no tiene de dónde sacar los IDs | Leído: `ver_estudio` filtra `borrado_at` y no lista carpetas; `recuperar_de_papelera` y `borrar_carpeta` mandan ahí | Recuperar y quitar carpetas funciona sin que la persona pegue IDs |
+| S6 | `crear_en_estudio` manda a `generar_imagen`, que no existe en el MCP | Leído: sólo está en el asistente (herramientasChat.js:179) | Claude deja de buscar una herramienta que no tiene |
+| S7 | Los reels animados salen sin portada | Leído: el render no pone `portada` ni `portadaMs` salvo que el post tuviera una imagen; el publicador manda `thumb_offset` sólo si existe; el texto del gancho tiene alfa 0 en el cuadro 0 (motorVideo.js:558,598) y nada avisa de un reel sin portada | Con `portadaMs` en el instante en que el gancho ya está entero (sólo si el post no tiene portada), la portada en el perfil enseña el gancho y no sólo el fondo. *Que Instagram usa el primer cuadro sin `thumb_offset` es su documentación, no probado aquí* |
+| S8 | Las reglas de estilo del cliente se cortan a 300 caracteres | Leído: `textoDelCliente` (loteAnuncios.js:453); visto en la ficha de D'CASA, que termina a media palabra | Claude recibe enteras las reglas de estilo, locución y hashtags que escribió la agencia |
+| S9 | Una pieza sin tipo dice «YA decidido» con el tipo y el nivel vacíos | Leído: `lineaDePieza` imprime «· : » y «nivel: —» (loteAnuncios.js:376-377) bajo una cabecera que dice que está decidido; visto en D'CASA | La ficha dice «sin decidir: escógelo tú» en vez de afirmar algo falso |
+| S10 | Fecha imposible aceptada | Leído: `fechaValida` (mcp.js:237) sólo mira el formato; `2026-02-30` pasa | Ya no se crea un día fantasma que no sale en la rejilla |
+
+### 2. Real, pero su efecto no se sabe sin medir
+
+No se toca hasta medirlo con un caso real.
+
+- **Recorte del sonido antes de normalizar** (efectosSonido.js:242,283; sonidoVideo.js:160): el código recorta, pero si
+  llega a pasar depende de los niveles reales de la voz y los efectos. Se mide con `escuchar_video` sobre videos ya
+  hechos antes de decidir.
+- **La ficha de diseño se acorta para caber en 4.000 caracteres**: es a propósito (`ajustarFicha` quita lo
+  prescindible y guarda el texto exacto). Si subir el tope mejora la imagen depende de cada modelo: sin probar.
+- **El cerebro no aprende de lo que escribe Claude** (`registrarUsos` sólo desde la pantalla): cierto, pero lo
+  aprendido mueve el orden de las notas entre ×0,8 y ×1,2. Efecto pequeño; arreglarlo bien pide cuidar que las
+  ediciones de Claude no cuenten como correcciones de la persona.
+- **Notas internas en `buscar_cerebro` por MCP**: cierto, pero llegan marcadas «INTERNA» y el camino principal
+  (`ficha_de_textos`) ya las deja fuera. Añadir `para_publicar` no tiene contrapartida, pero tampoco mucho efecto.
+- **El manual de video contradice al animado** (directorVideo.js:27-29): sólo llega cuando la IA de la APP escribe el
+  guion (el botón de la pantalla y `recrear` animado) y sólo si la agencia no escribió su propio manual. Por MCP, Claude
+  escribe el guion con `formato_video` y no lo recibe. Antes de tocarlo: mirar si el espacio tiene manual propio.
+- **El bombeo de la música, el corte en el ataque de la palabra, la escena que sale congelada, los subtítulos fuera
+  de la zona**: defectos de código ciertos cuyo efecto es de oído y de vista. Se comparan antes y después en un video
+  real antes de decidir.
+- **Días pasados en la ficha**: escribir para días que ya pasaron gasta tokens; si la agencia nunca rellena días
+  pasados, se quitan. Lo decide la agencia.
+
+### 3. Fuera por ahora
+
+Todo lo que es gusto o diseño de producto sin medir: las reglas de movimiento y de director de los tres repositorios,
+los estilos nuevos, el desenfoque de movimiento, las herramientas nuevas (brief, guardar en lote, estado único,
+hoja de contactos), reducir o renombrar herramientas, A/B, multiformato, escalar Muse, y la Entrega 9. Pueden ser buenas
+ideas; no hay prueba de que mejoren algo.
+
+---
+
 ## Resumen: los diez hallazgos que más pesan
 
 1. **✔ La revisión del director de arte nunca corre en las piezas sueltas.** `fichaDelPedido` busca «Pieza:» al
