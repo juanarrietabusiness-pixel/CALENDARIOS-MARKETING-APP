@@ -19,10 +19,20 @@ export function modelosParaReel(activos = {}) {
   return porPrecio(MODELOS.filter((m) => m.tipo === "video" && (m.referencias >= 2 || m.inicial) && !m.necesitaVideo && (m.motor === "prueba" || activos[m.motor])), activos);
 }
 
-/** El que se escoge si nadie escoge: Omni 1.2 por Kie (storyboard de 6, hasta 15 s y corrige un tramo), luego el 1.1 y los que le siguen. */
+/**
+ * El orden para UN video con todo (el storyboard de referencia): los de los diez motores de prioridad que aceptan un
+ * storyboard (src/lib/motoresVideo.js) —Seedance 2.5 primero: hasta 14 referencias, la misma cara en todas las tomas y
+ * hasta 30 s—, y detrás los de antes (Omni 1.2, el 1.1, el Flash de Google) para una cuenta sin ellos.
+ */
+export const PREFERIDOS_REEL = Object.freeze([
+  "seedance-2-5-kie", "kling-3-omni-kie", "gemini-omni-video-kie", "minimax-h3-kie", "seedance-2-kie", "wan-3-kie", "veo-3-1-kie",
+  "kling-3-kie", "veo-3-1-fast-kie", "gemini-omni-1-2-kie", "gemini-omni-kie", "gemini-omni-flash",
+]);
+
+/** El que se escoge si nadie escoge: el primero de `PREFERIDOS_REEL` con llave. */
 export function modeloRecomendadoParaReel(activos = {}) {
   const lista = modelosParaReel(activos);
-  return ["gemini-omni-1-2-kie", "gemini-omni-kie", "kling-3-omni-kie", "seedance-2-kie", "gemini-omni-flash", "kling-3-kie", "veo-3-1-fast-kie"]
+  return PREFERIDOS_REEL
     .map((id) => lista.find((m) => m.id === id)).find(Boolean) ?? lista.find((m) => m.motor !== "prueba") ?? lista[0] ?? null;
 }
 
@@ -86,11 +96,16 @@ export function modelosParaClips(activos = {}) {
 }
 
 /**
- * El orden de los modelos para los CLIPS de un reel (cada uno arranca de su fotograma revisado). Primero Veo 3.1 Lite por
- * Kie: en la prueba del método de agencia fue el más barato (~0,03 $/s) que deja el producto fiel. Luego Kling 3.0 y
- * los que le siguen.
+ * El orden de los modelos para los CLIPS de un reel (cada uno arranca de su fotograma revisado). Los diez motores de
+ * prioridad que animan una imagen (decisión de la agencia del 19-11-2026: alta gama, no el más barato): Seedance 2.5
+ * primero —el primero en animar una imagen en noviembre de 2026; los clips van sin voz, así que su falta de voz en
+ * español no estorba—, luego Kling 3.0 y los que le siguen. Veo 3.1 Lite (~0,03 $/s, el de antes) y Hailuo quedan
+ * detrás, para escogerlos a mano o para una cuenta sin los otros.
  */
-export const PREFERIDOS_CLIPS = Object.freeze(["veo-3-1-lite-kie", "kling-3-kie", "seedance-2-5-kie", "seedance-2-kie", "wan-3-kie", "hailuo-2-3-kie", "minimax-h3-kie"]);
+export const PREFERIDOS_CLIPS = Object.freeze([
+  "seedance-2-5-kie", "kling-3-kie", "minimax-h3-kie", "kling-3-omni-kie", "seedance-2-kie", "wan-3-kie", "veo-3-1-kie",
+  "veo-3-1-fast-kie", "veo-3-1-lite-kie", "hailuo-2-3-kie",
+]);
 
 /** El que se escoge si nadie escoge: el primero de `PREFERIDOS_CLIPS` con llave. */
 export function modeloParaClips(activos = {}) {

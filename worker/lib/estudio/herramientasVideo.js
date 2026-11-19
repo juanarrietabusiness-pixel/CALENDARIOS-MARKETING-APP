@@ -69,7 +69,7 @@ import { pedidoConClips, alContenedor, respuestaEnBase64 } from "./cuadros.js";
 import { pedirRender, renderAlDia, ligarAPublicacion } from "./render.js";
 import { escucharVideo } from "./escuchar.js";
 import { EFECTOS_CATALOGO, efectoDelCatalogo, buscarEnCatalogo, cuentaPorPapel } from "../../../src/lib/catalogoEfectos.js";
-import { PAPELES, EFECTO_AUTOMATICO, SONIDOS_DE_TRANSICION, momentosColocados, textoDeColocado } from "../../../src/lib/efectosColocados.js";
+import { PAPELES, SONIDOS_DE_TRANSICION, momentosColocados, textoDeColocado } from "../../../src/lib/efectosColocados.js";
 import { reloj } from "../../../src/lib/escucharSonido.js";
 import { palabrasParaLinea } from "../../../src/lib/videoCancion.js";
 import { conMusicaSegun } from "./conMusica.js";

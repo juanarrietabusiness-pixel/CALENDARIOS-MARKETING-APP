@@ -17,6 +17,10 @@
 // LOS PRECIOS SON ESTIMACIONES, y así se rotulan. Los motores no devuelven
 // el costo real de una imagen; lo que se apunta en el contador es esto.
 // `PRECIOS_AL` dice de cuándo son: un test avisa cuando pasan de 90 días.
+//
+// `prioridad` (1 a 10, sólo video): los DIEZ MOTORES DE PRIORIDAD de la agencia (decisión del 19-11-2026: los videos
+// de los clientes, con los de alta gama). Van primero en las listas («Recomendado») y en las preferencias del reel, de
+// los clips y de recrear; qué hace bien cada uno y cuál conviene para cada toma, en src/lib/motoresVideo.js.
 // ============================================================
 
 import MODELOS_HIGGSFIELD from "./estudioHiggsfield.json";
@@ -445,7 +449,7 @@ export const MODELOS = Object.freeze([
     ajustes: { factor: enumerado(["2", "4", "1"], "2") },
   },
   {
-    id: "kling-3-kie", motor: "kie", tipo: "video", nombre: "Kling 3.0 (Kie)", cola: true,
+    id: "kling-3-kie", motor: "kie", tipo: "video", prioridad: 8, nombre: "Kling 3.0 (Kie)", cola: true,
     creador: "Kling (Kuaishou)", calidad: 4, velocidad: "normal", costo: 0.07, por: "s", referencias: 0, inicial: 1, final: 1, estimado: true,
     costoSegun: { ajuste: "modo", valores: { std: 0.07, pro: 0.1, "4K": 0.2 } },
     nota: "Kling 3.0 por Kie.ai: de 3 a 15 s, con sonido, desde texto o desde una imagen inicial (y final). Precio aproximado.",
@@ -456,7 +460,7 @@ export const MODELOS = Object.freeze([
     },
   },
   {
-    id: "kling-3-omni-kie", motor: "kie", tipo: "video", nombre: "Kling 3.0 Omni (Kie)", cola: true,
+    id: "kling-3-omni-kie", motor: "kie", tipo: "video", prioridad: 4, nombre: "Kling 3.0 Omni (Kie)", cola: true,
     creador: "Kling (Kuaishou)", calidad: 4, velocidad: "lento", costo: 0.1, por: "s", referencias: 7, inicial: 1, final: 1, video: 1, estimado: true,
     costoSegun: { ajuste: "resolution", valores: { "720p": 0.1, "1080p": 0.14, "4k": 0.28 } },
     nota: "Kling 3.0 Omni por Kie.ai: hasta 7 imágenes de referencia (personajes, producto, escena) o un video que seguir; de 3 a 15 s con sonido. Precio aproximado.",
@@ -467,7 +471,7 @@ export const MODELOS = Object.freeze([
     },
   },
   {
-    id: "seedance-2-kie", motor: "kie", tipo: "video", nombre: "Seedance 2.0 (Kie)", cola: true,
+    id: "seedance-2-kie", motor: "kie", tipo: "video", prioridad: 6, nombre: "Seedance 2.0 (Kie)", cola: true,
     creador: "ByteDance", calidad: 4, velocidad: "normal", costo: 0.08, por: "s", referencias: 9, inicial: 1, final: 1, video: 1, estimado: true,
     costoSegun: { ajuste: "resolution", valores: { "480p": 0.05, "720p": 0.08, "1080p": 0.14, "4k": 0.3 } },
     nota: "Seedance 2.0 por Kie.ai: varios planos con sonido, hasta 9 referencias y un video de referencia; de 4 a 15 s. Precio aproximado.",
@@ -479,7 +483,7 @@ export const MODELOS = Object.freeze([
   },
   {
     // `soloFinal`: admite la imagen FINAL sin la inicial (el gancho nuevo que termina en el cuadro donde sigue el video).
-    id: "seedance-2-5-kie", motor: "kie", tipo: "video", nombre: "Seedance 2.5 (Kie)", cola: true, soloFinal: true,
+    id: "seedance-2-5-kie", motor: "kie", tipo: "video", prioridad: 3, nombre: "Seedance 2.5 (Kie)", cola: true, soloFinal: true,
     creador: "ByteDance", calidad: 4, velocidad: "normal", costo: 0.1, por: "s", referencias: 14, inicial: 1, final: 1, video: 1, estimado: true,
     costoSegun: { ajuste: "resolution", valores: { "480p": 0.06, "720p": 0.1, "1080p": 0.16 } },
     nota: "Seedance 2.5 por Kie.ai: hasta 14 referencias y videos de referencia, de 4 a 30 s, con sonido. Precio aproximado.",
@@ -492,14 +496,14 @@ export const MODELOS = Object.freeze([
     },
   },
   {
-    id: "veo-3-1-fast-kie", motor: "kie", tipo: "video", nombre: "Veo 3.1 Fast (Kie)", cola: true,
+    id: "veo-3-1-fast-kie", motor: "kie", tipo: "video", prioridad: 9, nombre: "Veo 3.1 Fast (Kie)", cola: true,
     creador: "Google", calidad: 4, velocidad: "normal", costo: 0.05, por: "s", referencias: 3, inicial: 1, final: 1, estimado: true,
     nota: "Veo 3.1 de Google por Kie.ai, con voz y sonido: 4, 6 u 8 s; imagen inicial y final, o hasta 3 referencias (entonces siempre 8 s). Precio aproximado.",
     para: ["con voz", "anuncios", "8 s"],
     ajustes: { aspectRatio: enumerado(["9:16", "16:9"], "9:16"), duration: enumerado(["8", "6", "4"], "8"), resolution: enumerado(["720p", "1080p", "4k"], "720p") },
   },
   {
-    id: "veo-3-1-kie", motor: "kie", tipo: "video", nombre: "Veo 3.1 Quality (Kie)", cola: true,
+    id: "veo-3-1-kie", motor: "kie", tipo: "video", prioridad: 1, nombre: "Veo 3.1 Quality (Kie)", cola: true,
     creador: "Google", calidad: 4, velocidad: "lento", costo: 0.25, por: "s", referencias: 0, inicial: 1, final: 1, estimado: true,
     nota: "Veo 3.1 en su mejor calidad, con voz y sonido: 4, 6 u 8 s, con imagen inicial y final. Caro. Precio aproximado.",
     para: ["la mejor calidad", "con voz"],
@@ -521,7 +525,7 @@ export const MODELOS = Object.freeze([
   },
   // Los de la documentación de Kie de octubre de 2026 (docs/kie/).
   {
-    id: "gemini-omni-video-kie", motor: "kie", tipo: "video", nombre: "Gemini Omni (Kie) · calidad alta", cola: true,
+    id: "gemini-omni-video-kie", motor: "kie", tipo: "video", prioridad: 2, nombre: "Gemini Omni (Kie) · calidad alta", cola: true,
     creador: "Google", calidad: 4, velocidad: "lento", costo: 0.15, por: "s", referencias: 7, video: 1, estimado: true,
     costoSegun: { ajuste: "resolution", valores: { "720p": 0.15, "1080p": 0.2, "4k": 0.4 } },
     nota: "El Omni completo (no el Flash): más calidad y hasta 4K; hasta 7 referencias o un video para corregirlo, con voz escogida. Sin imagen inicial (para eso, el Flash). Precio aproximado.",
@@ -570,7 +574,7 @@ export const MODELOS = Object.freeze([
     ajustes: { aspectRatio: enumerado(["9:16", "16:9", "1:1"], "9:16"), duration: enumerado(["5", "10"], "10"), sonido: enumerado(["si", "no"], "si") },
   },
   {
-    id: "kling-2-6-movimiento-kie", motor: "kie", tipo: "video", nombre: "Kling 2.6 · copia el movimiento (Kie)", cola: true, necesitaVideo: true, necesitaImagen: true,
+    id: "kling-2-6-movimiento-kie", motor: "kie", tipo: "video", prioridad: 10, nombre: "Kling 2.6 · copia el movimiento (Kie)", cola: true, necesitaVideo: true, necesitaImagen: true,
     creador: "Kling (Kuaishou)", calidad: 3, velocidad: "normal", costo: 0.045, por: "s", segundos: 10, referencias: 1, inicial: 1, final: 0, video: 1, estimado: true,
     costoSegun: { ajuste: "resolution", valores: { "720p": 0.045, "1080p": 0.07 } },
     nota: "Pone a la persona de TU foto a hacer los movimientos del video de referencia (un baile, un gesto, un recorrido). Necesita la foto (referencia o imagen inicial) y el video. Se cobra por lo que dura el video: el precio supone 10 s. Precio aproximado.",
@@ -585,7 +589,7 @@ export const MODELOS = Object.freeze([
     ajustes: { aspectRatio: enumerado(["9:16", "16:9"], "9:16"), duration: enumerado(["8", "6", "4"], "8"), resolution: enumerado(["720p", "1080p"], "720p") },
   },
   {
-    id: "wan-3-kie", motor: "kie", tipo: "video", nombre: "Wan 3.0 (Kie)", cola: true,
+    id: "wan-3-kie", motor: "kie", tipo: "video", prioridad: 7, nombre: "Wan 3.0 (Kie)", cola: true,
     creador: "Alibaba", calidad: 4, velocidad: "normal", costo: 0.08, por: "s", referencias: 10, inicial: 1, final: 1, video: 1, estimado: true,
     costoSegun: { ajuste: "resolution", valores: { "480P": 0.04, "720P": 0.06, "1080P": 0.08 } },
     nota: "Wan 3.0: hasta 10 imágenes de referencia, un video que seguir o imagen inicial y final, con sonido. Precio aproximado.",
@@ -614,7 +618,7 @@ export const MODELOS = Object.freeze([
     ajustes: { duration: enumerado(["6", "10"], "10"), resolution: enumerado(["768P", "1080P"], "768P") },
   },
   {
-    id: "minimax-h3-kie", motor: "kie", tipo: "video", nombre: "MiniMax H3 (Kie)", cola: true,
+    id: "minimax-h3-kie", motor: "kie", tipo: "video", prioridad: 5, nombre: "MiniMax H3 (Kie)", cola: true,
     creador: "MiniMax", calidad: 4, velocidad: "normal", costo: 0.1, por: "s", referencias: 9, inicial: 1, final: 1, video: 1, estimado: true,
     costoSegun: { ajuste: "resolution", valores: { "768P": 0.05, "2K": 0.1 } },
     nota: "MiniMax H3: hasta 2K, de 4 a 15 s; desde texto, con imagen inicial y final, o con hasta 9 referencias y un video. Precio aproximado.",
@@ -829,7 +833,8 @@ export function modelosParaLista(tipo, { orden = "recomendado", creador = "", ac
   // Lo que cuesta UNA pieza (un video, con su duración por defecto): por segundo y por imagen no se comparan.
   const costoPorUnidad = ({ m }) => costoDePieza(m);
   const clave = {
-    recomendado: (x) => [activo(x), x.m.predeterminado ? 0 : 1, -(x.m.calidad ?? 2), costoPorUnidad(x)],
+    // Los diez de prioridad de video primero, en su orden (`prioridad`); luego, como siempre.
+    recomendado: (x) => [activo(x), x.m.prioridad ?? 99, x.m.predeterminado ? 0 : 1, -(x.m.calidad ?? 2), costoPorUnidad(x)],
     calidad: (x) => [activo(x), -(x.m.calidad ?? 2), costoPorUnidad(x)],
     barato: (x) => [activo(x), x.m.motor === "prueba" ? 1 : 0, costoPorUnidad(x), -(x.m.calidad ?? 2)],
     caro: (x) => [activo(x), -costoPorUnidad(x), -(x.m.calidad ?? 2)],

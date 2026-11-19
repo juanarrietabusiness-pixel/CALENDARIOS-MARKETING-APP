@@ -794,7 +794,8 @@ contradicen, manda la de más abajo (la más nueva). Una trampa nueva de esta á
     sobre el de siempre).
   · **El reel por planos es barato por defecto**: 4 planos hasta 20 s y 6 en 30 s (`planosPorDefecto`; `planos` pide más);
     la IA marca la `toma` de cada plano («fija»: producto, beneficio, cierre; «movimiento»: personas o acción) y, con
-    montaje, la fija NO paga clip (`clip.fase` «omitido»); los clips van con Veo 3.1 Lite por Kie (`PREFERIDOS_CLIPS`,
+    montaje, la fija NO paga clip (`clip.fase` «omitido»); los clips iban con Veo 3.1 Lite por Kie (desde el 19-11-2026,
+    con el primero de los motores de prioridad: ver «Los diez motores de video» al final) (`PREFERIDOS_CLIPS`,
     `CLIPS_POR_DEFECTO`: con su llave toda duración va por clips y montaje). El producto «malo» del problema se pide
     genérico, de otro color y sin nada de la marca. `crear_reel` se PARA tras el storyboard por defecto (`revisar` true).
     El plan dice lo que se ahorra frente a la opción cara (`textoDelAhorro`) y, si va por Kie, compara con su SALDO
@@ -1044,3 +1045,31 @@ contradicen, manda la de más abajo (la más nueva). Una trampa nueva de esta á
   en local el mismo guion y la misma música con el código nuevo y con el viejo, y correlacionar la envolvente del audio
   con el mp4 de producción (1,000 con el que lo hizo, 0,775 con el otro). Tras un despliegue que toca el audio o el
   motor, espera unos minutos antes de renderizar lo que se va a entregar, y compruébalo así.
+- **Los diez motores de video de prioridad y el motor sugerido tras un desglose** (19-11-2026; `prioridad` en
+  `src/lib/estudioCatalogo.js`, `src/lib/motoresVideo.js`, `DesgloseVideo.jsx`, `deconstruir_video`, `crear_reel`,
+  `continuar_reel`, `ver_estudio`). Decisión de la agencia tras el reel del tsunami de Baby Caleb: con Veo 3.1 Lite, sin
+  guía de movimiento y con pedidos cargados no llegaba a la referencia. Cosas que no se ven:
+  · **El orden lo dice el catálogo, lo que hace bien cada uno lo dice motoresVideo.js** (`FORTALEZAS`): un test exige que
+  sean los mismos diez. Del más caro al más barato: Veo 3.1 Quality, Gemini Omni calidad alta, Seedance 2.5, Kling 3.0
+  Omni, MiniMax H3, Seedance 2.0, Wan 3.0, Kling 3.0, Veo 3.1 Fast y Kling 2.6 «copia el movimiento». Las fortalezas
+  salen de comparativas públicas (Artificial Analysis, LMArena, Curious Refuge, noviembre de 2026), no de pruebas propias.
+  · **Cambió el de por defecto, y con él el costo**: los clips del reel van con Seedance 2.5 (~0,10 $/s, clips de 4 s o
+  más) y no con Veo 3.1 Lite (~0,03 $/s, clips de 8 s): un reel con tres clips de 5 s pasa de unos 0,72 $ a unos 1,50 $. Un video
+  con todo, recrear «versión» y la lista «Recomendado» del compositor también abren con los diez. El plan sigue diciendo
+  la cifra antes del «sí», y «la opción cara» se compara con los SIGUIENTES de la preferencia (no con los más baratos:
+  frente a uno más barato no hay ahorro que decir).
+  · **Editar el MISMO video sigue empezando por Omni 1.2** (recrear «mismo» y corregir un tramo): es el único cuyo pedido
+  con video se comprobó contra Kie; el Omni de calidad alta lo manda como el 1.1 (objetos), sin probar.
+  · **La sugerencia es una REGLA, no la IA** (`sugerenciaDeDesglose`): lee cada toma del desglose (gente, alguien que
+  habla en cuadro, agua y efectos, producto, cámara, toma de más de 15 s), suma los puntos de cada motor y escoge UN
+  principal para todo el video (a igual puntaje, el más barato). Otro motor sólo donde el principal flojea (≤ 1 y otro
+  tiene 3) o no llega a la duración, y se avisa de que se va a notar. Con fotogramas (el reel) sólo entran los que animan
+  una imagen inicial: el Omni de calidad alta no. Alguien que habla en cuadro descarta Seedance y Wan (`sinVozPropia`).
+  Una voz en off no es diálogo: la pone el montaje.
+  · **El reel que sigue un video desglosado sale con ese principal** si nadie escoge otro (`motorDelDesglose` en
+  crear_reel y continuar_reel; el plan lo dice). Kling 2.6 «copia el movimiento» nunca es el principal: se OFRECE para
+  las tomas con gente (con la foto del personaje propio; el video ajeno sólo guía el movimiento).
+  · La pantalla del reel (FlujoReel, en el chunk del Estudio, que está en su tope) no preescoge el sugerido: lo hace el
+  servidor; en la pantalla se ve en el desglose («Con qué motor recrearlo»).
+  · **Nada de esto se ha probado contra Kie**: ni Seedance 2.5 como motor de clips, ni la lectura de las tomas con un
+  desglose real de Gemini (los tests usan un desglose escrito a mano, el del tsunami).

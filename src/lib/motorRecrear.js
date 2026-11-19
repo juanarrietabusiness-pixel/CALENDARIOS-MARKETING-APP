@@ -15,21 +15,27 @@
 
 import { modeloPorId } from "./estudioCatalogo";
 
+// Los diez motores de prioridad de la agencia (src/lib/motoresVideo.js) van primero. La única excepción es «mismo»:
+// EDITAR el video original sigue empezando por Omni 1.2, el único cuyo pedido con video se comprobó contra Kie (el
+// 17-11-2026; el Omni de calidad alta manda el video como el 1.1, sin probar). Detrás, el Omni completo y los diez.
 const PREFERENCIA = Object.freeze({
   mismo: [
-    ["gemini-omni-1-2-kie", "Gemini Omni 1.2 edita el video original (hasta 15 s): conserva el escenario, la cámara y la música, y cambia sólo lo que se le pide. El más barato que edita."],
+    ["gemini-omni-1-2-kie", "Gemini Omni 1.2 edita el video original (hasta 15 s): conserva el escenario, la cámara y la música, y cambia sólo lo que se le pide. Es el que edita con el pedido ya comprobado."],
+    ["gemini-omni-video-kie", "Gemini Omni en calidad alta (de los diez de prioridad): edita el video original conservando el escenario, con la física más creíble."],
+    ["kling-3-omni-kie", "Kling 3.0 Omni (de los diez de prioridad) sigue el video de referencia con las fotos del producto, con voz y labios en español."],
+    ["seedance-2-5-kie", "Seedance 2.5 (de los diez de prioridad) sigue el video de referencia, con las fotos del producto y música propia."],
+    ["minimax-h3-kie", "MiniMax H3 (de los diez de prioridad) sigue el video de referencia en 2K con las fotos del producto."],
+    ["seedance-2-kie", "Seedance 2.0 (de los diez de prioridad) sigue el video de referencia con las fotos del producto."],
+    ["wan-3-kie", "Wan 3.0 (de los diez de prioridad) sigue el video de referencia a 1080p."],
     ["gemini-omni-kie", "Gemini Omni edita el video original: conserva el escenario, la cámara y la música, y cambia sólo lo que se le pide."],
-    ["gemini-omni-video-kie", "Gemini Omni en calidad alta: edita el video original conservando el escenario."],
-    ["kling-3-omni-kie", "Kling 3.0 Omni sigue el video de referencia con las fotos del producto."],
-    ["seedance-2-5-kie", "Seedance 2.5 sigue el video de referencia, con las fotos del producto y música propia."],
-    ["seedance-2-kie", "Seedance 2.0 sigue el video de referencia con las fotos del producto."],
-    ["wan-3-kie", "Wan 3.0 sigue el video de referencia a 1080p."],
   ],
   version: [
-    ["seedance-2-5-kie", "Seedance 2.5 hace hasta 30 s con varios planos en un solo pedido, música propia y las fotos del producto de referencia."],
-    ["kling-3-omni-kie", "Kling 3.0 Omni hace hasta 15 s con varios planos y las fotos del producto."],
-    ["seedance-2-kie", "Seedance 2.0 hace hasta 15 s con varios planos y las fotos del producto."],
-    ["wan-3-kie", "Wan 3.0: 1080p con las fotos del producto de referencia."],
+    ["seedance-2-5-kie", "Seedance 2.5 (de los diez de prioridad) hace hasta 30 s con varios planos en un solo pedido, la misma cara en todos, música propia y las fotos del producto de referencia."],
+    ["kling-3-omni-kie", "Kling 3.0 Omni (de los diez de prioridad) hace hasta 15 s con varios planos, voz y labios en español y las fotos del producto."],
+    ["gemini-omni-video-kie", "Gemini Omni en calidad alta (de los diez de prioridad): hasta 10 s con la física más creíble y las fotos del producto."],
+    ["minimax-h3-kie", "MiniMax H3 (de los diez de prioridad): hasta 15 s en 2K con las fotos del producto."],
+    ["seedance-2-kie", "Seedance 2.0 (de los diez de prioridad) hace hasta 15 s con varios planos y las fotos del producto."],
+    ["wan-3-kie", "Wan 3.0 (de los diez de prioridad): 1080p con las fotos del producto de referencia."],
     ["gemini-omni-1-2-kie", "Gemini Omni 1.2: hasta 15 s con varios planos y las fotos del producto."],
     ["gemini-omni-kie", "Gemini Omni: hasta 10 s con varios planos y las fotos del producto."],
   ],

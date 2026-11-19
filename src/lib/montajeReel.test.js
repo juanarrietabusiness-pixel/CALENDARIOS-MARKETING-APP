@@ -181,15 +181,17 @@ describe("el guion del montaje", () => {
 });
 
 describe("las duraciones por ruta, con las llaves que hay", () => {
-  it("B7 · con Kie, toda duración va por defecto por CLIPS con Veo 3.1 Lite (barato y fiel al producto) y el montaje", () => {
+  it("B7 · con Kie, toda duración va por defecto por CLIPS con el primero de los motores de prioridad (Seedance 2.5) y el montaje", () => {
     const lista = duracionesDeReel({ kie: true });
     expect(lista.map((d) => d.segundos)).toEqual(DURACIONES_OBJETIVO);
+    expect(CLIPS_POR_DEFECTO).toBe("seedance-2-5-kie");
+    // Veo 3.1 Lite (el de antes) sigue en la lista, para escogerlo.
     for (const d of lista) expect(d).toMatchObject({ ruta: "clips", modelos: expect.arrayContaining(["veo-3-1-lite-kie"]) });
     expect(lista.every((d) => d.modelos[0] === CLIPS_POR_DEFECTO)).toBe(true);
     // Los demás de clips siguen detrás, para escogerlos.
     expect(lista[0].modelos).toContain("kling-3-kie");
   });
-  it("sin Veo 3.1 Lite, lo que un modelo hace en un video sale en UNO y lo demás por clips", () => {
+  it("sin Kie, lo que un modelo hace en un video sale en UNO y lo demás por clips", () => {
     const lista = duracionesDeReel({ gemini: true });
     const de = (s) => lista.find((d) => d.segundos === s);
     expect(de(10)).toMatchObject({ ruta: "uno" });

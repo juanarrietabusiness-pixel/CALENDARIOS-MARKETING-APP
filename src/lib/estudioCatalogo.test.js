@@ -311,9 +311,13 @@ describe("la lista de modelos: ordenar y filtrar", () => {
     }
   });
 
-  it("recomendado abre con el predeterminado; calidad, con la mejor; barato, con el más barato; caro, con el más caro", () => {
+  it("recomendado abre con el predeterminado (en video, los diez de prioridad); calidad, con la mejor; barato, con el más barato; caro, con el más caro", () => {
     expect(modelosParaLista("imagen", { orden: "recomendado", activos })[0].id).toBe("nano-banana");
-    expect(modelosParaLista("video", { orden: "recomendado", activos })[0].id).toBe("gemini-omni-flash");
+    const video = modelosParaLista("video", { orden: "recomendado", activos });
+    expect(ids(video.slice(0, 10))).toEqual(ids(MODELOS.filter((m) => m.prioridad).sort((a, b) => a.prioridad - b.prioridad)));
+    expect(video[0].id).toBe("veo-3-1-kie");
+    // Sin Kie, el predeterminado de siempre.
+    expect(modelosParaLista("video", { orden: "recomendado", activos: { gemini: true } })[0].id).toBe("gemini-omni-flash");
     expect(modelosParaLista("imagen", { orden: "calidad", activos })[0].calidad).toBe(4);
     // Más barato: por lo que cuesta UNA pieza (un video, con su duración por defecto); la prueba, después de los reales.
     const baratos = modelosParaLista("imagen", { orden: "barato", activos });

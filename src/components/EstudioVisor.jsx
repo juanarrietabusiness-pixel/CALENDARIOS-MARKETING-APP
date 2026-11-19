@@ -435,7 +435,7 @@ export default function Visor({
             <Suspense fallback={null}><VideoListo key={`v-${a.id}`} clienteId={clienteId} archivoId={a.id} src={a.src} inicial={a.ajustes?.revisionVideo} /></Suspense>
           )}
           {video && clienteId && esVideoReal(a) && (
-            <Suspense fallback={null}><DesgloseVideo key={`d-${a.id}`} clienteId={clienteId} archivoId={a.id} src={a.src} nombre={a.prompt} inicial={a.ajustes?.deconstruccion} lectura={lectura} /></Suspense>
+            <Suspense fallback={null}><DesgloseVideo key={`d-${a.id}`} clienteId={clienteId} archivoId={a.id} src={a.src} nombre={a.prompt} inicial={a.ajustes?.deconstruccion} lectura={lectura} activos={activos} /></Suspense>
           )}
         </div>
       </div>
