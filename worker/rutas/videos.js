@@ -43,6 +43,10 @@
 //   POST   /api/videos/<c>/<id>/fondos      { confirmado }: crearlas con el DIRECTOR (un encargo del servidor; 9:16, sin
 //                                           texto ni logo). Sin `confirmado`, 409 `confirmar` con el costo (salvo «crear
 //                                           sin preguntar»); al terminar, cada una va a las capas de su `pide`
+//   GET    /api/videos/<c>/identidad        La IDENTIDAD DE VIDEO del cliente ({ identidad, resumen })
+//   PUT    /api/videos/<c>/identidad        { estiloId?, musicas?, efectos?, subtitulos? }: cambia las partes que trae (null
+//                                           quita una); comprueba el estilo, las músicas y los efectos (gratis)
+//   GET    /api/videos/<c>/identidad/muestra?estilos=&formato=   Un cuadro por estilo de subtítulos con la marca (Container)
 //   GET    /api/videos/<c>/estilos          Los ESTILOS DE VIDEO guardados del cliente (con su resumen en frases)
 //   PATCH  /api/videos/<c>/estilos/<estilo> { nombre?, nota?, para? }: cambiarle el nombre, la nota o para qué es
 //   DELETE /api/videos/<c>/estilos/<estilo> Quitarlo (los videos hechos con él no cambian)
@@ -127,6 +131,7 @@ import { pedirFondos, estadoDeFondos } from "../lib/estudio/fondosVideo.js";
 import { costoDeVoz, fraseDeMuestra, modeloDeVoz, esIdDeVoz } from "../../src/lib/voces.js";
 import { sincronizarCancion, crearVideoConCancion, ajustarCancion, resincronizarVideo, resumenDeSincronia, ErrorCancion } from "../lib/estudio/cancion.js";
 import { estilosDelCliente, estiloDelCliente, guardarEstilo, cambiarEstilo, quitarEstilo, aplicarEstiloAVideo, ErrorEstilo } from "../lib/estudio/estilosVideo.js";
+import { identidadDelCliente, guardarIdentidad, muestraDeSubtitulos, ErrorIdentidad } from "../lib/estudio/identidadVideo.js";
 
 /** Un ErrorCancion como respuesta: su mensaje, su estado y lo que la pantalla necesita (`codigo`, `costo`…). */
 const respuestaDeCancion = (e) => json({ error: e.message, ...e.extra }, e.estado);
@@ -210,7 +215,7 @@ export async function rutasVideos(req, env, ctx) {
     return await rutasDelCliente(req, env, ctx);
   } catch (e) {
     if (e instanceof ErrorVideo) return respuestaDeVideo(e);
-    if (e instanceof ErrorEstilo) return error(e.message, e.estado);
+    if (e instanceof ErrorEstilo || e instanceof ErrorIdentidad) return error(e.message, e.estado);
     throw e;
   }
 }
@@ -227,7 +232,8 @@ async function rutasDelCliente(req, env, { acceso, usuario, partes, metodo }) {
       const b = (await cuerpo(req)) ?? {};
       // La estructura de guion que siguió (la devolvió «escribir»): se apunta sólo si existe en el espacio.
       const estructuraId = await estructuraExistente(acceso, b.estructuraId);
-      const r = await crearProyecto(acceso, cliente, { guion: b.guion, titulo: b.titulo, calendarId: b.calendarId, postId: b.postId, usuario, estructuraId });
+      // La identidad de video del cliente: sus subtítulos y su sonido siempre; su estilo de marca, salvo `sinEstilo`.
+      const r = await crearProyecto(acceso, cliente, { guion: b.guion, titulo: b.titulo, calendarId: b.calendarId, postId: b.postId, usuario, estructuraId, estiloDeMarca: b.sinEstilo !== true });
       avisar(env, acceso, usuario, req, clienteId, r.video.id);
       return json(r, 201);
     }
@@ -255,14 +261,15 @@ async function rutasDelCliente(req, env, { acceso, usuario, partes, metodo }) {
       const r = await escribirGuion(env, acceso, cliente, {
         idea: b.idea, segundos: b.segundos, formato: b.formato, postId: typeof b.postId === "string" ? b.postId : "",
         estructuraId: typeof (b.estructuraId ?? b.formulaId) === "string" ? b.estructuraId ?? b.formulaId : "",
-        conFondos: b.conFondos === true, estilo,
+        // Sin estilo pedido, el de la marca (identidad de video); `sinEstilo: true`, ninguno.
+        conFondos: b.conFondos === true, ...(estilo ? { estilo } : b.sinEstilo === true ? { estilo: null } : {}),
         // Un video de la galería ya DESGLOSADO toma por toma: el guion sigue su forma (sin desglose, como siempre).
         videoReferenciaId: typeof b.videoReferenciaId === "string" ? b.videoReferenciaId : "",
       });
       const publicacion = r.postId ? await publicacionDelCliente(acceso, clienteId, r.postId) : null;
       return json({
         guion: r.guion, avisos: r.avisos, corregido: r.corregido, aviso: r.aviso, publicacion, estructura: r.estructura,
-        referencias: r.referencias ?? 0, fondos: r.fondos ?? 0, ...(estilo ? { estilo: { id: estilo.id, nombre: estilo.nombre } } : {}),
+        referencias: r.referencias ?? 0, fondos: r.fondos ?? 0, ...(r.estilo ?? estilo ? { estilo: { id: (r.estilo ?? estilo).id, nombre: (r.estilo ?? estilo).nombre } } : {}),
         ...(r.sigueVideo ? { sigueVideo: r.sigueVideo } : {}),
       });
     } catch (e) {
@@ -282,6 +289,25 @@ async function rutasDelCliente(req, env, { acceso, usuario, partes, metodo }) {
         : await (async () => { const b = (await cuerpo(req)) ?? {}; return cambiarEstilo(env, acceso, cliente, accion, { nombre: b.nombre, nota: b.nota, para: b.para }); })();
       difundir(env, acceso.ownerId, { tipo: "estudio", clientId: cliente.id, por: firma(usuario, req) });
       return json(r);
+    }
+    return error("Método no permitido.", 405);
+  }
+
+  // La IDENTIDAD DE VIDEO del cliente (en su kit; gratis): leerla, guardarla por partes y ver los subtítulos con su marca.
+  if (id === "identidad") {
+    if (!accion && metodo === "GET") {
+      const { identidad, resumen } = identidadDelCliente(cliente);
+      return json({ identidad, resumen });
+    }
+    if (!accion && metodo === "PUT") {
+      const r = await guardarIdentidad(env, acceso, cliente, (await cuerpo(req)) ?? {});
+      difundir(env, acceso.ownerId, { tipo: "estudio", clientId: cliente.id, por: firma(usuario, req) });
+      return json(r);
+    }
+    if (accion === "muestra" && metodo === "GET") {
+      const u = new URL(req.url);
+      const estilos = (u.searchParams.get("estilos") ?? "").split(",").map((x) => x.trim()).filter(Boolean);
+      return json({ muestras: await muestraDeSubtitulos(env, acceso, cliente, { estilos, formato: u.searchParams.get("formato") || "9:16" }) });
     }
     return error("Método no permitido.", 405);
   }

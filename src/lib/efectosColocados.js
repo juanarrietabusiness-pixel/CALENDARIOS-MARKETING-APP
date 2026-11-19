@@ -299,11 +299,14 @@ export function momentosColocados(colocados, guion, linea, datosDe) {
  * clave, nombre }) suena en vez de los del catálogo en las transiciones y en los sellos. Dos a menos de 0,15 s se quedan
  * en uno. Pura.
  */
-export function colocadosAutomaticos(guion, linea, propios = {}) {
+export function colocadosAutomaticos(guion, linea, propios = {}, paleta = null) {
   const turnos = {};
   const siguiente = (sitio, lista) => turnoDe(lista, (turnos[sitio] = (turnos[sitio] ?? -1) + 1));
+  // La PALETA de la identidad de video del cliente (src/lib/identidadVideo.js): por momento, SUS efectos del catálogo,
+  // que rotan entre ellos en vez de los de siempre. Un momento sin lista suena como siempre.
+  const suya = (momento, defecto) => (Array.isArray(paleta?.[momento]) && paleta[momento].length ? paleta[momento] : defecto);
   const lista = [];
-  const de = (sitio, t, ancla, lista_ = SONIDOS_DE_CAPA[sitio]) => {
+  const de = (sitio, t, ancla, lista_ = suya(sitio, SONIDOS_DE_CAPA[sitio])) => {
     const vol = VOLUMEN_DE_CAPA[sitio];
     lista.push({ t, secundario: SECUNDARIOS.has(sitio), c: { sonido: siguiente(sitio, lista_), ...ancla, ...(vol ? { volumen: vol } : {}) } });
   };
@@ -314,15 +317,19 @@ export function colocadosAutomaticos(guion, linea, propios = {}) {
     const mitad = Math.min(MAX_AJUSTE_MS, Math.round(((Number(e.transicion?.dur) || 0) / 2) * 1000));
     if (k > 0 && TRANSICIONES_DE_IMPACTO.includes(tipo)) {
       const destello = r3(esc.desde + mitad / 1000);
-      lista.push({ t: destello, c: { sonido: siguiente(`transicion:${tipo}`, SONIDOS_DE_TRANSICION[tipo]), escena: e.id, ...(mitad ? { ajusteMs: mitad } : {}), volumen: REALCE_IMPACTO } });
+      const impacto = suya("impacto", null);
+      lista.push({ t: destello, c: { sonido: impacto ? siguiente("impacto", impacto) : siguiente(`transicion:${tipo}`, SONIDOS_DE_TRANSICION[tipo]), escena: e.id, ...(mitad ? { ajusteMs: mitad } : {}), volumen: REALCE_IMPACTO } });
       if (tipo === "golpe") {
         // La SUBIDA que termina justo en el destello y el GRAVE que queda debajo: un golpe de cine, no un clic.
-        lista.push({ t: destello - 0.01, c: { sonido: siguiente("subida", CAPAS_DEL_GOLPE.subida), segundo: destello } });
+        lista.push({ t: destello - 0.01, c: { sonido: siguiente("subida", suya("subida", CAPAS_DEL_GOLPE.subida)), segundo: destello } });
         lista.push({ t: destello + 0.01, c: { sonido: siguiente("caida", CAPAS_DEL_GOLPE.caida), segundo: destello, volumen: VOLUMEN_DE_CAPA.caida } });
       }
     } else if (k > 0 && tipo && tipo !== "corte") {
       // Cada tipo rota SUS variantes (la primera de cada uno es la más suya: una persiana suena a paño, no a obturador).
-      const c = propios?.transicion?.archivoId ? { propio: propios.transicion } : { sonido: siguiente(`transicion:${tipo}`, SONIDOS_DE_TRANSICION[tipo] ?? [EFECTO_AUTOMATICO.transicion]) };
+      const deMarca = suya("transicion", null);
+      const c = propios?.transicion?.archivoId ? { propio: propios.transicion }
+        : deMarca ? { sonido: siguiente("transicion", deMarca) }
+          : { sonido: siguiente(`transicion:${tipo}`, SONIDOS_DE_TRANSICION[tipo] ?? [EFECTO_AUTOMATICO.transicion]) };
       const ajuste = SE_MUEVEN.has(tipo) && mitad ? mitad : 0;
       lista.push({ t: r3(esc.desde + ajuste / 1000), c: { ...c, escena: e.id, ...(ajuste ? { ajusteMs: ajuste } : {}) } });
     }
@@ -331,7 +338,7 @@ export function colocadosAutomaticos(guion, linea, propios = {}) {
       const ancla = { escena: e.id, capa: c.id };
       const antesDelFin = (x) => x < esc.hasta;
       if (c.tipo === "sello" || c.tipo === "llamado") {
-        lista.push({ t, c: propios?.sello?.archivoId ? { propio: propios.sello, ...ancla } : { sonido: siguiente("sello", SONIDOS_DE_CAPA.sello), ...ancla } });
+        lista.push({ t, c: propios?.sello?.archivoId ? { propio: propios.sello, ...ancla } : { sonido: siguiente("sello", suya("sello", SONIDOS_DE_CAPA.sello)), ...ancla } });
       } else if (["logo", "cifra", "comentario", "icono"].includes(c.tipo)) de(c.tipo, t, ancla);
       else if (c.tipo === "busqueda") {
         de("busqueda", t, ancla);

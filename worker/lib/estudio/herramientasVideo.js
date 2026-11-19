@@ -50,7 +50,7 @@ import {
   deFila, listarProyectos, proyectoDe, crearProyecto, guardarProyecto, editarEscena, aprobarProyecto, publicacionDelCliente, ErrorVideo,
   guardarSonido, versionesDe, volverAVersion,
 } from "../videosProyectos.js";
-import { sonidosDelCliente, sonidosDeLaAgencia } from "./sonidos.js";
+import { sonidosDelCliente, sonidosDeLaAgencia, musicasDe } from "./sonidos.js";
 import { textoDePista } from "../../../src/lib/bibliotecaSonido.js";
 import { kitDe, guardarKit, guardarLexico } from "./kit.js";
 import {
@@ -79,6 +79,8 @@ import { vistaDeVideo, lineasDeMedios } from "./vistaMedios.js";
 import { leerEstructuras, estructuraExistente, guardarEstructura, quitarEstructura, ErrorEstructura } from "../estructurasGuion.js";
 import { paraDe, tramosEnDuracion, USOS_ESTRUCTURA, estructuraDeTramosConPeso } from "../../../src/lib/formulasUgc.js";
 import { estilosDelCliente, estiloDelCliente, guardarEstilo, aplicarEstiloAVideo, ErrorEstilo } from "./estilosVideo.js";
+import { identidadDelCliente, guardarIdentidad, muestraDeSubtitulos, ErrorIdentidad } from "./identidadVideo.js";
+import { ESTILOS_SUBTITULO, MOMENTOS_EFECTO, IDS_MOMENTO } from "../../../src/lib/identidadVideo.js";
 import { aplicarEstilo, lineaDeEstilo, USOS_ESTILO_VIDEO } from "../../../src/lib/estilosVideo.js";
 import { conFondosPorCrear } from "../../../src/lib/fondosVideo.js";
 import { PLANTILLAS_VIDEO, guionDePlantilla } from "../../../src/lib/plantillasVideo.js";
@@ -118,7 +120,7 @@ export const DEFINICIONES_VIDEO = Object.freeze([
   },
   {
     name: "crear_video",
-    description: "Crea un video animado (borrador) para un cliente con su guion en el formato de escenas v1 (lee formato_video antes). Opcional: publicacion_id para ligarlo a su post del calendario; estructura_id, la estructura de guion de la agencia que sigue su voz en off (de ver_estructuras: queda apuntada en el video). Si el guion tiene errores no se crea y la respuesta dice cada uno con su sitio. No gasta nada. CON IMÁGENES DE FONDO (si la persona lo pide): pon de fondo de cada sección una «imagen» a sangre con «pide» y SIN archivo (formato_video lo explica); después fondos_video las crea con el director, con su costo. Lee antes el kit de la marca (ver_estudio): su paleta, su letra y el estilo de sus videos mandan.",
+    description: "Si el cliente tiene IDENTIDAD DE VIDEO (identidad_video), el video nace con su estilo de marca (salvo que pases otro estilo_id), sus subtítulos, una música de su lista y sus efectos. Crea un video animado (borrador) para un cliente con su guion en el formato de escenas v1 (lee formato_video antes). Opcional: publicacion_id para ligarlo a su post del calendario; estructura_id, la estructura de guion de la agencia que sigue su voz en off (de ver_estructuras: queda apuntada en el video). Si el guion tiene errores no se crea y la respuesta dice cada uno con su sitio. No gasta nada. CON IMÁGENES DE FONDO (si la persona lo pide): pon de fondo de cada sección una «imagen» a sangre con «pide» y SIN archivo (formato_video lo explica); después fondos_video las crea con el director, con su costo. Lee antes el kit de la marca (ver_estudio): su paleta, su letra y el estilo de sus videos mandan.",
     input_schema: {
       type: "object",
       properties: {
@@ -423,6 +425,23 @@ export const DEFINICIONES_VIDEO = Object.freeze([
     },
   },
   {
+    name: "identidad_video",
+    description: "La IDENTIDAD DE VIDEO del cliente: lo que comparten TODOS sus videos para verse y sonar igual —su estilo de la marca (uno de estilos_video, que se aplica solo a cada video animado nuevo que no pida otro), sus músicas (de musicas: un video nuevo toma una de la lista; escoge tú otra DE LA LISTA según el tono), sus efectos por momento (de efectos_sonido: transicion, impacto, subida, sello, logo, item, cifra; rotan en los automáticos) y el estilo de sus subtítulos (clasico, palabra, placa, limpio; con pos, maxPalabras, acento y mayusculas)—. Sin «guardar»: la que tiene, con sus opciones. Con «guardar»: cambia SÓLO las partes que traigas (null quita una); hazlo cuando la persona lo pida, nunca por tu cuenta. Con muestra=true: un cuadro por estilo de subtítulos con la marca del cliente, para que la persona escoja. Se aplica al CREAR un video: lo ya hecho no cambia. No gasta nada.",
+    input_schema: {
+      type: "object",
+      properties: {
+        ...clienteParam,
+        guardar: {
+          type: "object",
+          description: "Las partes que cambian: { estiloId: \"ev-…\" | null, musicas: [\"id de musicas\"] | null, efectos: { transicion: [ids], impacto: [ids], subida: [ids], sello: [ids], logo: [ids], item: [ids], cifra: [ids] } | null, subtitulos: { estilo, pos, maxPalabras, acento, mayusculas } | null }.",
+        },
+        muestra: { type: "boolean", description: "true: un cuadro de cada estilo de subtítulos con la marca del cliente (o sólo los de «estilos»)." },
+        estilos: { type: "array", items: { type: "string", enum: Object.keys(ESTILOS_SUBTITULO) }, description: "Con muestra: sólo estos estilos de subtítulos." },
+      },
+      required: [],
+    },
+  },
+  {
     name: "estilos_video",
     description: "Los ESTILOS DE VIDEO guardados del cliente: las REGLAS de un video que salió bien (texto principal, fondos, transiciones, cierre, grano, ritmo, subtítulos, efectos) —no su letra ni sus imágenes—, cada uno con su ID, para qué videos es (con canción, voz en off o todos) y su resumen. Úsalo antes de crear un video del cliente: si tiene uno que encaje, ofrécelo y pásalo (estilo_id) en video_con_cancion o crear_video. No gasta nada.",
     input_schema: { type: "object", properties: { ...clienteParam }, required: [] },
@@ -488,7 +507,7 @@ export const DEFINICIONES_VIDEO = Object.freeze([
 ]);
 
 /** Las que escriben (en el MCP van como escritura; las demás, de sólo lectura). */
-export const ESCRIBEN_VIDEO = Object.freeze(["plantilla_video", "guardar_estructura", "eliminar_estructura", "voz_de_marca", "lexico_de_marca", "guardar_estilo_video", "aplicar_estilo_video", "fondos_video", "video_con_cancion", "publicar_con_musica", "crear_video", "guardar_video", "editar_escena", "aprobar_video", "renderizar_video", "ligar_video", "sonido_video", "volver_a_version", "personaje_video"]);
+export const ESCRIBEN_VIDEO = Object.freeze(["identidad_video", "plantilla_video", "guardar_estructura", "eliminar_estructura", "voz_de_marca", "lexico_de_marca", "guardar_estilo_video", "aplicar_estilo_video", "fondos_video", "video_con_cancion", "publicar_con_musica", "crear_video", "guardar_video", "editar_escena", "aprobar_video", "renderizar_video", "ligar_video", "sonido_video", "volver_a_version", "personaje_video"]);
 
 /** Lo que falta para el siguiente paso, en una frase para el modelo. Pura. */
 /** ¿La locución es de la versión aprobada? (un video «aprobado» con voz de esa versión ya no la necesita otra vez). */
@@ -643,6 +662,38 @@ export function crearHerramientasVideo({ env, acceso, resolverCliente, usuario, 
           throw new Fallo(e.message);
         }
       });
+    },
+
+    async identidad_video({ cliente, guardar, muestra = false, estilos } = {}) {
+      const c = await resolverCliente(cliente);
+      try {
+        if (guardar !== undefined && guardar !== null) {
+          const r = await guardarIdentidad(env, acceso, c, guardar);
+          difundir(env, acceso.ownerId, { tipo: "estudio", clientId: c.id, por });
+          return [`Guardada la identidad de video de ${c.name}${r.resumen.length ? ":" : " (vacía: sus videos vuelven a lo de siempre)."}`, ...r.resumen.map((x) => `· ${x}`),
+            "Se aplica a los videos que se creen desde ahora; los ya hechos no cambian."].join("\n");
+        }
+        if (muestra === true) {
+          const cuadros = await conErrores(() => muestraDeSubtitulos(env, acceso, c, { estilos }));
+          return {
+            texto: [`Los estilos de subtítulos con la marca de ${c.name} (en orden: ${cuadros.map((x) => x.nombre).join(", ")}). Enséñaselos a la persona y guarda el que escoja con guardar: { subtitulos: { estilo } }.`,
+              ...cuadros.map((x) => `· ${x.nombre} (${x.estilo}): ${ESTILOS_SUBTITULO[x.estilo].descripcion}`)].join("\n"),
+            imagenes: cuadros.map((x) => ({ mime: x.mime, datos: x.datos })),
+          };
+        }
+      } catch (e) {
+        if (e instanceof ErrorIdentidad) throw new Fallo(e.message);
+        throw e;
+      }
+      const { identidad, estilos: guardados, resumen } = identidadDelCliente(c);
+      const pistas = await musicasDe(acceso, c.id).catch(() => []);
+      return [
+        resumen.length ? `IDENTIDAD DE VIDEO de ${c.name} (la siguen todos sus videos nuevos):\n${resumen.map((x) => `· ${x}`).join("\n")}` : `${c.name} no tiene identidad de video: cada video sale con lo de siempre (la música favorita, los efectos del catálogo y los subtítulos clásicos).`,
+        `ESTILOS GUARDADOS (el de la marca es uno de estos): ${guardados.length ? guardados.map((e) => `«${e.nombre}» [${e.id}]`).join(", ") : "ninguno (se guardan con guardar_estilo_video)"}.`,
+        `MÚSICAS DE LA BIBLIOTECA (${pistas.length}): ${pistas.slice(0, 20).map((m) => `«${m.nombre}» [${m.id}]${m.de === "agencia" ? " (agencia)" : ""}${identidad?.musicas?.some((x) => x.id === m.id) ? " ✓ en la identidad" : ""}`).join(", ") || "ninguna (se suben en Marca → Sonido)"}.`,
+        `MOMENTOS DE LOS EFECTOS: ${IDS_MOMENTO.map((k) => `${k} (${MOMENTOS_EFECTO[k].para}; papeles del catálogo: ${MOMENTOS_EFECTO[k].papeles.join(", ")})`).join("; ")}. Los IDs, con efectos_sonido.`,
+        `ESTILOS DE SUBTÍTULOS: ${Object.entries(ESTILOS_SUBTITULO).map(([k, v]) => `${k} (${v.descripcion})`).join(" ")} Para verlos con su marca: muestra=true.`,
+      ].join("\n\n");
     },
 
     async estilos_video({ cliente } = {}) {
@@ -834,7 +885,8 @@ export function crearHerramientasVideo({ env, acceso, resolverCliente, usuario, 
         if (estructuraPedida && !estructuraId) throw new ErrorVideo(`No encontré la estructura de guion «${estructuraPedida}» (los IDs salen de ver_estructuras).`, 404);
         const r = await crearProyecto(acceso, c, {
           guion, titulo, calendarId: liga?.calendarId, postId: liga?.postId, usuario, estructuraId,
-          ...(estilo ? { origen: { tipo: "", estiloId: estilo.id }, ...(estilo.efectos === false ? { sonido: { efectos: false } } : {}) } : {}),
+          // Sin estilo pedido, el de la marca (la identidad de video del cliente), si tiene.
+          ...(estilo ? { origen: { tipo: "", estiloId: estilo.id }, ...(estilo.efectos === false ? { sonido: { efectos: false } } : {}) } : { estiloDeMarca: true }),
         });
         avisar(c.id, r.video.id);
         return [
@@ -1033,17 +1085,20 @@ export function crearHerramientasVideo({ env, acceso, resolverCliente, usuario, 
     async musicas({ cliente }) {
       const c = await resolverCliente(cliente);
       const [suya, agencia] = await Promise.all([sonidosDelCliente(acceso, c.id), sonidosDeLaAgencia(acceso).catch(() => ({ musica: [], efectos: [] }))]);
-      const linea = (p) => `· ${p.id} — ${textoDePista(p)} · ${(p.bytes / 1048576).toFixed(1)} MB`;
+      // Las de la IDENTIDAD de video del cliente se marcan: son las que deben sonar en sus videos.
+      const deLaIdentidad = new Set((kitDe(c).identidadVideo?.musicas ?? []).map((m) => m.id));
+      const linea = (p) => `· ${p.id} — ${textoDePista(p)} · ${(p.bytes / 1048576).toFixed(1)} MB${deLaIdentidad.has(p.id) ? " · DE SU IDENTIDAD" : ""}`;
       const bloque = (titulo, lista, vacio) => (lista.length ? [titulo, ...lista.map(linea)] : [`${titulo} ${vacio}`]);
       const hay = suya.musica.length + suya.efectos.length + agencia.musica.length + agencia.efectos.length;
       if (!hay) return `${c.name} no tiene músicas ni efectos en su biblioteca, y la agencia tampoco. Se suben en Marca → Música y efectos (MP3, WAV o M4A: música de hasta 15 MB, efectos de hasta 2 MB, con derechos para usarlos) o se genera una con generar_musica.`;
       return [
         `La biblioteca de sonido de ${c.name} (gratis: no hace falta generar otra con Suno si alguna sirve). Para un video: sonido_video con musica_id, y efecto_transicion_id / efecto_sello_id para los efectos.`,
+        deLaIdentidad.size ? `Su IDENTIDAD DE VIDEO tiene ${deLaIdentidad.size} música${deLaIdentidad.size === 1 ? "" : "s"} (marcadas «DE SU IDENTIDAD»): escoge entre ésas; otra, sólo si la persona la pide.` : "",
         ...bloque(`Música de ${c.name}:`, suya.musica, "ninguna."),
         ...bloque(`Efectos de ${c.name}:`, suya.efectos, "ninguno."),
         ...bloque("Música de la agencia (para todos los clientes):", agencia.musica, "ninguna."),
         ...bloque("Efectos de la agencia:", agencia.efectos, "ninguno."),
-      ].join("\n");
+      ].filter((x) => x !== "").join("\n");
     },
 
     async personaje_video({ cliente, ...cambios }) {

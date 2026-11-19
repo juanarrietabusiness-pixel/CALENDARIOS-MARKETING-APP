@@ -41,6 +41,7 @@ import { limpiarTiposArte } from "./tiposArte.js";
 import { limpiarCanciones } from "./cancionesInstagram.js";
 import { limpiarEstilosVideo } from "./estilosVideo.js";
 import { limpiarLexico } from "./lexico.js";
+import { limpiarIdentidad } from "./identidadVideo.js";
 import { limpiarAnclas, lineaDeAnclas, anclasUsables, MAX_LINEA_ANCLAS } from "./anclasEstilo.js";
 
 /** Los presets, uno por tipo de contenido (los ids de `PILARES`, en pilares.js). `base`: la plantilla sin escribir. */
@@ -296,6 +297,9 @@ export function limpiarKit(guardado) {
     // El LÉXICO de la marca (src/lib/lexico.js): cómo se dice algo y qué no se dice nunca; el código lo aplica a lo que se
     // dice y se lee en sus videos. Sólo lo cambia su ruta (el PUT del kit lo conserva). Sólo si lo hay.
     ...(limpiarLexico(g.lexico).length ? { lexico: limpiarLexico(g.lexico) } : {}),
+    // La IDENTIDAD DE VIDEO (src/lib/identidadVideo.js): el estilo de la marca, sus músicas, sus efectos y sus subtítulos,
+    // que comparten todos sus videos. Sólo la cambia su ruta (el PUT del kit la conserva). Sólo si la hay.
+    ...(limpiarIdentidad(g.identidadVideo) ? { identidadVideo: limpiarIdentidad(g.identidadVideo) } : {}),
     // Las REFERENCIAS DE ESTILO de la marca (src/lib/anclasEstilo.js): película, época, publicación, movimiento, técnica de
     // luz, siempre genéricas. Las lee el director y van en la línea de la marca. Sólo si las hay: un kit de antes no cambia.
     ...(limpiarAnclas(g.anclas).length ? { anclas: limpiarAnclas(g.anclas) } : {}),
@@ -761,6 +765,7 @@ export function fundirKit(guardado, propuesto, ahora = new Date().toISOString())
     logoModo: antes.logoModo, logoPosicion: antes.logoPosicion, fuente: antes.fuente, voz: antes.voz, locucion: antes.locucion, musica: antes.musica, ...(antes.personajeVideo ? { personajeVideo: antes.personajeVideo } : {}), plantillas: antes.plantillas, tiposArte: antes.tiposArte,
     // El estilo del video y sus referencias los escribe la agencia: la IA del kit no los toca.
     estiloVideo: antes.estiloVideo, referenciasVideo: antes.referenciasVideo, estilosVideo: antes.estilosVideo, lexico: antes.lexico,
+    identidadVideo: antes.identidadVideo,
     // Las referencias de estilo: las que propone la IA si trae alguna; si no, se quedan las que había.
     anclas: limpiarAnclas(propuesto?.anclas).length ? propuesto.anclas : antes.anclas,
     preparadoAt: ahora,

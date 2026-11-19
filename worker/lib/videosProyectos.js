@@ -26,6 +26,9 @@ import { limpiarSonido, SITIOS_EFECTO } from "../../src/lib/sonidoVideo.js";
 import { aplicarLexicoAlGuion } from "../../src/lib/lexico.js";
 import { sonidoParaVideo, musicaDeLaMarca } from "./estudio/sonidos.js";
 import { efectoDelCatalogo } from "../../src/lib/catalogoEfectos.js";
+import { conSubtitulosDeIdentidad, paletaDeIdentidad, musicaQueToca, estiloDeMarcaDelKit } from "../../src/lib/identidadVideo.js";
+import { aplicarEstilo } from "../../src/lib/estilosVideo.js";
+import { conFondosPorCrear } from "../../src/lib/fondosVideo.js";
 
 export const ID_VIDEO = /^[\w-]{1,80}$/;
 export const MAX_PROYECTOS = 200;
@@ -143,8 +146,12 @@ function origenLimpio(origen, estructuraId) {
  * Crea un proyecto (borrador). `estructuraId`: la ESTRUCTURA de guion de la agencia que siguió (ya comprobada por quien
  * llama: `estructuraExistente`), que queda en `origen.estructuraId`. → { video, avisos }.
  */
-export async function crearProyecto(acceso, cliente, { guion: entrada, titulo, calendarId = null, postId = null, usuario, origen = null, estructuraId = "", locucion = null, sonido: sonidoPedido = null }) {
-  const { guion, avisos } = guionConLexico(entrada, cliente);
+export async function crearProyecto(acceso, cliente, { guion: entrada, titulo, calendarId = null, postId = null, usuario, origen = null, estructuraId = "", locucion = null, sonido: sonidoPedido = null, estiloDeMarca = false }) {
+  const conLexico = guionConLexico(entrada, cliente);
+  // La IDENTIDAD DE VIDEO del cliente (src/lib/identidadVideo.js): su estilo de marca (si quien crea lo pide y no trae
+  // otro), sus subtítulos y, más abajo, su música y sus efectos. Se aplica al crear: lo que se cambie luego, se queda.
+  const { guion, avisos, estiloId: estiloDeLaMarca } = guionConIdentidad(conLexico, cliente, { estiloDeMarca: estiloDeMarca && !origen?.estiloId });
+  if (estiloDeLaMarca) origen = { ...(origen ?? {}), estiloId: estiloDeLaMarca };
   let cal = null;
   if (calendarId) {
     cal = await acceso.leerUno("calendars", { id: String(calendarId), client_id: cliente.id });
@@ -156,7 +163,7 @@ export async function crearProyecto(acceso, cliente, { guion: entrada, titulo, c
   const momento = ahora();
   // El sonido con que nace: el de siempre (la música de la marca) con lo que pida quien crea ENCIMA (un estilo o un reel
   // montado sin efectos: `{ efectos: false }` no se lleva la música de la marca).
-  const base = await sonidoInicial(acceso, cliente.id, guion);
+  const base = await sonidoInicial(acceso, cliente, guion);
   const sonido = sonidoPedido ? limpiarSonido({ ...(base ?? {}), ...sonidoPedido }) : base;
   const fila = await acceso.insertar("videos_proyectos", {
     ...(sonido ? { sonido: JSON.stringify(sonido) } : {}),
@@ -179,13 +186,58 @@ export async function crearProyecto(acceso, cliente, { guion: entrada, titulo, c
  * tiene, salvo que el guion ya traiga su música (por su clave) o el sonido de sus clips (un montaje que suena solo).
  * Sin favorita, nada (el de siempre: efectos encendidos y sin música). Nunca tumba la creación. → el sonido o null.
  */
-async function sonidoInicial(acceso, clienteId, guion) {
+async function sonidoInicial(acceso, cliente, guion) {
+  const identidad = leerJSON(cliente?.kit_marca, {})?.identidadVideo ?? null;
+  // Los efectos de la identidad (por momento) van siempre: también con canción o con el sonido de los clips.
+  const efectosMarca = paletaDeIdentidad(identidad);
+  const conEfectos = (musica) => (musica || efectosMarca ? limpiarSonido({ efectos: true, ...(musica ? { musica } : {}), ...(efectosMarca ? { efectosMarca } : {}) }) : null);
   // Un video con CANCIÓN no lleva música de fondo: la canción ya lo es.
-  if (guion?.musica?.clave || guion?.cancion) return null;
-  if ((guion?.escenas ?? []).some((e) => (e.capas ?? []).some((c) => c.tipo === "video" && c.sonido))) return null;
-  const m = await musicaDeLaMarca(acceso, clienteId).catch(() => null);
-  if (!m) return null;
-  return limpiarSonido({ efectos: true, musica: { archivoId: m.id, clave: m.src.replace(/^\/api\/media\//, ""), nombre: m.nombre, volumen: 0 } });
+  if (guion?.musica?.clave || guion?.cancion) return conEfectos(null);
+  if ((guion?.escenas ?? []).some((e) => (e.capas ?? []).some((c) => c.tipo === "video" && c.sonido))) return conEfectos(null);
+  const m = await musicaDeLaIdentidad(acceso, cliente.id, identidad).catch(() => null)
+    ?? await musicaDeLaMarca(acceso, cliente.id).then((x) => (x ? { archivoId: x.id, clave: x.src.replace(/^\/api\/media\//, ""), nombre: x.nombre, ...(x.de === "agencia" ? { de: "agencia" } : {}) } : null)).catch(() => null);
+  return conEfectos(m ? { ...m, volumen: 0 } : null);
+}
+
+/**
+ * La música de la IDENTIDAD que toca a un video nuevo: la de la lista que no sonó en los últimos videos del cliente
+ * (`musicaQueToca`), y si ya no está en la biblioteca, la siguiente de la lista. → { archivoId, clave, nombre, de? } o null.
+ */
+async function musicaDeLaIdentidad(acceso, clienteId, identidad) {
+  const lista = identidad?.musicas ?? [];
+  if (!lista.length) return null;
+  const videos = await acceso.leerColumnas("videos_proyectos", ["sonido"], { client_id: clienteId }, "created_at desc", 12).catch(() => []);
+  const recientes = videos.map((v) => leerJSON(v.sonido, {})?.musica?.archivoId).filter(Boolean);
+  const primera = musicaQueToca(identidad, recientes);
+  const orden = [primera, ...lista.filter((x) => x.id !== primera.id)];
+  for (const pista of orden) {
+    const p = await sonidoParaVideo(acceso, clienteId, pista.id).catch(() => null);
+    if (p) return p;
+  }
+  return null;
+}
+
+/**
+ * El guion con la identidad de video del cliente: el ESTILO DE LA MARCA (si `estiloDeMarca` y encaja con el uso) y sus
+ * SUBTÍTULOS. Si al aplicarla el guion dejara de valer, se queda como venía y se dice. → { guion, avisos, estiloId? }.
+ */
+export function guionConIdentidad({ guion, avisos }, cliente, { estiloDeMarca = false } = {}) {
+  const kit = leerJSON(cliente?.kit_marca, {}) ?? {};
+  let g = guion;
+  let estiloId = null;
+  const dichos = [];
+  const estilo = estiloDeMarca ? estiloDeMarcaDelKit(kit, guion?.cancion ? "cancion" : "voz") : null;
+  if (estilo) {
+    g = aplicarEstilo(g, estilo, { conFondos: conFondosPorCrear(g) }).guion;
+    estiloId = estilo.id;
+    dichos.push(`el estilo de la marca «${estilo.nombre}»`);
+  }
+  const sub = conSubtitulosDeIdentidad(g, kit.identidadVideo);
+  if (sub.cambio) { g = sub.guion; dichos.push("sus subtítulos"); }
+  if (!dichos.length) return { guion, avisos };
+  const v = validarGuion(g);
+  if (!v.ok) return { guion, avisos: [...avisos, { donde: "identidad", mensaje: "La identidad de video del cliente no se pudo aplicar a este guion: va como venía." }] };
+  return { guion: v.guion, avisos: [...avisos, { donde: "identidad", mensaje: `Con la identidad de video del cliente: ${dichos.join(" y ")}.` }], ...(estiloId ? { estiloId } : {}) };
 }
 
 /** La versión que se leyó tiene que ser la de ahora: si no, otra persona lo cambió y no se pisa. */

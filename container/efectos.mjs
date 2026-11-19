@@ -14,6 +14,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { efectoDelCatalogo, CARPETA_EFECTOS } from "../src/lib/catalogoEfectos.js";
 import { muestrasDeEfecto, picoDeEfecto, sintetizar, armarSonido, MAX_EFECTO_CATALOGO, MAX_EFECTO_PROPIO } from "../src/lib/efectosSonido.js";
+import { limpiarPaleta } from "../src/lib/identidadVideo.js";
 import { momentosColocados, colocadosAutomaticos, bajadasDeMusica, limpiarColocados, EFECTO_AUTOMATICO } from "../src/lib/efectosColocados.js";
 import { RENDER, armarPcm, tramosDeAudio } from "../src/lib/renderVideo.js";
 import { mezclarClip } from "../src/lib/sonidoVideo.js";
@@ -48,12 +49,12 @@ export async function muestrasDelCatalogo(id, decodificar) {
  * `libreria` ({ archivoId: bytes }) trae los de la biblioteca; `propios` ({ transicion?, sello? }: { archivoId, nombre })
  * los que sustituyen a los automáticos. → { lista, automaticos, momentos, muestras, sinSitio, movidos, bajadas, avisos }.
  */
-export async function prepararEfectos({ guion, linea, efectos = true, colocados = [], propios = {}, libreria = {}, decodificar }) {
+export async function prepararEfectos({ guion, linea, efectos = true, colocados = [], propios = {}, libreria = {}, efectosMarca = null, decodificar }) {
   const vacio = { lista: [], automaticos: false, momentos: [], muestras: new Map(), sinSitio: [], movidos: [], bajadas: [], avisos: [] };
   if (!efectos || !guion) return vacio;
   const propia = limpiarColocados(colocados);
   const automaticos = !propia.length;
-  const lista = automaticos ? colocadosAutomaticos(guion, linea, propios) : propia;
+  const lista = automaticos ? colocadosAutomaticos(guion, linea, propios, efectosMarca) : propia;
   const muestras = new Map();
   const picos = new Map();
   const avisos = [];
@@ -93,7 +94,7 @@ export async function prepararEfectos({ guion, linea, efectos = true, colocados 
  * efectos. `decodificar(bytes, nombre)` → PCM. → { mezcla, pistas, medidas, sinArchivo, efectos (lo de
  * prepararEfectos), toma (bytes de la voz decodificada), conClips }.
  */
-export async function sonidoPorPistas({ audio, linea, total, guion = null, efectos = false, colocados = [], propios = {}, libreria = {}, musica = null, clips = [], decodificar }) {
+export async function sonidoPorPistas({ audio, linea, total, guion = null, efectos = false, colocados = [], propios = {}, libreria = {}, efectosMarca = null, musica = null, clips = [], decodificar }) {
   const toma = audio?.length ? await decodificar(audio, "voz", "No se pudo leer el audio de la locución") : new Uint8Array(0);
   const voz = armarPcm(toma, tramosDeAudio(linea.silencios), total, RENDER.muestreo);
   // El sonido de los clips va con la voz (lo que «habla»): la música baja también debajo de él.
@@ -103,7 +104,7 @@ export async function sonidoPorPistas({ audio, linea, total, guion = null, efect
     const tramo = await audioDe(u.archivo, u.clipDesde, Math.max(0, u.hasta - u.desde)).catch(() => new Uint8Array(0));
     if (tramo.length) conClips += mezclarClip(habla, tramo, { en: u.desde, hasta: u.hasta, volumen: u.volumen, muestreo: RENDER.muestreo }) > 0 ? 1 : 0;
   }
-  const fx = await prepararEfectos({ guion, linea, efectos, colocados, propios, libreria, decodificar });
+  const fx = await prepararEfectos({ guion, linea, efectos, colocados, propios, libreria, efectosMarca, decodificar });
   const fondo = musica?.audio?.length ? await decodificar(musica.audio, "musica", "No se pudo leer la música") : null;
   const s = armarSonido({ habla, musica: fondo, volumen: musica?.volumen ?? 0, momentos: fx.momentos, muestras: fx.muestras, bajadas: fx.bajadas, muestreo: RENDER.muestreo });
   return { ...s, efectos: fx, toma, conClips };
@@ -119,6 +120,9 @@ export function libreriaDelPedido(p) {
 }
 
 /** Los que sustituyen a los automáticos ({ transicion?, sello? }: { archivoId, nombre }), limpios. */
+/** Los efectos de la identidad de video del cliente (por momento) que trae el pedido, limpios, o null. */
+export const efectosMarcaDelPedido = (p) => limpiarPaleta(p?.efectosMarca);
+
 export function propiosDelPedido(p) {
   const out = {};
   for (const sitio of ["transicion", "sello"]) {

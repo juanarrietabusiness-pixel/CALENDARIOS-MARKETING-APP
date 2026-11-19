@@ -31,7 +31,7 @@ import { fondosPendientes } from "../../../src/lib/fondosVideo.js";
 import { alContenedor, aBase64 } from "./cuadros.js";
 import { limpiarGolpes } from "../../../src/lib/golpes.js";
 import { crearProyecto, publicacionDelCliente, deFila, ErrorVideo } from "../videosProyectos.js";
-import { estiloDelCliente, ErrorEstilo } from "./estilosVideo.js";
+import { estiloDelCliente, ErrorEstilo, estiloDeLaMarca } from "./estilosVideo.js";
 import { aplicarEstilo } from "../../../src/lib/estilosVideo.js";
 import { ErrorIA } from "../cerebro/ia.js";
 import { palabrasDe, MIN_SEGUNDOS, MAX_SEGUNDOS_CANCION } from "../../../src/lib/videoEscenas.js";
@@ -278,6 +278,9 @@ export async function crearVideoConCancion(env, acceso, cliente, { huella, modo 
       if (e instanceof ErrorEstilo) throw new ErrorCancion(e.message, e.estado);
       throw e;
     }
+  } else {
+    // Sin estilo pedido, el de la MARCA (identidad de video del cliente) si es para canciones o para todo.
+    estilo = estiloDeLaMarca(cliente, "cancion");
   }
   const s = await leerSincronia(env, acceso.ownerId, cliente.id, String(huella ?? ""));
   if (!s) throw new ErrorCancion("No encuentro esa sincronización de la letra: vuelve a sincronizarla.", 404);

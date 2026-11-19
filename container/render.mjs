@@ -97,9 +97,9 @@ export async function medirPcm(carpeta, pcm, nombre = "medir.pcm") {
  * reinitializing filters! | Failed to inject frame into filter network: Invalid argument» cada vez que no podía ir en
  * lineal y pasaba a su modo dinámico: con una voz de verdad, casi siempre.
  */
-export async function audioDelVideo(carpeta, { audio, linea, total, salida, guion = null, efectos = false, musica = null, clips = [], colocados = [], propios = {}, libreria = {} }) {
+export async function audioDelVideo(carpeta, { audio, linea, total, salida, guion = null, efectos = false, musica = null, clips = [], colocados = [], propios = {}, libreria = {}, efectosMarca = null }) {
   const muestreo = String(RENDER.muestreo);
-  const s = await sonidoPorPistas({ audio, linea, total, guion, efectos, colocados, propios, libreria, musica, clips, decodificar: decodificadorEn(carpeta) });
+  const s = await sonidoPorPistas({ audio, linea, total, guion, efectos, colocados, propios, libreria, efectosMarca, musica, clips, decodificar: decodificadorEn(carpeta) });
   const { toma, conClips } = s;
   const pcm = s.mezcla;
   const resumenEfectos = { cuantos: s.medidas.length, automaticos: s.efectos.automaticos, sinSitio: s.efectos.sinSitio.length, avisos: s.efectos.avisos };
@@ -134,7 +134,7 @@ export async function audioDelVideo(carpeta, { audio, linea, total, salida, guio
  * `base`: lo de `preparar()` del servidor (guion, linea, formato, paleta, recursos, fuentes). `audio`: los bytes de la
  * toma (o null: silencio).
  */
-export async function renderizar(base, { audio = null, musica = null, efectos = false, colocados = [], propios = {}, libreria = {}, fps = RENDER.fps } = {}) {
+export async function renderizar(base, { audio = null, musica = null, efectos = false, colocados = [], propios = {}, libreria = {}, efectosMarca = null, fps = RENDER.fps } = {}) {
   const inicio = Date.now();
   const { ancho: W, alto: H } = FORMATOS_VIDEO[base.formato];
   const total = base.linea.total;
@@ -145,7 +145,7 @@ export async function renderizar(base, { audio = null, musica = null, efectos = 
     const sonido = join(carpeta, "audio.m4a");
     const usos = usosDeVideo(base.guion, base.linea).filter((u) => base.infoVideos?.has(u.archivo));
     const clips = usos.filter((u) => u.sonido && base.infoVideos.get(u.archivo)?.audio);
-    const medidas = await audioDelVideo(carpeta, { audio, linea: base.linea, total: duracion, salida: sonido, guion: base.guion, efectos, musica, clips, colocados, propios, libreria });
+    const medidas = await audioDelVideo(carpeta, { audio, linea: base.linea, total: duracion, salida: sonido, guion: base.guion, efectos, musica, clips, colocados, propios, libreria, efectosMarca });
     const tAudio = Date.now() - inicio;
 
     const salida = join(carpeta, "video.mp4");
