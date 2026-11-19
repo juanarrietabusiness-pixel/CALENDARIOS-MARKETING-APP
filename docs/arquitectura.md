@@ -117,6 +117,7 @@ src/
                           (`estiloDeGuion`), contarlas a la persona y a la IA (`resumenDeEstilo`, `lineaDeEstilo`) e imponerlas a otro
                           guion (`aplicarEstilo`) sin tocar lo que se dice ni lo que se lee (puro; también el Worker)
     estilosVideoApi.js    Cliente de /api/videos/<c>/estilos y de «Guardar como estilo» / «Aplicar» de un video
+    identidadVideoApi.js  Cliente de /api/videos/<c>/identidad (leer, guardar por partes, la muestra de los subtítulos) y de sus músicas
     identidadVideo.js     La IDENTIDAD DE VIDEO de un cliente (`kit.identidadVideo`): su estilo de marca, sus músicas, sus efectos por
                           momento y el estilo de sus subtítulos; limpiarla, aplicarla a un guion y a un sonido nuevos, la música que
                           toca y contarla (puro; también el Worker y el Container)
@@ -600,6 +601,8 @@ src/
     EstiloVideoMarca.jsx  «Estilo de los videos de la marca» en el kit (Marca → Kit y voz): el texto obligatorio y hasta 6 imágenes
                           de la galería de referencia (lazy)
     EstilosVideoGuardados.jsx  Los estilos de video guardados del cliente en Marca → Kit y voz: lo que hace cada uno, nombre, uso y quitar (lazy)
+    IdentidadVideo.jsx    La IDENTIDAD DE VIDEO del cliente en Marca → Kit y voz: estilo de la marca, músicas, efectos por momento (con
+                          «escuchar») y subtítulos (con la muestra del Container); se guarda con un botón (lazy, con su .css)
     SelectorEstiloVideo.jsx  «Estilo del video» al crear uno (con canción o con voz en off): el primero que sirva, o ninguno
     GuardarEstiloVideo.jsx  «Estilo del video» de un video abierto: «Guardar como estilo» y «Aplicar un estilo guardado» (lazy)
     CancionesInstagram.jsx  Las canciones de Instagram que le van a un cliente (Marca → Kit y voz, junto a la música de la marca; lazy)

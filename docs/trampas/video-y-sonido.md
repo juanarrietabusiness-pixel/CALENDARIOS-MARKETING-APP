@@ -1107,3 +1107,6 @@ contradicen, manda la de más abajo (la más nueva). Una trampa nueva de esta á
   · **La muestra** de los subtítulos (`identidad_video` con muestra, GET /api/videos/<c>/identidad/muestra) son cuadros del
     Container con la paleta y la letra del cliente. **Nada de esto se ha probado contra el Container de producción** (los
     tests dibujan en un lienzo de mentira): hay que mirar la muestra de verdad después de desplegar.
+  · **La pantalla** (IdentidadVideo.jsx, Marca → Kit y voz, en diferido con el catálogo de efectos dentro): se guarda con
+    un botón (las partes vacías van como null: se quitan). Probada en Chromium contra `wrangler dev` (guardar, recargar y
+    que vuelva, 390 px sin desplazamiento lateral); la muestra de subtítulos necesita el Container y en local contesta 503.
