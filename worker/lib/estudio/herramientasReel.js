@@ -27,7 +27,8 @@ import { lineasDeMedios } from "./vistaMedios.js";
 import { crearCarpeta } from "./galeria.js";
 import { guionDeReel } from "./reel.js";
 import { revisarVideo } from "./revisionVideo.js";
-import { deconstruirVideo } from "./deconstructor.js";
+import { deconstruirVideo, desgloseGuardado } from "./deconstructor.js";
+import { sugerenciaDeDesglose, textoDeSugerencia } from "../../../src/lib/motoresVideo.js";
 import { extraerUgc, leerMercado, ErrorMercado } from "../mercado.js";
 import { kitDe } from "./kit.js";
 import { estadoMotores } from "./motores.js";
@@ -36,7 +37,7 @@ import { ErrorDiseno } from "./herramientasDiseno.js";
 import { proyectoDe } from "../videosProyectos.js";
 import { estructuraExistente } from "../estructurasGuion.js";
 import { duracionesDeReel, rutaDeDuracion, duracionDeClip, haceDuracion, DURACION_REEL_POR_DEFECTO } from "../../../src/lib/duracionesVideo.js";
-import { pedidoDeVideo, pedidoDeClip, modelosParaReel, modeloParaClips, modelosParaClips } from "../../../src/lib/reelPedidos.js";
+import { pedidoDeVideo, pedidoDeClip, modelosParaReel, modeloParaClips, modelosParaClips, PREFERIDOS_CLIPS } from "../../../src/lib/reelPedidos.js";
 import { esTomaFija } from "../../../src/lib/reel.js";
 import { saldoKie, textoDeSaldo } from "./kie.js";
 import { USD_POR_CREDITO } from "../../../src/lib/voces.js";
@@ -66,6 +67,12 @@ export function modeloParaFotogramas(activos = {}, kit = {}) {
   return lista.find((m) => m.motor !== "prueba") ?? lista[0] ?? null;
 }
 
+/** Los modelos de clips en el orden de `PREFERIDOS_CLIPS` (los que no están, detrás, como venían). Pura. */
+const enPreferencia = (lista) => {
+  const rango = (m) => { const i = PREFERIDOS_CLIPS.indexOf(m.id); return i < 0 ? PREFERIDOS_CLIPS.length : i; };
+  return lista.map((m, i) => ({ m, i })).sort((a, b) => rango(a.m) - rango(b.m) || a.i - b.i).map(({ m }) => m);
+};
+
 /**
  * El plan del reel con su costo (sin crear nada): cuántos fotogramas, por qué ruta sale (un video o clips y montaje),
  * con qué modelos y cuánto, más o menos. Pura salvo por los imports.
@@ -93,7 +100,9 @@ export function planDeReel({ guion, activos, kit, salida, modeloVideoId = "", mo
   // cada plano con el siguiente modelo de clips. Así el plan dice cuánto se ahorra.
   const alternativas = [
     ...(deUno[0] ? [{ nombre: `un video con ${deUno[0].nombre}`, costo: costoUno(deUno[0]) }] : []),
-    ...modelosParaClips(activos).filter((m) => m.motor !== "prueba" && m.id !== video?.id).slice(0, 2)
+    // Los que siguen en la preferencia de clips (los motores de prioridad), no los más baratos: el de por defecto ya no
+    // es el más barato, y frente a uno más barato no hay ahorro que decir.
+    ...enPreferencia(modelosParaClips(activos)).filter((m) => m.motor !== "prueba" && m.id !== video?.id).slice(0, 2)
       .map((m) => ({ nombre: `${planos.length} clips con ${m.nombre}`, costo: costoClips(m, planos) })),
   ].filter((a) => a.costo > costoVideo);
   const cara = alternativas.sort((a, b) => b.costo - a.costo)[0] ?? null;
@@ -179,7 +188,7 @@ export const DEFINICIONES_REEL_MCP = Object.freeze([
       type: "object",
       properties: {
         encargo_id: { type: "string" }, salida: { type: "string", enum: ["uno", "clips"] },
-        modelo: { type: "string", description: "Opcional: el id de un modelo de video (por defecto, el más barato que deja el producto fiel)." },
+        modelo: { type: "string", description: "Opcional: el id de un modelo de video. Por defecto, el motor principal que sugirió el desglose si el reel sigue un video desglosado; si no, el primero de los diez motores de prioridad que anima una imagen (Seedance 2.5)." },
         montar: { type: "boolean" }, confirmado: { type: "boolean" }, confirmado_voz: { type: "boolean" },
         voz: { type: "string", description: "Otra voz para el montaje de ESTE reel (un id de listar_voces)." },
       },
@@ -229,7 +238,7 @@ export const DEFINICIONES_REEL_MCP = Object.freeze([
   },
   {
     name: "deconstruir_video",
-    description: "DESGLOSA un video de la galería toma por toma, sin opinar: la ficha técnica (duración, proporción, cómo se grabó), lo que se repite (personas, lugares, color, luz, audio), el MAPA DE SECUENCIA (cada toma con sus segundos, tamaño de plano, ángulo, movimiento de cámara, lo que pasa, lo que se dice y la transición) y el montaje. Sirve para copiar la FORMA de un video que funciona: después crear_reel con video_referencia la sigue. La IA lo VE (Gemini; si el motor del espacio es Meta, hay que hacerlo desde la aplicación). Cuesta céntimos de video; queda guardado en su ficha y la segunda vez sale gratis, salvo otra_vez.",
+    description: "DESGLOSA un video de la galería toma por toma, sin opinar: la ficha técnica (duración, proporción, cómo se grabó), lo que se repite (personas, lugares, color, luz, audio), el MAPA DE SECUENCIA (cada toma con sus segundos, tamaño de plano, ángulo, movimiento de cámara, lo que pasa, lo que se dice y la transición) y el montaje. Sirve para copiar la FORMA de un video que funciona: después crear_reel con video_referencia la sigue. La IA lo VE (Gemini; si el motor del espacio es Meta, hay que hacerlo desde la aplicación). Cuesta céntimos de video; queda guardado en su ficha y la segunda vez sale gratis, salvo otra_vez. Al final SUGIERE los motores (de los diez de prioridad de la agencia, por una regla, no por la IA): el principal para todo el video, las tomas donde convendría otro y los dos mejores de cada toma; úsalos al crear.",
     inputSchema: {
       type: "object",
       properties: {
@@ -257,6 +266,21 @@ export function crearHerramientasReel({ env, acceso, resolverCliente, usuario, b
     if (!cliente) throw new ErrorReel("El cliente de ese reel ya no existe.");
     return { fila, cliente };
   }
+
+  /**
+   * El motor PRINCIPAL que sugiere el desglose del video que sigue el guion (`guion.sigueVideo`), con fotogramas (cada
+   * plano anima el suyo). Sin video seguido, sin desglose o sin ninguno de los diez con llave, null: va el de siempre.
+   */
+  async function motorDelDesglose(guion, clienteId, activos) {
+    const archivoId = guion?.sigueVideo?.archivoId;
+    if (!archivoId) return null;
+    const d = await desgloseGuardado(acceso, clienteId, String(archivoId)).catch(() => null);
+    return (d ? sugerenciaDeDesglose(d, activos, { conFotogramas: true }) : null)?.principal?.modelo ?? null;
+  }
+  /** La línea del plan que dice que el video va con el motor del desglose (vacía si no fue así). */
+  const lineaDelSugerido = (sugerido, plan) => (sugerido && plan.video?.id === sugerido.id
+    ? `El video va con ${sugerido.nombre}: el motor principal que sugiere el desglose del video de referencia (de los diez de prioridad). Para otro, continuar_reel con modelo=<id>.`
+    : "");
 
   /**
    * ¿Alcanza el saldo de Kie para lo que se va a pedir? Sólo si algo del plan va por Kie (y se sabe leer el saldo).
@@ -318,7 +342,9 @@ export function crearHerramientasReel({ env, acceso, resolverCliente, usuario, b
           guion = { ...guion, estructuraId: id };
         }
         const revisa = revisar !== false;
-        const plan = planDeReel({ guion, activos, kit, salida, montar: montar !== false });
+        // Si el guion sigue un video desglosado, el video sale con el motor que sugiere su desglose (src/lib/motoresVideo.js).
+        const sugerido = await motorDelDesglose(guion, c.id, activos);
+        const plan = planDeReel({ guion, activos, kit, salida, modeloVideoId: sugerido?.id ?? "", montar: montar !== false });
         if (!plan.imagen) throw new ErrorReel("No hay ningún modelo de imagen con llave para los fotogramas (Ajustes → IA).");
         if (!plan.video) throw new ErrorReel("No hay ningún modelo de video con llave que haga esto (Ajustes → IA).");
         const cifra = textoDelPlan(plan, { revisar: revisa });
@@ -329,6 +355,7 @@ export function crearHerramientasReel({ env, acceso, resolverCliente, usuario, b
             `NO SE CREÓ NADA TODAVÍA${escrito ? " (sólo se escribió el guion)" : ""}. Plan del reel de ${c.name}: ${cifra}; unos ${textoCosto(total)} ahora${montar !== false ? ", más la voz del montaje (se confirma aparte)" : ""}. ${revisa ? "" : textoDelAhorro(plan)}`.trim(),
             saldo.texto,
             guion.sigueVideo ? `El guion sigue la forma del video ${guion.sigueVideo.archivoId}, toma por toma (${guion.sigueVideo.tomas} tomas).` : "",
+            lineaDelSugerido(sugerido, plan),
             textoDelGuion(guion),
             `Dile a la persona el guion y la cifra. Sólo si dice que sí, repite crear_reel con guion = este JSON (o corregido) y confirmado=true:\n${JSON.stringify(guion)}`,
           ].filter(Boolean).join("\n\n");
@@ -372,13 +399,16 @@ export function crearHerramientasReel({ env, acceso, resolverCliente, usuario, b
       const { fila, cliente } = await encargoDe(id);
       return conErrores(async () => {
         const e = encargoPublico(fila);
-        const plan = planDeReel({ guion: e.reel?.reel, activos: activosDe(env), kit: kitDe(cliente), salida, modeloVideoId: modelo, montar: montar !== false });
+        const activos = activosDe(env);
+        const sugerido = modelo ? null : await motorDelDesglose(e.reel?.reel, cliente.id, activos);
+        const plan = planDeReel({ guion: e.reel?.reel, activos, kit: kitDe(cliente), salida, modeloVideoId: modelo || sugerido?.id || "", montar: montar !== false });
         if (!plan.video) throw new ErrorReel("No hay ningún modelo de video con llave que haga esto (Ajustes → IA).");
         const saldo = await saldoParaElPlan({ ...plan, imagen: null }, plan.costoVideo);
         if (confirmado !== true) {
           const video = plan.salida === "uno" ? `Un video de ${plan.segundos} s` : `${plan.clips} clips${plan.fijos ? ` (y ${plan.fijos} plano${plan.fijos === 1 ? "" : "s"} de toma fija con su fotograma, sin clip)` : ""}`;
           return [
             `NO SE CREÓ NADA TODAVÍA. ${video} con ${nombreDelModelo(plan.video.id)}: unos ${textoCosto(plan.costoVideo)}${montar !== false ? ", más la voz del montaje (se confirma aparte)" : ""}. ${textoDelAhorro(plan)}`.trim(),
+            lineaDelSugerido(sugerido, plan),
             saldo.texto,
             "Sólo con el «sí» de la persona, repite con confirmado=true.",
           ].filter(Boolean).join("\n");
@@ -469,8 +499,9 @@ export function crearHerramientasReel({ env, acceso, resolverCliente, usuario, b
         return [
           r.guardada ? "Desglose guardado (no se pagó otra vez; otra_vez=true para repetirlo)." : "Desglose hecho y guardado en la ficha del video.",
           textoDeDeconstruccion(r.deconstruccion),
-          `Para que un reel siga esta forma: crear_reel con video_referencia="${archivoId}".`,
-        ].join("\n\n");
+          textoDeSugerencia(sugerenciaDeDesglose(r.deconstruccion, activosDe(env))),
+          `Para que un reel siga esta forma: crear_reel con video_referencia="${archivoId}" (sus clips salen con el motor principal sugerido; continuar_reel con modelo=<id> para otro).`,
+        ].filter(Boolean).join("\n\n");
       });
     },
   };
