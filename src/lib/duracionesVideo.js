@@ -13,22 +13,23 @@
 // Una duración sin ningún modelo con llave que la haga (ni uno que anime una imagen) no se ofrece.
 // ============================================================
 
-import { modelosParaReel, modelosParaClips, PREFERIDOS_CLIPS as PREFERIDOS_CLIPS_REEL } from "./reelPedidos.js";
+import { modelosParaReel, modelosParaClips, PREFERIDOS_CLIPS as PREFERIDOS_CLIPS_REEL, PREFERIDOS_REEL } from "./reelPedidos.js";
 
 /** Las duraciones que ofrece el reel (s). */
 export const DURACIONES_OBJETIVO = Object.freeze([8, 10, 15, 20, 30, 45, 60]);
 /** La de partida si nadie escoge. */
 export const DURACION_REEL_POR_DEFECTO = 10;
 
-/** El orden en que se prefiere cada modelo para UN video (los mejores para un reel con storyboard, primero). */
-const PREFERIDOS_UNO = ["gemini-omni-1-2-kie", "gemini-omni-kie", "kling-3-omni-kie", "seedance-2-5-kie", "seedance-2-kie", "minimax-h3-kie", "gemini-omni-flash", "veo-3-1-fast-kie", "kling-3-kie", "wan-3-kie"];
-/** Y para los clips (animar UNA imagen bien y barato): Veo 3.1 Lite primero (ver reelPedidos.js). */
+/** El orden en que se prefiere cada modelo para UN video: el mismo que el reel (los de prioridad primero, reelPedidos.js). */
+const PREFERIDOS_UNO = PREFERIDOS_REEL;
+/** Y para los clips (animar UNA imagen bien): los de prioridad que animan una imagen, Seedance 2.5 primero (reelPedidos.js). */
 const PREFERIDOS_CLIPS = PREFERIDOS_CLIPS_REEL;
 /**
- * El modelo de clips BARATO que deja el producto fiel (método de agencia): con su llave, toda duración va por clips y
- * montaje por defecto (un solo video con todo sigue disponible, escogiéndolo).
+ * El primer modelo de clips (método de agencia: un clip por plano desde su fotograma, el producto fiel): con su llave,
+ * toda duración va por clips y montaje por defecto (un solo video con todo sigue disponible, escogiéndolo). Antes era
+ * Veo 3.1 Lite, el más barato; desde el 19-11-2026, el primero de los motores de prioridad.
  */
-export const CLIPS_POR_DEFECTO = "veo-3-1-lite-kie";
+export const CLIPS_POR_DEFECTO = PREFERIDOS_CLIPS_REEL[0];
 
 /** Las duraciones (s) que admite un modelo de video. Pura. */
 export const duracionesDe = (modelo) => {
@@ -61,10 +62,10 @@ export function duracionesDeReel(activos = {}) {
   const uno = modelosParaReel(activos);
   const clips = ordenar(modelosParaClips(activos), PREFERIDOS_CLIPS);
   const salida = [];
-  const clipsBaratos = clips[0]?.id === CLIPS_POR_DEFECTO;
+  const porClips = clips[0]?.id === CLIPS_POR_DEFECTO;
   for (const s of DURACIONES_OBJETIVO) {
     const hacen = ordenar(uno.filter((m) => haceDuracion(m, s)), PREFERIDOS_UNO);
-    if (hacen.length && !clipsBaratos) {
+    if (hacen.length && !porClips) {
       salida.push({ segundos: s, ruta: "uno", modelos: hacen.map((m) => m.id), nombre: `${s} s · un video`, ayuda: `Un solo video con ${hacen[0].nombre}, con los fotogramas de storyboard.` });
     } else if (clips.length) {
       salida.push({ segundos: s, ruta: "clips", modelos: clips.map((m) => m.id), nombre: `${s} s · clips y montaje`, ayuda: `Un clip por plano con ${clips[0].nombre} y el montaje aquí: la voz, el texto, los subtítulos y el logo los pone la aplicación.` });

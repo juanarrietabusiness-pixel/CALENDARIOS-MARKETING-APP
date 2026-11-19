@@ -127,11 +127,11 @@ describe("las demás del video por MCP", () => {
     expect(por.crear_reel.description).toMatch(/sólo con su «sí»/);
     for (const n of ["crear_reel", "estado_reel"]) expect(CON_VISTA).toContain(n);
   });
-  it("B7/B9/C12 · el plan: clips con Veo 3.1 Lite, sin pagar la toma fija, y lo que se ahorra frente a la opción cara", () => {
+  it("B7/B9/C12 · el plan: clips con el primero de los motores de prioridad (Seedance 2.5), sin pagar la toma fija, y lo que se ahorra frente a la opción cara", () => {
     const guion = { ...GUION, segundos: 9, planos: GUION.planos.map((x, i) => ({ ...x, desde: i * 3, hasta: (i + 1) * 3, toma: i === 1 ? "fija" : "movimiento" })) };
     const p = planDeReel({ guion, activos: { kie: true }, kit: {} });
     expect(p).toMatchObject({ salida: "clips", clips: 2, fijos: 1 });
-    expect(p.video.id).toBe("veo-3-1-lite-kie");
+    expect(p.video.id).toBe("seedance-2-5-kie");
     expect(p.cara.ahorro).toBeGreaterThan(0);
     expect(textoDelAhorro(p)).toMatch(/se ahorran unos/);
     // Sin montaje (para descargar los clips), cada plano lleva su clip.

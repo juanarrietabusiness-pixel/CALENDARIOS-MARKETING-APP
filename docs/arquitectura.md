@@ -172,6 +172,8 @@ src/
                           y el encargo del servidor igual (puro; lib/reelEstudio.js los re-exporta)
     duracionesVideo.js    Las duraciones del reel POR RUTA con las llaves que hay: «uno» (un video que hace esa duración) o «clips»
                           (un clip por plano y el montaje); ya no hay «sólo Flow» (puro; también el Worker)
+    motoresVideo.js       Los DIEZ MOTORES DE VIDEO de prioridad (el orden, `prioridad` en el catálogo): qué hace bien cada uno y
+                          la regla que, tras un desglose, sugiere el principal del video y el de cada toma (puro; Worker y MCP)
     montajeReel.js        «Montarlo aquí»: de los clips (o el video) de un reel al guion de un video animado (el clip a sangre, lo
                           que se dice, el gancho, los subtítulos, el logo y el llamado) y el guion del post por tramos (puro)
     encargoReelPuro.js    El reel como encargo, lo que comparten pantalla y Worker: salidas, fases del montaje, cómo se lee (puro)

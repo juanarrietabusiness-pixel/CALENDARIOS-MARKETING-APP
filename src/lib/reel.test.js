@@ -45,8 +45,10 @@ describe("el reel con IA: el guion por planos", () => {
     expect(promptDeTramo({ desde: 3, hasta: 5, cambio: "que la mamá sonría." })).toMatch(/SOLO del segundo 3 al 5: que la mamá sonría\. Conserva todo lo demás/);
   });
 
-  it("el video: Omni por Kie primero; con referencias va el storyboard, si no, el primer fotograma de inicio", () => {
-    expect(modeloRecomendadoParaReel({ kie: true, gemini: true }).id).toBe("gemini-omni-1-2-kie");
+  it("el video: los motores de prioridad primero (Seedance 2.5); con referencias va el storyboard, si no, el primer fotograma de inicio", () => {
+    expect(modeloRecomendadoParaReel({ kie: true, gemini: true }).id).toBe("seedance-2-5-kie");
+    // Sin Kie, el Flash de Google, como antes.
+    expect(modeloRecomendadoParaReel({ gemini: true }).id).toBe("gemini-omni-flash");
     // La lista va del más barato al más caro (por pieza), la prueba al final.
     const lista = modelosParaReel({ kie: true, gemini: true });
     const costos = lista.filter((m) => m.motor !== "prueba").map(costoDePieza);
@@ -162,9 +164,13 @@ describe("un clip limpio por fotograma (para CapCut)", () => {
     expect(c.prompt).toContain("Sin voz ni música");
     expect(c.prompt).toContain(SIN_TEXTO_VIDEO);
     expect(c.ajustes).toMatchObject({ duration: "5", sonido: "no", aspectRatio: "9:16" });
-    // B7 · el de por defecto es Veo 3.1 Lite por Kie (el más barato que deja el producto fiel); sin él, Kling 3.0.
-    expect(modeloParaClips({ kie: true }).id).toBe("veo-3-1-lite-kie");
+    // B7, desde el 19-11-2026: el de por defecto es el primero de los motores de prioridad que anima una imagen
+    // (Seedance 2.5), ya no el más barato; luego Kling 3.0. Veo 3.1 Lite sigue en la lista, detrás de los diez.
+    expect(modeloParaClips({ kie: true }).id).toBe("seedance-2-5-kie");
     expect(PREFERIDOS_CLIPS[1]).toBe("kling-3-kie");
+    const lite = PREFERIDOS_CLIPS.indexOf("veo-3-1-lite-kie");
+    expect(lite).toBeGreaterThan(0);
+    expect(PREFERIDOS_CLIPS.slice(0, lite).every((id) => modeloPorId(id).prioridad)).toBe(true);
   });
 });
 

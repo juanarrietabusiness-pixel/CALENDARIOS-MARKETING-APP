@@ -67,6 +67,7 @@ import { MODELOS_VOZ } from "../../../src/lib/voces.js";
 import { DEFINICIONES_VIDEO, crearHerramientasVideo } from "./herramientasVideo.js";
 import { LOOKS, ANGULOS } from "../../../src/lib/mejoraVideo.js";
 import { COLORES } from "../../../src/lib/coloresVideo.js";
+import { conPrioridadPrimero, textoDeLosDiez } from "../../../src/lib/motoresVideo.js";
 import { miniaturasDe, MAX_PIEZAS_VISTAS } from "./miniaturas.js";
 import { vistaDeTrabajo } from "./vistaTrabajo.js";
 import { audioDeMuestra, lineasDeMedios } from "./vistaMedios.js";
@@ -624,7 +625,7 @@ export function crearHerramientasEstudio({ env, acceso, resolverCliente, usuario
         const valores = Object.entries(m.ajustes ?? {}).map(([k, d]) => `${k}: ${d.valores.join("/")}`).join("; ");
         const apoyo = [m.inicial ? "imagen inicial" : "", m.final ? "imagen final" : "", m.referencias ? `hasta ${m.referencias} referencias` : ""].filter(Boolean).join(", ");
         return `· ${m.id} — ${m.nombre} · ${textoCosto(m.costo)}${m.por === "s" ? " por segundo" : " por imagen"}${m.estimado ? " (aprox.)" : ""}` +
-          `${porDefecto[m.tipo]?.id === m.id ? " · PREDETERMINADO" : ""}${valores ? ` · ${valores}` : ""}${apoyo ? ` · admite ${apoyo}` : ""}`;
+          `${m.prioridad ? ` · PRIORIDAD ${m.prioridad}` : ""}${porDefecto[m.tipo]?.id === m.id ? " · PREDETERMINADO" : ""}${valores ? ` · ${valores}` : ""}${apoyo ? ` · admite ${apoyo}` : ""}`;
       };
 
       const [filas, trabajos, guia, mercado, encargos] = await Promise.all([
@@ -647,7 +648,9 @@ export function crearHerramientasEstudio({ env, acceso, resolverCliente, usuario
         `Estudio de ${c.name}.`,
         hay.length ? "" : "AVISO: este servidor sólo tiene el motor de prueba (tarjetas, no imágenes reales): falta la llave de un proveedor.",
         `IMÁGENES:\n${porTipo("imagen").map(linea).join("\n") || "(ninguno)"}`,
-        `VIDEO:\n${porTipo("video").map(linea).join("\n") || "(ninguno)"}`,
+        // Los diez motores de prioridad de la agencia (src/lib/motoresVideo.js), primero y con lo que hace bien cada uno.
+        `LOS 10 MOTORES DE VIDEO DE PRIORIDAD (la agencia hace los videos de sus clientes con estos, no con el más barato; tras deconstruir_video, usa el que sugiere para el video y cada toma, y un solo motor por video):\n${textoDeLosDiez(motores)}`,
+        `VIDEO:\n${conPrioridadPrimero(porTipo("video")).map(linea).join("\n") || "(ninguno)"}`,
         kitVacio(kitDe(c))
           ? "KIT DE MARCA: no está preparado (se prepara en la pestaña Marca → Kit y voz). Sin él, pon la guía visual en el prompt."
           : `KIT DE MARCA: preparado${kitDe(c).logo ? ", con logo" : ""}. La paleta, el estilo y el logo los pone el kit en cada pieza. Usa estilo=<tipo de contenido> en crear_en_estudio (${Object.keys(TIPOS_PRESET).join("|")}) y escribe en el prompt sólo la escena.`,

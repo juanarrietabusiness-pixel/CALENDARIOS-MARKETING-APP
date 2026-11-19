@@ -28,8 +28,11 @@ import { armarPedidoVideo, MAX_PEDIDO_VIDEO } from "./pedidoVideo.js";
 export const DURACIONES_PRODUCTO = Object.freeze([10, 12, 15]);
 /** La voz cabe a este ritmo (lo mismo que el Reel IA). */
 export const PALABRAS_POR_SEGUNDO_PRODUCTO = 2.5;
-/** Por qué modelo se empieza: MiniMax H3 es el de la prueba que funcionó; luego los que hacen inicio y final. */
-export const PREFERIDOS_PRODUCTO = Object.freeze(["minimax-h3-kie", "kling-3-kie", "seedance-2-5-kie", "wan-3-kie", "pixverse-6-kie", "seedance-2-kie"]);
+/**
+ * Por qué modelo se empieza: MiniMax H3 es el de la prueba que funcionó; luego los que hacen inicio y final, los de los
+ * diez motores de prioridad antes que PixVerse (que no es de ellos).
+ */
+export const PREFERIDOS_PRODUCTO = Object.freeze(["minimax-h3-kie", "kling-3-kie", "seedance-2-5-kie", "wan-3-kie", "seedance-2-kie", "pixverse-6-kie"]);
 /** Seedance y Wan se inventan la voz (mal, en español): van con música, sin locución (como en el Reel IA). */
 export const sinVozEnProducto = (modelo) => /^(seedance|wan)/.test(String(modelo?.id ?? modelo ?? ""));
 /** Lo más largo que puede ser el prompt del video: corto a propósito (el tope de todo pedido de video de un plano). */
