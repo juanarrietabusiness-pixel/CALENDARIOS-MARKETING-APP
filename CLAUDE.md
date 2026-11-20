@@ -428,6 +428,10 @@ no aquí.
   sugerida con su guía de montaje, qué pieza es cada anuncio, WhatsApp. Las cuentas son las de la agencia (los Excel
   del curso y la calculadora de deeplook), con sus fórmulas confirmadas. El PLAN FINAL (§5: cómo queda cada pantalla,
   los datos y 8 entregas en orden) está aprobado y las ocho entregas, implementadas (sin probar contra Meta ni la IA reales). Se amplía con cada parte del curso.
+- `docs/propuesta-edicion-video-grabado.md` — el EDITOR DE VIDEO GRABADO: un chat nuevo de Claude edita los clips de una
+  persona hablando a cámara con lo que guarda el calendario (manual del editor con versiones, estilo de edición por
+  cliente, kit de piezas Python + Remotion descargable, actas y aprendizaje que propone). Fase 0 (propuesta); nada
+  implementado.
 - `docs/propuesta-cerebro-por-cliente.md` — un cerebro por cliente (notas en D1, índice
   en R2, ficha técnica y cifras, búsqueda por pasajes) en lugar de volcar el ADN entero
   en cada llamada. Fases 0 y 1 implementadas; memoria de decisiones, visualización,
