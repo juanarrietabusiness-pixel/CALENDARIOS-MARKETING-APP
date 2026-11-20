@@ -1,8 +1,8 @@
 # Propuesta · El EDITOR DE VIDEO GRABADO del calendario
 
-**Fase 0 (análisis, sin código).** Escrita el 2026-11-20 sobre `main` en `b422bdc`. Nada de esto está implementado: es
-lo que se haría, con lo que ya hay, lo nuevo, los datos, las herramientas, las licencias, los riesgos y el orden. Al
-final, lo que necesito que la agencia decida antes de empezar (§11).
+**Fase 0 (análisis), aprobada el 2026-11-20** sobre `main` en `b422bdc`. Las decisiones de la agencia están en §11 y
+mandan sobre lo que diga el resto del documento. **Fase 1 (el manual del editor): implementada** —`src/lib/manualEditor.js`,
+`src/lib/oficioEdicion.js`, `/api/manual-editor` y Ajustes → Manuales de la agencia → «Editor de video»—. Lo demás, pendiente.
 
 **La meta:** un chat NUEVO de claude.ai, con el conector del calendario y sin historial, recibe los clips de una persona
 hablando a cámara y «edita este video de Rofer», y entrega un reel igual o mejor que Rofer · reel de Alex v2 y
@@ -68,7 +68,7 @@ claude.ai (chat nuevo)                                      calendario (Worker +
   ├─ kit_edicion(cliente) ──────────────────────────────►  2 enlaces firmados: kit de piezas vX + ZIP de la marca
   ├─ UN comando: instalar (≈3 min, idempotente)
   ├─ diagnóstico: hoja de contactos de los clips + tipo de video
-  ├─ transcribir → cortar (puro) → PROPUESTA CORTA a la persona  ← la persona dice sí o corrige
+  ├─ transcribir → cortar (puro) → PROPUESTA CORTA a la persona, con 2–3 CUADROS DE MUESTRA  ← la persona dice sí o corrige
   ├─ plan de escenas (JSON) → revisión de oficio (pura) → cuadros fijos de los momentos cargados
   ├─ recorte (sólo tramos con texto detrás) → cámara → render por tramos → mezcla → hoja + medida del audio
   ├─ subir_a_galeria (+ confirmar_subida a su publicación) ──►  galería del cliente
@@ -209,7 +209,7 @@ lo note.
 
 | Herramienta | Qué hace | Lee / escribe | En la lista (aprox.) | Lo que devuelve (aprox.) |
 |---|---|---|---|---|
-| `guia_de_edicion` | En UNA llamada: manual común + del tipo, resumen de la marca (identidad de video en frases, léxico, letra y colores, @usuario y WhatsApp), los estilos de edición del cliente (o el pedido, entero), la lista de control y la versión vigente del kit | Sólo lee | ~350 tokens | ≤ 3.500 tokens |
+| `guia_de_edicion` | En UNA llamada: manual común + del tipo, resumen de la marca (identidad de video en frases, léxico, letra y colores, @usuario y WhatsApp), los estilos de edición del cliente (o el pedido, entero), la lista de control y la versión vigente del kit. **El contacto NO sale del resumen** (la Ficha técnica) ni del campo de la ficha del cliente: sale de la nota «Datos del negocio» del cerebro, y si no coinciden lo dice (decisión 10) | Sólo lee | ~350 tokens | ≤ 3.500 tokens |
 | `kit_edicion` | Dos enlaces firmados de 15 min (el kit vX y el ZIP de la marca) y el comando de instalación ya armado | Sólo lee | ~250 | ~250 |
 | `estilo_de_edicion` | Sin `guardar`: los estilos del cliente. Con `guardar` + `confirmado`: crea o cambia uno (lo que se enseñó a la persona). `quitar`, `nombre` | Escribe en el kit | ~400 | ~400 |
 | `acta_de_edicion` | Con `acta` (+ `correcciones` clasificadas en general / de la marca): guarda el acta y devuelve las propuestas con su id y el texto exacto para enseñarlas. Con `aplicar: [ids]` + `confirmado`: las aplica (manual v+1 o estilo). `descartar: [ids]` | Escribe | ~450 | ~300 |
@@ -264,7 +264,8 @@ persona: "edita este video de…") va por la receta editar-video-grabado: no lo 
 | Código de Rofer v2 / Comunidad v3 | De la agencia (escrito en sus chats) | Referencia | Se reescribe, no se copia tal cual |
 | Kit de Shoes Panamá | De otra marca | Sólo el MÉTODO (Remotion + recorte) | No se sube; nada de su marca en el repo |
 
-**Recomendación de segmentación:** en la Fase 2, una prueba de 30 minutos sobre dos clips de Rofer (Alex cerca y Alex
+**Decidido (2026-11-20):** se hace la prueba; gana la de licencia permisiva SÓLO si los bordes (casco, manos, pelo) con
+el texto gigante detrás se ven como en Rofer v2; si no, RVM bajado de su origen. **Recomendación de entonces:** en la Fase 2, una prueba de 30 minutos sobre dos clips de Rofer (Alex cerca y Alex
 lejos) con RVM, SAM 2.1 tiny/small y MediaPipe: segundos por cuadro en 2 CPU y una hoja de contactos de los bordes (casco,
 manos, pelo) con el texto gigante detrás. **Gana la de licencia permisiva si su borde se ve como el de v2**; si sólo RVM
 lo da, se usa RVM bajado de su origen y se apunta en `docs/licencias/`. Y en los dos casos, la cabeza para la cámara
@@ -283,7 +284,7 @@ porque salió de un video real que la agencia aprobó:
 |---|---|---|---|
 | Ducking | 8–10 dB, baja ~150 ms ANTES de la voz, se queda entre palabras | 9–10 dB bajo la voz; ataque 30 ms, liberación 0,4 s; llamado −15, cierre −6 | Los niveles de Rofer + la anticipación de 150 ms de la auditoría (no se contradicen: una dice cuánto, la otra cuándo empieza) |
 | Pico | ≤ −1 dBTP tras el AAC | −1,2 dB | −1,2 dBTP medido DESPUÉS del AAC (cumple los dos) |
-| Zona segura 9:16 | Texto entre 168 y 1330 px (deja libre el 31 % de abajo) | 14 % arriba y 20 % abajo | Rofer para el editor (sus subtítulos van abajo dentro del 80 %) y el 31 % sólo para lo que va bajo los botones de la aplicación; **lo decide la agencia** (§11) |
+| Zona segura 9:16 | Texto entre 168 y 1330 px (deja libre el 31 % de abajo) | 14 % arriba y 20 % abajo | **Decidido: 20 % abajo para el editor** |
 | Subtítulos | Grupos de 2–3 / 3–5 / 4–6 según la energía | ≤ 4 palabras, una línea, ajustados al ancho medido | ≤ 4 y una línea; el «según la energía» queda como regla del manual, no como número |
 | Cortes | En el hueco antes de la palabra, silencio a mitad del hueco, fundidos de 5 ms | En el punto más silencioso cercano a la palabra; pausas > 0,16 s bajo (voz − 18 dB) → 0,10 s | Las dos juntas en una función pura (`planificarCortes`), con fundidos de 5 ms |
 
@@ -362,19 +363,33 @@ Rofer v2 y Comunidad v3, las hojas y la transcripción por palabra). La Fase 1 s
 
 ---
 
-## 11. Lo que necesito que decidas
+## 11. Decisiones de la agencia (2026-11-20)
 
-1. **Segmentación:** ¿hago la prueba RVM / SAM 2.1 / MediaPipe y gana la de licencia permisiva si iguala a v2 (si sólo
-   RVM lo da, RVM bajado de su origen)?
-2. **Zona segura de abajo:** ¿20 % (Rofer) o 31 % (lo que la auditoría propone para el animado)? Propongo 20 % para el
-   editor.
-3. **Choques del §7:** ¿manda lo medido en Rofer (con la anticipación del ducking de la auditoría)?
-4. **Estilo de edición dentro del kit** (sin tabla ni versiones propias): ¿de acuerdo?
-5. **`montaje-ugc` se queda** como montaje rápido en el calendario: ¿de acuerdo, o lo quitamos?
-6. **Fase 2 en dos pull requests** (2a y 2b): ¿de acuerdo?
-7. **El tercer cliente de la Fase 6:** ¿Feria del Lente, Baby Caleb u otro?
+Valen para todas las fases y mandan sobre lo que diga el resto del documento.
 
----
+1. **Segmentación:** prueba RVM / SAM 2.1 / MediaPipe en la 2b. Gana la de licencia permisiva sólo si los bordes (casco,
+   manos, pelo) con el texto gigante detrás se ven como en Rofer v2; si no, RVM bajado de su origen.
+2. **Zona segura de abajo:** 20 % para el editor (`OFICIO.zonas`).
+3. **Choques con la auditoría:** mandan los números medidos en Rofer, con la anticipación de ~150 ms del ducking de la
+   auditoría (`OFICIO.ducking.anticipacion`).
+4. **El estilo de edición va dentro del kit del cliente**, sin tabla propia.
+5. **`montaje-ugc` se queda** como el montaje RÁPIDO en la aplicación; `editar-video-grabado` es el PREMIUM. Sus
+   descripciones lo dicen claro y las instrucciones del servidor mandan «editar un video grabado» al premium (Fase 4).
+6. **La Fase 2 en dos pull requests** (2a y 2b).
+7. **El tercer cliente de la Fase 6: Baby Caleb.**
+8. **Muestras antes de editar:** la propuesta corta de la receta enseña 2 o 3 CUADROS DE MUESTRA con la marca (el gancho
+   en el cuadro 0, un gráfico detrás de la persona y los subtítulos), no sólo texto: en Rofer, aprobar esos bocetos antes
+   de editar fue clave. Ya está en el manual («La propuesta corta») y va en la receta (Fase 4); el kit (2b) tiene que poder
+   sacar esos cuadros sueltos sin renderizar el video.
+9. **La calidad manda sobre la velocidad.** El criterio de la 2b es rehacer Rofer v2 desde los clips y compararlos lado a
+   lado: si un ahorro (máscara sólo por tramos, render por capas) se ve peor, se descarta. «Textos con aire sobre la cabeza»
+   necesita el tope REAL de la cabeza o del casco (de la máscara), no sólo la caja de la cara: el detector de caras sirve
+   para la cámara, no para eso.
+10. **Datos verificados:** la Ficha técnica del cerebro de Rofer y el campo de contacto de su ficha siguen con el WhatsApp
+    viejo (61562010) aunque la nota «Brand guidelines — Datos del negocio» ya tiene el correcto (6086-6581).
+    `guia_de_edicion` no se fía del resumen: toma el contacto de la nota de datos del negocio y avisa si no coinciden.
+    Apuntado como trampa en `docs/trampas/cerebro.md` (el resumen no se regenera al corregir una nota) y ya en el manual.
+11. **El zip `edicion-video.zip`** lo pasa la agencia al empezar la 2a.
 
 ## 12. Sin comprobar (regla de oro 15)
 

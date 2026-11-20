@@ -131,6 +131,9 @@ export const TABLAS_CON_DUENO = Object.freeze([
   // Las recetas que la agencia cambió o creó y los pedidos de «Crear con Claude» (worker/rutas/recetas.js).
   "recetas",
   "handoffs",
+  // El manual del editor de videos grabados: lo que la agencia cambió de la base de la casa, una fila por versión
+  // (worker/lib/manualEditor.js).
+  "manual_editor_versiones",
   // Anuncios de Meta: cuentas publicitarias, campañas creadas desde la app
   // y quién activó o pausó qué (worker/lib/anuncios.js).
   "cuentas_anuncios",

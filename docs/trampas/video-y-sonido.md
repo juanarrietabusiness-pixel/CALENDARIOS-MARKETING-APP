@@ -1110,3 +1110,22 @@ contradicen, manda la de más abajo (la más nueva). Una trampa nueva de esta á
   · **La pantalla** (IdentidadVideo.jsx, Marca → Kit y voz, en diferido con el catálogo de efectos dentro): se guarda con
     un botón (las partes vacías van como null: se quitan). Probada en Chromium contra `wrangler dev` (guardar, recargar y
     que vuelva, 390 px sin desplazamiento lateral); la muestra de subtítulos necesita el Container y en local contesta 503.
+- **El MANUAL DEL EDITOR de videos grabados** (2026-11-20; src/lib/manualEditor.js, src/lib/oficioEdicion.js,
+  worker/rutas/manualEditor.js, Ajustes → Manuales de la agencia → «Editor de video»; la propuesta y las decisiones de la
+  agencia en docs/propuesta-edicion-video-grabado.md). Lo que no se ve:
+  · **Los números salen de `OFICIO`**: la base del manual se escribe con ellos (`db()`, `coma()`, `rango()`), así que el texto
+    que lee Claude y el número que usará el kit no pueden contradecirse. Cambiar un número cambia el texto de la casa y su
+    huella. Mandan los medidos en Rofer v2 sobre los de la auditoría §8, con la anticipación de ~150 ms del ducking de la
+    auditoría (decisión de la agencia); la zona segura de abajo del editor es el 20 %, no el 31 % que la auditoría proponía
+    para el animado.
+  · **Por partes y con versiones**: la agencia cambia partes sueltas; lo idéntico a la casa NO se guarda como cambio
+    (`limpiarPartes`), porque si no la parte quedaría congelada y no recibiría las mejoras de la casa. Cada guardado es una
+    fila nueva (`manual_editor_versiones`) y volver atrás es OTRA versión con las partes de la vieja (y las huellas de la
+    vieja: sus textos se escribieron sobre aquella base). Guardar va con la versión leída: con una vieja, 409 con la última y
+    la pantalla junta por partes (`juntarPartes`); si las dos personas cambiaron la misma parte, no la junta sola: enseña lo
+    suyo y, si se vuelve a guardar, queda lo propio.
+  · **La huella** (`bases`): con cada parte cambiada se guarda la de la base de la casa de entonces. Guardar OTRA parte la
+    conserva (si no, apagaría el aviso «la casa la cambió»); reescribir esa parte la renueva.
+  · **El manual no llega aún a Claude**: `manualParaClaude` (lo compacto: lo común y el tipo, ~7.000 caracteres con
+    persona-a-camara) lo entregará `guia_de_edicion` en la Fase 4. «Sin persona» está vacío y marcado; «persona y pantalla»
+    está EN PRUEBA hasta subir el código de Comunidad v3 (Fase 2a).

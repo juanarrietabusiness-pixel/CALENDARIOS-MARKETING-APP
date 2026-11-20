@@ -335,3 +335,13 @@ contradicen, manda la de más abajo (la más nueva). Una trampa nueva de esta á
 - **Nada de esto se ha probado contra GitHub real**: `tests/migracion/cerebro.sincronizar.test.js` habla con un GitHub de
   mentira (árbol y blobs) y la D1 de verdad. Lo primero en producción: abrir el Cerebro de 57DMC y de KMT (sin
   actualizar desde el 30 de septiembre) y mirar qué se quitó y qué chocó.
+- **La Ficha técnica es un RESUMEN y no se rehace sola al corregir una nota** (visto el 2026-11-20 en Rofer Service): la nota
+  «Brand guidelines — Datos del negocio» ya decía el WhatsApp nuevo (+507 6086-6581, desde el 2026-10-09) y la Ficha técnica,
+  que la cita como fuente, seguía con el viejo (61562010). La ficha la escribe la IA con «Preparar ficha con IA»
+  (worker/lib/cerebro/preparar.js); corregir una nota sólo enciende el aviso de que quedó vieja (`fichaDesactualizada`) en
+  el Cerebro, y la ficha va SIEMPRE en el contexto, así que todo lo que escribe a partir de ella copia el dato viejo aunque
+  cite la nota buena. Además, el campo `whatsapp` de la ficha del CLIENTE (Editar ficha) es otro dato aparte, que tampoco
+  se entera: en Rofer seguía con el viejo. Por eso el manual del editor (src/lib/manualEditor.js, «Antes de editar») manda
+  sacar el contacto de la nota de datos del negocio y avisar si no coincide, y `guia_de_edicion` (Fase 4 del editor) no se
+  fiará del resumen: leerá esa nota y dirá la diferencia. Arreglo de fondo, pendiente: rehacer la ficha (o al menos avisar
+  en el MCP, no sólo en la pantalla) cuando cambia una nota de las que la alimentan.
