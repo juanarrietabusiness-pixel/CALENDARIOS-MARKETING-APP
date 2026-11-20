@@ -703,7 +703,7 @@ src/
     anuncios/DialogoActivar.jsx    Activar: el presupuesto y las fechas, y escribir ACTIVAR
     anuncios/Estratega.jsx         El estratega: para un cliente o alguien de fuera, el plan, ajustarlo, guardarlo y llevarlo
                           a «Nueva campaña» (lazy)
-    SeccionManualCampanas.jsx      Ajustes → Manual de campañas de la agencia
+    SeccionManualCampanas.jsx      Ajustes → Manuales de la agencia (campañas, criterio de video, diseño y, plegado y lazy, el del editor)
     anuncios/Diagnostico.jsx       El diagnóstico: lo que dicen las reglas, «Apagar» y «Subir a…» (con confirmación) (lazy)
     anuncios/InformesAnuncios.jsx  «Informe» en Anuncios: generar, automático el día 1, el costo sí o no, compartir (lazy)
     anuncios/InformeAnunciosVista.jsx  El informe de anuncios como documento (lo usan el diálogo y la página pública)
@@ -1251,3 +1251,28 @@ Frase para la nota de las instrucciones del servidor MCP (worker/rutas/mcp.js, j
 > crea ni cambia el enlace); `ver_avisos` es la campana de quien conecta, `ver_bandeja` lo que espera respuesta en la Bandeja de un
 > cliente y `ver_informes` sus informes con su enlace. Responder, generar o compartir se hace en la aplicación.
 
+
+### El editor de video grabado — Fase 1: el manual del editor
+
+La propuesta entera, con las decisiones de la agencia del 2026-11-20: `docs/propuesta-edicion-video-grabado.md`.
+
+```
+src/
+  lib/
+    oficioEdicion.js      Los NÚMEROS DEL OFICIO de editar un video grabado (silencios, cámara, zonas seguras, subtítulos, música,
+                          ducking, voz, máster, hoja): una sola fuente para el manual, el kit de piezas (Fase 2) y el motor
+                          animado cuando lleguen las Entregas 5 y 6 de la auditoría (puro)
+    manualEditor.js       El MANUAL DEL EDITOR: la base de la casa por partes (lo común y cada tipo de video), lo que cambia la
+                          agencia, la huella de la base, juntar al guardar (409) y lo compacto que leerá Claude (puro)
+    manualEditorApi.js    Cliente de /api/manual-editor (leer, una versión, guardar con versión, volver a una vieja)
+  components/
+    SeccionManualEditor.jsx  Ajustes → Manuales de la agencia → «Editor de video»: editar por partes, avisos de la casa, versiones y
+                          volver a una (lazy: lo carga SeccionManualCampanas al abrirlo)
+worker/
+  lib/
+    manualEditor.js       El manual del editor en D1 (`manual_editor_versiones`): la versión vigente, una vieja, la lista y
+                          guardar con la versión leída como condición (el índice único para a dos a la vez)
+  rutas/
+    manualEditor.js       /api/manual-editor: GET, GET /versiones/<n>, PUT { version, partes } (409 { actual }) y POST /volver
+migraciones/d1/           (+) 0082 el manual del editor con sus versiones
+```
