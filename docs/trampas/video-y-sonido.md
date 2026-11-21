@@ -1160,3 +1160,51 @@ contradicen, manda la de más abajo (la más nueva). Una trampa nueva de esta á
   · **Tiempos medidos aquí** (4 CPU; el chat tiene 2): instalar con modelos, 46 s; transcribir los 5 clips (52 s de
     audio), 32 s; de transcribir al corte en crudo, 83 s. **Sin probar en el chat de claude.ai**: la instalación allí, sus
     tiempos con 2 CPU y que su red deje bajar los efectos del sitio (el dominio está en su lista permitida).
+
+- **El kit de edición, Fase 2b (la imagen): lo que no se ve leyendo el código** (kit-edicion/, src/lib/camaraEdicion.js,
+  escenaEdicion.js; la prueba y los tiempos en docs/propuesta-edicion-video-grabado.md §14).
+  · **MediaPipe necesita libEGL** aunque corra en CPU (`ImportError: libEGL.so.1` en una máquina sin pantalla) y baja su
+    modelo de googleapis: para la prueba se corrió su .tflite con LiteRT. No ganó, así que el kit no lo lleva.
+  · **El ONNX de SAM 2.1 trae los pesos aparte** (`external data`) y los busca con el nombre original del archivo: si se
+    renombra, no abre. Tampoco ganó.
+  · **RVM es recurrente**: cada tramo nuevo empieza 20 cuadros antes para que se asiente, así que dos tramos del mismo clip
+    con un hueco de ≤ 20 cuadros se recorren de una vez (sale más barato que calentar otra vez).
+  · **El recorte bueno es lo lento** (~1 s/cuadro con 4 núcleos). Por defecto se hace sólo donde hay texto DETRÁS de la
+    persona; el resto lleva la geometría con RVM a 1/4 (lo que necesita la cámara). Lado a lado no se distingue; lo que
+    cambia es que sin recorte no hay sombra de la persona sobre su propio fondo. `persona.completa: true` lo hace todo.
+  · **`os.cpu_count()` mira la máquina, no lo que le dejan al proceso**: con 2 núcleos asignados de 4, onnxruntime abría 4
+    hilos y se pisaban. `hilos()` (comun.py) usa la afinidad; Remotion, `os.availableParallelism()`. `KIT_HILOS` lo fija.
+  · **Codificar los cuadros en serie era más lento que recortarlos**: el WebP con transparencia de 1.101 cuadros tardaba
+    9 min. En hilos (Pillow y OpenCV sueltan el GIL al codificar), 81 s. La cola se limita a 4 × hilos (6 MB por cuadro).
+  · **La revisión de oficio daba falsos avisos** hasta medir lo de verdad: la franja segura con el contorno de las letras
+    (0,4 em), la lista y las preguntas fila a fila, y el subtítulo «encima de un gráfico» sólo si se ven a la vez más de
+    0,1 s. Un subtítulo se oculta si la mitad de sus palabras ya están en un ítem que se ve en ese momento: así salen los
+    13 ocultos de v2.
+  · **El logo con margen transparente sale pequeño** en su tarjeta: `logo.py` lo recorta antes (marca/<logo>-recortado.png).
+  · **La cámara acerca a la persona lejos** (hasta 2×) para que mida 1.000 px en el plano abierto y 1.300 en el medio; con
+    el objetivo más alto, el gancho quedaba demasiado cerca y el titular del cuadro 0 se metía en la cara.
+  · **Tocar las piezas del plan rehacía la voz y la música**: cada paso mira sólo su parte (`trabajo/plan/*.json`, que se
+    reescribe sólo si cambia).
+  · **Remotion COPIA la carpeta pública al empaquetar** (`bundle({ publicDir })`) a /tmp/remotion-webpack-bundle-*, y no la
+    borra: con un empaquetado por tramo de 5 s y 600 MB de cuadros, el render de Rofer dejó 37 copias y llenó el disco
+    («ENOSPC … copyfile»: parece un fallo del render y es el disco). `symlinkPublicDir: true` la enlaza, y render.mjs
+    borra su paquete al salir.
+  · **Tiempos con 2 núcleos** (los del chat; medidos con `taskset -c 0,1`): la imagen de Rofer, ≈ 27,5 min en unas 5
+    llamadas de 7 min (propuesta §14). El recorte es lo que más pesa (1,34 s/cuadro).
+  · **La revisión con anchos ESTIMADOS no vio el trío roto** (Juan, al mirar el video del kit contra v2): sin las siluetas,
+    las palabras crecían (64 + 40 × escala) en columnas de 320 px, «MEDIANOS» se montaba sobre «GRANDES» y «GRANDES» se
+    salía por la derecha. La caja del trío era fija (30–1050) y nada comprobaba texto contra texto. Ahora `letras.py` mide
+    los anchos con la letra de verdad, el trío sin imagen va con las tres palabras del mismo tamaño y la revisión
+    (`revisarTextos`) comprueba TODOS los textos: dentro del cuadro y sin montarse con otro que se vea a la vez.
+  · **Un texto centrado que no cabe en su caja NO se centra en CSS**: se desborda a la derecha desde el borde izquierdo de
+    la caja. Por eso «GRANDES» se salía del cuadro aunque, centrado, habría cabido; las cajas de la revisión lo replican.
+  · **Con los anchos medidos, la ficha de Rofer «tapaba la cara»**: la cabeza se aproxima con un rectángulo del ancho del
+    casco hasta la barbilla, y la píldora de TIEMPO (con su flecha) rozaba su borde sin tocar la cara. Lo de delante se mide
+    ahora por cuánto de la CARA tapa (> 6 %), no por cuánto de la pieza toca la caja.
+  · **El dibujo del logo**: se quitan las rayas finas de lado a lado (la línea bajo la excavadora), se parte por el hueco
+    vacío más grande y se queda la parte cuya forma más grande domina (las letras son muchas formas pequeñas). Ojo con el
+    alfa desde la distancia al fondo: con enteros de 16 bits, (distancia − 10) × 255 se desbordaba y el dibujo salía sólo
+    con el contorno. Un logo de sólo letras sale con código 4 y el trío va sin imagen.
+  · **`instalar.sh` marcaba «pip hecho» una sola vez**: un kit nuevo con otra librería (fontTools y brotli para medir) no
+    se instalaba en un chat que ya tenía el anterior. Las marcas de pip y de Remotion llevan ahora la huella de
+    requisitos.txt y del package-lock.

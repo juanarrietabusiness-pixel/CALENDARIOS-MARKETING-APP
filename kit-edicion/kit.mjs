@@ -15,6 +15,14 @@
 //   musica                       la canción cortada al montaje en compases (plan.musica)
 //   mezcla                       voz + música con ducking + efectos del catálogo; máster a −14 LUFS
 //   crudo                        el corte en crudo con la mezcla (salida/crudo.mp4) para que la persona lo apruebe
+//   marca <carpeta del kit>      colores, logo y letra del ZIP de kit_descargable → plan.marca (lo demás, a mano)
+//   muestras [cuadro,cuadro,…]   2 o 3 CUADROS DE MUESTRA con la marca (gancho, texto detrás, subtítulo) sin recortar ni
+//                                pintar todo: se enseñan a la persona ANTES de editar
+//   persona [segundos]           el recorte de la persona (RVM) y su geometría; por tramos, sigue donde iba
+//   cuadros [segundos]           los cuadros etalonados y la persona encima, para Remotion
+//   escena                       la escena (cámara, piezas, subtítulos) y la REVISIÓN DE OFICIO
+//   render [segundos]            el video por tramos de 5 s (sólo con plan.aprobado: true, tras el sí a las muestras)
+//   final                        junta los tramos con la mezcla → salida/final.mp4, lo mide y saca su hoja de contactos
 //   medir [archivo]              LUFS y pico verdadero de un archivo terminado
 //   hoja <video> [cada] [desde] [hasta]   hoja de contactos (salida/hoja-<nombre>.jpg)
 //   siguiente                    el próximo paso que falta (o qué decisión falta en el plan)
@@ -39,6 +47,8 @@ const { montarCancion } = await cargar("musicaEdicion.js");
 const { validarPlan, instante, efectosResueltos, tramoDeRealce, VERSION_PLAN } = await cargar("planEdicion.js");
 const { EFECTOS_CATALOGO } = await cargar("catalogoEfectos.datos.js");
 const { KIT_EDICION } = await cargar("kitEdicionVersion.js");
+const { camaraDelVideo } = await cargar("camaraEdicion.js");
+const { escenaParaRemotion, textosDeEscena } = await cargar("escenaEdicion.js");
 
 const VERSION = KIT_EDICION.version;
 const DOMINIO = (process.env.KIT_DOMINIO || (existsSync(join(KIT, ".dominio")) ? readFileSync(join(KIT, ".dominio"), "utf8").trim() : "")
@@ -63,11 +73,19 @@ function plan() {
 }
 const archivoDe = (c) => resolve(PROYECTO, c.archivo);
 
+/** Corre un paso de Python. Código 3 = «hice lo que cupo en el presupuesto; falta»: no es un fallo. → true si terminó. */
 function python(script, ...args) {
   mkdirSync(T, { recursive: true });
   writeFileSync(join(T, "oficio.json"), JSON.stringify(OFICIO));
   const r = spawnSync("python3", [join(KIT, "python", script), T, ...args.map(String)], { stdio: "inherit" });
+  if (r.status === 3) {
+    console.log(`→ ${script}: falta un poco; vuelve a correr el mismo paso (o siguiente): sigue donde iba.`);
+    // También en el código de salida (3), para quien lo encadena en un bucle: «hasta que no salga con 3».
+    process.exitCode = 3;
+    return false;
+  }
   if (r.status !== 0) fallo(`El paso ${script} falló (código ${r.status}). Si el proceso se cortó, vuelve a correrlo: sigue donde iba.`);
+  return true;
 }
 
 function comprobarForma(p) {
@@ -207,9 +225,9 @@ async function efectoLocal(e) {
 
 async function mezcla() {
   const { p, linea, palabras } = calcularCorte({ hablar: false });
-  if (!existsSync(join(T, "voz.wav")) || mtime(join(T, "voz.wav")) < mtime(join(T, "linea.json"))) voz();
+  if (viejo(join(T, "voz.wav"), join(T, "linea.json"), partesDelPlan(p).voz)) voz();
   const conMusica = Boolean(p.musica);
-  if (conMusica && (!existsSync(join(T, "musica.wav")) || mtime(join(T, "musica.wav")) < mtime(PLAN))) musica();
+  if (conMusica && viejo(join(T, "musica.wav"), partesDelPlan(p).musica)) musica();
   const efectos = [];
   for (const e of efectosResueltos(p, palabras)) {
     const c = CATALOGO.get(e.id);
@@ -241,7 +259,307 @@ function crudo() {
   python("medir.py", join(PROYECTO, "salida", "crudo.mp4"));
 }
 
+
+// ---------------------------------------------------------------- la imagen (Fase 2b)
+
+const R = join(T, "render");
+const PUBLIC = join(R, "public");
+const REMOTION = join(KIT, "remotion");
+const PRESUPUESTO = Number(process.env.KIT_PRESUPUESTO || 420); // segundos por llamada: los procesos del chat mueren
+
+/** Colores, logo y letra del ZIP de kit_descargable (su carpeta descomprimida) → plan.marca, sin pisar lo que ya diga. */
+function marca(carpeta) {
+  if (!carpeta || !existsSync(carpeta)) fallo("Dime la carpeta del kit de marca (el ZIP de kit_descargable, descomprimido).");
+  const p = plan();
+  const paleta = leer(join(carpeta, "paleta.json"), {});
+  const kit = leer(join(carpeta, "kit.json"), {});
+  const tk = paleta.tokens ?? {};
+  const m = p.marca ?? {};
+  mkdirSync(join(PROYECTO, "marca"), { recursive: true });
+  const copiar = (rel) => { if (!rel || !existsSync(join(carpeta, rel))) return null; const d = join("marca", basename(rel)); copyFileSync(join(carpeta, rel), join(PROYECTO, d)); return d; };
+  const logo = m.logo ?? copiar(kit.logo);
+  const letra = kit.letra?.archivo ? copiar(kit.letra.archivo) : null;
+  p.marca = {
+    ...m,
+    nombre: m.nombre ?? kit.cliente,
+    colores: { oscuro: tk.oscuro ?? tk.fondo, acento: tk.acento, claro: tk.claro ?? "#FFFFFF", ...(m.colores ?? {}) },
+    ...(logo ? { logo } : {}),
+    ...(letra && !m.letras ? { letras: { titular: { familia: kit.letra.nombre || "Marca", archivo: letra } } } : {}),
+  };
+  escribir(PLAN, p);
+  console.log(`plan.marca: ${JSON.stringify(p.marca)}`);
+  console.log("Completa a mano lo que no está en el kit: whatsapp (de la nota «Datos del negocio» del cerebro), usuario (@…), llamado del cierre y subtitulos (de identidad_video).");
+}
+
+/** Lo que pide Remotion de la marca, con los archivos copiados a public/. */
+function marcaParaRender(p) {
+  const m = p.marca ?? {};
+  mkdirSync(join(PUBLIC, "marca"), { recursive: true });
+  const poner = (rel) => { if (!rel) return null; const o = resolve(PROYECTO, rel); if (!existsSync(o)) return null; const d = `marca/${basename(rel)}`; copyFileSync(o, join(PUBLIC, d)); return d; };
+  const letrasM = m.letras ? JSON.parse(JSON.stringify(m.letras)) : undefined;
+  if (letrasM?.titular?.archivo) letrasM.titular.archivo = poner(letrasM.titular.archivo);
+  if (letrasM?.texto?.archivo) letrasM.texto.archivo = poner(letrasM.texto.archivo);
+  // El logo, sin sus márgenes (si no, sale pequeño en la tarjeta y en el cierre).
+  let logo = poner(m.logo);
+  const logoOriginal = logo;
+  if (logo) {
+    const recortado = `marca/${basename(logo, extname(logo))}-recortado.png`;
+    if (viejo(join(PUBLIC, recortado), join(PUBLIC, logo))) python("logo.py", join(PUBLIC, logo), join(PUBLIC, recortado));
+    if (existsSync(join(PUBLIC, recortado))) logo = recortado;
+  }
+  return { ...m, logo, logoOriginal, letras: letrasM };
+}
+
+/** Las letras libres (OFL) que usan las piezas si la marca no trae las suyas: de node_modules/@fontsource a public/fonts. */
+function letrasLibres() {
+  const nm = join(REMOTION, "node_modules", "@fontsource");
+  if (!existsSync(nm)) fallo("Falta instalar Remotion (bash instalar.sh lo hace).");
+  mkdirSync(join(PUBLIC, "fonts"), { recursive: true });
+  for (const [o, d] of [["anton/files/anton-latin-400-normal.woff2", "anton-400.woff2"], ["inter-tight/files/inter-tight-latin-900-normal.woff2", "inter-tight-900.woff2"],
+    ["inter-tight/files/inter-tight-latin-800-normal.woff2", "inter-tight-800.woff2"], ["inter-tight/files/inter-tight-latin-600-normal.woff2", "inter-tight-600.woff2"]]) {
+    if (!existsSync(join(PUBLIC, "fonts", d))) copyFileSync(join(nm, o), join(PUBLIC, "fonts", d));
+  }
+}
+
+/**
+ * Los cuadros de origen que hacen falta de cada clip ([clip, desde, hasta] seguidos). `solo`: cuadros de salida. `unir`:
+ * huecos de hasta tantos cuadros se recorren igual (RVM recuerda lo anterior: cada tramo nuevo empieza con 20 cuadros
+ * de calentamiento, así que recorrer un hueco corto cuesta menos que empezar otra vez).
+ */
+function tramosDeOrigen(fuente, solo = null, unir = 0) {
+  const porClip = new Map();
+  fuente.forEach((x, f) => { if (x && (!solo || solo.has(f))) { if (!porClip.has(x[0])) porClip.set(x[0], new Set()); porClip.get(x[0]).add(x[1]); } });
+  const tramos = [];
+  for (const [clip, set] of porClip) {
+    const n = [...set].sort((a, b) => a - b);
+    let a = n[0];
+    for (let i = 1; i <= n.length; i++) if (i === n.length || n[i] > n[i - 1] + 1 + unir) { tramos.push([clip, a, n[i - 1]]); a = n[i]; }
+  }
+  return tramos;
+}
+
+function lineaYFuente() {
+  const linea = leer(join(T, "linea.json"), null) ?? calcularCorte({ hablar: false }).linea;
+  return { linea, fuente: corte.cuadrosDeOrigen(linea) };
+}
+
+/**
+ * Los cuadros de salida que necesitan a la persona recortada: por defecto, sólo los que tienen un texto DETRÁS de la
+ * persona (con 0,15 s de margen); el resto lleva la geometría rápida (geometria.py) para la cámara. En Rofer v2, 40 %
+ * menos de tiempo y lado a lado no se distingue (propuesta §14). Con `persona.completa: true` en el plan, todos. → Set,
+ * o null = todos.
+ */
+function conPersona(p, linea) {
+  if (p.persona?.completa) return null;
+  const { palabras } = leer(join(T, "linea.json"));
+  const det = escenaSinCuadros(p, linea, palabras).datos.piezas.filter((x) => ["titular", "gigante", "tachado", "trio"].includes(x.tipo) && x.desde !== null);
+  const set = new Set();
+  for (const x of det) for (let f = Math.max(0, Math.floor((x.desde - 0.15) * linea.fps)); f <= Math.ceil((x.hasta + 0.15) * linea.fps); f++) set.add(f);
+  return set;
+}
+
+function persona(presupuesto = PRESUPUESTO, solo = null) {
+  const p = plan();
+  const { linea, fuente } = lineaYFuente();
+  const necesita = solo ?? conPersona(p, linea);
+  escribir(join(T, "persona_plan.json"), {
+    clips: Object.fromEntries(p.clips.map((c) => [c.id, archivoDe(c)])), tramos: tramosDeOrigen(fuente, necesita, 20),
+    tramos_todos: tramosDeOrigen(fuente, solo, 20), modelo: p.persona?.modelo ?? "rvm_resnet50",
+  });
+  // Sin el recorte de todo, la cámara necesita la geometría del resto: una pasada rápida a 1/4.
+  if (necesita && !solo && !python("geometria.py", presupuesto)) return false;
+  return python("persona.py", presupuesto);
+}
+
+function geometria(p) {
+  return Object.fromEntries(p.clips.map((c) => [c.id, leer(join(T, "geometria", `${c.id}.json`), {})]));
+}
+
+function camara(p, linea) {
+  return camaraDelVideo(linea, geometria(p), { planos: p.camara ?? null });
+}
+
+function cuadros(presupuesto = PRESUPUESTO, solo = null) {
+  const p = plan();
+  const { linea, fuente } = lineaYFuente();
+  const cam = camara(p, linea);
+  // El clip que la cámara acerca mucho (persona lejos) lleva más nitidez.
+  const nitidez = [...new Set(linea.piezas.filter((_, k) => cam.planos[k].z > 1.6).map((x) => x.clip))];
+  const necesita = conPersona(p, linea);
+  escribir(join(T, "cuadros_plan.json"), { fps: linea.fps, fuente, clips: Object.fromEntries(p.clips.map((c) => [c.id, archivoDe(c)])), nitidez, destino: join(PUBLIC, "r"),
+    conPersona: necesita ? [...necesita] : null });
+  return python("cuadros.py", solo ? [...solo].join(",") : "", presupuesto);
+}
+
+/**
+ * La IMAGEN del trío: "logo" es el DIBUJO del logo de la marca, aparte del nombre y en blanco (logo.py --dibujo; en Rofer,
+ * la excavadora); otra cosa, un archivo del proyecto (una imagen que suba la marca). Sin imagen, las tres palabras van
+ * del mismo tamaño. → las piezas con `imagen` ya en public/, y lo que no se pudo.
+ */
+function imagenesDelTrio(piezas, marca) {
+  const avisos = [];
+  const fuera = (piezas ?? []).map((x) => {
+    if (x.tipo !== "trio" || !x.imagen) return x;
+    if (x.imagen === "logo") {
+      if (!marca.logo) { avisos.push("El trío pide el dibujo del logo y la marca no tiene logo: va sin imagen."); const { imagen: _, ...sin } = x; return sin; }
+      const fuente = join(PUBLIC, marca.logoOriginal ?? marca.logo);
+      const d = `marca/${basename(fuente, extname(fuente))}-dibujo.png`;
+      if (viejo(join(PUBLIC, d), fuente)) {
+        const r = spawnSync("python3", [join(KIT, "python", "logo.py"), T, fuente, join(PUBLIC, d), "--dibujo"], { stdio: "inherit" });
+        if (r.status !== 0 && r.status !== 4) fallo(`logo.py falló (código ${r.status}).`);
+      }
+      if (!existsSync(join(PUBLIC, d))) { avisos.push("El logo no tiene un dibujo aparte del nombre: el trío va sin imagen (las tres palabras del mismo tamaño). Si la marca tiene uno, ponlo en el proyecto y su ruta en «imagen»."); const { imagen: _, ...sin } = x; return sin; }
+      return { ...x, imagen: d };
+    }
+    const o = resolve(PROYECTO, x.imagen);
+    if (!existsSync(o)) { avisos.push(`La imagen del trío (${x.imagen}) no está en el proyecto: va sin imagen.`); const { imagen: _, ...sin } = x; return sin; }
+    mkdirSync(join(PUBLIC, "marca"), { recursive: true });
+    copyFileSync(o, join(PUBLIC, "marca", basename(o)));
+    return { ...x, imagen: `marca/${basename(o)}` };
+  });
+  return { piezas: fuera, avisos };
+}
+
+/** Los ANCHOS de los textos de las piezas, medidos con las letras de verdad (letras.py). → { titular: {…}, texto: {…} }. */
+function anchosDeLaEscena(piezas, marca) {
+  const fuentes = {
+    titular: join(PUBLIC, marca.letras?.titular?.archivo ?? "fonts/anton-400.woff2"),
+    texto: join(PUBLIC, marca.letras?.texto?.archivo ?? "fonts/inter-tight-900.woff2"),
+  };
+  const textos = textosDeEscena(piezas, marca);
+  const clave = (rol) => `${rol}|${basename(fuentes[rol])}`;
+  let anchos = leer(join(T, "anchos.json"), {});
+  if (Object.keys(fuentes).some((rol) => textos[rol].some((x) => typeof anchos[clave(rol)]?.[x] !== "number"))) {
+    escribir(join(T, "letras_pedido.json"), { fuentes, textos });
+    python("letras.py");
+    anchos = leer(join(T, "anchos.json"), {});
+  }
+  return Object.fromEntries(Object.keys(fuentes).map((rol) => [rol, anchos[clave(rol)] ?? {}]));
+}
+
+/** La escena para Remotion y su revisión. → { datos, avisos }. */
+function escena({ hablar = true } = {}) {
+  const p = plan();
+  const { linea } = lineaYFuente();
+  const { palabras } = leer(join(T, "linea.json"));
+  const cam = camara(p, linea);
+  letrasLibres();
+  const marca = marcaParaRender(p);
+  const trio = imagenesDelTrio(p.piezas, marca);
+  const r = escenaParaRemotion({ linea, palabras, camara: cam, plan: { ...p, piezas: trio.piezas }, marca, anchos: anchosDeLaEscena(trio.piezas, marca) });
+  if (r.error) fallo(`Los subtítulos no casan: ${r.error}`);
+  for (const que of trio.avisos) r.avisos.unshift({ t: 0, grave: false, que, arreglo: "Revísalo en las muestras." });
+  const necesita = conPersona(p, linea);
+  if (necesita) r.datos.conPersona = Array.from({ length: linea.total }, (_, f) => (necesita.has(f) ? 1 : 0));
+  escribir(join(PUBLIC, "datos.json"), r.datos);
+  if (hablar) {
+    console.log(`Escena: ${r.datos.piezas.length} piezas, ${r.datos.grupos.length} subtítulos (${r.datos.grupos.filter((g) => g.oculto).length} ocultos porque un gráfico ya lo dice).`);
+    console.log("Planos por tramo: " + cam.planos.map((x, k) => `${k}:${x.z}`).join(" "));
+    if (!r.avisos.length) console.log("Revisión de oficio: sin avisos.");
+    for (const a of r.avisos) console.log(`${a.grave ? "✗" : "·"} ${s2(a.t)} s — ${a.que} → ${a.arreglo}`);
+  }
+  return r;
+}
+
+function remotion(...args) {
+  if (!existsSync(join(REMOTION, "node_modules", "remotion"))) fallo("Falta instalar Remotion (bash instalar.sh lo hace).");
+  const r = spawnSync("node", [join(REMOTION, "render.mjs"), ...args.map(String)], { stdio: "inherit", cwd: REMOTION });
+  if (r.status !== 0) fallo(`Remotion falló (código ${r.status}).`);
+}
+
+/** Los cuadros de muestra: por defecto, el 0 (el gancho), el de la primera pieza detrás de la persona y uno con subtítulo. */
+function muestras(lista) {
+  const p = plan();
+  const { linea } = lineaYFuente();
+  let cuadrosM = lista ? lista.split(",").map(Number) : null;
+  if (!cuadrosM) {
+    const { palabras } = leer(join(T, "linea.json"));
+    const r0 = escenaSinCuadros(p, linea, palabras);
+    const det = r0.datos.piezas.find((x) => ["gigante", "trio"].includes(x.tipo) && x.desde > 0.5);
+    const g = r0.datos.grupos.find((x) => !x.oculto && r0.datos.palabras[x.ids[0]].s > 1.5);
+    cuadrosM = [0, det ? Math.round((det.desde + 0.6) * linea.fps) : 60, g ? Math.round((r0.datos.palabras[g.ids.at(-1)].s + 0.1) * linea.fps) : 120];
+  }
+  const solo = new Set(cuadrosM);
+  persona(1e9, solo);
+  cuadros(1e9, solo);
+  escena();
+  remotion("muestras", PUBLIC, join(PROYECTO, "salida", "muestras"), cuadrosM.join(","));
+  console.log("Enséñale las muestras a la persona ANTES de editar. Con su sí, pon \"aprobado\": true en plan.json.");
+}
+function escenaSinCuadros(p, linea, palabras) {
+  return escenaParaRemotion({ linea, palabras, camara: camara(p, linea), plan: p, marca: p.marca ?? {} });
+}
+
+const TRAMO = 150; // cuadros (5 s) por trozo de render
+function trozos(total) {
+  const t = [];
+  for (let a = 0; a < total; a += TRAMO) t.push([a, Math.min(total - 1, a + TRAMO - 1)]);
+  return t;
+}
+const rutaTrozo = ([a, b]) => join(R, "tramos", `${String(a).padStart(5, "0")}-${String(b).padStart(5, "0")}.mp4`);
+
+function render(presupuesto = PRESUPUESTO) {
+  const p = plan();
+  if (p.aprobado !== true) fallo("La persona aún no aprobó las muestras: enséñaselas (node kit.mjs muestras) y, con su sí, pon \"aprobado\": true en plan.json.");
+  const r = escena({ hablar: false });
+  const graves = r.avisos.filter((a) => a.grave);
+  if (graves.length && p.revision !== "aceptada") fallo(`La revisión de oficio tiene ${graves.length} avisos graves (node kit.mjs escena los enseña). Arréglalos, o si la persona los acepta, pon "revision": "aceptada".`);
+  const { linea } = lineaYFuente();
+  const inicio = Date.now();
+  mkdirSync(join(R, "tramos"), { recursive: true });
+  // Si la escena cambió después de un trozo, ese trozo se repite.
+  const escenaMtime = mtime(join(PUBLIC, "datos.json"));
+  let faltan = 0;
+  for (const tr of trozos(linea.total)) {
+    const ruta = rutaTrozo(tr);
+    if (existsSync(ruta) && mtime(ruta) > escenaMtime) continue;
+    if ((Date.now() - inicio) / 1000 > presupuesto) { faltan++; continue; }
+    remotion("tramo", PUBLIC, ruta, tr[0], tr[1]);
+  }
+  if (faltan) {
+    console.log(`→ render: faltan ${faltan} trozos de 5 s; vuelve a correr render (o siguiente): sigue donde iba.`);
+    process.exitCode = 3;
+  }
+  else console.log("Render completo. Siguiente: node kit.mjs final");
+  return !faltan;
+}
+
+function final() {
+  const { linea } = lineaYFuente();
+  const lista = trozos(linea.total).map(rutaTrozo);
+  const falta = lista.filter((x) => !existsSync(x));
+  if (falta.length) fallo(`Faltan ${falta.length} trozos del render: node kit.mjs render`);
+  if (!existsSync(join(T, "mezcla.wav"))) fallo("Falta la mezcla: node kit.mjs mezcla");
+  writeFileSync(join(R, "trozos.txt"), lista.map((x) => `file '${x}'`).join("\n"));
+  mkdirSync(join(PROYECTO, "salida"), { recursive: true });
+  const destino = join(PROYECTO, "salida", "final.mp4");
+  const r = spawnSync("ffmpeg", ["-v", "error", "-y", "-f", "concat", "-safe", "0", "-i", join(R, "trozos.txt"), "-i", join(T, "mezcla.wav"),
+    "-map", "0:v", "-map", "1:a", "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-shortest", "-movflags", "+faststart", destino], { stdio: "inherit" });
+  if (r.status !== 0) fallo("No pude juntar los trozos.");
+  python("medir.py", destino);
+  python("hoja.py", destino, "", join(PROYECTO, "salida", "hoja-final.jpg"));
+  console.log(`Listo: ${destino}. Míralo en la hoja de contactos; súbelo con subir_a_galeria.`);
+}
+
 // ---------------------------------------------------------------- qué falta
+
+/**
+ * La PARTE del plan de la que depende un paso, en trabajo/plan/<nombre>.json, reescrita sólo si cambió: así tocar las
+ * piezas o la marca no rehace el corte, la voz ni la música. → su ruta (su fecha es la de su último cambio).
+ */
+function parte(nombre, datos) {
+  const ruta = join(T, "plan", `${nombre}.json`);
+  const texto = JSON.stringify(datos ?? null);
+  if (!existsSync(ruta) || readFileSync(ruta, "utf8") !== texto) { mkdirSync(dirname(ruta), { recursive: true }); writeFileSync(ruta, texto); }
+  return ruta;
+}
+const partesDelPlan = (p) => ({
+  corte: parte("corte", { clips: p.clips, cierre: p.cierre, fps: p.fps }),
+  voz: parte("voz", { clips: (p.clips ?? []).map((c) => [c.id, c.velocidad, c.ganancia, c.presencia]), realces: p.realces }),
+  musica: parte("musica", p.musica ?? null),
+  mezcla: parte("mezcla", { efectos: p.efectos, apartar: p.apartar, musica: p.musica ?? null }),
+  escena: parte("escena", { piezas: p.piezas, marca: p.marca, subtitulos: p.subtitulos, golpes: p.golpes, camara: p.camara, cierre: p.cierre, persona: p.persona }),
+});
 
 /** ¿Hay que (re)hacer `salida`? Si no existe o es más vieja que alguna de sus entradas. */
 const viejo = (salida, ...entradas) => !existsSync(salida) || mtime(salida) < Math.max(0, ...entradas.map(mtime));
@@ -254,16 +572,45 @@ function pasos() {
   const voz = join(T, "voz.wav");
   const musica = join(T, "musica.wav");
   const mezcla = join(T, "mezcla.wav");
+  const pt = partesDelPlan(p);
   return [
     { nombre: "transcribir", falta: trans.some((t) => !existsSync(t)), por: "faltan clips por transcribir" },
-    { nombre: "cortar", falta: viejo(join(T, "corte.hecho"), PLAN, ...trans), por: "el plan o las transcripciones cambiaron" },
-    { nombre: "voz", falta: viejo(voz, linea, PLAN), por: "el corte cambió" },
+    { nombre: "cortar", falta: viejo(join(T, "corte.hecho"), pt.corte, ...trans), por: "el plan o las transcripciones cambiaron" },
+    { nombre: "voz", falta: viejo(voz, linea, pt.voz), por: "el corte cambió" },
     p.musica
-      ? { nombre: "musica", falta: viejo(musica, PLAN, linea), por: "el plan de la música cambió" }
+      ? { nombre: "musica", falta: viejo(musica, pt.musica, linea), por: "el plan de la música cambió" }
       : { nombre: "musica", decide: "falta plan.musica (biblioteca del cliente o Suno; node kit.mjs compases <canción>)" },
-    { nombre: "mezcla", falta: viejo(mezcla, voz, PLAN, ...(p.musica ? [musica] : [])), por: "la voz, la música o los efectos cambiaron" },
+    { nombre: "mezcla", falta: viejo(mezcla, voz, pt.mezcla, ...(p.musica ? [musica] : [])), por: "la voz, la música o los efectos cambiaron" },
     { nombre: "crudo", falta: viejo(join(PROYECTO, "salida", "crudo.mp4"), mezcla), por: "la mezcla cambió" },
+    ...(p.aprobado !== true
+      ? [{ nombre: "muestras", decide: "faltan las piezas y los cuadros de muestra aprobados: node kit.mjs muestras y, con el sí, \"aprobado\": true en plan.json" }]
+      : [
+        { nombre: "persona", falta: personaFalta(p), por: "faltan cuadros por recortar" },
+        { nombre: "cuadros", falta: cuadrosFalta(), por: "faltan cuadros para Remotion" },
+        { nombre: "escena", falta: viejo(join(PUBLIC, "datos.json"), pt.escena, linea), por: "las piezas, la marca o la cámara cambiaron" },
+        { nombre: "render", falta: renderFalta(), por: "faltan trozos del render" },
+        { nombre: "final", falta: viejo(join(PROYECTO, "salida", "final.mp4"), mezcla, join(PUBLIC, "datos.json")), por: "el render o la mezcla cambiaron" },
+      ]),
   ];
+}
+
+function personaFalta(p) {
+  const L = leer(join(T, "linea.json"), null);
+  if (!L) return true;
+  return tramosDeOrigen(corte.cuadrosDeOrigen(L), conPersona(p, L)).some(([clip, a, b]) => !existsSync(join(T, "alfa", clip, `${String(a).padStart(5, "0")}.png`)) || !existsSync(join(T, "alfa", clip, `${String(b).padStart(5, "0")}.png`)));
+}
+function cuadrosFalta() {
+  const L = leer(join(T, "linea.json"), null);
+  if (!L) return true;
+  const necesita = conPersona(plan(), L);
+  return corte.cuadrosDeOrigen(L).some((x, f) => x && (!existsSync(join(PUBLIC, "r", "cam", `${String(f).padStart(5, "0")}.jpg`))
+    || ((!necesita || necesita.has(f)) && !existsSync(join(PUBLIC, "r", "p", `${String(f).padStart(5, "0")}.webp`)))));
+}
+function renderFalta() {
+  const L = leer(join(T, "linea.json"), null);
+  if (!L) return true;
+  const e = mtime(join(PUBLIC, "datos.json"));
+  return !e || trozos(L.total).some((tr) => !existsSync(rutaTrozo(tr)) || mtime(rutaTrozo(tr)) < e);
 }
 
 function estado() {
@@ -290,6 +637,13 @@ async function ejecutar(paso, args) {
     case "musica": return musica();
     case "mezcla": return mezcla();
     case "crudo": return crudo();
+    case "marca": return marca(args[0]);
+    case "muestras": return muestras(args[0]);
+    case "persona": return persona(Number(args[0]) || PRESUPUESTO);
+    case "cuadros": return cuadros(Number(args[0]) || PRESUPUESTO);
+    case "escena": return void escena();
+    case "render": return render(Number(args[0]) || PRESUPUESTO);
+    case "final": return final();
     case "medir": return python("medir.py", args[0] ? resolve(args[0]) : join(T, "mezcla.wav"));
     case "hoja": if (!args[0]) fallo("Dime el video: node kit.mjs hoja <video> [cada] [desde] [hasta]"); return python("hoja.py", resolve(args[0]), args[1] ?? "", join(PROYECTO, "salida", `hoja-${basename(args[0], extname(args[0]))}.jpg`), ...args.slice(2));
     case "siguiente": return siguiente();

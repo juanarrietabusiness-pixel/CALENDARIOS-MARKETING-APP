@@ -26,7 +26,9 @@ export const DEFINICION_KIT_EDICION = Object.freeze({
   description:
     "El KIT DE EDICIÓN de la agencia para editar un video GRABADO (clips de una persona hablando a cámara) en tu máquina: " +
     "transcribir por palabra, cortar con los silencios relativos a la voz, limpiar y nivelar la voz, cortar la música en " +
-    "compases, mezclar con los efectos del catálogo a −14 LUFS y sacar el corte en crudo y la hoja de contactos. Devuelve " +
+    "compases, mezclar con los efectos del catálogo a −14 LUFS, recortar a la persona, la cámara virtual, las piezas " +
+    "gráficas con la marca (texto detrás de la persona, cinta, sello, lista, fichas, botón de WhatsApp, modo celular), " +
+    "cuadros de muestra antes de renderizar y el render por tramos con su hoja de contactos. Devuelve " +
     "la versión, un enlace de 15 minutos (sin sesión) y el comando que lo instala todo de una vez (librerías y modelos). " +
     "Si ya tienes instalada esta misma versión, no hace falta repetir. La marca del cliente va aparte (kit_descargable). " +
     "Sólo lee: no gasta IA ni cambia nada.",

@@ -8,7 +8,7 @@ PyAV, y la versión de PyAV que instala pip no siempre casa con la suya (`metada
 """
 import os
 
-from comun import Reloj, escribir_json, leer_audio, leer_json, trabajo
+from comun import Reloj, escribir_json, hilos, leer_audio, leer_json, trabajo
 
 T = trabajo()
 clips = leer_json(os.path.join(T, "clips.json"))
@@ -20,7 +20,7 @@ if not faltan:
     raise SystemExit
 from faster_whisper import WhisperModel  # noqa: E402  (tarda en cargar: sólo si hace falta)
 
-modelo = WhisperModel("large-v3-turbo", device="cpu", compute_type="int8", cpu_threads=os.cpu_count() or 2)
+modelo = WhisperModel("large-v3-turbo", device="cpu", compute_type="int8", cpu_threads=hilos())
 for c in faltan:
     r = Reloj(f"transcribir {c['id']}")
     audio = leer_audio(c["archivo"], sr=16000).astype("float32")
