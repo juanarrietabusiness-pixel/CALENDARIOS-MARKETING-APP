@@ -220,9 +220,9 @@ async function efectoLocal(e) {
 
 async function mezcla() {
   const { p, linea, palabras } = calcularCorte({ hablar: false });
-  if (!existsSync(join(T, "voz.wav")) || mtime(join(T, "voz.wav")) < mtime(join(T, "linea.json"))) voz();
+  if (viejo(join(T, "voz.wav"), join(T, "linea.json"), partesDelPlan(p).voz)) voz();
   const conMusica = Boolean(p.musica);
-  if (conMusica && (!existsSync(join(T, "musica.wav")) || mtime(join(T, "musica.wav")) < mtime(PLAN))) musica();
+  if (conMusica && viejo(join(T, "musica.wav"), partesDelPlan(p).musica)) musica();
   const efectos = [];
   for (const e of efectosResueltos(p, palabras)) {
     const c = CATALOGO.get(e.id);
@@ -476,6 +476,24 @@ function final() {
 
 // ---------------------------------------------------------------- qué falta
 
+/**
+ * La PARTE del plan de la que depende un paso, en trabajo/plan/<nombre>.json, reescrita sólo si cambió: así tocar las
+ * piezas o la marca no rehace el corte, la voz ni la música. → su ruta (su fecha es la de su último cambio).
+ */
+function parte(nombre, datos) {
+  const ruta = join(T, "plan", `${nombre}.json`);
+  const texto = JSON.stringify(datos ?? null);
+  if (!existsSync(ruta) || readFileSync(ruta, "utf8") !== texto) { mkdirSync(dirname(ruta), { recursive: true }); writeFileSync(ruta, texto); }
+  return ruta;
+}
+const partesDelPlan = (p) => ({
+  corte: parte("corte", { clips: p.clips, cierre: p.cierre, fps: p.fps }),
+  voz: parte("voz", { clips: (p.clips ?? []).map((c) => [c.id, c.velocidad, c.ganancia, c.presencia]), realces: p.realces }),
+  musica: parte("musica", p.musica ?? null),
+  mezcla: parte("mezcla", { efectos: p.efectos, apartar: p.apartar, musica: p.musica ?? null }),
+  escena: parte("escena", { piezas: p.piezas, marca: p.marca, subtitulos: p.subtitulos, golpes: p.golpes, camara: p.camara, cierre: p.cierre, persona: p.persona }),
+});
+
 /** ¿Hay que (re)hacer `salida`? Si no existe o es más vieja que alguna de sus entradas. */
 const viejo = (salida, ...entradas) => !existsSync(salida) || mtime(salida) < Math.max(0, ...entradas.map(mtime));
 
@@ -487,20 +505,22 @@ function pasos() {
   const voz = join(T, "voz.wav");
   const musica = join(T, "musica.wav");
   const mezcla = join(T, "mezcla.wav");
+  const pt = partesDelPlan(p);
   return [
     { nombre: "transcribir", falta: trans.some((t) => !existsSync(t)), por: "faltan clips por transcribir" },
-    { nombre: "cortar", falta: viejo(join(T, "corte.hecho"), PLAN, ...trans), por: "el plan o las transcripciones cambiaron" },
-    { nombre: "voz", falta: viejo(voz, linea, PLAN), por: "el corte cambió" },
+    { nombre: "cortar", falta: viejo(join(T, "corte.hecho"), pt.corte, ...trans), por: "el plan o las transcripciones cambiaron" },
+    { nombre: "voz", falta: viejo(voz, linea, pt.voz), por: "el corte cambió" },
     p.musica
-      ? { nombre: "musica", falta: viejo(musica, PLAN, linea), por: "el plan de la música cambió" }
+      ? { nombre: "musica", falta: viejo(musica, pt.musica, linea), por: "el plan de la música cambió" }
       : { nombre: "musica", decide: "falta plan.musica (biblioteca del cliente o Suno; node kit.mjs compases <canción>)" },
-    { nombre: "mezcla", falta: viejo(mezcla, voz, PLAN, ...(p.musica ? [musica] : [])), por: "la voz, la música o los efectos cambiaron" },
+    { nombre: "mezcla", falta: viejo(mezcla, voz, pt.mezcla, ...(p.musica ? [musica] : [])), por: "la voz, la música o los efectos cambiaron" },
     { nombre: "crudo", falta: viejo(join(PROYECTO, "salida", "crudo.mp4"), mezcla), por: "la mezcla cambió" },
     ...(p.aprobado !== true
       ? [{ nombre: "muestras", decide: "faltan las piezas y los cuadros de muestra aprobados: node kit.mjs muestras y, con el sí, \"aprobado\": true en plan.json" }]
       : [
         { nombre: "persona", falta: personaFalta(p), por: "faltan cuadros por recortar" },
         { nombre: "cuadros", falta: cuadrosFalta(), por: "faltan cuadros para Remotion" },
+        { nombre: "escena", falta: viejo(join(PUBLIC, "datos.json"), pt.escena, linea), por: "las piezas, la marca o la cámara cambiaron" },
         { nombre: "render", falta: renderFalta(), por: "faltan trozos del render" },
         { nombre: "final", falta: viejo(join(PROYECTO, "salida", "final.mp4"), mezcla, join(PUBLIC, "datos.json")), por: "el render o la mezcla cambiaron" },
       ]),
