@@ -21,6 +21,7 @@ export const SALIDAS_RECETA = Object.freeze({
   video: "Video con IA",
   animado: "Video animado",
   guion: "Guion para grabar",
+  editado: "Video grabado editado",
 });
 
 export const MAX_RECETAS = 40;
@@ -279,8 +280,8 @@ export const RECETAS_CASA = Object.freeze([
   },
   {
     id: "montaje-ugc",
-    titulo: "Montar el video que grabó el cliente",
-    descripcion: "El UGC o los clips que grabó el cliente, cortados y con gancho escrito, textos, logo y música: a mp4, sin pagar voz.",
+    titulo: "Montar el video que grabó el cliente (rápido)",
+    descripcion: "El montaje RÁPIDO en la aplicación: los clips con su tramo bueno, el gancho escrito, textos, logo y música. Para una edición de editor profesional (cortes por silencios, persona recortada con texto detrás, cámara, mezcla a −14 LUFS), editar-video-grabado.",
     salida: "animado",
     tipos: ["humano", "maletas", "anuncio"],
     preguntas: ["¿Qué clips de la galería (o de Drive) van, y en qué orden?", "¿Cuál es el gancho que va escrito en el primer segundo?"],
@@ -291,6 +292,33 @@ export const RECETAS_CASA = Object.freeze([
       "3. ver_escenas y revisar_video: que el texto se lea sobre el video (oscurecer 0,3–0,5 o placa) y que nada tape la cara de quien habla.",
       "4. Si va música, musicas o generar_musica con el video_id y sin estilo (la propone el director musical escuchando el video y la música de la marca; cuesta: confirma la cifra) y sonido_video; la música baja sola cuando habla el clip.",
       "5. Enséñaselo a la persona: aprobar_video sólo con su «sí»; luego renderizar_video (no gasta IA). Dile dónde quedó el mp4.",
+    ].join("\n"),
+  },
+  {
+    id: "editar-video-grabado",
+    titulo: "Editar un video grabado (editor profesional)",
+    descripcion: "El PREMIUM: los clips de una persona hablando a cámara editados como un editor de 40 años, con el kit en tu máquina (corte por silencios, voz limpia, música al compás, persona recortada con texto detrás, cámara, piezas de la marca), a mp4.",
+    salida: "editado",
+    tipos: ["humano", "maletas", "anuncio"],
+    preguntas: ["¿Qué clips van (adjuntos aquí o de la galería del cliente) y en qué orden?", "¿Para qué publicación o fecha, y cuánto debe durar?", "¿Algo que tenga que decir el gancho o el llamado?"],
+    controles: [
+      "El cuadro 0 trae el gancho entero",
+      "Nada tapa la cara ni cae en las franjas de arriba y abajo",
+      "−14 LUFS y el pico ≤ −1,2 dBTP medidos en el MP4 final",
+      "El contacto, el de la nota de datos del negocio",
+      "La música, de su biblioteca o de Suno (nunca compuesta)",
+      "La hoja de contactos final mirada cuadro a cuadro",
+    ],
+    instrucciones: [
+      "1. guia_de_edicion del cliente SIN tipo. Mira los clips (una hoja de contactos de cada uno) y RECONOCE el tipo de video; vuelve a pedir guia_de_edicion con su tipo. Ahí están el manual, la marca, sus estilos de edición y el contacto bueno: síguelos.",
+      "2. kit_edicion (el kit, con UN comando que lo instala; si ~/kit ya tiene esa versión, no lo bajes) y kit_descargable (la marca: descomprímela en el proyecto y corre node ~/kit/kit.mjs marca <carpeta>).",
+      "3. Los clips: los adjuntos del chat o, si están en la galería, exportar_piezas. node ~/kit/kit.mjs preparar <clips> y luego node ~/kit/kit.mjs siguiente: él dice qué paso falta. Cada paso se puede cortar y seguir (si sale con «falta», repítelo).",
+      "4. La música: la de su identidad de video o su biblioteca (musicas); si ninguna sirve, generar_musica (Suno: di el costo y espera el sí). NUNCA la compongas con código. Luego compases y el plan de la música por compases.",
+      "5. PROPUESTA CORTA antes de editar: el corte en crudo (crudo) y 2 o 3 CUADROS DE MUESTRA con la marca (muestras: el gancho en el cuadro 0, un texto detrás de la persona, los subtítulos). Súbelos o enséñalos y explica en pocas líneas el gancho, las piezas y la música. Sigue sólo con el sí (plan.aprobado: true).",
+      "6. La escena (escena): arregla lo grave de la revisión de oficio; si la persona acepta algo, revision: \"aceptada\". Luego persona, cuadros, render y final (siguiente los encadena; repite mientras falte).",
+      "7. Mira la hoja de contactos del final cuadro a cuadro y comprueba la lista de control de la guía. Lo que falle, se arregla antes de enseñarlo.",
+      "8. subir_a_galeria del cliente (con el enlace PUT: curl -T) y confirmar_subida (con su publicación, si la hay). Enséñaselo a la persona; sus correcciones se arreglan y se vuelve a subir.",
+      "9. Al terminar: acta_de_edicion con lo que se hizo y CADA corrección de la persona, clasificada: GENERAL (para todos los clientes: va al manual; sólo si lo dijo como orden) o DE LA MARCA (va a su estilo). Enséñale las propuestas tal cual y aplícalas sólo con su sí. Si no tiene estilo de edición y le gustó, ofrece guardarlo (estilo_de_edicion).",
     ].join("\n"),
   },
   {

@@ -134,6 +134,8 @@ export const TABLAS_CON_DUENO = Object.freeze([
   // El manual del editor de videos grabados: lo que la agencia cambió de la base de la casa, una fila por versión
   // (worker/lib/manualEditor.js).
   "manual_editor_versiones",
+  // Las actas de cada edición de un video grabado y las propuestas de lo que aprende el editor (0083).
+  "edicion_actas", "edicion_propuestas",
   // Anuncios de Meta: cuentas publicitarias, campañas creadas desde la app
   // y quién activó o pausó qué (worker/lib/anuncios.js).
   "cuentas_anuncios",
@@ -206,6 +208,7 @@ export const TABLAS_CON_CLIENTE = Object.freeze([
   "lo_mejor_anuncios",
   "tendencias_palabras", "tendencias_videos",
   "voz_cliente",
+  "edicion_actas", "edicion_propuestas",
 ]);
 
 /** Las que cuelgan de un calendario sin llevar el cliente: se acotan por el calendario. */

@@ -5,6 +5,9 @@
 //   · estilo_de_edicion   los estilos de edición del cliente (las REGLAS con que se editan sus videos grabados). Ver,
 //                         ver uno entero, guardar o quitar. Sin `confirmado: true` NO SE GUARDA NI SE QUITA NADA: devuelve
 //                         lo que se haría, para enseñárselo a la persona.
+//   · guia_de_edicion     lo que hay que saber ANTES de editar, en una llamada (guiaEdicion.js). Sólo lee.
+//   · acta_de_edicion     al terminar: el acta y las correcciones de la persona como PROPUESTAS (actasEdicion.js); se
+//                         aplican al manual o al estilo sólo con `confirmado` tras el sí.
 // ============================================================
 
 import { difundir } from "../vivo.js";
@@ -12,7 +15,11 @@ import {
   estilosEdicionDe, buscarEstiloEdicion, prepararEstiloEdicion, guardarEstiloEdicion, quitarEstiloEdicion, resumenEstiloEdicion,
   ErrorEstiloEdicion,
 } from "./estilosEdicion.js";
+import { guiaDeEdicion } from "./guiaEdicion.js";
+import { guardarActa, propuestasPendientes, aplicarPropuestas, descartarPropuestas, nombreDeParte, ErrorActa } from "./actasEdicion.js";
 import { PIEZAS_ESTILO_EDICION, TRANSICIONES_EDICION, TIPOS_ESTILO_EDICION, MAX_ESTILOS_EDICION } from "../../../src/lib/estilosEdicion.js";
+import { TIPOS_VIDEO_GRABADO } from "../../../src/lib/manualEditor.js";
+import { textoDePropuesta } from "../../../src/lib/aprendizajeEdicion.js";
 
 /** Un error de lo pedido: vuelve a Claude con `isError`, no como fallo del servidor. */
 export class ErrorEdicion extends Error {}
@@ -51,12 +58,59 @@ export const DEFINICIONES_EDICION_MCP = Object.freeze([
     },
     annotations: escribe(true),
   },
+  {
+    name: "guia_de_edicion",
+    description:
+      "Lo que hay que saber ANTES de editar un video GRABADO de un cliente (clips de una persona hablando a cámara, persona y " +
+      "pantalla…), en una sola llamada: el manual del editor de la agencia (lo común y lo del tipo de video), la marca resumida " +
+      "con el CONTACTO bueno (el de la nota de datos del negocio, y lo que no coincide), sus estilos de edición, lo que dijo la " +
+      "persona las últimas veces, la lista de control antes de entregar y la versión vigente del kit. Primero sin tipo: reconoce " +
+      "el tipo de video y vuelve a pedirla con él. Sólo lee.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        cliente: { type: "string", description: "Nombre o ID del cliente (de listar_clientes)." },
+        tipo: { type: "string", enum: [...TIPOS_VIDEO_GRABADO], description: "El tipo de video, cuando ya lo reconociste." },
+        estilo: { type: "string", description: "Un estilo de edición entero (su nombre o id), si el cliente tiene varios." },
+      },
+      required: ["cliente"],
+    },
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  },
+  {
+    name: "acta_de_edicion",
+    description:
+      "Al terminar de editar un video grabado: el ACTA (qué se hizo y con qué) y las CORRECCIONES de la persona, cada una " +
+      "GENERAL (para todo cliente: va al manual; sólo si la dijo como orden: «nunca…», «siempre…», «en todos los videos») o DE " +
+      "LA MARCA (va a su estilo de edición). Quedan como PROPUESTAS: enséñaselas tal cual y aplícalas con «aplicar» y confirmado " +
+      "SÓLO con su sí («descartar» si dice que no). Sin nada más: las propuestas que esperan. No gasta nada.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        cliente: { type: "string", description: "Nombre o ID del cliente (de listar_clientes)." },
+        acta: {
+          type: "object",
+          description: `Lo que se hizo: { tipo (${TIPOS_VIDEO_GRABADO.join(" | ")}), estilo_id?, kit_version, archivo_id? (el video en la galería, de confirmar_subida), resumen: { duracion, lufs, pico, musica, piezas… } }.`,
+        },
+        correcciones: {
+          type: "array",
+          description: "Cada corrección de la persona en esta edición: { alcance: general|marca, parte (general: una del manual, p. ej. comun.textos o tipos.persona-a-camara; marca: un campo de texto del estilo, p. ej. piezas.lista o notas), operacion: anadir|cambiar|quitar, antes (el texto EXACTO que hay, para cambiar o quitar), texto, cita (sus palabras, tal cual) }.",
+          items: { type: "object" },
+        },
+        aplicar: { type: "array", items: { type: "string" }, description: "Los ids de las propuestas (pe-…) que la persona aprobó." },
+        descartar: { type: "array", items: { type: "string" }, description: "Los ids de las propuestas que la persona no quiere." },
+        confirmado: { type: "boolean", description: "Con aplicar: sólo tras el «sí» de la persona a esas propuestas, tal cual se le enseñaron." },
+      },
+      required: ["cliente"],
+    },
+    annotations: escribe(),
+  },
 ]);
 
 const lineas = (e) => resumenEstiloEdicion(e).map((x) => `  · ${x}`).join("\n");
 
 /** Las herramientas. */
-export function crearHerramientasEdicion({ env, acceso, resolverCliente, por }) {
+export function crearHerramientasEdicion({ env, acceso, resolverCliente, usuario, por }) {
   const conErrores = async (fn) => {
     try {
       return await fn();
@@ -111,6 +165,53 @@ export function crearHerramientasEdicion({ env, acceso, resolverCliente, por }) 
       }
       return [`ESTILOS DE EDICIÓN de ${c.name} (${estilos.length} de ${MAX_ESTILOS_EDICION}):`,
         ...estilos.map((e) => `«${e.nombre}» [${e.id}]\n${lineas(e)}`)].join("\n\n");
+    },
+
+    async guia_de_edicion({ cliente, tipo = "", estilo = "" } = {}) {
+      const c = await resolverCliente(cliente);
+      return guiaDeEdicion(acceso, c, { tipo, estilo });
+    },
+
+    async acta_de_edicion({ cliente, acta, correcciones = [], aplicar, descartar, confirmado = false } = {}) {
+      const c = await resolverCliente(cliente);
+      const nombre = (p) => (p.destino === "manual" ? nombreDeParte(p.parte) : p.parte);
+      const conActas = async (fn) => {
+        try {
+          return await fn();
+        } catch (e) {
+          if (e instanceof ErrorActa) throw new ErrorEdicion(e.message);
+          throw e;
+        }
+      };
+      if (Array.isArray(aplicar) && aplicar.length) {
+        if (confirmado !== true) {
+          const { generales, deMarca } = await propuestasPendientes(acceso, c);
+          const pedidas = [...generales, ...deMarca].filter((p) => aplicar.includes(p.id));
+          return ["NO SE HA APLICADO NADA. Esto es lo que cambiaría (enséñaselo tal cual):", ...pedidas.map((p) => textoDePropuesta(p, { nombreParte: nombre(p) })),
+            "Sólo si la persona dice que sí, vuelve a llamar con los mismos ids y confirmado: true."].join("\n");
+        }
+        const r = await conActas(() => aplicarPropuestas(env, acceso, c, usuario, aplicar));
+        difundir(env, acceso.ownerId, { tipo: "estudio", clientId: c.id, por });
+        return r.map((x) => (x.hecho ? `· ${x.id}: aplicada${x.version ? ` (manual, versión ${x.version})` : x.estilo ? ` (estilo «${x.estilo}»)` : ""}.` : `· ${x.id}: NO (${x.motivo}).`)).join("\n");
+      }
+      if (Array.isArray(descartar) && descartar.length) {
+        const r = await conActas(() => descartarPropuestas(acceso, c, usuario, descartar));
+        return r.map((x) => (x.hecho ? `· ${x.id}: descartada.` : `· ${x.id}: NO (${x.motivo}).`)).join("\n");
+      }
+      if (acta) {
+        const r = await conActas(() => guardarActa(acceso, c, usuario, { acta, correcciones }));
+        const lineas = [`Acta guardada (${r.acta.tipo}, manual v${r.acta.manualVersion || "de la casa"}).`];
+        if (r.propuestas.length) {
+          lineas.push("PROPUESTAS (enséñaselas TAL CUAL y aplícalas sólo con su sí: aplicar con sus ids y confirmado):",
+            ...r.propuestas.map((p) => textoDePropuesta(p, { nombreParte: nombre(p) })));
+          if (r.propuestas.some((p) => p.destino === "estilo") && !r.estilo) lineas.push(`${c.name} no tiene estilo de edición para este tipo: al aplicar lo de la marca se crea uno.`);
+        } else lineas.push("Ninguna propuesta.");
+        if (r.descartadas.length) lineas.push("NO SE PROPUSIERON:", ...r.descartadas.map((d) => `· corrección ${d.n}: ${d.motivo}`));
+        return lineas.join("\n");
+      }
+      const { generales, deMarca } = await propuestasPendientes(acceso, c);
+      if (!generales.length && !deMarca.length) return `No hay propuestas esperando (ni del manual ni de ${c.name}).`;
+      return ["PROPUESTAS QUE ESPERAN EL SÍ:", ...[...generales, ...deMarca].map((p) => textoDePropuesta(p, { nombreParte: nombre(p) }))].join("\n");
     },
   };
 }
