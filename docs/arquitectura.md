@@ -1350,3 +1350,23 @@ docs/estilos-edicion/     Los estilos de SIEMBRA, escritos desde el código de R
 tests/migracion/estilosEdicion.test.js  estilo_de_edicion contra D1: el sí, reemplazar, el tope, el PUT del kit y el ZIP de la marca
 ```
 
+### El editor de video grabado — Fase 4: la receta premium, la guía y el acta
+
+```
+src/lib/
+  guiaEdicion.js          La GUÍA DE EDICIÓN (puro): el contacto para el video desde la nota «Datos del negocio» con lo que no
+                          coincide en la Ficha técnica y en la ficha del cliente, y la lista de control con los números del oficio
+  aprendizajeEdicion.js   Lo que APRENDE el editor (puro): las guardas de las propuestas (cita, orden para lo general, nada dos
+                          veces, tope de 10), aplicar una operación EXACTA a un texto, los campos del estilo, cómo se enseñan
+  recetas.js              (+ `editar-video-grabado`, la premium; `montaje-ugc` pasa a ser la rápida)
+worker/lib/estudio/
+  guiaEdicion.js          `guia_de_edicion`: manual de la versión vigente + marca + contacto + estilos + lo de la vez anterior +
+                          lo que espera el sí + lista de control + versión del kit, en una llamada
+  actasEdicion.js         Las ACTAS y las PROPUESTAS en D1: guardar el acta y lo que pasa las guardas; aplicar (el manual, en una
+                          versión nueva con la leída como condición; el estilo, campo a campo o creándolo) y descartar
+  herramientasEdicion.js  (+ guia_de_edicion y acta_de_edicion)
+migraciones/d1/0083_edicion_actas.sql  edicion_actas y edicion_propuestas (con dueño y cliente: la capa las acota)
+tests/migracion/edicionGuiaActa.test.js  La guía (el contacto de Rofer y sus avisos), el acta, el sí, aplicar al manual y al estilo,
+                          un colaborador y la receta
+```
+

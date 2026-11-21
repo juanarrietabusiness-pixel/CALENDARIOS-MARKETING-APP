@@ -504,3 +504,25 @@ render quepa en la memoria del chat.
   «dB bajo la voz», para que no haya dos escalas; y el plano medio sólo tiene que acercar más que el abierto (Comunidad
   usa 1,08, por debajo del 1,2 que se pensó como mínimo).
 
+## 16. Fase 4 hecha (2026-11-21): la receta, la guía, el acta y lo que aprende
+
+- **La receta `editar-video-grabado`** (la PREMIUM, decisión 5): guía sin tipo → reconocer el tipo → guía con él → kit y
+  marca → preparar y `siguiente` → música de su identidad, su biblioteca o Suno (nunca compuesta) → la PROPUESTA CORTA con
+  el corte en crudo y 2 o 3 cuadros de muestra (decisión 8) → escena, recorte, render y final → mirar la hoja y la lista
+  de control → subir a la galería → el acta. `montaje-ugc` se queda como la RÁPIDA y su descripción manda a la premium;
+  las instrucciones del servidor mandan «edita este video de…» a la premium.
+- **`guia_de_edicion`** (sólo lee; por debajo de 16.000 caracteres, un test lo comprueba): el manual de la versión
+  vigente del espacio, la marca (identidad de video, colores, letra, logo, reglas, léxico), el CONTACTO de la nota «Datos
+  del negocio» con lo que no coincide en la Ficha técnica y en la ficha del cliente (decisión 10: en Rofer dice que la
+  ficha tiene 61562010 y la nota 6086-6581), los estilos de edición, lo que dijo la persona las últimas veces, lo que espera
+  el sí, la lista de control con los números del oficio y la versión vigente del kit.
+- **`acta_de_edicion`** y la migración `0083` (`edicion_actas`, `edicion_propuestas`), con las guardas de §4.3 en
+  `src/lib/aprendizajeEdicion.js`: sin cita no hay propuesta; una general necesita una orden («nunca…», «siempre…», «en
+  todos los videos») o haberse repetido con otro cliente; nada dos veces; tope de 10 pendientes; aplicar es exacto (si el
+  texto ya no está, caduca y se dice). Aplicar una general es una VERSIÓN NUEVA del manual (con la versión leída como
+  condición, como la pantalla; sólo admin o editor de toda la agencia); una de la marca cambia un campo de texto de su
+  estilo, y si el cliente no tiene estilo para ese tipo, se crea con ella. Un colaborador no propone ni aplica lo general.
+- **Sin comprobar** (regla de oro 15): un chat NUEVO de claude.ai siguiendo la receta entera con clips de verdad (la prueba
+  que hará Juan antes de la Fase 5); el tope de tamaño de un adjunto de video en claude.ai, que no se puede medir desde
+  aquí (los de Rofer entraron).
+

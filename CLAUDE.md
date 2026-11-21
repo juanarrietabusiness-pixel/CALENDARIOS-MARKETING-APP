@@ -433,7 +433,8 @@ no aquí.
   cliente, kit de piezas Python + Remotion descargable, actas y aprendizaje que propone), con las decisiones de la agencia
   (§11). Fase 1 (el manual del editor, con versiones, en Ajustes), 2a (el kit: corte y sonido, `kit_edicion`) y 2b (la
   imagen: recorte con RVM, cámara virtual, piezas de Remotion, muestras y render por tramos; Rofer v2 rehecho lado a
-  lado, §14) y 3 (los estilos de edición por cliente, `estilo_de_edicion`, §15) implementadas; 4 a 6, pendientes.
+  lado, §14), 3 (los estilos de edición por cliente, `estilo_de_edicion`, §15) y 4 (la receta premium
+  `editar-video-grabado`, `guia_de_edicion` y `acta_de_edicion` con lo que aprende, §16) implementadas; 5 y 6, pendientes.
 - `docs/propuesta-cerebro-por-cliente.md` — un cerebro por cliente (notas en D1, índice
   en R2, ficha técnica y cifras, búsqueda por pasajes) en lugar de volcar el ADN entero
   en cada llamada. Fases 0 y 1 implementadas; memoria de decisiones, visualización,

@@ -1215,3 +1215,12 @@ contradicen, manda la de más abajo (la más nueva). Una trampa nueva de esta á
   carga inicial: que siga sin imports y pequeño (los tipos de video están escritos a mano, y un test comprueba que son los
   del manual, para no cargar el manual entero). Los de siembra (docs/estilos-edicion/) NO se guardan solos: el sí.
 
+- **Lo que aprende el editor NUNCA se aplica solo, y aplicar es exacto** (Fase 4, src/lib/aprendizajeEdicion.js): una
+  propuesta guarda el texto `antes` y el nuevo; si al aplicarla la parte ya cambió y `antes` no está (o está dos veces),
+  CADUCA y se dice, en vez de reescribir a ciegas. Una general cambia el manual de TODA la agencia: es una versión nueva
+  con la versión leída como condición (si otra persona guardó entretanto, se vuelve a leer una vez) y sólo la aplica quien
+  puede cambiar el manual; una general que no es una orden de la persona se ofrece como de la marca. La parte del manual
+  tiene tope (2.000 / 4.000): lo que no cabe no se recorta, se dice.
+- **El contacto del video sale de la nota «Datos del negocio»** (decisión 10): `guia_de_edicion` compara sus teléfonos por
+  los 8 últimos dígitos con la Ficha técnica y con el campo de la ficha del cliente y avisa de cada uno que no coincide.
+
