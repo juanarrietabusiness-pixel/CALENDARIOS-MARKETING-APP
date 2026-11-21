@@ -63,3 +63,37 @@ describe("/api/edicion/actas", () => {
     expect(r.status).toBe(401);
   });
 });
+
+describe("/api/edicion/<cliente>/estilos", () => {
+  const ROFER = { nombre: "Alex en obra", tipo: "persona-a-camara", gancho: "dolor gigante detrás desde el cuadro 0", camara: { abierto: 1.13, medio: 1.47 } };
+  const kit = (id = "c1") => JSON.parse(db.sqlite.prepare("select kit_marca from clients where id = ?").get(id).kit_marca || "{}");
+
+  it("leer trae lo que se puede escoger; guardar crea uno con id, y con su id lo REEMPLAZA entero", async () => {
+    let r = await (await pedir(JEFE, "/edicion/c1/estilos")).json();
+    expect(r.estilos).toEqual([]);
+    expect(Object.keys(r.piezas)).toContain("textoDetras");
+    expect(Object.keys(r.transiciones)).toContain("barrido-diagonal");
+    r = await (await pedir(JEFE, "/edicion/c1/estilos", { method: "PUT", body: ROFER })).json();
+    const [e] = r.estilos;
+    expect(e).toMatchObject({ ...ROFER, id: expect.stringMatching(/^ee-/) });
+    r = await (await pedir(JEFE, "/edicion/c1/estilos", { method: "PUT", body: { id: e.id, nombre: "Alex en obra", ritmo: "más lento" } })).json();
+    expect(r.estilos).toEqual([{ id: e.id, nombre: "Alex en obra", ritmo: "más lento" }]);
+    expect(kit().estilosEdicion).toHaveLength(1);
+  });
+
+  it("lo que no se entiende es un 400 con cada cosa, y no se guarda nada", async () => {
+    const r = await pedir(JEFE, "/edicion/c1/estilos", { method: "PUT", body: { nombre: "Malo", transiciones: { entreClips: "estrella" }, camara: { medio: 9 } } });
+    expect(r.status).toBe(400);
+    const { error } = await r.json();
+    expect(error).toMatch(/estrella/);
+    expect(error).toMatch(/camara\.medio: 9 está fuera/);
+    expect(kit().estilosEdicion).toBeUndefined();
+  });
+
+  it("quitar; y un colaborador no toca los estilos de un cliente que no lleva", async () => {
+    const { estilos: [e] } = await (await pedir(JEFE, "/edicion/c1/estilos", { method: "PUT", body: ROFER })).json();
+    expect((await pedir(COLAB, "/edicion/c2/estilos", { method: "PUT", body: ROFER })).status).toBe(404);
+    expect((await (await pedir(JEFE, `/edicion/c1/estilos/${e.id}`, { method: "DELETE" })).json()).estilos).toEqual([]);
+    expect((await pedir(JEFE, "/edicion/c1/estilos/ee-noexiste01", { method: "DELETE" })).status).toBe(404);
+  });
+});

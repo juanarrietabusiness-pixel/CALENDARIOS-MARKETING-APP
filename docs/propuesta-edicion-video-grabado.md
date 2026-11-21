@@ -546,4 +546,10 @@ Rofer v2 rehecho con el kit nuevo: el mismo corte, pieza a pieza, y ningún huec
    manual de campañas): la versión vigente del kit y cómo se usa, las **últimas ediciones** (las actas: cliente, tipo,
    kit y manual con que se hizo, duración, LUFS y cuántas correcciones de la persona) y el manual del editor con sus
    versiones. Probado abriéndolo en Chromium (tests/vivo/navegador.test.js), también a 390 px.
+2. **Marca → Kit y voz → «Estilos de edición»**: los del cliente en frases (lo mismo que lee Claude), un formulario para
+   crearlos o editarlos —nombre, tipo, gancho, ritmo, cada pieza, la cámara, las transiciones, el cierre, la música y las
+   notas; lo que se deja vacío sale del manual y del oficio, y los sí/no tienen «lo del manual» para no decir nada— y
+   quitarlos con confirmación en la propia fila. `/api/edicion/<cliente>/estilos` (GET, PUT entero, DELETE), por la misma
+   función que `estilo_de_edicion`: lo que no se entiende es un 400 con cada cosa y no se guarda nada. Probado en Chromium
+   a 390 px: crear, editar y quitar.
 
