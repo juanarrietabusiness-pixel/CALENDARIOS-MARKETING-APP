@@ -49,7 +49,11 @@ export const Tachado = ({ p, f, fps, C }) => {
     transformOrigin: "0 50%", opacity: 1 - clamp((t - (p.hasta - 0.15)) / 0.15), boxShadow: `0 6px 18px ${C.sombra(0.4)}` }} />;
 };
 
-/** Tres tamaños (o tres cosas) que crecen con su palabra; la imagen, si la hay, de la marca (public/marca/). */
+/**
+ * Tres cosas con su palabra. La escena (escenaEdicion.js) ya midió y colocó: cada palabra en su columna (`cx`, `cy`, `tam`)
+ * y, sin imagen, las tres del mismo tamaño. Con imagen (el dibujo del logo en blanco, o una de la marca), lo que crece es
+ * la imagen (`img`, su ancho) y la palabra va debajo.
+ */
 export const Trio = ({ p, f, fps, C, L }) => {
   const t = f / fps;
   if (t < p.desde - 0.05 || t > p.hasta + 0.05) return null;
@@ -59,12 +63,10 @@ export const Trio = ({ p, f, fps, C, L }) => {
       {p.items.map((it, i) => {
         if (t < it.at - 0.03) return null;
         const q = muelle(f, fps, it.at, { damping: 11, stiffness: 210, mass: 0.6 });
-        const cx = 190 + i * 350;
-        const w = 300 * it.escala;
         return (
-          <div key={i} style={{ position: "absolute", left: cx - 160, top: 0, width: 320, height: 330, opacity: clamp(q * 2), transform: `translateY(${(1 - q) * 60}px) scale(${lerp(0.6, 1, q)})`, transformOrigin: "50% 100%" }}>
-            {p.imagen && <Img src={staticFile(p.imagen)} style={{ position: "absolute", left: 160 - w / 2, top: 230 - w * 0.588, width: w, filter: `drop-shadow(0 8px 18px ${C.sombra(0.5)})` }} />}
-            <div style={{ position: "absolute", left: 0, width: 320, top: p.imagen ? 238 : 230 - 64 * it.escala, textAlign: "center", fontFamily: L.titular, fontSize: p.imagen ? 64 : 64 + 40 * it.escala, color: C.acento, letterSpacing: 1, textShadow: `0 10px 28px ${C.sombra(0.45)}` }}>{it.texto}</div>
+          <div key={i} style={{ position: "absolute", left: it.cx - p.col / 2, top: 0, width: p.col, height: 330, opacity: clamp(q * 2), transform: `translateY(${(1 - q) * 60}px) scale(${lerp(0.6, 1, q)})`, transformOrigin: "50% 100%" }}>
+            {p.imagen && <Img src={staticFile(p.imagen)} style={{ position: "absolute", left: p.col / 2 - it.img / 2, bottom: 98, width: it.img, filter: `drop-shadow(0 8px 18px ${C.sombra(0.5)})` }} />}
+            <div style={{ position: "absolute", left: 0, width: p.col, top: it.cy - p.y - it.tam * 0.62, textAlign: "center", fontFamily: L.titular, fontSize: it.tam, lineHeight: 1.24, whiteSpace: "nowrap", color: C.acento, letterSpacing: 1, textShadow: `0 10px 28px ${C.sombra(0.45)}` }}>{it.texto}</div>
           </div>
         );
       })}

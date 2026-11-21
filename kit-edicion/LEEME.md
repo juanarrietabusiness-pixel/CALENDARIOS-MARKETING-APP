@@ -11,7 +11,8 @@ bash instalar.sh
 ```
 
 Es idempotente: si se corta, se vuelve a correr y sigue. Instala las librerías de Python, el modelo de reducción de
-ruido de la voz (rnnoise) y el de transcripción (faster-whisper large-v3-turbo).
+ruido de la voz (rnnoise), el de transcripción (faster-whisper large-v3-turbo), el del recorte de la persona
+(RobustVideoMatting, de su origen en GitHub) y Remotion (las piezas y el render).
 
 ## Editar
 
@@ -64,6 +65,39 @@ el llamado («palabra»), así siguen en su sitio si cambia el corte.
 - **efectos**: sólo del catálogo del calendario (`efectos_sonido`) y de la identidad del cliente. `alinear: "pico"`
   hace caer el pico del efecto en ese instante.
 - **apartar**: la música se aparta un instante en los golpes grandes.
+
+### La imagen
+
+Con el corte y el sonido aprobados (`crudo`): `marca <carpeta del ZIP de kit_descargable>` (colores, logo y letra en
+`plan.marca`), escribir `plan.piezas`, `muestras` (2 o 3 cuadros con la marca para enseñar ANTES de editar) y, con el sí,
+`"aprobado": true` → `persona` → `cuadros` → `escena` → `render` → `final`. `siguiente` los encadena. Lo lento (`persona`,
+`cuadros`, `render`) va con presupuesto de tiempo (`KIT_PRESUPUESTO`, 420 s): si sale con código 3, se repite y sigue.
+
+Las piezas se anclan a una palabra (`desde`, `hasta`, cada ítem con su `palabra`); lo que no dice dónde va, la escena lo
+coloca con aire sobre el tope de la cabeza:
+
+```json
+"piezas": [
+  { "tipo": "titular", "lineas": [{ "texto": "LO MÁS CARO" }, { "texto": "DE UNA OBRA" }], "hasta": { "palabra": 9 } },
+  { "tipo": "gigante", "texto": "+20 AÑOS", "desde": { "palabra": 30 }, "hasta": { "palabra": 34 }, "modo": "golpe" },
+  { "tipo": "trio", "imagen": "logo", "desde": { "palabra": 68 }, "hasta": { "t": 21.7 },
+    "items": [{ "texto": "MINIS", "palabra": 68 }, { "texto": "MEDIANOS", "palabra": 69 }, { "texto": "GRANDES", "palabra": 71 }] }
+]
+```
+
+Tipos: `titular` (el gancho, completo en el cuadro 0), `gigante` y `tachado` (detrás de la persona), `cinta`, `logo`,
+`ficha` (`lado`, `icono`: reloj, dinero, check, flecha; `baja`), `lista` (`titulo`, `items`), `sello` (`arriba`,
+`grande`), `preguntas` (`items`, `marcar`), `trio`, `whatsapp` (`toque`) y `celular` (`pantallas`, `titulos`).
+
+- **El trío**: sin `imagen`, las tres palabras van del MISMO tamaño, medidas para que quepan en su columna. Con
+  `"imagen": "logo"`, el DIBUJO del logo de la marca, separado del nombre y en blanco (en Rofer, la excavadora); si el logo
+  no tiene un dibujo aparte, va sin imagen y la escena lo dice. También vale la ruta de una imagen que suba la marca
+  (`"imagen": "marca/excavadora.png"`). Con imagen, lo que crece es la imagen y la palabra va debajo.
+- `escena` hace la REVISIÓN DE OFICIO con los anchos MEDIDOS con las letras de verdad: lo que tapa la cara, el texto que
+  la cabeza no deja leer, la franja segura, el subtítulo encima de un gráfico, el cuadro 0 sin gancho, y que ningún texto
+  se monte sobre otro ni se salga del cuadro. Lo grave para el render: se arregla, o si la persona lo acepta,
+  `"revision": "aceptada"`.
+- `persona`: por defecto, el recorte bueno sólo donde hay un texto detrás (`"persona": { "completa": true }` lo hace en todo).
 
 ### Revisar
 

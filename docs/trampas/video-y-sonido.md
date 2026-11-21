@@ -1191,3 +1191,20 @@ contradicen, manda la de más abajo (la más nueva). Una trampa nueva de esta á
     borra su paquete al salir.
   · **Tiempos con 2 núcleos** (los del chat; medidos con `taskset -c 0,1`): la imagen de Rofer, ≈ 27,5 min en unas 5
     llamadas de 7 min (propuesta §14). El recorte es lo que más pesa (1,34 s/cuadro).
+  · **La revisión con anchos ESTIMADOS no vio el trío roto** (Juan, al mirar el video del kit contra v2): sin las siluetas,
+    las palabras crecían (64 + 40 × escala) en columnas de 320 px, «MEDIANOS» se montaba sobre «GRANDES» y «GRANDES» se
+    salía por la derecha. La caja del trío era fija (30–1050) y nada comprobaba texto contra texto. Ahora `letras.py` mide
+    los anchos con la letra de verdad, el trío sin imagen va con las tres palabras del mismo tamaño y la revisión
+    (`revisarTextos`) comprueba TODOS los textos: dentro del cuadro y sin montarse con otro que se vea a la vez.
+  · **Un texto centrado que no cabe en su caja NO se centra en CSS**: se desborda a la derecha desde el borde izquierdo de
+    la caja. Por eso «GRANDES» se salía del cuadro aunque, centrado, habría cabido; las cajas de la revisión lo replican.
+  · **Con los anchos medidos, la ficha de Rofer «tapaba la cara»**: la cabeza se aproxima con un rectángulo del ancho del
+    casco hasta la barbilla, y la píldora de TIEMPO (con su flecha) rozaba su borde sin tocar la cara. Lo de delante se mide
+    ahora por cuánto de la CARA tapa (> 6 %), no por cuánto de la pieza toca la caja.
+  · **El dibujo del logo**: se quitan las rayas finas de lado a lado (la línea bajo la excavadora), se parte por el hueco
+    vacío más grande y se queda la parte cuya forma más grande domina (las letras son muchas formas pequeñas). Ojo con el
+    alfa desde la distancia al fondo: con enteros de 16 bits, (distancia − 10) × 255 se desbordaba y el dibujo salía sólo
+    con el contorno. Un logo de sólo letras sale con código 4 y el trío va sin imagen.
+  · **`instalar.sh` marcaba «pip hecho» una sola vez**: un kit nuevo con otra librería (fontTools y brotli para medir) no
+    se instalaba en un chat que ya tenía el anterior. Las marcas de pip y de Remotion llevan ahora la huella de
+    requisitos.txt y del package-lock.

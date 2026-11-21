@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { suavizar, planosAutomaticos, camaraDelVideo, ANCHO, ALTO } from "./camaraEdicion.js";
 import { lineaDeTiempo } from "./corteEdicion.js";
-import { resolverPiezas, subtitulos, revisarEscena, escenaParaRemotion, cajaDePieza, filasDePieza } from "./escenaEdicion.js";
+import { resolverPiezas, subtitulos, revisarEscena, revisarTextos, escenaParaRemotion, cajaDePieza, filasDePieza, crearMedidor, textosDeEscena, TRIO } from "./escenaEdicion.js";
 
 // Una persona quieta: cabeza arriba en y=500, centrada, 1300 px de alto (de cuerpo entero, cerca).
 const geoQuieta = (n, g = { top: 500, hx: 540, hw: 220, bot: 1800 }) => Object.fromEntries(Array.from({ length: n }, (_, i) => [i, g]));
@@ -75,7 +75,7 @@ describe("la escena y su revisión de oficio", () => {
     const avisos = revisarEscena({ piezas, cabeza: cam.cabeza, fps: 30, grupos: [], palabras });
     const textos = avisos.map((a) => a.que).join("\n");
     expect(textos).toMatch(/El cuadro 0 no muestra el gancho/);
-    expect(textos).toMatch(/sello tapa la cabeza o la cara/);
+    expect(textos).toMatch(/sello tapa ~\d+ % de la cabeza o la cara/);
     expect(textos).toMatch(/La cabeza tapa ~\d+ % de «OBRA»/);
     expect(avisos.every((a) => a.arreglo)).toBe(true);
   });
@@ -114,5 +114,77 @@ describe("la escena y su revisión de oficio", () => {
     expect(r.datos.cam).toHaveLength(linea.total);
     const mal = escenaParaRemotion({ linea, palabras, camara: cam, plan: { ...plan, subtitulos: { textos: ["Lo más"] } }, marca: {} });
     expect(mal.error).toMatch(/Faltan grupos/);
+  });
+});
+
+describe("los textos con anchos MEDIDOS (Rofer, 2026-11-21: el trío se montaba y «GRANDES» se salía)", () => {
+  // Los anchos de Anton medidos por letras.py (em) y la altura de sus mayúsculas.
+  const ANTON = { _mayus: 0.8594, MINIS: 2.1587, MEDIANOS: 3.8086, GRANDES: 3.311, TIEMPO: 2.7383 };
+  const linea = lineaDeTiempo([{ id: "a", piezas: [[0, 6]] }], { fps: 30, cierre: 2 });
+  const palabras = ["minis", "medianos", "y", "grandes"].map((w, i) => ({ w, s: i * 0.5, e: i * 0.5 + 0.4 }));
+  const cam = camaraDelVideo(linea, { a: geoQuieta(200, { top: 900, hx: 540, hw: 220, bot: 1900 }) });
+  const base = { fps: 30, vozFin: linea.vozFin, palabras, cabeza: cam.cabeza };
+  const TRIO_PLAN = { tipo: "trio", y: 262, desde: { palabra: 0 }, hasta: { t: 3 }, items: [{ texto: "MINIS", palabra: 0 }, { texto: "MEDIANOS", palabra: 1 }, { texto: "GRANDES", palabra: 3 }] };
+  const avisosDe = (piezas, med) => { const a = []; revisarTextos(piezas, { med, decir: (t, grave, que) => a.push(que) }); return a; };
+
+  it("sin imagen, las tres palabras del MISMO tamaño, cada una dentro de su columna y sin avisos", () => {
+    const med = crearMedidor({ titular: ANTON });
+    const [t] = resolverPiezas([TRIO_PLAN], { ...base, med });
+    expect(new Set(t.items.map((i) => i.tam)).size).toBe(1);
+    expect(t.items[0].tam).toBeLessThanOrEqual(TRIO.tamMax);
+    for (const it of t.items) expect(med.ancho(it.texto, it.tam, "titular", 1)).toBeLessThanOrEqual(t.col - TRIO.hueco);
+    expect(t.items.map((i) => i.cx)).toEqual([206.667, 540, 873.333]);
+    expect(avisosDe([t], med)).toEqual([]);
+  });
+
+  it("con imagen crece la imagen, no la palabra, y la imagen cabe en su columna", () => {
+    const med = crearMedidor({ titular: ANTON });
+    const [t] = resolverPiezas([{ ...TRIO_PLAN, imagen: "marca/logo-dibujo.png" }], { ...base, med });
+    expect(t.items.map((i) => i.tam)).toEqual([64, 64, 64]);
+    expect(t.items[0].img).toBeLessThan(t.items[2].img);
+    expect(Math.max(...t.items.map((i) => i.img))).toBeLessThanOrEqual(t.col - TRIO.hueco);
+  });
+
+  it("la revisión caza el trío de antes: «MEDIANOS» se monta sobre «GRANDES» y «GRANDES» se sale (CSS desborda a la derecha)", () => {
+    const med = crearMedidor({ titular: ANTON });
+    const viejo = { tipo: "trio", n: 0, desde: 0, hasta: 3, y: 262, col: 320, items: [["MINIS", 0.55], ["MEDIANOS", 0.78], ["GRANDES", 1]]
+      .map(([texto, e], i) => ({ texto, at: i * 0.5, tam: 64 + 40 * e, cx: 190 + i * 350, cy: 262 + 230 - 64 * e + (64 + 40 * e) * 0.62 })) };
+    const a = avisosDe([viejo], med).join("\n");
+    expect(a).toMatch(/«GRANDES» \(trio\) se sale del cuadro/);
+    expect(a).toMatch(/«MEDIANOS» \(trio\) se monta sobre «GRANDES»/);
+  });
+
+  it("dos piezas a la vez que se montan, se avisa; si no coinciden en el tiempo, no", () => {
+    const med = crearMedidor({ titular: ANTON });
+    const piezas = resolverPiezas([
+      { tipo: "gigante", texto: "MEDIANOS", tam: 150, y: 400, desde: { t: 0 }, hasta: { t: 2 } },
+      { tipo: "sello", arriba: "FLOTA", grande: "GRANDES", y: 420, desde: { t: 1 }, hasta: { t: 3 } },
+      { tipo: "ficha", texto: "TIEMPO", y: 420, x: 40, desde: { t: 2.5 }, hasta: { t: 3.5 } },
+    ], { ...base, med });
+    const a = avisosDe(piezas, med);
+    expect(a.some((x) => /«MEDIANOS» \(gigante\) se monta sobre «GRANDES» \(sello\)/.test(x))).toBe(true);
+    expect(a.some((x) => /gigante.*ficha|ficha.*gigante/.test(x))).toBe(false);
+  });
+
+  it("lo que no está medido se aproxima y la revisión lo dice; se sabe qué medir", () => {
+    const med = crearMedidor({ titular: ANTON });
+    const [g] = resolverPiezas([{ tipo: "gigante", texto: "OBRA", tam: 100, y: 400, desde: { t: 0 }, hasta: { t: 1 } }], { ...base, med });
+    expect(avisosDe([g], med).join(" ")).toMatch(/Medidas aproximadas para 1 textos \(«OBRA»/);
+    expect(textosDeEscena([TRIO_PLAN, { tipo: "lista", titulo: "LO QUE HACEMOS", items: [{ texto: "VÍAS" }] }, { tipo: "sello", arriba: "FLOTA", grande: "14" }], { whatsapp: "6086-6581" }))
+      .toEqual({ titular: ["MINIS", "MEDIANOS", "GRANDES", "14", "6086-6581"], texto: ["WHATSAPP", "LO QUE HACEMOS", "VÍAS", "FLOTA"] });
+  });
+
+  it("una ficha que roza el borde de la cabeza no es taparla; una encima de la cara, sí", () => {
+    const med = crearMedidor({ titular: ANTON });
+    const camCerca = camaraDelVideo(linea, { a: geoQuieta(200, { top: 560, hx: 540, hw: 300, bot: 1900 }) });
+    const tope = camCerca.cabeza[30][1];
+    const ancho = camCerca.cabeza[30][2];
+    const izquierda = camCerca.cabeza[30][0] - ancho / 2;
+    const piezas = resolverPiezas([
+      { tipo: "ficha", texto: "TIEMPO", x: izquierda - 330, y: tope + 300, desde: { t: 0 }, hasta: { t: 1 } },
+      { tipo: "ficha", texto: "DINERO", x: izquierda + 20, y: tope + 300, desde: { t: 2 }, hasta: { t: 3 } },
+    ], { ...base, cabeza: camCerca.cabeza, med });
+    const a = revisarEscena({ piezas, cabeza: camCerca.cabeza, fps: 30, grupos: [], palabras, med });
+    expect(a.filter((x) => /ficha tapa/.test(x.que)).map((x) => x.t)).toEqual([2]);
   });
 });

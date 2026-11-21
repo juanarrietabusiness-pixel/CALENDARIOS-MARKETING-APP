@@ -1314,7 +1314,10 @@ kit-edicion/
                           geometría (tope REAL de la cabeza o del casco, centro, ancho, pies), por tramos y reanudable
   python/geometria.py     La geometría sola, con RVM a 1/4 de resolución: la cámara la necesita en todo el montaje y el recorte
                           bueno se hace, por defecto, sólo donde hay texto detrás (`persona.completa: true` lo hace en todo)
-  python/logo.py          Recorta el margen transparente del logo de la marca (con margen, el logo salía pequeño en su tarjeta)
+  python/logo.py          El logo sin márgenes (con margen salía pequeño en su tarjeta) y, con --dibujo, sólo su DIBUJO, aparte
+                          del nombre y en blanco: la imagen del trío (en Rofer, la excavadora)
+  python/letras.py        Los ANCHOS MEDIDOS de los textos de la escena con las letras de verdad (fontTools, también WOFF2): con
+                          ellos se colocan las piezas y la revisión comprueba que nada se monte ni se salga del cuadro
   python/cuadros.py       Los cuadros de salida etalonados y la persona en RGBA para Remotion; también sólo unos cuadros (muestras)
   remotion/               Las PIEZAS (Remotion 4.0.541, fijado con package-lock): src/Piezas.jsx (titular del cuadro 0, gigante
                           detrás, tachado, trío, cinta, logo, ficha, lista, sello, preguntas, botón de WhatsApp, modo celular),

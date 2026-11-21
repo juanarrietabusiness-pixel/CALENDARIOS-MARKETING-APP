@@ -48,7 +48,7 @@ const { validarPlan, instante, efectosResueltos, tramoDeRealce, VERSION_PLAN } =
 const { EFECTOS_CATALOGO } = await cargar("catalogoEfectos.datos.js");
 const { KIT_EDICION } = await cargar("kitEdicionVersion.js");
 const { camaraDelVideo } = await cargar("camaraEdicion.js");
-const { escenaParaRemotion } = await cargar("escenaEdicion.js");
+const { escenaParaRemotion, textosDeEscena } = await cargar("escenaEdicion.js");
 
 const VERSION = KIT_EDICION.version;
 const DOMINIO = (process.env.KIT_DOMINIO || (existsSync(join(KIT, ".dominio")) ? readFileSync(join(KIT, ".dominio"), "utf8").trim() : "")
@@ -301,12 +301,13 @@ function marcaParaRender(p) {
   if (letrasM?.texto?.archivo) letrasM.texto.archivo = poner(letrasM.texto.archivo);
   // El logo, sin sus márgenes (si no, sale pequeño en la tarjeta y en el cierre).
   let logo = poner(m.logo);
+  const logoOriginal = logo;
   if (logo) {
     const recortado = `marca/${basename(logo, extname(logo))}-recortado.png`;
     if (viejo(join(PUBLIC, recortado), join(PUBLIC, logo))) python("logo.py", join(PUBLIC, logo), join(PUBLIC, recortado));
     if (existsSync(join(PUBLIC, recortado))) logo = recortado;
   }
-  return { ...m, logo, letras: letrasM };
+  return { ...m, logo, logoOriginal, letras: letrasM };
 }
 
 /** Las letras libres (OFL) que usan las piezas si la marca no trae las suyas: de node_modules/@fontsource a public/fonts. */
@@ -390,6 +391,52 @@ function cuadros(presupuesto = PRESUPUESTO, solo = null) {
   return python("cuadros.py", solo ? [...solo].join(",") : "", presupuesto);
 }
 
+/**
+ * La IMAGEN del trío: "logo" es el DIBUJO del logo de la marca, aparte del nombre y en blanco (logo.py --dibujo; en Rofer,
+ * la excavadora); otra cosa, un archivo del proyecto (una imagen que suba la marca). Sin imagen, las tres palabras van
+ * del mismo tamaño. → las piezas con `imagen` ya en public/, y lo que no se pudo.
+ */
+function imagenesDelTrio(piezas, marca) {
+  const avisos = [];
+  const fuera = (piezas ?? []).map((x) => {
+    if (x.tipo !== "trio" || !x.imagen) return x;
+    if (x.imagen === "logo") {
+      if (!marca.logo) { avisos.push("El trío pide el dibujo del logo y la marca no tiene logo: va sin imagen."); const { imagen: _, ...sin } = x; return sin; }
+      const fuente = join(PUBLIC, marca.logoOriginal ?? marca.logo);
+      const d = `marca/${basename(fuente, extname(fuente))}-dibujo.png`;
+      if (viejo(join(PUBLIC, d), fuente)) {
+        const r = spawnSync("python3", [join(KIT, "python", "logo.py"), T, fuente, join(PUBLIC, d), "--dibujo"], { stdio: "inherit" });
+        if (r.status !== 0 && r.status !== 4) fallo(`logo.py falló (código ${r.status}).`);
+      }
+      if (!existsSync(join(PUBLIC, d))) { avisos.push("El logo no tiene un dibujo aparte del nombre: el trío va sin imagen (las tres palabras del mismo tamaño). Si la marca tiene uno, ponlo en el proyecto y su ruta en «imagen»."); const { imagen: _, ...sin } = x; return sin; }
+      return { ...x, imagen: d };
+    }
+    const o = resolve(PROYECTO, x.imagen);
+    if (!existsSync(o)) { avisos.push(`La imagen del trío (${x.imagen}) no está en el proyecto: va sin imagen.`); const { imagen: _, ...sin } = x; return sin; }
+    mkdirSync(join(PUBLIC, "marca"), { recursive: true });
+    copyFileSync(o, join(PUBLIC, "marca", basename(o)));
+    return { ...x, imagen: `marca/${basename(o)}` };
+  });
+  return { piezas: fuera, avisos };
+}
+
+/** Los ANCHOS de los textos de las piezas, medidos con las letras de verdad (letras.py). → { titular: {…}, texto: {…} }. */
+function anchosDeLaEscena(piezas, marca) {
+  const fuentes = {
+    titular: join(PUBLIC, marca.letras?.titular?.archivo ?? "fonts/anton-400.woff2"),
+    texto: join(PUBLIC, marca.letras?.texto?.archivo ?? "fonts/inter-tight-900.woff2"),
+  };
+  const textos = textosDeEscena(piezas, marca);
+  const clave = (rol) => `${rol}|${basename(fuentes[rol])}`;
+  let anchos = leer(join(T, "anchos.json"), {});
+  if (Object.keys(fuentes).some((rol) => textos[rol].some((x) => typeof anchos[clave(rol)]?.[x] !== "number"))) {
+    escribir(join(T, "letras_pedido.json"), { fuentes, textos });
+    python("letras.py");
+    anchos = leer(join(T, "anchos.json"), {});
+  }
+  return Object.fromEntries(Object.keys(fuentes).map((rol) => [rol, anchos[clave(rol)] ?? {}]));
+}
+
 /** La escena para Remotion y su revisión. → { datos, avisos }. */
 function escena({ hablar = true } = {}) {
   const p = plan();
@@ -397,8 +444,11 @@ function escena({ hablar = true } = {}) {
   const { palabras } = leer(join(T, "linea.json"));
   const cam = camara(p, linea);
   letrasLibres();
-  const r = escenaParaRemotion({ linea, palabras, camara: cam, plan: p, marca: marcaParaRender(p) });
+  const marca = marcaParaRender(p);
+  const trio = imagenesDelTrio(p.piezas, marca);
+  const r = escenaParaRemotion({ linea, palabras, camara: cam, plan: { ...p, piezas: trio.piezas }, marca, anchos: anchosDeLaEscena(trio.piezas, marca) });
   if (r.error) fallo(`Los subtítulos no casan: ${r.error}`);
+  for (const que of trio.avisos) r.avisos.unshift({ t: 0, grave: false, que, arreglo: "Revísalo en las muestras." });
   const necesita = conPersona(p, linea);
   if (necesita) r.datos.conPersona = Array.from({ length: linea.total }, (_, f) => (necesita.has(f) ? 1 : 0));
   escribir(join(PUBLIC, "datos.json"), r.datos);

@@ -23,11 +23,15 @@ FILTROS="$(ffmpeg -hide_banner -filters 2>/dev/null || true)"
 case "$FILTROS" in *" arnndn "*) ;; *) echo "· OJO: este ffmpeg no tiene arnndn: la voz se limpiará con afftdn." ;; esac
 [ -n "${KIT_DOMINIO:-}" ] && echo "$KIT_DOMINIO" > "$KIT/.dominio"
 
-if ! hecho pip; then
+# Las marcas de pip y de Remotion llevan la huella de lo que instalan: un kit nuevo con otra librería (o la misma con
+# otra versión) las vuelve a instalar aunque la versión anterior ya estuviera.
+PIP="pip-$(sha256sum "$KIT/requisitos.txt" | cut -c1-12)"
+NPM="remotion-$(sha256sum "$KIT/remotion/package-lock.json" | cut -c1-12)"
+if ! hecho "$PIP"; then
   echo "· Librerías de Python…"
   python3 -m pip install -q --break-system-packages -r "$KIT/requisitos.txt" 2>/dev/null \
     || python3 -m pip install -q --user -r "$KIT/requisitos.txt"
-  marcar pip
+  marcar "$PIP"
 fi
 
 RNN="$KIT/modelos/rnnoise.rnnn"
@@ -62,10 +66,10 @@ for par in "rvm_resnet50:25db300fcb6ee27f941a1b52c97856e8d1f13c7f35817f81a612f89
 done
 
 # Remotion (las piezas gráficas y el render), con las versiones fijadas en remotion/package-lock.json.
-if ! hecho remotion; then
+if ! hecho "$NPM"; then
   echo "· Remotion (las piezas y el render)…"
   (cd "$KIT/remotion" && npm ci --no-audit --no-fund --loglevel=error)
-  marcar remotion
+  marcar "$NPM"
 fi
 
 echo "✓ Listo en $(( $(date +%s) - inicio )) s. Desde la carpeta del proyecto: node $KIT/kit.mjs preparar <clips>"

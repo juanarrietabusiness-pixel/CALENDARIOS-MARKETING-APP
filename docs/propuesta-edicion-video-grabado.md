@@ -440,8 +440,8 @@ sigue el contorno.)
 Juancito Ads, «PRUEBA interna — no publicar»): mismo corte, mismas piezas en los mismos segundos (el titular del cuadro
 0, EQUIPO EQUIVOCADO tachado, +20 AÑOS detrás, las fichas, la lista, ALQUILER, 3 PREGUNTAS, el sello, ¿UNA OBRA?, el
 botón de WhatsApp y el cierre), los mismos 13 subtítulos ocultos donde un gráfico ya lo dice, 40,1 s, −14,0 LUFS y
-−1,4 dBTP. Lo único que v2 tiene y el kit no: las siluetas de excavadora del trío (un dibujo hecho a mano para Rofer; la
-pieza acepta `imagen` para ponerlas).
+−1,4 dBTP. El trío lleva, como v2, la excavadora del logo de Rofer en blanco (`"imagen": "logo"`: el kit la saca sola del
+logo).
 
 **El ahorro** (decisión 9: sólo si no se ve peor). El recorte bueno es lo más lento (en Rofer, 1.101 cuadros a ~1 s). Se
 probó hacerlo sólo donde hay un texto DETRÁS de la persona (530 cuadros) y, para la cámara, la geometría del resto con RVM
@@ -463,6 +463,11 @@ defecto**; `persona.completa: true` en el plan vuelve al recorte de todo.
 - **Remotion enlaza la carpeta de los cuadros en vez de copiarla** (`symlinkPublicDir`) y borra su paquete al acabar: cada
   tramo copiaba 600 MB a /tmp sin borrarlos y el render de Rofer llenó el disco a la cuarta vuelta.
 - **`kit.mjs` sale con código 3 cuando un paso queda a medias** (como los de Python), para encadenarlo en un bucle.
+- **El trío sin imagen, con las tres palabras del mismo tamaño**, y la imagen que crece del DIBUJO del logo en blanco
+  (`"imagen": "logo"`) o de una imagen de la marca. Y la revisión con **anchos medidos** con la letra de verdad
+  (`letras.py`): que ningún texto se monte sobre otro ni se salga del cuadro, en todas las piezas. Lo encontró Juan al
+  mirar el video del kit contra v2 (segundo 21): sin las siluetas, «MEDIANOS» se montaba sobre «GRANDES» y «GRANDES» se
+  salía por la derecha, y la revisión de antes, con anchos estimados, no lo vio.
 
 **Tiempos** (Rofer, 40 s de video, 1.101 cuadros):
 
