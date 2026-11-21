@@ -167,7 +167,7 @@ export const HERRAMIENTAS_MCP = Object.freeze([
   DEFINICION_KIT,
   // El kit de EDICIÓN de videos grabados (worker/lib/kitEdicion.js): el ZIP del despliegue y el comando que lo instala.
   DEFINICION_KIT_EDICION,
-  // El EDITOR DE VIDEO GRABADO (worker/lib/estudio/herramientasEdicion.js): los estilos de edición del cliente.
+  // El EDITOR DE VIDEO GRABADO (worker/lib/estudio/herramientasEdicion.js): sus estilos de edición, la guía y el acta.
   ...DEFINICIONES_EDICION_MCP,
   // El cerebro y el estudio de mercado (worker/lib/cerebro/herramientasCerebro.js): guardar con confirmación, proponer notas y ángulos, ver el estudio.
   ...DEFINICIONES_CEREBRO,
@@ -561,7 +561,7 @@ export function crearHerramientasMCP({ env, acceso, usuario, origen = "" }) {
   Object.assign(acciones, crearHerramientasSubida({ env, acceso, resolverCliente, usuario, por }));
   Object.assign(acciones, crearHerramientaKit({ env, acceso, resolverCliente, usuario }));
   Object.assign(acciones, crearHerramientaKitEdicion({ env, usuario, origen }));
-  Object.assign(acciones, crearHerramientasEdicion({ env, acceso, resolverCliente, por }));
+  Object.assign(acciones, crearHerramientasEdicion({ env, acceso, resolverCliente, usuario, por }));
   Object.assign(acciones, crearHerramientasCerebro({ env, acceso, resolverCliente, usuario, por }));
   Object.assign(acciones, crearHerramientasCampanas({ env, acceso, resolverCliente, usuario, por, buscarPublicacion: buscar }));
   Object.assign(acciones, crearHerramientasTextos({ env, acceso, resolverCliente, usuario, por, buscarPublicacion: buscar }));

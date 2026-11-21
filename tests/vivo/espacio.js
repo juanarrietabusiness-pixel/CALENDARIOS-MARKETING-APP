@@ -94,11 +94,22 @@ export async function levantarEspacio() {
   const estado = await mkdtemp(join(tmpdir(), "calendarios-vivo-"));
   const base = `http://127.0.0.1:${puerto}`;
 
-  const d1 = (comando) =>
-    ejecutar("npx", [
-      "wrangler", "d1", "execute", "calendarios-db", "--local",
-      "--persist-to", estado, "--command", comando,
-    ], { cwd: RAIZ });
+  // Con el servidor arrancado, la base local la tiene abierta wrangler dev: si en ese momento escribe (la alarma del
+  // Durable Object que avanza un lote, por ejemplo), sqlite contesta «database is locked: SQLITE_BUSY». Es un bloqueo de
+  // un instante: se espera y se repite (en CI falló así el test del kit de edición, justo después de los del lote).
+  const d1 = async (comando) => {
+    for (let intento = 1; ; intento++) {
+      try {
+        return await ejecutar("npx", [
+          "wrangler", "d1", "execute", "calendarios-db", "--local",
+          "--persist-to", estado, "--command", comando,
+        ], { cwd: RAIZ });
+      } catch (e) {
+        if (intento >= 6 || !/SQLITE_BUSY|database is locked/i.test(String(e?.message ?? e))) throw e;
+        await new Promise((r) => setTimeout(r, 500 * intento));
+      }
+    }
+  };
 
   // Las migraciones ANTES de arrancar: el servidor se encuentra el
   // esquema puesto y no hay que reiniciarlo a media prueba.
