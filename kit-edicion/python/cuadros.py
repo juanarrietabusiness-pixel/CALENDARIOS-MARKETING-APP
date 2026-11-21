@@ -1,0 +1,88 @@
+"""Los CUADROS que pinta Remotion: cada cuadro de salida etalonado (cam/NNNNN.jpg) y la persona recortada encima
+(p/NNNNN.webp, RGBA: el mismo cuadro con el alfa de persona.py). Lo mismo que extract.py y persona.py de Rofer v2.
+
+El etalonado: un poco de nitidez, contraste y saturación; un clip que la cámara acerca mucho (persona lejos) lleva más
+nitidez (en v2, 1450). REANUDABLE: lo que ya está no se repite. Con `solo` (cuadros de salida separados por comas) hace
+sólo esos: para los cuadros de muestra de la propuesta corta, sin esperar al video entero.
+
+Lee trabajo/cuadros_plan.json: { fps, ancho, alto, fuente: [[clip, cuadro] | null por cuadro de salida], clips: {id:
+archivo}, nitidez: [ids de clip], destino }. Uso: cuadros.py <trabajo> [solo] [presupuesto_s]
+"""
+import os
+import subprocess
+import sys
+import time
+
+import cv2
+import numpy as np
+from PIL import Image
+
+from comun import leer_json, trabajo
+
+T = trabajo()
+P = leer_json(os.path.join(T, "cuadros_plan.json"))
+SOLO = {int(x) for x in sys.argv[2].split(",") if x.strip()} if len(sys.argv) > 2 and sys.argv[2] else None
+PRESUPUESTO = float(sys.argv[3]) if len(sys.argv) > 3 else 1e9
+W, H = P.get("ancho", 1080), P.get("alto", 1920)
+GRADO = "unsharp=5:5:0.55:5:5:0,eq=contrast=1.07:saturation=1.07:brightness=-0.005"
+GRADO_LEJOS = "unsharp=7:7:0.95:5:5:0,eq=contrast=1.08:saturation=1.08:brightness=-0.005"
+CAM = os.path.join(P["destino"], "cam")
+PER = os.path.join(P["destino"], "p")
+os.makedirs(CAM, exist_ok=True)
+os.makedirs(PER, exist_ok=True)
+inicio = time.time()
+
+# Con `conPersona` (persona.soloDetras), la persona recortada sólo en esos cuadros de salida.
+CON_PERSONA = set(P["conPersona"]) if P.get("conPersona") is not None else None
+lleva_persona = lambda f: CON_PERSONA is None or f in CON_PERSONA
+
+# Qué cuadros de origen hacen falta, por clip → los de salida que salen de cada uno.
+necesita = {}
+for f, x in enumerate(P["fuente"]):
+    if not x or (SOLO is not None and f not in SOLO):
+        continue
+    if os.path.exists(os.path.join(CAM, f"{f:05d}.jpg")) and (not lleva_persona(f) or os.path.exists(os.path.join(PER, f"{f:05d}.webp"))):
+        continue
+    necesita.setdefault(x[0], {}).setdefault(x[1], []).append(f)
+
+hechos = faltan = sin_alfa = 0
+for clip in sorted(necesita):
+    quiere = necesita[clip]
+    if time.time() - inicio > PRESUPUESTO:
+        faltan += sum(len(v) for v in quiere.values())
+        continue
+    a, b = min(quiere), max(quiere)
+    grado = GRADO_LEJOS if clip in P.get("nitidez", []) else GRADO
+    # Con pocos cuadros (las muestras) se busca cada uno; con muchos, se lee el tramo de corrido.
+    tramos = [[n, n] for n in sorted(quiere)] if len(quiere) <= 6 else [[a, b]]
+    for x0, x1 in tramos:
+        proc = subprocess.Popen(["ffmpeg", "-v", "error", "-i", P["clips"][clip], "-vf",
+                                 f"scale={W}:{H}:flags=lanczos,fps={P['fps']},select=between(n\\,{x0}\\,{x1}),{grado}", "-vsync", "0",
+                                 "-f", "rawvideo", "-pix_fmt", "rgb24", "-"], stdout=subprocess.PIPE)
+        n = x0
+        while True:
+            buf = proc.stdout.read(W * H * 3)
+            if len(buf) < W * H * 3:
+                break
+            if n in quiere:
+                im = np.frombuffer(buf, np.uint8).reshape(H, W, 3)
+                jpg = cv2.imencode(".jpg", im[:, :, ::-1], [cv2.IMWRITE_JPEG_QUALITY, 93])[1].tobytes()
+                alfa = cv2.imread(os.path.join(T, "alfa", clip, f"{n:05d}.png"), 0)
+                for f in quiere[n]:
+                    with open(os.path.join(CAM, f"{f:05d}.jpg"), "wb") as fh:
+                        fh.write(jpg)
+                    if not lleva_persona(f):
+                        continue
+                    if alfa is None:
+                        sin_alfa += 1
+                        continue
+                    rgba = np.dstack([im, cv2.GaussianBlur(alfa, (3, 3), 0)])
+                    tmp = os.path.join(PER, f"{f:05d}.tmp.webp")
+                    Image.fromarray(rgba, "RGBA").save(tmp, "WEBP", quality=90, method=3)
+                    os.replace(tmp, os.path.join(PER, f"{f:05d}.webp"))
+                    hechos += 1
+            n += 1
+        proc.wait()
+total = time.time() - inicio
+print(f"cuadros: {hechos} en {total:.0f} s" + (f" · {sin_alfa} sin recorte (corre persona)" if sin_alfa else "") + (f" · FALTAN {faltan}" if faltan else ""), flush=True)
+sys.exit(3 if faltan or sin_alfa else 0)

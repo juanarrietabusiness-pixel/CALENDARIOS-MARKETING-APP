@@ -43,13 +43,15 @@ describe("lo que se empaqueta", () => {
     const archivos = archivosDelKit();
     const zip = armarZip(archivos);
     const lista = listarConUnzip(zip);
-    for (const r of ["kit.mjs", "instalar.sh", "requisitos.txt", "LEEME.md", "python/transcribir.py", "python/mezcla.py", "lib/corteEdicion.js", "lib/catalogoEfectos.datos.js"]) {
+    for (const r of ["kit.mjs", "instalar.sh", "requisitos.txt", "LEEME.md", "python/transcribir.py", "python/mezcla.py", "python/persona.py", "python/cuadros.py",
+      "lib/corteEdicion.js", "lib/camaraEdicion.js", "lib/escenaEdicion.js", "lib/catalogoEfectos.datos.js",
+      "remotion/package.json", "remotion/package-lock.json", "remotion/render.mjs", "remotion/src/Video.jsx", "remotion/src/Piezas.jsx"]) {
       expect(Object.keys(lista)).toContain(r);
     }
     expect(lista["instalar.sh"]).toMatch(/^-rwx/);
     expect(lista["LEEME.md"]).toMatch(/^-rw-/);
-    // Ni modelos, ni marcas de instalación, ni lo que deja Python.
-    expect(Object.keys(lista).some((r) => /modelos\/|\.instalado|__pycache__|\.pyc$/.test(r))).toBe(false);
+    // Ni modelos, ni marcas de instalación, ni lo que deja Python, ni las dependencias de Remotion.
+    expect(Object.keys(lista).some((r) => /modelos\/|\.instalado|__pycache__|\.pyc$|node_modules/.test(r))).toBe(false);
     // Determinista: el mismo contenido da los mismos bytes.
     expect(Buffer.compare(zip, armarZip(archivosDelKit()))).toBe(0);
   });
@@ -78,6 +80,14 @@ describe("lo que se empaqueta", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+
+  it("las dependencias de Remotion van fijadas (versión exacta y package-lock), y es la de Rofer v2", () => {
+    const pkg = JSON.parse(readFileSync(join(RAIZ, "kit-edicion", "remotion", "package.json"), "utf8"));
+    for (const [n, v] of Object.entries(pkg.dependencies)) expect(v, n).toMatch(/^\d+\.\d+\.\d+$/);
+    expect(pkg.dependencies.remotion).toBe("4.0.541");
+    const lock = JSON.parse(readFileSync(join(RAIZ, "kit-edicion", "remotion", "package-lock.json"), "utf8"));
+    expect(lock.packages[""].dependencies.remotion).toBe("4.0.541");
   });
 
   it("el Python del kit compila", () => {

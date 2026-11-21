@@ -1,7 +1,9 @@
 # Lo que instala instalar.sh con pip (--break-system-packages en el chat de Claude). Rangos, no versiones exactas: el
-# Python del chat cambia. Licencias: faster-whisper y CTranslate2 MIT, librosa ISC, soundfile BSD, Pillow MIT-CMU.
+# Python del chat cambia. Licencias: faster-whisper y CTranslate2 MIT, librosa ISC, soundfile BSD, Pillow MIT-CMU, onnxruntime MIT, OpenCV Apache-2.0.
 faster-whisper>=1.1,<2
 librosa>=0.10.2,<0.12
 soundfile>=0.12
 pillow>=10
 numpy>=1.24
+onnxruntime>=1.17
+opencv-python-headless>=4.8

@@ -1305,3 +1305,25 @@ worker/lib/
                           ruta sin sesión /api/exportar/kit-edicion/<testigo>/<nombre>.zip, que lo saca de ASSETS
 tests/migracion/kitEdicion.test.js  La huella, el ZIP (con unzip), los imports de lib/, kit.mjs, el Python y la ruta firmada
 ```
+
+### El editor de video grabado — Fase 2b: la imagen (recorte, cámara, piezas, muestras y render)
+
+```
+kit-edicion/
+  python/persona.py       El recorte de la persona (RobustVideoMatting resnet50, el que ganó la prueba de segmentación) y su
+                          geometría (tope REAL de la cabeza o del casco, centro, ancho, pies), por tramos y reanudable
+  python/geometria.py     La geometría sola, con RVM a 1/4 de resolución (para la cámara cuando el recorte bueno se hace sólo
+                          donde hay texto detrás: `persona.soloDetras`)
+  python/cuadros.py       Los cuadros de salida etalonados y la persona en RGBA para Remotion; también sólo unos cuadros (muestras)
+  remotion/               Las PIEZAS (Remotion 4.0.541, fijado con package-lock): src/Piezas.jsx (titular del cuadro 0, gigante
+                          detrás, tachado, trío, cinta, logo, ficha, lista, sello, preguntas, botón de WhatsApp, modo celular),
+                          src/Video.jsx (cámara + capas + subtítulos medidos + barrido + destello + cierre), src/base.js (la marca
+                          en colores y letras: nada fijo), src/index.jsx (duración desde datos.json), render.mjs (muestras y
+                          tramos con el Chromium de la máquina)
+src/lib/
+  camaraEdicion.js        La CÁMARA VIRTUAL (puro): plano por tramo (abierto/medio alternos, la persona lejos más cerca hasta
+                          2×), la cabeza seguida al 55 % y suavizada, el golpe al entrar, sin ver el borde; y dónde queda la cabeza
+  escenaEdicion.js        La ESCENA (puro): las piezas del plan resueltas a segundos y colocadas con aire sobre la cabeza, los
+                          subtítulos (y los que se ocultan porque un gráfico ya lo dice) y la REVISIÓN DE OFICIO (lo que tapa la
+                          cara, el texto que la cabeza no deja leer, la franja segura, el subtítulo encima de un gráfico, el cuadro 0)
+```

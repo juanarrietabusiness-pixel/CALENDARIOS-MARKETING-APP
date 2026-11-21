@@ -1,0 +1,15 @@
+{
+  "name": "kit-edicion-remotion",
+  "private": true,
+  "type": "module",
+  "description": "Las piezas del editor de video grabado de Juancito Ads (Remotion). Licencia de Remotion: gratis hasta 3 empleados.",
+  "dependencies": {
+    "@fontsource/anton": "5.2.6",
+    "@fontsource/inter-tight": "5.2.6",
+    "@remotion/bundler": "4.0.541",
+    "@remotion/renderer": "4.0.541",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "remotion": "4.0.541"
+  }
+}

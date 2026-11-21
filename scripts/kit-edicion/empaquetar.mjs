@@ -23,9 +23,9 @@ const RAIZ = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const KIT = join(RAIZ, "kit-edicion");
 const MODULO_VERSION = join(RAIZ, "src", "lib", "kitEdicionVersion.js");
 /** La lógica pura que el kit lleva copiada en lib/ (la importa kit.mjs). */
-export const LIB_DEL_KIT = Object.freeze(["oficioEdicion.js", "corteEdicion.js", "musicaEdicion.js", "planEdicion.js", "catalogoEfectos.datos.js", "kitEdicionVersion.js"]);
-/** Lo que NO va: lo que crea la instalación en el chat y lo que deja Python. */
-const FUERA = /(^|\/)(\.instalado|modelos|__pycache__|\.dominio)(\/|$)|\.pyc$/;
+export const LIB_DEL_KIT = Object.freeze(["oficioEdicion.js", "corteEdicion.js", "musicaEdicion.js", "planEdicion.js", "camaraEdicion.js", "escenaEdicion.js", "catalogoEfectos.datos.js", "kitEdicionVersion.js"]);
+/** Lo que NO va: lo que crea la instalación en el chat (modelos, node_modules de Remotion) y lo que deja Python. */
+const FUERA = /(^|\/)(\.instalado|modelos|__pycache__|\.dominio|node_modules)(\/|$)|\.pyc$/;
 
 function recorrer(dir) {
   return readdirSync(dir).flatMap((n) => {
