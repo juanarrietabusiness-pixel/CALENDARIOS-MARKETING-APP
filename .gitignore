@@ -59,3 +59,9 @@ scripts/migracion/datos/
 
 # Capturas de la herramienta de Playwright (MCP) al probar las pantallas
 .playwright-mcp/
+
+# Lo que crea instalar.sh y Python en el kit de edición (no va al repositorio ni al zip)
+kit-edicion/.instalado/
+kit-edicion/modelos/
+kit-edicion/.dominio
+__pycache__/

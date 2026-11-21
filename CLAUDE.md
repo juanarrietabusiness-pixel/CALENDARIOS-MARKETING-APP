@@ -431,7 +431,8 @@ no aquí.
 - `docs/propuesta-edicion-video-grabado.md` — el EDITOR DE VIDEO GRABADO: un chat nuevo de Claude edita los clips de una
   persona hablando a cámara con lo que guarda el calendario (manual del editor con versiones, estilo de edición por
   cliente, kit de piezas Python + Remotion descargable, actas y aprendizaje que propone), con las decisiones de la agencia
-  (§11). Fase 1 implementada (el manual del editor, con versiones, en Ajustes); fases 2a a 6, pendientes.
+  (§11). Fase 1 (el manual del editor, con versiones, en Ajustes) y 2a (el kit: corte y sonido, `kit_edicion`)
+  implementadas; 2b a 6, pendientes.
 - `docs/propuesta-cerebro-por-cliente.md` — un cerebro por cliente (notas en D1, índice
   en R2, ficha técnica y cifras, búsqueda por pasajes) en lugar de volcar el ADN entero
   en cada llamada. Fases 0 y 1 implementadas; memoria de decisiones, visualización,

@@ -206,3 +206,35 @@ describe("el Estudio sigue sin la pantalla", () => {
   }, 60_000);
 });
 
+
+// El kit de edición de videos grabados (worker/lib/kitEdicion.js) va en los archivos estáticos del despliegue
+// (dist/api/_kit/), y /api/* pasa antes por el Worker (`run_worker_first`). Que el Worker LO ALCANCE por su binding ASSETS
+// y que nadie lo baje sin firma sólo se ve en workerd de verdad: los tests de tests/migracion simulan ASSETS.
+describe("el kit de edición sale del despliegue sólo con su enlace firmado", () => {
+  it("kit_edicion por el MCP da un enlace que entrega el ZIP; el archivo suelto pide sesión", async () => {
+    const { createHash, randomUUID } = await import("node:crypto");
+    const { readFileSync } = await import("node:fs");
+    const { KIT_EDICION } = await import("../../src/lib/kitEdicionVersion.js");
+    const bruto = `token-vivo-${randomUUID()}`;
+    const sha = (t) => createHash("sha256").update(t).digest("hex");
+    await espacio.d1("insert or replace into mcp_clientes (id, nombre, redirect_uris) values ('cli-vivo', 'vivo', '[]');");
+    await espacio.d1(`insert into mcp_tokens (id, owner_id, user_id, cliente_id, acceso_hash, renovacion_hash, expira)
+      values ('${randomUUID()}', '${ANA.id}', '${ANA.id}', 'cli-vivo', '${sha(bruto)}', '${sha(`r-${bruto}`)}', '2099-01-01T00:00:00.000Z');`);
+    const r = await fetch(`${espacio.base}/mcp`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${bruto}`, "Content-Type": "application/json", Accept: "application/json, text/event-stream" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "kit_edicion", arguments: {} } }),
+    });
+    expect(r.status).toBe(200);
+    const texto = (await r.json()).result.content.map((b) => b.text).join("\n");
+    const url = /(https?:\/\/\S+?\/api\/exportar\/kit-edicion\/\S+?\.zip)/.exec(texto)?.[1];
+    expect(url, texto).toBeTruthy();
+    // wrangler dev presenta las peticiones con el dominio de la ruta (wrangler.jsonc): se pide al servidor local.
+    const zip = await fetch(url.replace(/^https?:\/\/[^/]+/, espacio.base));
+    expect(zip.status).toBe(200);
+    const bytes = Buffer.from(await zip.arrayBuffer());
+    const delBuild = readFileSync(new URL(`../../dist/api/_kit/kit-edicion-${KIT_EDICION.version}.zip`, import.meta.url));
+    expect(Buffer.compare(bytes, delBuild)).toBe(0);
+    expect((await fetch(`${espacio.base}/api/_kit/kit-edicion-${KIT_EDICION.version}.zip`)).status).toBe(401);
+  });
+});

@@ -60,6 +60,7 @@ import { rutasRedes, rutasPublicar, rutaMetaCallback, rutaMedioPublico, rutaWebh
 import { rutaVistaMedio } from "./rutas/vistaMedio.js";
 import { rutaExportar } from "./lib/exportarPiezas.js";
 import { rutaKit } from "./lib/kitDescargable.js";
+import { rutaKitEdicion } from "./lib/kitEdicion.js";
 import { rutaSubir } from "./lib/estudio/subidaClaude.js";
 import { rutasYouTube, rutaYouTubePublica } from "./rutas/youtube.js";
 import { procesarCola, programarAlAprobar, cancelarPendientes } from "./lib/publicador.js";
@@ -346,6 +347,8 @@ const trabajador = {
       if (partes[0] === "exportar" && metodo === "GET") {
         // El kit de marca entero (kit_descargable): el mismo enlace firmado, otro uso. Ver worker/lib/kitDescargable.js.
         if (partes[1] === "kit") return await rutaKit(req, env, partes);
+        // El kit de EDICIÓN de videos grabados (kit_edicion): el ZIP del despliegue, con su propio uso. Ver worker/lib/kitEdicion.js.
+        if (partes[1] === "kit-edicion") return await rutaKitEdicion(req, env, partes);
         return await rutaExportar(req, env, partes);
       }
       // Lo que Claude sube a la galería con el enlace de subir_a_galeria: sin sesión, sólo lo que dice su testigo firmado,

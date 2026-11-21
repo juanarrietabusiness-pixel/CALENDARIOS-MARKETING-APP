@@ -1129,3 +1129,34 @@ contradicen, manda la de más abajo (la más nueva). Una trampa nueva de esta á
   · **El manual no llega aún a Claude**: `manualParaClaude` (lo compacto: lo común y el tipo, ~7.000 caracteres con
     persona-a-camara) lo entregará `guia_de_edicion` en la Fase 4. «Sin persona» está vacío y marcado; «persona y pantalla»
     está EN PRUEBA hasta subir el código de Comunidad v3 (Fase 2a).
+- **El KIT DE EDICIÓN de videos grabados: corte y sonido** (Fase 2a, 2026-11-21; kit-edicion/, src/lib/corteEdicion.js,
+  musicaEdicion.js, planEdicion.js, worker/lib/kitEdicion.js; la propuesta en docs/propuesta-edicion-video-grabado.md).
+  Se probó rehaciendo Rofer v2 desde sus 5 clips: el corte salió con las mismas piezas (el corte del llamado en 34,99 s,
+  como v2), la rejilla de la canción igual (95,35 BPM, primer compás en 0,2147 s; v2: 0,2133) y la mezcla, comparada con
+  el video de v2 de la galería, con una envolvente correlacionada a 0,954 y la misma sonoridad (±0,2 dB cada 5 s). Lo
+  que no se ve leyendo el código:
+  · **La energía para cortar se mide sobre la voz LIMPIA** (paso alto + rnnoise), no sobre el audio crudo: con el ruido de
+    la obra debajo, los silencios no bajan de (voz − 18 dB) y el corte deja pausas largas. Con el crudo salían cortes que
+    quitaban 0,06–0,09 s donde v2 quitó 0,18. Y un corte que quita menos de 0,07 s no se hace (`quitarMinimo`: se ve el
+    salto de cámara sin que se oiga el silencio; el más pequeño de v2 quitó 0,08). Una pieza sin ninguna palabra (una
+    respiración) se quita.
+  · **El AAC sube el pico verdadero**: la mezcla a −1,2 dBTP salía a −1,0 en el mp4. La mezcla apunta 0,5 dB más abajo
+    (`OFICIO.master.margenAac`) y `medir` mide el archivo FINAL, sin tolerancia (antes daba «BIEN» con −1,0).
+  · **faster-whisper no abre los archivos**: lo hace con PyAV, y la versión que instala pip hoy (19) no acepta el
+    `metadata_errors` que le pasa (TypeError). El audio lo decodifica ffmpeg a 16 kHz y llega como arreglo.
+  · **`linea.json` sólo se reescribe si cambia**: su fecha es la que dice a la voz, la música y la mezcla que hay que
+    rehacerlas; reescribirlo en cada paso hacía que `siguiente` repitiera la música sin fin. Que el corte está al día con el
+    plan lo dice otra marca (`trabajo/corte.hecho`).
+  · **`instalar.sh` corre con `pipefail`**: `ffmpeg -filters | grep -q` falla aunque el filtro esté (grep corta la tubería),
+    así que se guarda la lista en una variable antes de buscar.
+  · **El ZIP va en el despliegue, no en R2** (decidido al hacerlo; la propuesta decía R2): `dist/api/_kit/`, que el build
+    arma con `scripts/kit-edicion/empaquetar.mjs`. /api/* pasa antes por el Worker (`run_worker_first`), que sólo lo saca
+    de ASSETS con un testigo firmado (uso «kit-edicion»); suelto, pide sesión (401). Así la versión que anuncia
+    `kit_edicion` y el ZIP son del mismo despliegue y el token de despliegue no necesita permiso de R2. Comprobado en
+    workerd (tests/vivo/colaboracion.test.js). Un enlace de una versión anterior contesta 404 diciendo que pidan otro.
+  · **La huella** (`src/lib/kitEdicionVersion.js`): si cambia un archivo del kit o de la lógica que lleva copiada (también
+    `oficioEdicion.js` y el catálogo de efectos), el build y un test fallan hasta subir la versión y correr
+    `npm run kit:huella`. La lógica copiada sólo puede importar archivos que también van en el zip (otro test).
+  · **Tiempos medidos aquí** (4 CPU; el chat tiene 2): instalar con modelos, 46 s; transcribir los 5 clips (52 s de
+    audio), 32 s; de transcribir al corte en crudo, 83 s. **Sin probar en el chat de claude.ai**: la instalación allí, sus
+    tiempos con 2 CPU y que su red deje bajar los efectos del sitio (el dominio está en su lista permitida).
