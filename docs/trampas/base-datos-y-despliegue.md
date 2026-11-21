@@ -506,3 +506,9 @@ contradicen, manda la de más abajo (la más nueva). Una trampa nueva de esta á
   reglas viven en la publicación original, de cualquier mes), el buscador, «Poner en una publicación…» al buscar lo pasado y
   el navegador de meses. Antes de hacerlo: que todo guardado pase por `saveCalendar` con `base` (la fusión con una base sin
   días nunca borra nada) y que esos lectores pidan lo que necesitan.
+
+- **Los tests de vivo escriben en la base que tiene abierta `wrangler dev`** (tests/vivo/espacio.js, `d1()`): con el
+  servidor arrancado, un `wrangler d1 execute --local` puede encontrarse la base ocupada («database is locked:
+  SQLITE_BUSY») si en ese instante escribe el Worker o la alarma de un Durable Object. Pasó en CI con el test del kit de
+  edición, justo después de los del lote y el carrusel, que dejan alarmas avanzando. `d1()` espera y repite (hasta 6
+  veces) sólo ante ese error; cualquier otro falla en el acto.
