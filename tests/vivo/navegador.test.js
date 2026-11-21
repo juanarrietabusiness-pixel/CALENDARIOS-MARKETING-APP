@@ -238,6 +238,41 @@ describe.skipIf(!disponible.playwright)("la aplicación abierta en Chromium", ()
     }
   }, 120_000);
 
+  it("Las propuestas de lo que aprende el editor: aceptar una en Ajustes y rechazar otra en Kit y voz", async () => {
+    await espacio.d1(`insert or replace into edicion_actas (id, owner_id, client_id, tipo, kit_version, resumen, correcciones)
+      values ('acta-prop', '${ANA.id}', '${CLIENTE.id}', 'persona-a-camara', '0.2.1', '{}', '[]');`);
+    await espacio.d1(`insert or replace into edicion_propuestas (id, owner_id, client_id, acta_id, destino, parte, operacion, antes, texto, cita)
+      values ('pe-humo-general', '${ANA.id}', null, 'acta-prop', 'manual', 'tipos.persona-a-camara', 'anadir', '', 'Nunca modo celular si el video no lo tiene.', 'eso pasa en todos los videos'),
+             ('pe-humo-marca', '${ANA.id}', '${CLIENTE.id}', 'acta-prop', 'estilo', 'notas', 'anadir', '', 'Los textos más arriba.', 'pudieron quedar más arriba');`);
+    const contexto = await navegador.newContext({ viewport: { width: 390, height: 844 }, locale: "es-PA" });
+    const pagina = await contexto.newPage();
+    const errores = vigilar(pagina, { perdonar: [/status of 503.*\/api\/ia\/modelos/] });
+    try {
+      await pagina.goto(`${espacio.base}/`);
+      await pagina.getByLabel("Correo").fill(ANA.email);
+      await pagina.getByLabel("Contraseña").fill("contrasena-de-prueba-larga");
+      await pagina.getByRole("button", { name: /Entrar/ }).click();
+      await pagina.getByRole("navigation").first().waitFor({ timeout: 20_000 });
+
+      await pagina.goto(`${espacio.base}/ajustes#editor-video`);
+      const manual = pagina.getByRole("group", { name: /propone aprender para el manual/ });
+      await manual.getByText("Nunca modo celular si el video no lo tiene.").waitFor({ timeout: 30_000 });
+      await manual.getByRole("button", { name: /^Aceptar/ }).click();
+      await manual.getByText(/el manual pasa a la versión \d+/).waitFor({ timeout: 20_000 });
+
+      await pagina.goto(`${espacio.base}/cliente/${CLIENTE.slug}/marca/kit`);
+      const marca = pagina.getByRole("group", { name: /propone aprender para su estilo/ });
+      await marca.getByText("Los textos más arriba.").waitFor({ timeout: 30_000 });
+      await marca.getByRole("button", { name: /^Rechazar/ }).click();
+      await marca.getByText(/Rechazada: no se volverá a proponer/).waitFor({ timeout: 20_000 });
+      await marca.getByText("Los textos más arriba.").waitFor({ state: "detached", timeout: 20_000 });
+      await noEnBlanco(pagina);
+      expect(errores, errores.join("\n")).toEqual([]);
+    } finally {
+      await contexto.close();
+    }
+  }, 120_000);
+
   it("/aprobar abre el mes del cliente final sin sesión", async () => {
     const contexto = await navegador.newContext({ viewport: { width: 390, height: 844 }, locale: "es-PA" });
     const pagina = await contexto.newPage();

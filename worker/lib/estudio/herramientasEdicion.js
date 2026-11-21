@@ -11,6 +11,7 @@
 // ============================================================
 
 import { difundir } from "../vivo.js";
+import { avisar, miembrosDe } from "../equipo.js";
 import {
   estilosEdicionDe, buscarEstiloEdicion, prepararEstiloEdicion, guardarEstiloEdicion, quitarEstiloEdicion, resumenEstiloEdicion,
   ErrorEstiloEdicion,
@@ -207,6 +208,19 @@ export function crearHerramientasEdicion({ env, acceso, resolverCliente, usuario
           if (r.propuestas.some((p) => p.destino === "estilo") && !r.estilo) lineas.push(`${c.name} no tiene estilo de edición para este tipo: al aplicar lo de la marca se crea uno.`);
         } else lineas.push("Ninguna propuesta.");
         if (r.descartadas.length) lineas.push("NO SE PROPUSIERON:", ...r.descartadas.map((d) => `· corrección ${d.n}: ${d.motivo}`));
+        if (r.propuestas.length) {
+          // A la campana de los demás (quien editó ya las ve aquí): dónde se aceptan o se rechazan en la pantalla.
+          const generales = r.propuestas.filter((p) => p.destino === "manual").length;
+          const marca = r.propuestas.length - generales;
+          const partes = [generales && `${generales} para el manual del editor`, marca && `${marca} para el estilo de ${c.name}`].filter(Boolean).join(" y ");
+          const miembros = await miembrosDe(acceso).catch(() => []);
+          await avisar(env, acceso, {
+            para: miembros.map((m) => m.userId), tipo: "edicion", por: { userId: usuario?.id, nombre: usuario?.nombre },
+            texto: `Claude propone aprender de la edición de ${c.name}: ${partes}. Acéptalas o recházalas.`,
+            enlace: generales ? "/ajustes#editor-video" : `/cliente/${encodeURIComponent(c.id)}/marca/kit`,
+          });
+          lineas.push("(El equipo las ve también en la pantalla, para aceptarlas o rechazarlas.)");
+        }
         return lineas.join("\n");
       }
       const { generales, deMarca } = await propuestasPendientes(acceso, c);

@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from "react";
-import { leerActasEdicion } from "../lib/edicionApi";
+import { leerActasEdicion, leerPropuestasEdicion } from "../lib/edicionApi";
+import PropuestasEdicion from "./PropuestasEdicion";
 import { KIT_EDICION } from "../lib/kitEdicionVersion";
 
 // El manual del editor, en su propio chunk (su base pesa): se carga al abrirlo.
@@ -21,9 +22,13 @@ export default function SeccionEditorVideo({ pulso = 0 }) {
   const [actas, setActas] = useState(null);
   const [error, setError] = useState("");
   const [manualAbierto, setManualAbierto] = useState(false);
+  const [propuestas, setPropuestas] = useState(null);
+  const [versionManual, setVersionManual] = useState(0); // al aplicar una propuesta, el manual se vuelve a leer
 
+  const leerPropuestas = () => leerPropuestasEdicion().then(setPropuestas).catch(() => setPropuestas(null));
   useEffect(() => {
     leerActasEdicion().then((r) => { setActas(r.actas); setError(""); }).catch((e) => setError(e.message));
+    leerPropuestas();
   }, [pulso]);
 
   return (
@@ -37,6 +42,11 @@ export default function SeccionEditorVideo({ pulso = 0 }) {
           video grabado, pídele en un chat nuevo «edita este video de…» con los clips: sigue la receta «Editar un video grabado».
         </p>
       </div>
+
+      {propuestas && (
+        <PropuestasEdicion titulo="Lo que propone aprender para el manual" propuestas={propuestas.generales} puede={propuestas.puedeManual}
+          sinPermiso="Las decide quien administra o un editor de toda la agencia." onCambio={async () => { await leerPropuestas(); setVersionManual((v) => v + 1); }} />
+      )}
 
       <h3 className="label" style={{ margin: "var(--sp-3) 0 0" }}>Últimas ediciones</h3>
       {error ? <p role="alert" className="notice notice-error" style={{ margin: 0 }}>{error}</p>
@@ -63,7 +73,7 @@ export default function SeccionEditorVideo({ pulso = 0 }) {
         <summary className="label" style={{ display: "list-item", cursor: "pointer", minHeight: "var(--tap-sm)" }}>El manual del editor: cómo se editan los videos grabados</summary>
         {manualAbierto && (
           <Suspense fallback={<p className="hint">Cargando…</p>}>
-            <SeccionManualEditor pulso={pulso} />
+            <SeccionManualEditor pulso={pulso + versionManual} />
           </Suspense>
         )}
       </details>
