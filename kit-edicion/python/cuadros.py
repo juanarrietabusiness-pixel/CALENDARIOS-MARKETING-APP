@@ -12,6 +12,7 @@ import os
 import subprocess
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 import cv2
 import numpy as np
@@ -45,6 +46,37 @@ for f, x in enumerate(P["fuente"]):
         continue
     necesita.setdefault(x[0], {}).setdefault(x[1], []).append(f)
 
+# Codificar JPEG y sobre todo WebP con transparencia es lo que más tarda (en Rofer, 9 min de 1.101 cuadros en serie):
+# se reparte entre hilos (Pillow y OpenCV sueltan el GIL al codificar).
+pool = ThreadPoolExecutor(max_workers=os.cpu_count() or 2)
+pendientes = []
+
+
+def guardar(im, alfa, fs):
+    """Escribe el cuadro etalonado y, si toca, la persona en RGBA, para cada cuadro de salida `fs`. → (hechos, sin_alfa)."""
+    jpg = cv2.imencode(".jpg", im[:, :, ::-1], [cv2.IMWRITE_JPEG_QUALITY, 93])[1].tobytes()
+    h = s = 0
+    webp = None
+    for f in fs:
+        with open(os.path.join(CAM, f"{f:05d}.jpg"), "wb") as fh:
+            fh.write(jpg)
+        if not lleva_persona(f):
+            continue
+        if alfa is None:
+            s += 1
+            continue
+        tmp = os.path.join(PER, f"{f:05d}.tmp.webp")
+        if webp is None:
+            Image.fromarray(np.dstack([im, cv2.GaussianBlur(alfa, (3, 3), 0)]), "RGBA").save(tmp, "WEBP", quality=90, method=3)
+            webp = os.path.join(PER, f"{f:05d}.webp")
+        else:
+            with open(webp, "rb") as a, open(tmp, "wb") as b:
+                b.write(a.read())
+        os.replace(tmp, os.path.join(PER, f"{f:05d}.webp"))
+        h += 1
+    return h, s
+
+
 hechos = faltan = sin_alfa = 0
 for clip in sorted(necesita):
     quiere = necesita[clip]
@@ -65,24 +97,21 @@ for clip in sorted(necesita):
             if len(buf) < W * H * 3:
                 break
             if n in quiere:
-                im = np.frombuffer(buf, np.uint8).reshape(H, W, 3)
-                jpg = cv2.imencode(".jpg", im[:, :, ::-1], [cv2.IMWRITE_JPEG_QUALITY, 93])[1].tobytes()
+                im = np.frombuffer(buf, np.uint8).reshape(H, W, 3).copy()
                 alfa = cv2.imread(os.path.join(T, "alfa", clip, f"{n:05d}.png"), 0)
-                for f in quiere[n]:
-                    with open(os.path.join(CAM, f"{f:05d}.jpg"), "wb") as fh:
-                        fh.write(jpg)
-                    if not lleva_persona(f):
-                        continue
-                    if alfa is None:
-                        sin_alfa += 1
-                        continue
-                    rgba = np.dstack([im, cv2.GaussianBlur(alfa, (3, 3), 0)])
-                    tmp = os.path.join(PER, f"{f:05d}.tmp.webp")
-                    Image.fromarray(rgba, "RGBA").save(tmp, "WEBP", quality=90, method=3)
-                    os.replace(tmp, os.path.join(PER, f"{f:05d}.webp"))
-                    hechos += 1
+                pendientes.append(pool.submit(guardar, im, alfa, quiere[n]))
+                # Que la cola no crezca sin tope en memoria (cada cuadro son 6 MB).
+                if len(pendientes) > 4 * (os.cpu_count() or 2):
+                    h, s_ = pendientes.pop(0).result()
+                    hechos += h
+                    sin_alfa += s_
             n += 1
         proc.wait()
+for fut in pendientes:
+    h, s_ = fut.result()
+    hechos += h
+    sin_alfa += s_
+pool.shutdown()
 total = time.time() - inicio
 print(f"cuadros: {hechos} en {total:.0f} s" + (f" · {sin_alfa} sin recorte (corre persona)" if sin_alfa else "") + (f" · FALTAN {faltan}" if faltan else ""), flush=True)
 sys.exit(3 if faltan or sin_alfa else 0)

@@ -294,7 +294,14 @@ function marcaParaRender(p) {
   const letrasM = m.letras ? JSON.parse(JSON.stringify(m.letras)) : undefined;
   if (letrasM?.titular?.archivo) letrasM.titular.archivo = poner(letrasM.titular.archivo);
   if (letrasM?.texto?.archivo) letrasM.texto.archivo = poner(letrasM.texto.archivo);
-  return { ...m, logo: poner(m.logo), letras: letrasM };
+  // El logo, sin sus márgenes (si no, sale pequeño en la tarjeta y en el cierre).
+  let logo = poner(m.logo);
+  if (logo) {
+    const recortado = `marca/${basename(logo, extname(logo))}-recortado.png`;
+    if (viejo(join(PUBLIC, recortado), join(PUBLIC, logo))) python("logo.py", join(PUBLIC, logo), join(PUBLIC, recortado));
+    if (existsSync(join(PUBLIC, recortado))) logo = recortado;
+  }
+  return { ...m, logo, letras: letrasM };
 }
 
 /** Las letras libres (OFL) que usan las piezas si la marca no trae las suyas: de node_modules/@fontsource a public/fonts. */
