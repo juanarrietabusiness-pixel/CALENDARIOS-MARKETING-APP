@@ -201,6 +201,43 @@ describe.skipIf(!disponible.playwright)("la aplicación abierta en Chromium", ()
     }
   }, 120_000);
 
+  it("Marca → Kit y voz: crear, editar y quitar un estilo de edición, en el teléfono", async () => {
+    const contexto = await navegador.newContext({ viewport: { width: 390, height: 844 }, locale: "es-PA" });
+    const pagina = await contexto.newPage();
+    const errores = vigilar(pagina);
+    try {
+      await pagina.goto(`${espacio.base}/`);
+      await pagina.getByLabel("Correo").fill(ANA.email);
+      await pagina.getByLabel("Contraseña").fill("contrasena-de-prueba-larga");
+      await pagina.getByRole("button", { name: /Entrar/ }).click();
+      await pagina.getByRole("navigation").first().waitFor({ timeout: 20_000 });
+
+      await pagina.goto(`${espacio.base}/cliente/${CLIENTE.slug}/marca/kit`);
+      const zona = pagina.getByRole("region", { name: "Estilos de edición" });
+      await zona.getByRole("button", { name: /Nuevo estilo de edición/ }).click({ timeout: 30_000 });
+      const forma = zona.getByRole("form", { name: "Nuevo estilo de edición" });
+      await forma.getByLabel("Nombre").fill("Humo en obra");
+      await forma.getByLabel(/El texto gigante DETRÁS/).fill("el gancho, en el cielo");
+      await forma.getByLabel("Plano abierto (×)").fill("1,13");
+      await forma.getByRole("button", { name: "Guardar el estilo" }).click();
+      await zona.getByText("Humo en obra").waitFor({ timeout: 20_000 });
+      await zona.getByText(/Cámara: abierto 1.13×/).waitFor();
+
+      await zona.getByRole("button", { name: "Editar" }).click();
+      await zona.getByRole("form", { name: /Editar el estilo/ }).getByLabel("El ritmo").fill("alterno en cada corte");
+      await zona.getByRole("button", { name: "Guardar el estilo" }).click();
+      await zona.getByText(/Ritmo: alterno en cada corte/).waitFor({ timeout: 20_000 });
+
+      await zona.getByRole("button", { name: "Quitar el estilo Humo en obra" }).click();
+      await zona.getByRole("button", { name: "Sí, quitarlo" }).click();
+      await zona.getByText(/Ninguno todavía/).waitFor({ timeout: 20_000 });
+      await noEnBlanco(pagina);
+      expect(errores, errores.join("\n")).toEqual([]);
+    } finally {
+      await contexto.close();
+    }
+  }, 120_000);
+
   it("/aprobar abre el mes del cliente final sin sesión", async () => {
     const contexto = await navegador.newContext({ viewport: { width: 390, height: 844 }, locale: "es-PA" });
     const pagina = await contexto.newPage();
