@@ -65,13 +65,14 @@ const TEXTO = "El sofa que tu sala necesita";
  * Lo que la consola dice mal. Sólo se perdona lo esperado: el 401 de /api/yo ANTES de entrar (el arranque pregunta si
  * hay sesión, y sin ella contesta 401, que Chromium apunta como «Failed to load resource»).
  */
-function vigilar(pagina) {
+function vigilar(pagina, { perdonar = [] } = {}) {
   const errores = [];
   pagina.on("pageerror", (e) => errores.push(`excepción: ${e.message}`));
   pagina.on("console", (m) => {
     if (m.type() !== "error") return;
     const texto = m.text();
     if (/Failed to load resource: the server responded with a status of 401/.test(texto)) return;
+    if (perdonar.some((re) => re.test(`${texto} ${m.location()?.url ?? ""}`))) return;
     errores.push(`consola: ${texto}${m.location()?.url ? ` (${m.location().url})` : ""}`);
   });
   return errores;
@@ -160,6 +161,38 @@ describe.skipIf(!disponible.playwright)("la aplicación abierta en Chromium", ()
       await pagina.goto(`${espacio.base}/cliente/${CLIENTE.slug}/crear/a-mano`);
       await pagina.getByRole("heading", { name: "Crear a mano" }).waitFor({ timeout: 30_000 });
       await pagina.getByRole("heading", { name: "Galería" }).waitFor({ timeout: 30_000 });
+      await noEnBlanco(pagina);
+      await pagina.waitForTimeout(500);
+      expect(errores, errores.join("\n")).toEqual([]);
+    } finally {
+      await contexto.close();
+    }
+  }, 120_000);
+
+  it("Ajustes → Editor de video: las últimas ediciones y el manual abren sin errores, también en el teléfono", async () => {
+    // El editor de video grabado en la pantalla (Fase 5): su sección en diferido, sus actas y el manual en otro chunk.
+    await espacio.d1(`insert or replace into edicion_actas (id, owner_id, client_id, tipo, kit_version, manual_version, resumen, correcciones)
+      values ('acta-humo', '${ANA.id}', '${CLIENTE.id}', 'persona-a-camara', '0.2.1', 0, '{"duracion":40.1,"lufs":-14}', '[{"cita":"más arriba"}]');`);
+    const contexto = await navegador.newContext({ viewport: { width: 390, height: 844 }, locale: "es-PA" });
+    const pagina = await contexto.newPage();
+    // Ajustes pregunta por los modelos de IA, y aquí (wrangler dev sin llaves) el servidor contesta 503 a propósito: «no
+    // hay ninguna llave de IA de texto». En producción hay llaves. Sólo eso se perdona.
+    const errores = vigilar(pagina, { perdonar: [/status of 503.*\/api\/ia\/modelos/] });
+    try {
+      await pagina.goto(`${espacio.base}/`);
+      await pagina.getByLabel("Correo").fill(ANA.email);
+      await pagina.getByLabel("Contraseña").fill("contrasena-de-prueba-larga");
+      await pagina.getByRole("button", { name: /Entrar/ }).click();
+      await pagina.getByRole("navigation").first().waitFor({ timeout: 20_000 });
+
+      await pagina.goto(`${espacio.base}/ajustes#editor-video`);
+      const seccion = pagina.locator("#editor-video");
+      await seccion.getByRole("heading", { name: "Editor de video" }).waitFor({ timeout: 30_000 });
+      await seccion.getByText(/Kit de edición v\d/).waitFor({ timeout: 30_000 });
+      await seccion.getByText(CLIENTE.nombre).first().waitFor({ timeout: 30_000 });
+      await seccion.getByText(/1 corrección de la persona/).waitFor();
+      await seccion.getByText(/El manual del editor/).click();
+      await seccion.getByText("Lo común a todo video").first().waitFor({ timeout: 30_000 });
       await noEnBlanco(pagina);
       await pagina.waitForTimeout(500);
       expect(errores, errores.join("\n")).toEqual([]);

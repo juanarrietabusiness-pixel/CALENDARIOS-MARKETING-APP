@@ -17,6 +17,8 @@ import { TaskTemplatesManager } from "../components/TaskPanel";
 
 // Salud y avisos: su chunk (la salud del sistema y la suscripción a los avisos en el teléfono).
 const SeccionSalud = lazy(() => import("../components/SeccionSalud"));
+// El editor de video grabado: su chunk (el manual y las últimas ediciones).
+const SeccionEditorVideo = lazy(() => import("../components/SeccionEditorVideo"));
 
 // ============================================================
 // Ajustes del espacio
@@ -35,6 +37,7 @@ const INDICE = [
   ["claude", "Claude"],
   // Recetas, fórmulas UGC, plantillas de plan y manuales, juntos (fase 7).
   ["como-trabajamos", "Cómo trabajamos"],
+  ["editor-video", "Editor de video"],
   ["tareas", "Tareas"],
   ["copia", "Copia de seguridad"],
   ["salud", "Salud y avisos"],
@@ -89,6 +92,19 @@ export default function Ajustes({ yo, clients = [], pulso = 0, onVolver, onExpor
         <SeccionComoTrabajamos />
         <SeccionPlantillas pulso={pulso} />
         <SeccionManualCampanas pulso={pulso} />
+
+        <section id="editor-video" className="ajustes-seccion" aria-labelledby="ajustes-editor-video">
+          <h2 className="ajustes-titulo" id="ajustes-editor-video">
+            <Icon name="video" size={18} /> Editor de video
+          </h2>
+          <p className="ajustes-intro">
+            Los videos que GRABÓ una persona (clips hablando a cámara), editados por Claude con el kit de la agencia: el manual que
+            sigue, sus últimas ediciones y lo que aprende de las correcciones.
+          </p>
+          <Suspense fallback={<p className="hint" style={{ margin: 0 }}>Cargando el editor de video…</p>}>
+            <SeccionEditorVideo pulso={pulso} />
+          </Suspense>
+        </section>
 
         <section id="tareas" className="ajustes-seccion" aria-labelledby="ajustes-tareas">
           <h2 className="ajustes-titulo" id="ajustes-tareas">
