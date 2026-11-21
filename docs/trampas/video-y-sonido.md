@@ -1208,3 +1208,10 @@ contradicen, manda la de más abajo (la más nueva). Una trampa nueva de esta á
   · **`instalar.sh` marcaba «pip hecho» una sola vez**: un kit nuevo con otra librería (fontTools y brotli para medir) no
     se instalaba en un chat que ya tenía el anterior. Las marcas de pip y de Remotion llevan ahora la huella de
     requisitos.txt y del package-lock.
+
+- **Los estilos de edición viven en el kit del cliente y el PUT del kit NO los toca** (Fase 3 del editor de video grabado,
+  src/lib/estilosEdicion.js): como la identidad de video, un kit abierto en otra pestaña se los llevaría al guardarse; por
+  eso `guardarKit` conserva los guardados salvo con `conEdicion`. `estilosEdicion.js` lo importa kitMarca.js, que va en la
+  carga inicial: que siga sin imports y pequeño (los tipos de video están escritos a mano, y un test comprueba que son los
+  del manual, para no cargar el manual entero). Los de siembra (docs/estilos-edicion/) NO se guardan solos: el sí.
+

@@ -41,6 +41,7 @@ import { DEFINICION_EXPORTAR, crearHerramientaExportar, ErrorExportar } from "./
 import { DEFINICIONES_SUBIDA, crearHerramientasSubida, ErrorSubida } from "./estudio/subidaClaude.js";
 import { DEFINICION_KIT, crearHerramientaKit } from "./kitDescargable.js";
 import { DEFINICION_KIT_EDICION, crearHerramientaKitEdicion } from "./kitEdicion.js";
+import { DEFINICIONES_EDICION_MCP, crearHerramientasEdicion, ErrorEdicion } from "./estudio/herramientasEdicion.js";
 import { DEFINICIONES_CEREBRO, crearHerramientasCerebro, ErrorCerebro } from "./cerebro/herramientasCerebro.js";
 import { DEFINICIONES_CAMPANAS, crearHerramientasCampanas, ErrorCampanas } from "./herramientasCampanas.js";
 import { DEFINICIONES_TEXTOS, crearHerramientasTextos, ErrorTextos, avisosAlGuardar } from "./herramientasTextos.js";
@@ -166,6 +167,8 @@ export const HERRAMIENTAS_MCP = Object.freeze([
   DEFINICION_KIT,
   // El kit de EDICIÓN de videos grabados (worker/lib/kitEdicion.js): el ZIP del despliegue y el comando que lo instala.
   DEFINICION_KIT_EDICION,
+  // El EDITOR DE VIDEO GRABADO (worker/lib/estudio/herramientasEdicion.js): los estilos de edición del cliente.
+  ...DEFINICIONES_EDICION_MCP,
   // El cerebro y el estudio de mercado (worker/lib/cerebro/herramientasCerebro.js): guardar con confirmación, proponer notas y ángulos, ver el estudio.
   ...DEFINICIONES_CEREBRO,
   // Campañas y números (worker/lib/herramientasCampanas.js): los números del negocio, el plan de campañas y sus textos.
@@ -541,7 +544,7 @@ export function crearHerramientasMCP({ env, acceso, usuario, origen = "" }) {
       return { content: [{ type: "text", text: `Herramienta desconocida: ${nombre}` }], isError: true };
     } catch (e) {
       const delPedido = e instanceof ConflictoMes || e instanceof ErrorHerramienta || e instanceof ErrorHerramientaEstudio || e instanceof ErrorDiseno || e instanceof ErrorReceta || e instanceof ErrorVista || e instanceof ErrorHerramientaLoMejor || e instanceof ErrorExportar || e instanceof ErrorSubida
-        || e instanceof ErrorCerebro || e instanceof ErrorCampanas || e instanceof ErrorTextos || e instanceof ErrorEquipo;
+        || e instanceof ErrorCerebro || e instanceof ErrorCampanas || e instanceof ErrorTextos || e instanceof ErrorEquipo || e instanceof ErrorEdicion;
       if (!delPedido) console.error("mcp:", nombre, e);
       return { content: [{ type: "text", text: delPedido ? e.message : `No se pudo: ${e?.message ?? e}` }], isError: true };
     }
@@ -558,6 +561,7 @@ export function crearHerramientasMCP({ env, acceso, usuario, origen = "" }) {
   Object.assign(acciones, crearHerramientasSubida({ env, acceso, resolverCliente, usuario, por }));
   Object.assign(acciones, crearHerramientaKit({ env, acceso, resolverCliente, usuario }));
   Object.assign(acciones, crearHerramientaKitEdicion({ env, usuario, origen }));
+  Object.assign(acciones, crearHerramientasEdicion({ env, acceso, resolverCliente, por }));
   Object.assign(acciones, crearHerramientasCerebro({ env, acceso, resolverCliente, usuario, por }));
   Object.assign(acciones, crearHerramientasCampanas({ env, acceso, resolverCliente, usuario, por, buscarPublicacion: buscar }));
   Object.assign(acciones, crearHerramientasTextos({ env, acceso, resolverCliente, usuario, por, buscarPublicacion: buscar }));

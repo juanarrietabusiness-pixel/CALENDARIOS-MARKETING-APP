@@ -486,3 +486,21 @@ cortar, voz, música, mezcla) va aparte: en el chat tardó unos 2 min.
 
 **Sin probar en el chat de claude.ai**: la instalación de Remotion y su Chromium allí (aquí, el de la máquina), y que el
 render quepa en la memoria del chat.
+
+## 15. Fase 3 hecha (2026-11-21): los estilos de edición por cliente
+
+- **`kit.estilosEdicion`** (hasta 6), sin migración (decisión 4), con el mismo blindaje que la identidad de video: sólo
+  los escribe su ruta (`guardarKit(…, { conEdicion: true })`) y el PUT del kit los conserva. La forma, la de §4.2; lo que
+  no se entiende (una pieza o una transición que el kit no pinta, un número fuera de rango) se DICE y no se guarda nada.
+- **`estilo_de_edicion`** (MCP): sin nada, los estilos del cliente en frases; con `estilo`, uno entero en JSON (para
+  cambiarlo se guarda ENTERO con su id); con `guardar` crea o, con su id o el mismo nombre, reemplaza; `quitar`. Guardar y
+  quitar, sólo con `confirmado` tras el sí: la primera llamada enseña lo que se haría.
+- **El ZIP de la marca** (`kit_descargable`) lleva `estilos-edicion.json` y, en `musica/identidad/`, las músicas de su
+  identidad de video con su archivo (y `musicasIdentidad` en kit.json): quien edita escoge una de ésas, nunca compone otra.
+- **La siembra** (`docs/estilos-edicion/`): «Alex en obra» (Rofer, de v2 y de lo que corrigió Juan) y «Comunidad · persona
+  y pantalla» (de Comunidad v3: zoom 1 / 1,08, destello, cierre «ÚNETE GRATIS» con la web y el Instagram). Escritos, NO
+  guardados: entran en el calendario por `estilo_de_edicion` con el sí de la agencia.
+- **Lo que cambió de §4.2**: la música del estilo va en los mismos dB que los números del oficio (`OFICIO.musica`), no en
+  «dB bajo la voz», para que no haya dos escalas; y el plano medio sólo tiene que acercar más que el abierto (Comunidad
+  usa 1,08, por debajo del 1,2 que se pensó como mínimo).
+

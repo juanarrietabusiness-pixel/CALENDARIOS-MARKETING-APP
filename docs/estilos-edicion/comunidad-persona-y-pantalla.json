@@ -1,0 +1,15 @@
+{
+  "nombre": "Comunidad · persona y pantalla",
+  "tipo": "persona-y-pantalla",
+  "gancho": "una línea de gancho arriba desde el cuadro 0 y la palabra fuerte gigante detrás de la persona, sobre la pared",
+  "piezas": {
+    "textoDetras": "las palabras gigantes y las citas sobre la pared, detrás de la persona y sobre la cabeza, centradas en espacio de pantalla",
+    "celular": "lo que se explica de la página web va dentro de un teléfono (modo celular), con su título; la persona en la burbuja",
+    "titular": "la línea del gancho arriba, de una sola línea y con su ancho medido"
+  },
+  "camara": { "abierto": 1, "medio": 1.08, "seguir": 0, "golpeAlEntrar": true },
+  "transiciones": { "entreClips": "destello-obturador", "saltoMismoClip": "destello-obturador" },
+  "cierre": { "segundos": 3.7, "boton": "ÚNETE GRATIS", "numero": false, "usuario": true },
+  "ritmo": "zoom suave en cada corte (1 / 1,08) con golpe en las palabras clave; deriva lenta dentro del plano",
+  "notas": "Los textos NUNCA dentro del contenedor que hace zoom: en la v2 se inclinaban a un lado o se rompían. Una línea, anchos medidos, la parte visible centrada. El cierre lleva la web y el Instagram."
+}

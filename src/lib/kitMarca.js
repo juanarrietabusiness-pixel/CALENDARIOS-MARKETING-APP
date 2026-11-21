@@ -42,6 +42,7 @@ import { limpiarCanciones } from "./cancionesInstagram.js";
 import { limpiarEstilosVideo } from "./estilosVideo.js";
 import { limpiarLexico } from "./lexico.js";
 import { limpiarIdentidad } from "./identidadVideo.js";
+import { limpiarEstilosEdicion } from "./estilosEdicion.js";
 import { limpiarAnclas, lineaDeAnclas, anclasUsables, MAX_LINEA_ANCLAS } from "./anclasEstilo.js";
 
 /** Los presets, uno por tipo de contenido (los ids de `PILARES`, en pilares.js). `base`: la plantilla sin escribir. */
@@ -300,6 +301,9 @@ export function limpiarKit(guardado) {
     // La IDENTIDAD DE VIDEO (src/lib/identidadVideo.js): el estilo de la marca, sus músicas, sus efectos y sus subtítulos,
     // que comparten todos sus videos. Sólo la cambia su ruta (el PUT del kit la conserva). Sólo si la hay.
     ...(limpiarIdentidad(g.identidadVideo) ? { identidadVideo: limpiarIdentidad(g.identidadVideo) } : {}),
+    // Los ESTILOS DE EDICIÓN de sus videos GRABADOS (src/lib/estilosEdicion.js): las reglas con que se editan los clips de
+    // una persona hablando a cámara. Sólo los cambia su ruta (el PUT del kit los conserva). Sólo si los hay.
+    ...(limpiarEstilosEdicion(g.estilosEdicion).length ? { estilosEdicion: limpiarEstilosEdicion(g.estilosEdicion) } : {}),
     // Las REFERENCIAS DE ESTILO de la marca (src/lib/anclasEstilo.js): película, época, publicación, movimiento, técnica de
     // luz, siempre genéricas. Las lee el director y van en la línea de la marca. Sólo si las hay: un kit de antes no cambia.
     ...(limpiarAnclas(g.anclas).length ? { anclas: limpiarAnclas(g.anclas) } : {}),
