@@ -7,4 +7,4 @@
 // Claude (`kit_edicion`, el acta) dice de verdad con qué se editó un video.
 // ============================================================
 
-export const KIT_EDICION = Object.freeze({ version: "0.2.0", huella: "f078cd0e4489a1c7" });
+export const KIT_EDICION = Object.freeze({ version: "0.2.0", huella: "51fa1cf8e21d7d0f" });

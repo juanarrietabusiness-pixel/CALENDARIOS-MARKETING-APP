@@ -460,10 +460,24 @@ defecto**; `persona.completa: true` en el plan vuelve al recorte de todo.
 - **El logo se recorta** de su margen transparente antes de ponerlo (con margen salía pequeño en su tarjeta).
 - **El kit usa los núcleos que le dejan, no los de la máquina** (`hilos()` mira la afinidad; `KIT_HILOS` lo fija): el
   chat de claude.ai da 2.
+- **Remotion enlaza la carpeta de los cuadros en vez de copiarla** (`symlinkPublicDir`) y borra su paquete al acabar: cada
+  tramo copiaba 600 MB a /tmp sin borrarlos y el render de Rofer llenó el disco a la cuarta vuelta.
+- **`kit.mjs` sale con código 3 cuando un paso queda a medias** (como los de Python), para encadenarlo en un bucle.
 
 **Tiempos** (Rofer, 40 s de video, 1.101 cuadros):
 
-TIEMPOS_2H
+| Paso | 4 núcleos (aquí) | 2 núcleos (como el chat; `taskset`) |
+|---|---|---|
+| Geometría a 1/4 (todo el montaje) | 230 s | 389 s |
+| Recorte RVM (530 cuadros con texto detrás) | 416 s | 724 s (dos llamadas de 7 min) |
+| Cuadros etalonados y persona en WebP | 81 s | 160 s |
+| Escena y revisión de oficio | < 1 s | < 1 s |
+| Render por tramos de 5 s (9 tramos) | 225 s | 358 s |
+| Final (juntar, mezcla, medir, hoja) | 16 s | 20 s |
+| **Total de la imagen** | **≈ 16 min** | **≈ 27,5 min (unas 5 llamadas con el presupuesto de 420 s)** |
+
+Antes, con el recorte de todo y los cuadros en serie, la imagen tardaba ≈ 33 min con 4 núcleos. Lo de 2a (transcribir,
+cortar, voz, música, mezcla) va aparte: en el chat tardó unos 2 min.
 
 **Sin probar en el chat de claude.ai**: la instalación de Remotion y su Chromium allí (aquí, el de la máquina), y que el
 render quepa en la memoria del chat.

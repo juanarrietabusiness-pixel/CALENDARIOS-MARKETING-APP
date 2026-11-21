@@ -7,10 +7,13 @@
 // El navegador: el Chromium que ya haya (el del chat está en /opt/pw-browsers); si no hay ninguno, Remotion baja el suyo
 // (y en una red cerrada eso falla: se dice). Un tramo es un mp4 sin audio; kit.mjs los junta sin recodificar y les pone
 // la mezcla.
+//
+// La carpeta de los cuadros (cientos de MB) se ENLAZA en el paquete, no se copia (`symlinkPublicDir`), y el paquete se
+// borra al terminar: copiándola, cada tramo dejaba 600 MB en /tmp y el render de Rofer llenó el disco a la cuarta vuelta.
 // ============================================================
 import { bundle } from "@remotion/bundler";
 import { renderStill, renderMedia, selectComposition } from "@remotion/renderer";
-import { existsSync, readdirSync, mkdirSync } from "node:fs";
+import { existsSync, readdirSync, mkdirSync, rmSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import os from "node:os";
@@ -40,7 +43,9 @@ export function navegador() {
 const [accion, publicDir, salida, a, b] = process.argv.slice(2);
 const browserExecutable = navegador();
 const inicio = Date.now();
-const serveUrl = await bundle({ entryPoint: join(AQUI, "src", "index.jsx"), publicDir });
+const serveUrl = await bundle({ entryPoint: join(AQUI, "src", "index.jsx"), publicDir, symlinkPublicDir: true });
+const borrarPaquete = () => { try { rmSync(serveUrl, { recursive: true, force: true }); } catch { /* lo limpia el sistema */ } };
+process.on("exit", borrarPaquete);
 const composition = await selectComposition({ serveUrl, id: "Video", browserExecutable });
 const hilos = Math.max(1, Math.min(4, Number(process.env.KIT_HILOS) || os.availableParallelism()));
 if (accion === "muestras") {

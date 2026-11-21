@@ -1185,3 +1185,9 @@ contradicen, manda la de más abajo (la más nueva). Una trampa nueva de esta á
     el objetivo más alto, el gancho quedaba demasiado cerca y el titular del cuadro 0 se metía en la cara.
   · **Tocar las piezas del plan rehacía la voz y la música**: cada paso mira sólo su parte (`trabajo/plan/*.json`, que se
     reescribe sólo si cambia).
+  · **Remotion COPIA la carpeta pública al empaquetar** (`bundle({ publicDir })`) a /tmp/remotion-webpack-bundle-*, y no la
+    borra: con un empaquetado por tramo de 5 s y 600 MB de cuadros, el render de Rofer dejó 37 copias y llenó el disco
+    («ENOSPC … copyfile»: parece un fallo del render y es el disco). `symlinkPublicDir: true` la enlaza, y render.mjs
+    borra su paquete al salir.
+  · **Tiempos con 2 núcleos** (los del chat; medidos con `taskset -c 0,1`): la imagen de Rofer, ≈ 27,5 min en unas 5
+    llamadas de 7 min (propuesta §14). El recorte es lo que más pesa (1,34 s/cuadro).
