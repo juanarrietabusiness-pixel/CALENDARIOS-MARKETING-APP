@@ -94,6 +94,16 @@ describe("acta_de_edicion", () => {
     expect(r.texto).toMatch(new RegExp(`\\[${general}\\] En el MANUAL .*AÑADIR: «Sin modo celular`));
     expect(r.texto).toMatch(new RegExp(`\\[${marca}\\] En el ESTILO de la marca, «piezas.lista»: CAMBIAR «ARRIBA» POR`));
     expect(propuestas().map((p) => [p.destino, p.estado, p.client_id])).toEqual([["manual", "pendiente", null], ["estilo", "pendiente", "c1"]]);
+    // Y a la campana de los demás del espacio (quien editó ya las ve en el chat): aquí no hay nadie más, así que ninguno.
+    expect(db.sqlite.prepare("select count(*) as n from avisos").get().n).toBe(0);
+    db.sqlite.prepare("insert into users (id, email, password_hash, salt) values (?,?,?,?)").run("u-bruno", "b@a.com", "x", "x");
+    db.sqlite.prepare("insert into memberships (user_id, owner_id, rol, nombre, color) values (?,?,?,?,?)").run("u-bruno", ANA, "editor", "Bruno", "#FF0000");
+    await llamar("acta_de_edicion", { cliente: "Rofer", acta: ACTA, correcciones: [
+      { alcance: "marca", parte: "notas", operacion: "anadir", texto: "Más aire sobre el casco.", cita: "pegados al personaje" },
+    ] });
+    const aviso = db.sqlite.prepare("select * from avisos").get();
+    expect(aviso).toMatchObject({ user_id: "u-bruno", tipo: "edicion", enlace: "/cliente/c1/marca/kit" });
+    expect(aviso.texto).toMatch(/Claude propone aprender de la edición de Rofer Service: 1 para el estilo de Rofer Service/);
 
     const sin = await llamar("acta_de_edicion", { cliente: "Rofer", aplicar: [general, marca] });
     expect(sin.texto).toMatch(/NO SE HA APLICADO NADA/);

@@ -552,4 +552,11 @@ Rofer v2 rehecho con el kit nuevo: el mismo corte, pieza a pieza, y ningún huec
    quitarlos con confirmación en la propia fila. `/api/edicion/<cliente>/estilos` (GET, PUT entero, DELETE), por la misma
    función que `estilo_de_edicion`: lo que no se entiende es un 400 con cada cosa y no se guarda nada. Probado en Chromium
    a 390 px: crear, editar y quitar.
+3. **Las propuestas de lo que aprende**, para aceptar o rechazar con un botón: las GENERALES en Ajustes → Editor de video
+   (sólo las decide quien administra o un editor de toda la agencia; un colaborador ni las ve) y las DE LA MARCA junto a
+   los estilos de su cliente. Cada una con el texto exacto que cambia, las palabras de la persona y de qué edición salió.
+   Aceptar va por las mismas funciones que `acta_de_edicion`: una general es una versión nueva del manual; una de la
+   marca cambia su estilo o lo crea. Cuando `acta_de_edicion` deja propuestas, **avisa en la campana** a los demás del
+   espacio (quien editó ya las vio en su chat), con el enlace a donde se deciden. Probado en Chromium: aceptar en Ajustes
+   y rechazar en Kit y voz.
 

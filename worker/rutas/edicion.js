@@ -5,6 +5,13 @@
 //   GET    /api/edicion/<cliente>/estilos        Los ESTILOS DE EDICIÓN del cliente y lo que se puede escoger (piezas, tipos…)
 //   PUT    /api/edicion/<cliente>/estilos        Un estilo ENTERO: con su id (o el mismo nombre) lo reemplaza; sin él, uno nuevo
 //   DELETE /api/edicion/<cliente>/estilos/<id>   Lo quita
+//   GET    /api/edicion/propuestas[?cliente=<id>] Lo que propone aprender: las GENERALES (para el manual) y, con cliente, las
+//                                                DE LA MARCA (para su estilo), cada una con el texto exacto y la cita
+//   POST   /api/edicion/propuestas/<id>/aplicar  Aplicarla (el manual: una versión nueva; el estilo: ese campo)
+//   POST   /api/edicion/propuestas/<id>/descartar
+//
+// Aplicar y descartar van por las mismas funciones que acta_de_edicion (worker/lib/estudio/actasEdicion.js): una general
+// sólo la decide quien puede cambiar el manual; lo que ya no se puede aplicar exacto, caduca y se dice.
 //
 // Los estilos los escriben esta ruta y estilo_de_edicion (worker/lib/estudio/estilosEdicion.js: el kit, sólo por ahí). Lo
 // que no se entiende se dice y no se guarda nada (400 con cada cosa).
@@ -17,6 +24,7 @@ import { json, error, cuerpo, noEncontrado } from "../lib/respuesta.js";
 import { difundir, firma } from "../lib/vivo.js";
 import { estilosEdicionDe, guardarEstiloEdicion, quitarEstiloEdicion, ErrorEstiloEdicion } from "../lib/estudio/estilosEdicion.js";
 import { PIEZAS_ESTILO_EDICION, TRANSICIONES_EDICION, TIPOS_ESTILO_EDICION, MAX_ESTILOS_EDICION } from "../../src/lib/estilosEdicion.js";
+import { propuestasPendientes, aplicarPropuestas, descartarPropuestas, nombreDeParte, puedeCambiarManual, ErrorActa } from "../lib/estudio/actasEdicion.js";
 import { KIT_EDICION } from "../../src/lib/kitEdicionVersion.js";
 
 const leerJSON = (t, d) => { try { return typeof t === "string" ? JSON.parse(t) ?? d : (t ?? d); } catch { return d; } };
@@ -40,6 +48,41 @@ async function ultimasActas(acceso) {
 export async function rutasEdicion(req, env, { acceso, usuario, partes, metodo }) {
   const [, que, sub, id] = partes;
   if (que === "actas" && metodo === "GET") return json({ actas: await ultimasActas(acceso), kit: KIT_EDICION });
+
+  if (que === "propuestas") {
+    if (!sub && metodo === "GET") {
+      const clienteId = new URL(req.url).searchParams.get("cliente");
+      const cliente = clienteId ? await acceso.leerUno("clients", { id: clienteId }) : null;
+      if (clienteId && !cliente) return noEncontrado("Cliente");
+      const { generales, deMarca } = await propuestasPendientes(acceso, cliente);
+      // De dónde salió cada una: el cliente y el día de su acta.
+      const actas = new Map();
+      for (const p of [...generales, ...deMarca]) {
+        if (actas.has(p.actaId)) continue;
+        const a = await acceso.leerUno("edicion_actas", { id: p.actaId });
+        const c = a ? await acceso.leerUno("clients", { id: a.client_id }) : null;
+        actas.set(p.actaId, { cliente: c?.name ?? "", cuando: a?.created_at ?? "" });
+      }
+      const forma = (p) => ({ ...p, nombreParte: p.destino === "manual" ? nombreDeParte(p.parte) : p.parte, de: actas.get(p.actaId) });
+      return json({ generales: generales.map(forma), deMarca: deMarca.map(forma), puedeManual: puedeCambiarManual(usuario) });
+    }
+    if (sub && (id === "aplicar" || id === "descartar") && metodo === "POST") {
+      const fila = await acceso.leerUno("edicion_propuestas", { id: sub });
+      if (!fila) return noEncontrado("Propuesta");
+      const cliente = fila.client_id ? await acceso.leerUno("clients", { id: fila.client_id }) : { id: null, name: "" };
+      if (!cliente) return noEncontrado("Cliente");
+      try {
+        const [r] = id === "aplicar" ? await aplicarPropuestas(env, acceso, cliente, usuario, [sub]) : await descartarPropuestas(acceso, cliente, usuario, [sub]);
+        if (!r?.hecho) return error(`No se pudo: ${r?.motivo ?? "no se encontró"}.`, fila.destino === "manual" && !puedeCambiarManual(usuario) ? 403 : 409);
+        difundir(env, acceso.ownerId, fila.destino === "manual" ? { tipo: "ajustes", por: firma(usuario, req) } : { tipo: "estudio", clientId: fila.client_id, por: firma(usuario, req) });
+        return json({ ok: true, ...r });
+      } catch (e) {
+        if (e instanceof ErrorActa) return error(e.message);
+        throw e;
+      }
+    }
+    return noEncontrado("Ruta");
+  }
 
   if (que && sub === "estilos") {
     const cliente = await acceso.leerUno("clients", { id: que });

@@ -434,7 +434,9 @@ no aquí.
   (§11). Fase 1 (el manual del editor, con versiones, en Ajustes), 2a (el kit: corte y sonido, `kit_edicion`) y 2b (la
   imagen: recorte con RVM, cámara virtual, piezas de Remotion, muestras y render por tramos; Rofer v2 rehecho lado a
   lado, §14), 3 (los estilos de edición por cliente, `estilo_de_edicion`, §15) y 4 (la receta premium
-  `editar-video-grabado`, `guia_de_edicion` y `acta_de_edicion` con lo que aprende, §16) implementadas; 5 y 6, pendientes.
+  `editar-video-grabado`, `guia_de_edicion` y `acta_de_edicion` con lo que aprende, §16) y 5 (la pantalla: Ajustes → Editor de
+  video, los estilos en Marca → Kit y voz y las propuestas para aceptar o rechazar, §18) implementadas; kit v0.2.1 (§17). La
+  6 (la prueba de punta a punta con Baby Caleb), pendiente.
 - `docs/propuesta-cerebro-por-cliente.md` — un cerebro por cliente (notas en D1, índice
   en R2, ficha técnica y cifras, búsqueda por pasajes) en lugar de volcar el ADN entero
   en cada llamada. Fases 0 y 1 implementadas; memoria de decisiones, visualización,

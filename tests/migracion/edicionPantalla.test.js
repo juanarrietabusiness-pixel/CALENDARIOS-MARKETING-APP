@@ -97,3 +97,47 @@ describe("/api/edicion/<cliente>/estilos", () => {
     expect((await pedir(JEFE, "/edicion/c1/estilos/ee-noexiste01", { method: "DELETE" })).status).toBe(404);
   });
 });
+
+describe("/api/edicion/propuestas", () => {
+  // Dos propuestas del acta de Rofer: una GENERAL (para el manual) y una DE LA MARCA (para su estilo, que aún no tiene).
+  beforeEach(() => {
+    const s = db.sqlite;
+    const p = (id, cliente, destino, parte, operacion, antes, texto, cita) => s.prepare(`insert into edicion_propuestas
+      (id, owner_id, client_id, acta_id, destino, parte, operacion, antes, texto, cita, created_at) values (?,?,?,?,?,?,?,?,?,?,?)`)
+      .run(id, JEFE, cliente, "a1", destino, parte, operacion, antes, texto, cita, "2026-11-21T10:05:00.000Z");
+    p("pe-general01", null, "manual", "tipos.persona-a-camara", "anadir", "", "Sin modo celular si el video no lo tiene.", "eso debe pasar en todos los videos");
+    p("pe-marca0001", "c1", "estilo", "notas", "anadir", "", "Los textos un poco más arriba.", "pudieron quedar más arriba");
+  });
+
+  it("las generales y, con cliente, las de su marca, con el texto exacto, la cita y de qué edición salieron", async () => {
+    const r = await (await pedir(JEFE, "/edicion/propuestas?cliente=c1")).json();
+    expect(r.puedeManual).toBe(true);
+    expect(r.generales).toEqual([expect.objectContaining({ id: "pe-general01", nombreParte: expect.stringMatching(/Persona a cámara/), cita: "eso debe pasar en todos los videos", de: { cliente: "Rofer Service", cuando: "2026-11-21T10:00:00.000Z" } })]);
+    expect(r.deMarca.map((x) => [x.id, x.nombreParte])).toEqual([["pe-marca0001", "notas"]]);
+    expect((await (await pedir(JEFE, "/edicion/propuestas")).json()).deMarca).toEqual([]);
+  });
+
+  it("aceptar la general crea una versión nueva del manual; la de la marca crea su estilo; rechazar la deja fuera", async () => {
+    let r = await (await pedir(JEFE, "/edicion/propuestas/pe-general01/aplicar", { method: "POST" })).json();
+    expect(r).toMatchObject({ ok: true, hecho: true, version: 1 });
+    const m = await (await pedir(JEFE, "/manual-editor")).json();
+    expect(m.partes["tipos.persona-a-camara"]).toMatch(/Sin modo celular si el video no lo tiene\.$/);
+    r = await (await pedir(JEFE, "/edicion/propuestas/pe-marca0001/aplicar", { method: "POST" })).json();
+    expect(r).toMatchObject({ hecho: true, estilo: "Rofer Service · persona-a-camara" });
+    expect((await (await pedir(JEFE, "/edicion/c1/estilos")).json()).estilos[0].notas).toBe("Los textos un poco más arriba.");
+    // Otra vez, no.
+    expect((await pedir(JEFE, "/edicion/propuestas/pe-general01/aplicar", { method: "POST" })).status).toBe(409);
+    const s = await (await pedir(JEFE, "/edicion/propuestas?cliente=c1")).json();
+    expect([...s.generales, ...s.deMarca]).toEqual([]);
+  });
+
+  it("rechazar; y un colaborador no ve ni decide lo general (sólo lo de la marca de sus clientes)", async () => {
+    const c = await (await pedir(COLAB, "/edicion/propuestas?cliente=c1")).json();
+    expect(c.puedeManual).toBe(false);
+    expect(c.generales).toEqual([]);
+    expect(c.deMarca.map((x) => x.id)).toEqual(["pe-marca0001"]);
+    expect((await pedir(COLAB, "/edicion/propuestas/pe-general01/aplicar", { method: "POST" })).status).toBe(404);
+    expect((await (await pedir(COLAB, "/edicion/propuestas/pe-marca0001/descartar", { method: "POST" })).json())).toMatchObject({ hecho: true });
+    expect(db.sqlite.prepare("select estado from edicion_propuestas where id = 'pe-marca0001'").get().estado).toBe("descartada");
+  });
+});
