@@ -264,7 +264,8 @@ describe.skipIf(!disponible.playwright)("la aplicación abierta en Chromium", ()
       const marca = pagina.getByRole("group", { name: /propone aprender para su estilo/ });
       await marca.getByText("Los textos más arriba.").waitFor({ timeout: 30_000 });
       await marca.getByRole("button", { name: /^Rechazar/ }).click();
-      await marca.waitFor({ state: "detached", timeout: 20_000 });
+      await marca.getByText(/Rechazada: no se volverá a proponer/).waitFor({ timeout: 20_000 });
+      await marca.getByText("Los textos más arriba.").waitFor({ state: "detached", timeout: 20_000 });
       await noEnBlanco(pagina);
       expect(errores, errores.join("\n")).toEqual([]);
     } finally {

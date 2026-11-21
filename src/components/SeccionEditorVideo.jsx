@@ -43,7 +43,7 @@ export default function SeccionEditorVideo({ pulso = 0 }) {
         </p>
       </div>
 
-      {propuestas?.generales?.length > 0 && (
+      {propuestas && (
         <PropuestasEdicion titulo="Lo que propone aprender para el manual" propuestas={propuestas.generales} puede={propuestas.puedeManual}
           sinPermiso="Las decide quien administra o un editor de toda la agencia." onCambio={async () => { await leerPropuestas(); setVersionManual((v) => v + 1); }} />
       )}

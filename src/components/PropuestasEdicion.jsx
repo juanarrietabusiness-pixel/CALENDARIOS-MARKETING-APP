@@ -20,7 +20,9 @@ function queHace(p) {
 export default function PropuestasEdicion({ titulo, propuestas = [], puede = true, sinPermiso = "", onCambio }) {
   const [ocupada, setOcupada] = useState(null);
   const [aviso, setAviso] = useState(null);
-  if (!propuestas.length) return null;
+  // Sin propuestas y sin nada que decir, nada. Con el aviso de la última que se decidió, se queda (si se fuera con la
+  // lista, el «Aplicada» desaparecería en el acto: CI lo vio).
+  if (!propuestas.length && !aviso) return null;
 
   const decidir = async (p, aceptar) => {
     setOcupada(p.id); setAviso(null);
@@ -35,7 +37,7 @@ export default function PropuestasEdicion({ titulo, propuestas = [], puede = tru
   return (
     <div className="identidad-grupo" role="group" aria-label={titulo}>
       <p className="label" style={{ margin: 0 }}>{titulo} ({propuestas.length})</p>
-      <ul className="identidad-lista">
+      {propuestas.length > 0 && <ul className="identidad-lista">
         {propuestas.map((p) => (
           <li key={p.id} style={{ borderTop: "1px solid var(--border-light)", paddingTop: "var(--sp-2)", display: "grid", gap: "var(--sp-1)" }}>
             <p style={{ margin: 0, fontSize: "var(--fs-sm)" }}><strong>{p.nombreParte}</strong>: {queHace(p)}</p>
@@ -52,7 +54,7 @@ export default function PropuestasEdicion({ titulo, propuestas = [], puede = tru
             ) : <p className="hint" style={{ margin: 0 }}>{sinPermiso}</p>}
           </li>
         ))}
-      </ul>
+      </ul>}
       <div aria-live="polite">{aviso && <p role={aviso.ok ? "status" : "alert"} className={aviso.ok ? "hint" : "notice notice-error"} style={{ margin: 0 }}>{aviso.texto}</p>}</div>
     </div>
   );
