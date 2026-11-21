@@ -1332,3 +1332,21 @@ src/lib/
                           subtítulos (y los que se ocultan porque un gráfico ya lo dice) y la REVISIÓN DE OFICIO (lo que tapa la
                           cara, el texto que la cabeza no deja leer, la franja segura, el subtítulo encima de un gráfico, el cuadro 0)
 ```
+
+### El editor de video grabado — Fase 3: los estilos de edición por cliente
+
+```
+src/lib/
+  estilosEdicion.js       Los ESTILOS DE EDICIÓN (puro): las REGLAS con que se editan los videos grabados de un cliente (piezas y
+                          cuándo, cámara, transiciones, gancho, cierre, música); limpiarlos con lo que no se entiende dicho,
+                          hasta 6 y ~2.000 caracteres, y contarlos en frases. Lo importa kitMarca.js: pequeño y sin imports
+worker/lib/estudio/
+  estilosEdicion.js       Leerlos, comprobar uno antes de guardarlo (crear o reemplazar ENTERO), guardarlo y quitarlo (el kit, sólo
+                          por aquí: `guardarKit(…, { conEdicion: true })`)
+  herramientasEdicion.js  El editor de video grabado por MCP: `estilo_de_edicion` (ver, ver uno, guardar y quitar sólo con
+                          confirmado)
+docs/estilos-edicion/     Los estilos de SIEMBRA, escritos desde el código de Rofer v2 («Alex en obra») y Comunidad v3: se
+                          guardan por el MCP con el sí de la agencia (un test comprueba que se entienden enteros)
+tests/migracion/estilosEdicion.test.js  estilo_de_edicion contra D1: el sí, reemplazar, el tope, el PUT del kit y el ZIP de la marca
+```
+

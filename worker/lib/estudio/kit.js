@@ -55,10 +55,11 @@ export async function guardarLexico(env, acceso, cliente, lexico) {
 /**
  * Guarda el kit. El logo, si viene, tiene que ser una imagen de este cliente que exista. Los ESTILOS DE VIDEO guardados
  * (`estilosVideo`) sólo los cambian sus rutas (`conEstilos`, worker/lib/estudio/estilosVideo.js) y la identidad de video,
- * la suya (`conIdentidad`, worker/lib/estudio/identidadVideo.js): en lo demás se
+ * la suya (`conIdentidad`, worker/lib/estudio/identidadVideo.js) y los estilos de edición, la suya (`conEdicion`,
+ * worker/lib/estudio/estilosEdicion.js): en lo demás se
  * conservan los guardados, así el kit abierto en otra pestaña antes de guardar un estilo no se lo lleva al guardarse.
  */
-export async function guardarKit(env, acceso, cliente, entrada, { conEstilos = false, conLexico = false, conIdentidad = false } = {}) {
+export async function guardarKit(env, acceso, cliente, entrada, { conEstilos = false, conLexico = false, conIdentidad = false, conEdicion = false } = {}) {
   const kit = limpiarKit(entrada);
   if (!conEstilos) {
     const guardados = kitDe(cliente).estilosVideo;
@@ -70,6 +71,12 @@ export async function guardarKit(env, acceso, cliente, entrada, { conEstilos = f
     const guardada = kitDe(cliente).identidadVideo;
     if (guardada) kit.identidadVideo = guardada;
     else delete kit.identidadVideo;
+  }
+  // Los estilos de edición de los videos grabados, igual: sólo los cambia su ruta (worker/lib/estudio/estilosEdicion.js).
+  if (!conEdicion) {
+    const guardados = kitDe(cliente).estilosEdicion;
+    if (guardados?.length) kit.estilosEdicion = guardados;
+    else delete kit.estilosEdicion;
   }
   // El léxico de la marca, igual: sólo lo cambia su ruta (`guardarLexico`).
   if (!conLexico) {

@@ -1,0 +1,21 @@
+{
+  "nombre": "Alex en obra",
+  "tipo": "persona-a-camara",
+  "gancho": "afirmación de dolor gigante en el cielo detrás de Alex, completa desde el cuadro 0 (LO MÁS CARO / DE UNA OBRA)",
+  "piezas": {
+    "textoDetras": "gancho, datos fuertes (+20 AÑOS) y la pregunta del llamado; en el cielo, con aire sobre el casco, nunca pegado a él",
+    "tachado": "lo que el cliente hace mal, tachado al decirlo",
+    "cinta": "lo negativo (EQUIPO EQUIVOCADO), atravesada arriba",
+    "sello": "sólo datos verificados de la marca (FLOTA PROPIA · 14 EQUIPOS)",
+    "fichas": "pares que se comparan (TIEMPO / DINERO)",
+    "lista": "lo que hacemos, numerado y ARRIBA: nunca a la altura de la cara",
+    "preguntas": "las 3 preguntas antes de contratar, numeradas",
+    "whatsapp": "en el cierre, con el número de la nota «Datos del negocio»",
+    "placasNumeradas": true
+  },
+  "camara": { "abierto": 1.13, "medio": 1.47, "seguir": 0.55, "maxAcercar": 2, "golpeAlEntrar": true },
+  "transiciones": { "entreClips": "barrido-diagonal", "saltoMismoClip": "destello-obturador" },
+  "cierre": { "segundos": 3, "boton": "ESCRÍBANOS AL WHATSAPP", "numero": true, "usuario": true },
+  "ritmo": "acercamiento alterno en cada corte (abierto / medio); silencios a 0,10 s; nada de modo celular ni candado",
+  "notas": "Alex tutea al hablar: se deja tal cual («vías», «urbanismos»). Lo escrito por la marca, de usted. Si el llamado sale flojo (baja la voz), se rescata: sube el llamado, presencia y un poco más rápido. La música, de la biblioteca de Rofer o de Suno, nunca compuesta."
+}

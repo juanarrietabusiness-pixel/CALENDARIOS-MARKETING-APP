@@ -7,7 +7,9 @@
 //   letras/        la tipografía real de la marca (TTF, OTF, WOFF…), si el kit la tiene
 //   productos/     las fotos de cada producto ACTIVO del catálogo, una carpeta por producto
 //   personajes/    las imágenes de los personajes de la marca
-//   musica/        la música de la marca (la favorita del cliente o, si no tiene, la de la agencia)
+//   musica/        la música de la marca (la favorita del cliente o, si no tiene, la de la agencia) y, en
+//                  musica/identidad/, las de su IDENTIDAD DE VIDEO (las que se usan en sus videos, editados incluidos)
+//   estilos-edicion.json  sus ESTILOS DE EDICIÓN (las reglas de sus videos grabados), si los tiene
 //   paleta.json    los colores del kit (hex, nombre y papel) y los TOKENS con que los dibuja el motor de video
 //   kit.json       lo demás del kit (estilo, luz, lo que nunca, reglas, la letra, el logo) y los productos con su precio
 //   LEEME.txt      qué hay y cómo se usa
@@ -24,6 +26,9 @@ import { zipPorFlujo, nombreSeguro, ErrorExportar, MAX_ARCHIVOS_ZIP, MAX_BYTES_Z
 import { limpiarKit } from "../../src/lib/kitMarca.js";
 import { limpiarCatalogo } from "../../src/lib/estudioMercado.js";
 import { paletaDelKit } from "../../src/lib/motorVideo.js";
+import { limpiarIdentidad } from "../../src/lib/identidadVideo.js";
+import { limpiarEstilosEdicion } from "../../src/lib/estilosEdicion.js";
+import { sonidoParaVideo } from "./estudio/sonidos.js";
 
 const USO = "kit-zip";
 export const RUTA_KIT = `${RUTA_EXPORTAR}kit/`;
@@ -37,7 +42,8 @@ export const DEFINICION_KIT = Object.freeze({
   name: "kit_descargable",
   description:
     "Todo lo de la MARCA de un cliente en un ZIP, para trabajar fuera del calendario (armar un video o una imagen con código): el logo original, la " +
-    "tipografía real (TTF/OTF), las fotos de cada producto activo del catálogo (una carpeta por producto), los personajes, la música de la marca, " +
+    "tipografía real (TTF/OTF), las fotos de cada producto activo del catálogo (una carpeta por producto), los personajes, la música de la marca " +
+    "(y las de su identidad de video), sus estilos de edición de videos grabados (estilos-edicion.json), " +
     "paleta.json (hex, nombre y papel de cada color, y los tokens fondo/texto/acento… con que los dibuja el motor de video) y kit.json (estilo, luz, " +
     "lo que nunca, reglas, productos con su precio). Devuelve un enlace que funciona sin iniciar sesión durante 15 minutos. Lo hecho con él se " +
     "sube con subir_a_galeria. Sólo lee: no gasta IA ni cambia nada.",
@@ -84,6 +90,18 @@ export async function planDelKit(acceso, cliente) {
     }
   }
 
+  // Las músicas de la IDENTIDAD DE VIDEO (src/lib/identidadVideo.js), cada una con su archivo: quien edita fuera escoge una
+  // de éstas (nunca compone otra). Del cliente, o de la biblioteca de ESTE espacio.
+  const musicasIdentidad = [];
+  for (const m of limpiarIdentidad(crudo.identidadVideo)?.musicas ?? []) {
+    const p = await sonidoParaVideo(acceso, cliente.id, m.id).catch(() => null);
+    if (!p?.clave) continue;
+    const propiaDelCliente = p.de !== "agencia";
+    if (!propiaDelCliente && !String(p.clave).startsWith(`biblioteca/${acceso.ownerId}/`)) continue;
+    const ruta = `musica/identidad/${nombreSeguro(p.nombre, 40) || p.archivoId}-${p.archivoId.slice(0, 6)}.${extension(p.clave, "mp3")}`;
+    if (poner(ruta, p.clave, propiaDelCliente)) musicasIdentidad.push({ id: p.archivoId, nombre: p.nombre, archivo: ruta, ...(propiaDelCliente ? {} : { de: "agencia" }) });
+  }
+
   for (const p of kit.personajes) {
     p.imagenes.forEach((c, i) => poner(`personajes/${nombreSeguro(p.nombre, 30) || "personaje"}/${String(i + 1).padStart(2, "0")}.${extension(c, "png")}`, c));
   }
@@ -116,23 +134,30 @@ export async function planDelKit(acceso, cliente) {
         letra: letra ? { archivo: letra, nombre: kit.fuente.nombre } : null, tipografia: kit.tipografia || null,
         estilo: kit.estilo || null, luz: kit.luz || null, nunca: kit.evitar || null, reglas: kit.reglas,
         ...(crudo.estiloVideo ? { estiloVideo: kit.estiloVideo ?? crudo.estiloVideo } : {}),
-        musica: musica ? { ...musica, archivo: archivos.find((a) => a.ruta.startsWith("musica/"))?.ruta } : null,
+        musica: musica ? { ...musica, archivo: archivos.find((a) => a.ruta.startsWith("musica/") && !a.ruta.startsWith("musica/identidad/"))?.ruta } : null,
+        ...(musicasIdentidad.length ? { musicasIdentidad } : {}),
         personajes: kit.personajes.map((p) => ({ nombre: p.nombre, descripcion: p.descripcion })),
         productos,
       }, null, 2),
     },
   ];
-  textos.push({ ruta: "LEEME.txt", texto: leeme(cliente.name, { logo, letra, musica, productos, personajes: kit.personajes.length, omitidos }) });
-  return { archivos, textos, omitidos, productos, logo, letra, musica };
+  const estilosEdicion = limpiarEstilosEdicion(crudo.estilosEdicion);
+  if (estilosEdicion.length) {
+    textos.push({ ruta: "estilos-edicion.json", texto: JSON.stringify({ estilos: estilosEdicion, nota: "Las REGLAS con que se editan los videos grabados de la marca. Lo que no dicen sale del manual del editor (guia_de_edicion) y de los números del oficio." }, null, 2) });
+  }
+  textos.push({ ruta: "LEEME.txt", texto: leeme(cliente.name, { logo, letra, musica, productos, personajes: kit.personajes.length, omitidos, musicasIdentidad, estilosEdicion }) });
+  return { archivos, textos, omitidos, productos, logo, letra, musica, musicasIdentidad, estilosEdicion };
 }
 
-function leeme(nombre, { logo, letra, musica, productos, personajes, omitidos }) {
+function leeme(nombre, { logo, letra, musica, productos, personajes, omitidos, musicasIdentidad = [], estilosEdicion = [] }) {
   return [
     `Kit de marca de ${nombre} (Juancito Ads).`,
     "",
     `Logo: ${logo || "el kit no tiene logo."}`,
     `Letra: ${letra || "el kit no tiene archivo de letra (usa la tipografía que dice kit.json)."}`,
     `Música: ${musica ? `musica/ (${musica.de === "agencia" ? "la de la agencia: el cliente no tiene una favorita" : "la de la marca"})` : "ninguna marcada como favorita."}`,
+    musicasIdentidad.length ? `Músicas de su identidad de video: ${musicasIdentidad.length} (musica/identidad/; en kit.json, musicasIdentidad). Los videos de la marca usan una de éstas.` : "",
+    estilosEdicion.length ? `Estilos de edición de sus videos grabados: ${estilosEdicion.map((e) => `«${e.nombre}»`).join(", ")} (estilos-edicion.json).` : "",
     `Productos: ${productos.length} (fotos en productos/<producto>/; precios en kit.json: úsalos tal cual, nunca otros).`,
     personajes ? `Personajes: ${personajes} (personajes/).` : "",
     omitidos ? `OJO: ${omitidos} fotos de productos no cupieron en el ZIP (tope de ${MAX_ARCHIVOS_ZIP} archivos).` : "",
@@ -164,6 +189,9 @@ export function crearHerramientaKit({ env, acceso, resolverCliente, usuario }) {
       return [
         `Kit de marca de ${c.name}: ${plan.archivos.length - faltan.length} archivos (unos ${megas(bytes)}) + paleta.json, kit.json y LEEME.txt.`,
         `· Logo: ${plan.logo ? "sí" : "NO (el kit no tiene logo)"} · Letra: ${plan.letra ? "sí" : "no"} · Música: ${plan.musica ? (plan.musica.de === "agencia" ? "la de la agencia" : "la de la marca") : "ninguna"} · Productos: ${plan.productos.length} (${fotos} fotos)`,
+        plan.musicasIdentidad.length || plan.estilosEdicion.length
+          ? `· Músicas de la identidad de video: ${plan.musicasIdentidad.length} · Estilos de edición: ${plan.estilosEdicion.length ? plan.estilosEdicion.map((e) => `«${e.nombre}»`).join(", ") : "ninguno"}`
+          : "",
         plan.omitidos ? `OJO: ${plan.omitidos} fotos de productos no caben (tope de ${MAX_ARCHIVOS_ZIP} archivos).` : "",
         faltan.length ? `OJO: estos ya no están en el almacenamiento y no irán: ${faltan.join(", ")}.` : "",
         `Descarga (vale 15 minutos, sin iniciar sesión): ${url}`,
