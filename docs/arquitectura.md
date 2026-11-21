@@ -1372,3 +1372,16 @@ tests/migracion/edicionGuiaActa.test.js  La guía (el contacto de Rofer y sus av
                           un colaborador y la receta
 ```
 
+### El editor de video grabado — Fase 5: la pantalla
+
+```
+src/components/
+  SeccionEditorVideo.jsx  Ajustes → «Editor de video» (lazy): la versión del kit, las últimas ediciones (las actas, con lo que
+                          corrigió la persona) y el manual del editor (SeccionManualEditor, en su propio chunk)
+src/lib/
+  edicionApi.js           Cliente de /api/edicion
+worker/rutas/
+  edicion.js              /api/edicion: las actas (y, en las entregas siguientes de la Fase 5, los estilos y las propuestas)
+tests/migracion/edicionPantalla.test.js  /api/edicion contra D1: lo que ve cada quien
+```
+

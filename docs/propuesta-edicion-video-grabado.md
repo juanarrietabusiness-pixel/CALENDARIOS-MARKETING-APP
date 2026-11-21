@@ -540,3 +540,10 @@ lo arregló en su copia; en el kit del calendario, v0.2.1:
 
 Rofer v2 rehecho con el kit nuevo: el mismo corte, pieza a pieza, y ningún hueco en sus 128 palabras.
 
+## 18. Fase 5: la pantalla (un pull request por cosa)
+
+1. **Ajustes → «Editor de video»**, una sección propia en el índice de Ajustes (antes, el manual iba escondido dentro del
+   manual de campañas): la versión vigente del kit y cómo se usa, las **últimas ediciones** (las actas: cliente, tipo,
+   kit y manual con que se hizo, duración, LUFS y cuántas correcciones de la persona) y el manual del editor con sus
+   versiones. Probado abriéndolo en Chromium (tests/vivo/navegador.test.js), también a 390 px.
+

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import Icon from "./Icon";
 import { leerManual, guardarManual } from "../lib/anunciosApi";
 import { editaLaAgencia } from "../lib/sesionActual";
@@ -7,9 +7,6 @@ import { MANUAL_DISENO_BASE, MAX_MANUAL_DISENO, DISENO_POR_TIPO, MAX_DISENO_TIPO
 import { CAMPOS_UMBRALES_3Q, UMBRALES_3Q } from "../lib/umbrales3q";
 import ManualCiclo from "./anuncios/ManualCiclo";
 import { errorDelCiclo } from "../lib/manualCiclo";
-
-// El manual del editor de videos grabados, en su propio chunk: su base pesa y casi nadie lo abre.
-const SeccionManualEditor = lazy(() => import("./SeccionManualEditor"));
 
 // ============================================================
 // Ajustes → Manual de campañas de la agencia
@@ -34,8 +31,6 @@ export default function SeccionManualCampanas({ pulso = 0 }) {
   const [cambiado, setCambiado] = useState(false);
   const [aviso, setAviso] = useState(null);
   const [guardando, setGuardando] = useState(false);
-  // El manual del editor se carga (su chunk y su lectura) la primera vez que se abre.
-  const [editorAbierto, setEditorAbierto] = useState(false);
   const puede = editaLaAgencia();
 
   useEffect(() => { leerManual().then((x) => { setM(x); setCambiado(false); }).catch((e) => setAviso({ ok: false, texto: e.message })); }, [pulso]);
@@ -136,14 +131,7 @@ export default function SeccionManualCampanas({ pulso = 0 }) {
           ) : <p className="hint">Lo cambian el administrador y los editores de la agencia.</p>}
         </>
       )}
-      <details className="field" style={{ borderTop: "1px solid var(--border)", paddingTop: "var(--sp-3)" }} onToggle={(e) => { if (e.currentTarget.open) setEditorAbierto(true); }}>
-        <summary className="label" style={{ display: "list-item", cursor: "pointer", minHeight: "var(--tap-sm)" }}>Editor de video: cómo se editan los videos grabados</summary>
-        {editorAbierto && (
-          <Suspense fallback={<p className="hint">Cargando…</p>}>
-            <SeccionManualEditor pulso={pulso} />
-          </Suspense>
-        )}
-      </details>
+      <p className="hint" style={{ margin: 0 }}>El manual del editor de videos grabados está en su sección: <a href="#editor-video">Editor de video</a>.</p>
     </section>
   );
 }
