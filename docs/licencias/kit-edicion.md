@@ -15,9 +15,6 @@ terceros: el instalador los baja de su origen. No es asesoría legal.
 | Efectos del catálogo | Los efectos de la mezcla | earshot (MIT) y uisfx (CC0), ya en el calendario | Del sitio publicado (`/efectos/v1/`) |
 | Música | — | La de la biblioteca del cliente o de Suno (por Kie): lo que permite Suno depende del plan con que se generó | Del calendario |
 
-Pendiente de la Fase 2b (docs/propuesta-edicion-video-grabado.md §6 y §11): Remotion (gratis hasta 3 empleados) y la
-segmentación de la persona (RVM GPL-3.0, bajado de su origen, frente a SAM 2.1 y MediaPipe, Apache-2.0).
-
 ## Fase 2b (la imagen)
 
 | Pieza | Para qué | Licencia | Cómo llega |

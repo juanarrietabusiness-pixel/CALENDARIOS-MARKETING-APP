@@ -419,3 +419,51 @@ Valen para todas las fases y mandan sobre lo que diga el resto del documento.
 - **Lo que queda para la 2b:** recorte de la persona, cabeza y cámara virtual, etalonado, las piezas de Remotion, los
   cuadros de muestra de la propuesta corta y el render por tramos. Y para la 3: que el ZIP de la marca lleve las músicas
   de la identidad (hoy la canción se baja con `exportar_piezas`).
+
+## 14. Fase 2b hecha (2026-11-21): la imagen, y Rofer v2 rehecho lado a lado
+
+**La prueba de segmentación** (decisión 1), en dos cuadros de Rofer con el texto gigante detrás del casco, cerca (clip
+1434) y lejos (1450), compuestos igual que en v2 y mirados a tamaño real:
+
+| Modelo | Licencia | s/cuadro (4 CPU) | El borde con el texto detrás |
+|---|---|---|---|
+| RVM resnet50 | GPL-3.0 (se baja de su origen) | 0,95–0,99 | Limpio en el casco y las manos, cerca y lejos: como v2 |
+| RVM mobilenetv3 | GPL-3.0 | 0,40 | Casi igual, con el borde del casco algo más blando |
+| MediaPipe selfie | Apache-2.0 | 0,12–0,13 | Borde borroso: el texto se funde con el casco (halo), peor lejos |
+| SAM 2.1 tiny | Apache-2.0 | 2,2–2,3 | Halo blando en el casco (el texto se cuela) y el más lento |
+
+Ganó **RVM resnet50**, bajado por `instalar.sh` de su origen (GitHub) y comprobado por sha256: el kit no lo lleva dentro.
+(El parpadeo medido del borde favorecía a MediaPipe, pero porque su borde es una mancha fija: no parpadea porque no
+sigue el contorno.)
+
+**Rofer v2 rehecho desde sus 5 clips** con el kit v0.2.0 y comparado lado a lado con el de la galería (en la galería de
+Juancito Ads, «PRUEBA interna — no publicar»): mismo corte, mismas piezas en los mismos segundos (el titular del cuadro
+0, EQUIPO EQUIVOCADO tachado, +20 AÑOS detrás, las fichas, la lista, ALQUILER, 3 PREGUNTAS, el sello, ¿UNA OBRA?, el
+botón de WhatsApp y el cierre), los mismos 13 subtítulos ocultos donde un gráfico ya lo dice, 40,1 s, −14,0 LUFS y
+−1,4 dBTP. Lo único que v2 tiene y el kit no: las siluetas de excavadora del trío (un dibujo hecho a mano para Rofer; la
+pieza acepta `imagen` para ponerlas).
+
+**El ahorro** (decisión 9: sólo si no se ve peor). El recorte bueno es lo más lento (en Rofer, 1.101 cuadros a ~1 s). Se
+probó hacerlo sólo donde hay un texto DETRÁS de la persona (530 cuadros) y, para la cámara, la geometría del resto con RVM
+a 1/4 de resolución: 646 s frente a 1.068 (−40 %). Comparado con el recorte completo, cuadro a cuadro: PSNR mediana
+43,3 dB donde hay texto detrás (lo que importa: el borde) y 35,2 dB donde no (la persona sin la sombra suave que le da la
+capa recortada, y la cámara con la cabeza medida a 1/4). Lado a lado, en los peores cuadros, no se distingue. Queda **por
+defecto**; `persona.completa: true` en el plan vuelve al recorte de todo.
+
+**Lo que cambió respecto de la propuesta:**
+
+- **Revisión de oficio antes del render** (`revisarEscena`): el cuadro 0 sin gancho, una pieza de delante que tapa la cara,
+  la cabeza tapando más del 35 % de un texto detrás, lo que se sale de la franja segura (con el contorno real de las
+  letras) y el subtítulo encima de un gráfico. Lo grave para el render hasta que el plan diga `revision: "aceptada"`.
+- **Cada paso depende sólo de su parte del plan** (`trabajo/plan/*.json`): tocar las piezas ya no rehace la voz ni la música.
+- **La cámara acerca a la persona lejos** hasta que mida 1.000 px (abierto) o 1.300 (medio), hasta 2×, y la sigue al 55 %.
+- **El logo se recorta** de su margen transparente antes de ponerlo (con margen salía pequeño en su tarjeta).
+- **El kit usa los núcleos que le dejan, no los de la máquina** (`hilos()` mira la afinidad; `KIT_HILOS` lo fija): el
+  chat de claude.ai da 2.
+
+**Tiempos** (Rofer, 40 s de video, 1.101 cuadros):
+
+TIEMPOS_2H
+
+**Sin probar en el chat de claude.ai**: la instalación de Remotion y su Chromium allí (aquí, el de la máquina), y que el
+render quepa en la memoria del chat.

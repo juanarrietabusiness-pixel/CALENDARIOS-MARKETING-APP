@@ -21,7 +21,7 @@ import time
 import cv2
 import numpy as np
 
-from comun import KIT, escribir_json, leer_json, trabajo
+from comun import KIT, escribir_json, hilos, leer_json, trabajo
 
 T = trabajo()
 P = leer_json(os.path.join(T, "persona_plan.json"))
@@ -52,7 +52,7 @@ def geometria(a):
 import onnxruntime as ort  # noqa: E402
 
 so = ort.SessionOptions()
-so.intra_op_num_threads = os.cpu_count() or 2
+so.intra_op_num_threads = hilos()
 sesion = ort.InferenceSession(MODELO, so, providers=["CPUExecutionProvider"])
 hechos = faltan = 0
 for clip, desde, hasta in P["tramos"]:

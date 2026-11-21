@@ -18,7 +18,7 @@ import cv2
 import numpy as np
 from PIL import Image
 
-from comun import leer_json, trabajo
+from comun import hilos, leer_json, trabajo
 
 T = trabajo()
 P = leer_json(os.path.join(T, "cuadros_plan.json"))
@@ -33,7 +33,7 @@ os.makedirs(CAM, exist_ok=True)
 os.makedirs(PER, exist_ok=True)
 inicio = time.time()
 
-# Con `conPersona` (persona.soloDetras), la persona recortada sólo en esos cuadros de salida.
+# Con `conPersona` (lo normal: sin `persona.completa`), la persona recortada sólo en esos cuadros de salida.
 CON_PERSONA = set(P["conPersona"]) if P.get("conPersona") is not None else None
 lleva_persona = lambda f: CON_PERSONA is None or f in CON_PERSONA
 
@@ -48,7 +48,7 @@ for f, x in enumerate(P["fuente"]):
 
 # Codificar JPEG y sobre todo WebP con transparencia es lo que más tarda (en Rofer, 9 min de 1.101 cuadros en serie):
 # se reparte entre hilos (Pillow y OpenCV sueltan el GIL al codificar).
-pool = ThreadPoolExecutor(max_workers=os.cpu_count() or 2)
+pool = ThreadPoolExecutor(max_workers=hilos())
 pendientes = []
 
 
@@ -98,10 +98,11 @@ for clip in sorted(necesita):
                 break
             if n in quiere:
                 im = np.frombuffer(buf, np.uint8).reshape(H, W, 3).copy()
-                alfa = cv2.imread(os.path.join(T, "alfa", clip, f"{n:05d}.png"), 0)
+                ruta_alfa = os.path.join(T, "alfa", clip, f"{n:05d}.png")
+                alfa = cv2.imread(ruta_alfa, 0) if os.path.exists(ruta_alfa) else None
                 pendientes.append(pool.submit(guardar, im, alfa, quiere[n]))
                 # Que la cola no crezca sin tope en memoria (cada cuadro son 6 MB).
-                if len(pendientes) > 4 * (os.cpu_count() or 2):
+                if len(pendientes) > 4 * hilos():
                     h, s_ = pendientes.pop(0).result()
                     hechos += h
                     sin_alfa += s_

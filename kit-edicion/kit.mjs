@@ -338,11 +338,13 @@ function lineaYFuente() {
 }
 
 /**
- * Los cuadros de salida que necesitan a la persona recortada: todos, o con `persona.soloDetras` en el plan, sólo los que
- * tienen un texto DETRÁS de la persona (con 0,15 s de margen). → Set, o null = todos.
+ * Los cuadros de salida que necesitan a la persona recortada: por defecto, sólo los que tienen un texto DETRÁS de la
+ * persona (con 0,15 s de margen); el resto lleva la geometría rápida (geometria.py) para la cámara. En Rofer v2, 40 %
+ * menos de tiempo y lado a lado no se distingue (propuesta §14). Con `persona.completa: true` en el plan, todos. → Set,
+ * o null = todos.
  */
 function conPersona(p, linea) {
-  if (!p.persona?.soloDetras) return null;
+  if (p.persona?.completa) return null;
   const { palabras } = leer(join(T, "linea.json"));
   const det = escenaSinCuadros(p, linea, palabras).datos.piezas.filter((x) => ["titular", "gigante", "tachado", "trio"].includes(x.tipo) && x.desde !== null);
   const set = new Set();

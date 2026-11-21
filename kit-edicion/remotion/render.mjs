@@ -42,7 +42,7 @@ const browserExecutable = navegador();
 const inicio = Date.now();
 const serveUrl = await bundle({ entryPoint: join(AQUI, "src", "index.jsx"), publicDir });
 const composition = await selectComposition({ serveUrl, id: "Video", browserExecutable });
-const hilos = Math.max(1, Math.min(4, os.cpus().length));
+const hilos = Math.max(1, Math.min(4, Number(process.env.KIT_HILOS) || os.availableParallelism()));
 if (accion === "muestras") {
   mkdirSync(salida, { recursive: true });
   for (const f of a.split(",").map(Number)) {

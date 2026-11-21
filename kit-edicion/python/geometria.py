@@ -1,6 +1,6 @@
 """La GEOMETRÍA de la persona sin el recorte a resolución completa: RVM resnet50 sobre el cuadro a 1/4 (270×480, ~16
 veces menos trabajo) sólo para saber dónde está la cabeza (tope, centro, ancho) y los pies, que es lo que necesita la
-cámara virtual. Con `persona.soloDetras` en el plan, el recorte bueno (persona.py) se hace sólo donde hay un texto detrás
+cámara virtual. Por defecto (sin `persona.completa` en el plan), el recorte bueno (persona.py) se hace sólo donde hay un texto detrás
 de la persona, y esto da la geometría del resto. REANUDABLE por clip.
 
 Lee trabajo/persona_plan.json (los tramos de origen de TODO el montaje). Uso: geometria.py <trabajo> [presupuesto_s]
@@ -13,7 +13,7 @@ import time
 import cv2
 import numpy as np
 
-from comun import KIT, escribir_json, leer_json, trabajo
+from comun import KIT, escribir_json, hilos, leer_json, trabajo
 
 T = trabajo()
 P = leer_json(os.path.join(T, "persona_plan.json"))
@@ -25,7 +25,7 @@ inicio = time.time()
 import onnxruntime as ort  # noqa: E402
 
 so = ort.SessionOptions()
-so.intra_op_num_threads = os.cpu_count() or 2
+so.intra_op_num_threads = hilos()
 sesion = ort.InferenceSession(MODELO, so, providers=["CPUExecutionProvider"])
 faltan = 0
 for clip, desde, hasta in P["tramos_todos"]:

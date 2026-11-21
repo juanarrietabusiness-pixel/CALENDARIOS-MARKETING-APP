@@ -17,6 +17,17 @@ SR = 48000
 KIT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
+def hilos():
+    """Los núcleos que este proceso PUEDE usar (el chat da 2 aunque la máquina diga más: os.cpu_count() mira la máquina,
+    la afinidad mira lo que nos dejan). KIT_HILOS lo fija a mano."""
+    if os.environ.get("KIT_HILOS", "").isdigit():
+        return max(1, int(os.environ["KIT_HILOS"]))
+    try:
+        return max(1, len(os.sched_getaffinity(0)))
+    except AttributeError:
+        return os.cpu_count() or 2
+
+
 def trabajo():
     if len(sys.argv) < 2:
         sys.exit("Falta la carpeta de trabajo (la arma «node kit.mjs»).")

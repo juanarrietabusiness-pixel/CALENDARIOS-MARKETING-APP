@@ -1160,3 +1160,28 @@ contradicen, manda la de más abajo (la más nueva). Una trampa nueva de esta á
   · **Tiempos medidos aquí** (4 CPU; el chat tiene 2): instalar con modelos, 46 s; transcribir los 5 clips (52 s de
     audio), 32 s; de transcribir al corte en crudo, 83 s. **Sin probar en el chat de claude.ai**: la instalación allí, sus
     tiempos con 2 CPU y que su red deje bajar los efectos del sitio (el dominio está en su lista permitida).
+
+- **El kit de edición, Fase 2b (la imagen): lo que no se ve leyendo el código** (kit-edicion/, src/lib/camaraEdicion.js,
+  escenaEdicion.js; la prueba y los tiempos en docs/propuesta-edicion-video-grabado.md §14).
+  · **MediaPipe necesita libEGL** aunque corra en CPU (`ImportError: libEGL.so.1` en una máquina sin pantalla) y baja su
+    modelo de googleapis: para la prueba se corrió su .tflite con LiteRT. No ganó, así que el kit no lo lleva.
+  · **El ONNX de SAM 2.1 trae los pesos aparte** (`external data`) y los busca con el nombre original del archivo: si se
+    renombra, no abre. Tampoco ganó.
+  · **RVM es recurrente**: cada tramo nuevo empieza 20 cuadros antes para que se asiente, así que dos tramos del mismo clip
+    con un hueco de ≤ 20 cuadros se recorren de una vez (sale más barato que calentar otra vez).
+  · **El recorte bueno es lo lento** (~1 s/cuadro con 4 núcleos). Por defecto se hace sólo donde hay texto DETRÁS de la
+    persona; el resto lleva la geometría con RVM a 1/4 (lo que necesita la cámara). Lado a lado no se distingue; lo que
+    cambia es que sin recorte no hay sombra de la persona sobre su propio fondo. `persona.completa: true` lo hace todo.
+  · **`os.cpu_count()` mira la máquina, no lo que le dejan al proceso**: con 2 núcleos asignados de 4, onnxruntime abría 4
+    hilos y se pisaban. `hilos()` (comun.py) usa la afinidad; Remotion, `os.availableParallelism()`. `KIT_HILOS` lo fija.
+  · **Codificar los cuadros en serie era más lento que recortarlos**: el WebP con transparencia de 1.101 cuadros tardaba
+    9 min. En hilos (Pillow y OpenCV sueltan el GIL al codificar), 81 s. La cola se limita a 4 × hilos (6 MB por cuadro).
+  · **La revisión de oficio daba falsos avisos** hasta medir lo de verdad: la franja segura con el contorno de las letras
+    (0,4 em), la lista y las preguntas fila a fila, y el subtítulo «encima de un gráfico» sólo si se ven a la vez más de
+    0,1 s. Un subtítulo se oculta si la mitad de sus palabras ya están en un ítem que se ve en ese momento: así salen los
+    13 ocultos de v2.
+  · **El logo con margen transparente sale pequeño** en su tarjeta: `logo.py` lo recorta antes (marca/<logo>-recortado.png).
+  · **La cámara acerca a la persona lejos** (hasta 2×) para que mida 1.000 px en el plano abierto y 1.300 en el medio; con
+    el objetivo más alto, el gancho quedaba demasiado cerca y el titular del cuadro 0 se metía en la cara.
+  · **Tocar las piezas del plan rehacía la voz y la música**: cada paso mira sólo su parte (`trabajo/plan/*.json`, que se
+    reescribe sólo si cambia).
