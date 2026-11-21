@@ -1234,3 +1234,8 @@ contradicen, manda la de más abajo (la más nueva). Una trampa nueva de esta á
   `huecos.py` mide la voz montada palabra a palabra: una frase muda donde la transcripción dice que se habla PARA el kit en
   voz, crudo y final (no se entrega).
 
+- **Las propuestas del editor tienen dos puertas y una sola lógica** (Fase 5): `acta_de_edicion` (el chat) y
+  /api/edicion/propuestas (la pantalla) aplican y descartan con las MISMAS funciones (worker/lib/estudio/actasEdicion.js),
+  así que las guardas (aplicar exacto, versión leída, quién puede) no se duplican. Una general tiene `client_id` nulo: la
+  capa de acceso no se la enseña a un colaborador (le contesta 404, no 403), y la pantalla lo dice por `puedeManual`.
+

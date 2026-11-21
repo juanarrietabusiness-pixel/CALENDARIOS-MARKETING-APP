@@ -1378,12 +1378,15 @@ tests/migracion/edicionGuiaActa.test.js  La guía (el contacto de Rofer y sus av
 src/components/
   EstilosEdicion.jsx      Marca → Kit y voz → «Estilos de edición» (lazy): los estilos del cliente en frases, el formulario para
                           crear o editar uno (lo vacío sale del manual) y quitar con confirmación en la fila
+  PropuestasEdicion.jsx   Las PROPUESTAS de lo que aprende el editor, con el texto exacto, la cita y «Aceptar» / «Rechazar»: las
+                          generales en Ajustes → Editor de video y las de la marca junto a sus estilos
   SeccionEditorVideo.jsx  Ajustes → «Editor de video» (lazy): la versión del kit, las últimas ediciones (las actas, con lo que
                           corrigió la persona) y el manual del editor (SeccionManualEditor, en su propio chunk)
 src/lib/
   edicionApi.js           Cliente de /api/edicion
 worker/rutas/
-  edicion.js              /api/edicion: las actas y los estilos de edición de un cliente (leer, guardar entero, quitar)
+  edicion.js              /api/edicion: las actas, los estilos de edición de un cliente (leer, guardar entero, quitar) y las
+                          propuestas (verlas, aceptarlas y rechazarlas por las mismas funciones que acta_de_edicion)
 tests/migracion/edicionPantalla.test.js  /api/edicion contra D1: lo que ve cada quien
 ```
 

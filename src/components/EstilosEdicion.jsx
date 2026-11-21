@@ -1,7 +1,8 @@
 import { useEffect, useId, useState } from "react";
 import Icon from "./Icon";
 import "./IdentidadVideo.css";
-import { leerEstilosEdicion, guardarEstiloEdicion, quitarEstiloEdicion } from "../lib/edicionApi";
+import { leerEstilosEdicion, guardarEstiloEdicion, quitarEstiloEdicion, leerPropuestasEdicion } from "../lib/edicionApi";
+import PropuestasEdicion from "./PropuestasEdicion";
 import { resumenEstiloEdicion, MAX_NOTAS_EDICION, MAX_TEXTO_EDICION } from "../lib/estilosEdicion";
 
 // ============================================================
@@ -57,9 +58,17 @@ export default function EstilosEdicion({ client, lectura = false }) {
   const [ocupado, setOcupado] = useState(false);
   const [aviso, setAviso] = useState(null);
 
+  const [propuestas, setPropuestas] = useState([]);
+  const releer = async () => {
+    const [d, p] = await Promise.all([leerEstilosEdicion(client.id), leerPropuestasEdicion(client.id).catch(() => null)]);
+    setDatos(d); setPropuestas(p?.deMarca ?? []);
+  };
+
   useEffect(() => {
     let vivo = true;
-    leerEstilosEdicion(client.id).then((d) => { if (vivo) setDatos(d); }).catch((e) => { if (vivo) { setDatos({ estilos: [] }); setAviso({ ok: false, texto: e.message }); } });
+    Promise.all([leerEstilosEdicion(client.id), leerPropuestasEdicion(client.id).catch(() => null)])
+      .then(([d, p]) => { if (vivo) { setDatos(d); setPropuestas(p?.deMarca ?? []); } })
+      .catch((e) => { if (vivo) { setDatos({ estilos: [] }); setAviso({ ok: false, texto: e.message }); } });
     return () => { vivo = false; };
   }, [client.id]);
 
@@ -96,6 +105,9 @@ export default function EstilosEdicion({ client, lectura = false }) {
           el gancho y el cierre. Claude los sigue al editar; lo que un estilo no dice sale del manual del editor (Ajustes → Editor de video).
         </p>
       </div>
+
+      <PropuestasEdicion titulo="Lo que propone aprender para su estilo" propuestas={propuestas} puede={!lectura}
+        sinPermiso="Las decide quien edita la marca." onCambio={releer} />
 
       {estilos.length ? (
         <ul className="identidad-lista">

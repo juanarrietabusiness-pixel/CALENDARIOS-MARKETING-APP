@@ -15,3 +15,9 @@ export const leerEstilosEdicion = (clienteId) => pedir(base(clienteId));
 export const guardarEstiloEdicion = (clienteId, estilo) => pedir(base(clienteId), { method: "PUT", body: JSON.stringify(estilo) });
 /** Quita un estilo → lo mismo que leer. */
 export const quitarEstiloEdicion = (clienteId, id) => pedir(`${base(clienteId)}/${encodeURIComponent(id)}`, { method: "DELETE" });
+
+/** Lo que el editor propone aprender → { generales, deMarca (con cliente), puedeManual }. */
+export const leerPropuestasEdicion = (clienteId = "") => pedir(`/edicion/propuestas${clienteId ? `?cliente=${encodeURIComponent(clienteId)}` : ""}`);
+/** Aceptar (aplicar) o rechazar una propuesta. */
+export const aplicarPropuestaEdicion = (id) => pedir(`/edicion/propuestas/${encodeURIComponent(id)}/aplicar`, { method: "POST" });
+export const descartarPropuestaEdicion = (id) => pedir(`/edicion/propuestas/${encodeURIComponent(id)}/descartar`, { method: "POST" });
