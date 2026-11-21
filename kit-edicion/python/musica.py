@@ -8,7 +8,7 @@ import os
 
 import numpy as np
 
-from comun import SR, Reloj, escribir_wav, leer_audio, leer_json, trabajo
+from comun import Reloj, SR, escribir_wav, leer_audio, leer_json, trabajo, tramo
 
 T = trabajo()
 P = leer_json(os.path.join(T, "musica_plan.json"))
@@ -20,7 +20,7 @@ XF = int(0.012 * SR)
 tramos = P["tramos"]
 for k, t in enumerate(tramos):
     a, b = int(round((t["cancion0"] - 0.012) * SR)), int(round((t["cancion1"] - 0.012) * SR))
-    seg = x[max(0, a):b].copy()
+    seg = tramo(x, a, b - a)
     if len(seg) <= 2 * XF:
         continue
     if k > 0:

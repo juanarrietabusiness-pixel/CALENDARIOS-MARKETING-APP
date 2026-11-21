@@ -101,6 +101,40 @@ describe("lo que se empaqueta", () => {
   });
 });
 
+// Lo que hace el Python del kit de verdad, cuando la máquina tiene sus librerías (en CI puede no tenerlas: se salta).
+const conPython = () => spawnSync("python3", ["-c", "import numpy"]).status === 0 && spawnSync("ffmpeg", ["-version"]).status === 0;
+
+describe("el Python del kit, por dentro", () => {
+  it("tramo() nunca lee antes del inicio ni después del final: rellena con silencio", () => {
+    if (!conPython()) return;
+    const r = spawnSync("python3", ["-c", [
+      "import sys, json, numpy as np", "sys.argv = ['x', '/tmp']", "from comun import tramo", "x = np.arange(1, 11, dtype=float)",
+      "print(json.dumps([tramo(x, -3, 6).tolist(), tramo(x, 7, 6).tolist(), tramo(x, -10, 3).tolist(), tramo(np.ones((4, 2)), -1, 2).tolist()]))",
+    ].join("\n")], { cwd: join(RAIZ, "kit-edicion", "python"), encoding: "utf8" });
+    expect(r.stderr).toBe("");
+    expect(JSON.parse(r.stdout)).toEqual([[0, 0, 0, 1, 2, 3], [8, 9, 10, 0, 0, 0], [0, 0, 0], [[0, 0], [1, 1]]]);
+  });
+
+  it("huecos.py avisa (código 2) de una frase muda donde la transcripción dice que se habla, y no de lo que suena", () => {
+    if (!conPython()) return;
+    const T = mkdtempSync(join(tmpdir(), "huecos-"));
+    // 4 s de voz (un tono) con un hueco mudo de 1,5 a 2,6 s; tres palabras: antes, dentro y después del hueco.
+    const gen = spawnSync("python3", ["-c", [
+      "import sys, wave, numpy as np", "sr = 16000", "t = np.arange(4 * sr) / sr", "x = 0.2 * np.sin(2 * np.pi * 220 * t)",
+      "x[int(1.5 * sr):int(2.6 * sr)] = 0", `w = wave.open('${join(T, "voz.wav")}', 'wb')`, "w.setnchannels(1); w.setsampwidth(2); w.setframerate(sr)",
+      "w.writeframes((x * 32767).astype('<i2').tobytes()); w.close()",
+    ].join("\n")], { encoding: "utf8" });
+    expect(gen.stderr).toBe("");
+    const palabras = [{ w: "Y", s: 0.5, e: 1.2 }, { w: "tres,", s: 1.6, e: 2.0 }, { w: "la", s: 2.05, e: 2.5 }, { w: "pregunta", s: 2.8, e: 3.5 }];
+    writeFileSync(join(T, "linea.json"), JSON.stringify({ palabras }));
+    const mal = spawnSync("python3", [join(RAIZ, "kit-edicion", "python", "huecos.py"), T], { encoding: "utf8" });
+    expect(mal.status).toBe(2);
+    expect(mal.stdout).toMatch(/HUECO SIN VOZ 1\.60–2\.50 s: «tres, la»/);
+    writeFileSync(join(T, "linea.json"), JSON.stringify({ palabras: [palabras[0], palabras[3]] }));
+    expect(spawnSync("python3", [join(RAIZ, "kit-edicion", "python", "huecos.py"), T]).status).toBe(0);
+  });
+});
+
 describe("kit_edicion y su enlace", () => {
   let env;
   const zip = armarZip(archivosDelKit());

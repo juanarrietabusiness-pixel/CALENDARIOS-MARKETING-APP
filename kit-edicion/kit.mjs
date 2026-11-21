@@ -146,7 +146,7 @@ function calcularCorte({ hablar = true } = {}) {
     if (!palabras.length) fallo(`El clip ${c.id} no tiene palabras transcritas: quítalo del plan o revisa su audio.`);
     const r = corte.corteDelClip(palabras, energia, { excluir: c.excluir ?? [] });
     if (!r.palabras.length) fallo(`En el clip ${c.id} no queda ninguna palabra con lo que excluye el plan.`);
-    return { id: c.id, velocidad: c.velocidad ?? 1, piezas: r.piezas, palabras, quedan: r.palabras, energia };
+    return { id: c.id, velocidad: c.velocidad ?? 1, piezas: r.piezas, palabras, quedan: r.palabras, energia, duracion: energia.db.length * energia.paso };
   });
   const linea = corte.lineaDeTiempo(datos, { fps: p.fps ?? 30, cierre: p.cierre ?? OFICIO.cierre.segundos });
   const palabras = corte.palabrasEnSalida(linea, datos);
@@ -183,6 +183,17 @@ function voz() {
   const realces = (p.realces ?? []).map((r) => [...(tramoDeRealce(r, palabras) ?? []), r.db]).filter((x) => x.length === 3);
   escribir(join(T, "voz_plan.json"), { duracion: linea.total / linea.fps, piezas: linea.piezas, clips, realces });
   python("voz.py");
+  revisarHuecos();
+}
+
+/**
+ * Que SUENE la voz donde la transcripción dice que se habla (huecos.py). Un hueco para el kit: no se entrega un video con
+ * una frase muda (en Rofer, una pieza que empezaba antes del clip dejó 3 s sin voz y nadie lo vio hasta mirar el video).
+ */
+function revisarHuecos() {
+  const r = spawnSync("python3", [join(KIT, "python", "huecos.py"), T], { stdio: "inherit" });
+  if (r.status === 2) fallo("La voz tiene HUECOS donde la transcripción dice que se habla (trabajo/huecos.json). Mira el corte de esas piezas y vuelve a correr voz; no se entrega así.");
+  if (r.status !== 0) fallo(`huecos.py falló (código ${r.status}).`);
 }
 
 function compases(cancion) {
@@ -255,6 +266,7 @@ function crudo() {
   const linea = leer(join(T, "linea.json"));
   if (!existsSync(join(T, "mezcla.wav"))) fallo("Falta la mezcla: node kit.mjs mezcla");
   escribir(join(T, "crudo_plan.json"), { fps: linea.fps, cierre: linea.cierre, piezas: linea.piezas, clips: Object.fromEntries(p.clips.map((c) => [c.id, archivoDe(c)])) });
+  revisarHuecos();
   python("crudo.py");
   python("medir.py", join(PROYECTO, "salida", "crudo.mp4"));
 }
@@ -530,6 +542,7 @@ function final() {
   const falta = lista.filter((x) => !existsSync(x));
   if (falta.length) fallo(`Faltan ${falta.length} trozos del render: node kit.mjs render`);
   if (!existsSync(join(T, "mezcla.wav"))) fallo("Falta la mezcla: node kit.mjs mezcla");
+  revisarHuecos();
   writeFileSync(join(R, "trozos.txt"), lista.map((x) => `file '${x}'`).join("\n"));
   mkdirSync(join(PROYECTO, "salida"), { recursive: true });
   const destino = join(PROYECTO, "salida", "final.mp4");

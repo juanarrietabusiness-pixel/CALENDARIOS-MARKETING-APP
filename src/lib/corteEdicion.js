@@ -77,9 +77,13 @@ export function piezasDeToma(palabras, energia, { silencio = OFICIO.silencio } =
   const tIn = puntoCallado(energia, Math.max(0, primera.s - 0.28), primera.s - 0.04);
   const tOut = puntoCallado(energia, ultima.e + 0.04, ultima.e + 0.3);
   const habla = dbEntre(energia, primera.s, ultima.e);
-  const ini = Math.max(tIn, primera.s - 0.08);
-  const fin = Math.min(tOut, ultima.e + 0.12);
   const { paso, db } = energia;
+  // NUNCA antes del inicio ni después del final del archivo: con la primera palabra casi en el segundo 0, el punto callado
+  // se buscaba en un intervalo ya negativo y la pieza nacía en −0,02 s; voz.py leía entonces con un índice negativo
+  // (desde el FINAL del audio) y ese tramo salía mudo (Rofer, prueba de la Fase 4: 3 s sin voz).
+  const duracion = db.length * paso;
+  const ini = Math.min(Math.max(0, tIn, primera.s - 0.08), Math.max(0, primera.s));
+  const fin = Math.max(ini, Math.min(tOut, ultima.e + 0.12, duracion || Infinity));
   const margen = silencio.queda / 2;
   const piezas = [];
   let cur = ini;
@@ -116,14 +120,20 @@ export function corteDelClip(palabras, energia, { excluir = [], silencio } = {})
 
 /**
  * La LÍNEA DE TIEMPO del montaje: los clips en orden, cada uno con sus piezas y su velocidad (atempo: el tono no cambia).
- * `clips`: [{ id, piezas: [[src0, src1]], velocidad? }]. `cierre`: segundos sin voz al final (logo y llamado). Pura.
+ * `clips`: [{ id, piezas: [[src0, src1]], velocidad?, duracion? }]. `cierre`: segundos sin voz al final (logo y llamado).
+ * Una pieza nunca empieza antes de 0 ni acaba después de `duracion` (la del clip, si se sabe). Pura.
  */
 export function lineaDeTiempo(clips, { fps = 30, cierre = OFICIO.cierre.segundos } = {}) {
   const piezas = [];
   let t = 0;
   for (const c of clips) {
     const vel = Number(c.velocidad) > 0 ? Number(c.velocidad) : 1;
-    for (const [a, b] of c.piezas) {
+    // La red de seguridad: ninguna pieza lee antes del 0 ni (si se sabe) después del final del clip.
+    const finClip = Number(c.duracion) > 0 ? Number(c.duracion) : Infinity;
+    for (const [a0, b0] of c.piezas) {
+      const a = r3(Math.max(0, a0));
+      const b = r3(Math.min(b0, finClip));
+      if (b <= a) continue;
       const d = (b - a) / vel;
       piezas.push({ clip: c.id, src0: a, src1: b, vel, out0: r3(t), out1: r3(t + d) });
       t += d;

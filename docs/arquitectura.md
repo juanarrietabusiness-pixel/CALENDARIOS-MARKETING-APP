@@ -1316,6 +1316,8 @@ kit-edicion/
                           bueno se hace, por defecto, sólo donde hay texto detrás (`persona.completa: true` lo hace en todo)
   python/logo.py          El logo sin márgenes (con margen salía pequeño en su tarjeta) y, con --dibujo, sólo su DIBUJO, aparte
                           del nombre y en blanco: la imagen del trío (en Rofer, la excavadora)
+  python/huecos.py        HUECOS SIN VOZ: la voz montada palabra a palabra contra la transcripción; un tramo mudo donde se habla
+                          para el kit (código 2) en voz, crudo y final
   python/letras.py        Los ANCHOS MEDIDOS de los textos de la escena con las letras de verdad (fontTools, también WOFF2): con
                           ellos se colocan las piezas y la revisión comprueba que nada se monte ni se salga del cuadro
   python/cuadros.py       Los cuadros de salida etalonados y la persona en RGBA para Remotion; también sólo unos cuadros (muestras)
