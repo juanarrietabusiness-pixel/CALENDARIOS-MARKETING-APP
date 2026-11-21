@@ -40,6 +40,7 @@ import { DEFINICIONES_REEL_MCP, crearHerramientasReel } from "./estudio/herramie
 import { DEFINICION_EXPORTAR, crearHerramientaExportar, ErrorExportar } from "./exportarPiezas.js";
 import { DEFINICIONES_SUBIDA, crearHerramientasSubida, ErrorSubida } from "./estudio/subidaClaude.js";
 import { DEFINICION_KIT, crearHerramientaKit } from "./kitDescargable.js";
+import { DEFINICION_KIT_EDICION, crearHerramientaKitEdicion } from "./kitEdicion.js";
 import { DEFINICIONES_CEREBRO, crearHerramientasCerebro, ErrorCerebro } from "./cerebro/herramientasCerebro.js";
 import { DEFINICIONES_CAMPANAS, crearHerramientasCampanas, ErrorCampanas } from "./herramientasCampanas.js";
 import { DEFINICIONES_TEXTOS, crearHerramientasTextos, ErrorTextos, avisosAlGuardar } from "./herramientasTextos.js";
@@ -163,6 +164,8 @@ export const HERRAMIENTAS_MCP = Object.freeze([
   ...DEFINICIONES_SUBIDA,
   // Todo lo de la marca en un ZIP (worker/lib/kitDescargable.js), con el mismo enlace de 15 minutos que exportar_piezas.
   DEFINICION_KIT,
+  // El kit de EDICIÓN de videos grabados (worker/lib/kitEdicion.js): el ZIP del despliegue y el comando que lo instala.
+  DEFINICION_KIT_EDICION,
   // El cerebro y el estudio de mercado (worker/lib/cerebro/herramientasCerebro.js): guardar con confirmación, proponer notas y ángulos, ver el estudio.
   ...DEFINICIONES_CEREBRO,
   // Campañas y números (worker/lib/herramientasCampanas.js): los números del negocio, el plan de campañas y sus textos.
@@ -554,6 +557,7 @@ export function crearHerramientasMCP({ env, acceso, usuario, origen = "" }) {
   Object.assign(acciones, crearHerramientaExportar({ env, acceso, resolverCliente, usuario }));
   Object.assign(acciones, crearHerramientasSubida({ env, acceso, resolverCliente, usuario, por }));
   Object.assign(acciones, crearHerramientaKit({ env, acceso, resolverCliente, usuario }));
+  Object.assign(acciones, crearHerramientaKitEdicion({ env, usuario, origen }));
   Object.assign(acciones, crearHerramientasCerebro({ env, acceso, resolverCliente, usuario, por }));
   Object.assign(acciones, crearHerramientasCampanas({ env, acceso, resolverCliente, usuario, por, buscarPublicacion: buscar }));
   Object.assign(acciones, crearHerramientasTextos({ env, acceso, resolverCliente, usuario, por, buscarPublicacion: buscar }));

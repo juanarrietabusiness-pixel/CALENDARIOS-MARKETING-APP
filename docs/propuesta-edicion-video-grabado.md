@@ -2,7 +2,9 @@
 
 **Fase 0 (análisis), aprobada el 2026-11-20** sobre `main` en `b422bdc`. Las decisiones de la agencia están en §11 y
 mandan sobre lo que diga el resto del documento. **Fase 1 (el manual del editor): implementada** —`src/lib/manualEditor.js`,
-`src/lib/oficioEdicion.js`, `/api/manual-editor` y Ajustes → Manuales de la agencia → «Editor de video»—. Lo demás, pendiente.
+`src/lib/oficioEdicion.js`, `/api/manual-editor` y Ajustes → Manuales de la agencia → «Editor de video»—. **Fase 2a (el
+kit: corte y sonido): implementada** —`kit-edicion/`, `src/lib/{corteEdicion,musicaEdicion,planEdicion}.js`, `kit_edicion`—;
+ver §13. Lo demás, pendiente.
 
 **La meta:** un chat NUEVO de claude.ai, con el conector del calendario y sin historial, recibe los clips de una persona
 hablando a cámara y «edita este video de Rofer», y entrega un reel igual o mejor que Rofer · reel de Alex v2 y
@@ -399,3 +401,21 @@ Valen para todas las fases y mandan sobre lo que diga el resto del documento.
 - Que el token del workflow de despliegue tenga permiso para escribir en R2.
 - Los tiempos de la §5 del pedido (RVM 0,9 s/cuadro, render 10 min, whisper) los tomo como medidos por la agencia; se
   vuelven a medir en la Fase 2.
+
+---
+
+## 13. Fase 2a hecha (2026-11-21): lo que cambió respecto de la propuesta
+
+- **El ZIP va en el despliegue (`dist/api/_kit/`), no en R2.** /api/* pasa antes por el Worker, que sólo lo entrega con un
+  enlace firmado; así la versión y el ZIP salen del mismo despliegue y no hace falta que el token pueda escribir en R2
+  (el riesgo de §8 desaparece).
+- **La versión y la huella viven en `src/lib/kitEdicionVersion.js`** (no en `kit-edicion/VERSION` + `HUELLA`): el Worker la
+  importa para decir la versión, y el build y un test fallan si el kit cambia sin subirla.
+- **La energía del corte se mide sobre la voz limpia** y un corte que quita menos de 0,07 s no se hace: con eso el corte
+  del kit salió igual que el de Rofer v2 (§`docs/trampas/video-y-sonido.md`).
+- **El máster deja 0,5 dB de margen para el AAC** (el pico subía de −1,2 a −1,0 al codificar).
+- **El corte en crudo** (`crudo`): el montaje sin cámara ni gráficos, con la mezcla, para que la persona apruebe el corte y
+  el sonido antes de lo largo. No estaba en la propuesta.
+- **Lo que queda para la 2b:** recorte de la persona, cabeza y cámara virtual, etalonado, las piezas de Remotion, los
+  cuadros de muestra de la propuesta corta y el render por tramos. Y para la 3: que el ZIP de la marca lleve las músicas
+  de la identidad (hoy la canción se baja con `exportar_piezas`).

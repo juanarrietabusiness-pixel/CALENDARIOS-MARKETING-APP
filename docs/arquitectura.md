@@ -1276,3 +1276,32 @@ worker/
     manualEditor.js       /api/manual-editor: GET, GET /versiones/<n>, PUT { version, partes } (409 { actual }) y POST /volver
 migraciones/d1/           (+) 0082 el manual del editor con sus versiones
 ```
+
+### El editor de video grabado — Fase 2a: el kit de edición (corte y sonido)
+
+```
+kit-edicion/              El KIT que corre Claude en el chat (no el Worker ni el Container): lo empaqueta el build en
+                          dist/api/_kit/kit-edicion-<versión>.zip y lo entrega `kit_edicion` con un enlace firmado
+  kit.mjs                 El que manda: plan.json → los pasos (preparar, transcribir, cortar, voz, compases, musica, mezcla,
+                          crudo, medir, hoja, siguiente, estado), reanudables; las decisiones, con la lógica pura de lib/
+  instalar.sh             UN comando, idempotente: librerías de Python, rnnoise (commit y sha256 fijos) y faster-whisper
+  requisitos.txt          Las librerías de Python (rangos: el Python del chat cambia)
+  LEEME.md                Cómo se usa, con un plan.json de ejemplo (el de Rofer v2)
+  python/                 Lo pesado: comun.py, transcribir.py (por palabra), energia.py (voz limpia, 10 ms), voz.py, compases.py
+                          (librosa), musica.py, mezcla.py (ducking, efectos al pico, dos pasadas de loudnorm), medir.py,
+                          hoja.py (hoja de contactos), crudo.py (el corte en crudo con la mezcla)
+scripts/kit-edicion/
+  empaquetar.mjs          El ZIP del kit (con lib/ copiado de src/lib) en el build, y `npm run kit:huella`
+  zip.mjs                 Un ZIP determinista con deflate y permisos de Unix (el crc32, de src/lib/zip.js)
+src/lib/
+  corteEdicion.js         El CORTE (puro): punto callado, tomas y exclusiones, silencios relativos a la voz, línea de tiempo,
+                          origen → salida, cuadros de origen, tomas repetidas, grupos de subtítulos (solos o desde el texto)
+  musicaEdicion.js        La MÚSICA por compases (puro): la rejilla y `montarCancion` (sin huecos, costuras en compás)
+  planEdicion.js          El PLAN DE EDICIÓN (puro): el contrato que escribe Claude y ejecuta el kit; validarlo, instantes
+                          por palabra, realces y efectos resueltos
+  kitEdicionVersion.js    La versión del kit y la huella de su contenido (la escribe `npm run kit:huella`)
+worker/lib/
+  kitEdicion.js           `kit_edicion` (MCP): la versión, el enlace firmado de 15 minutos y el comando de instalación; y la
+                          ruta sin sesión /api/exportar/kit-edicion/<testigo>/<nombre>.zip, que lo saca de ASSETS
+tests/migracion/kitEdicion.test.js  La huella, el ZIP (con unzip), los imports de lib/, kit.mjs, el Python y la ruta firmada
+```
