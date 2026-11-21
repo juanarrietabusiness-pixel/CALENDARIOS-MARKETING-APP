@@ -28,6 +28,18 @@ def hilos():
         return os.cpu_count() or 2
 
 
+def tramo(x, a, n):
+    """`n` muestras de `x` desde la muestra `a`, con SILENCIO donde cae fuera del archivo (antes de 0 o después del final).
+    Nunca indexa con un negativo: x[-882:…] cuenta desde el FINAL del arreglo y devolvía un tramo vacío (una pieza que
+    empezaba 0,02 s antes del clip dejó 3 s sin voz en un video de Rofer)."""
+    n = max(0, int(n))
+    out = np.zeros((n,) + tuple(x.shape[1:]), dtype=x.dtype)
+    i0, i1 = max(0, int(a)), min(len(x), int(a) + n)
+    if i1 > i0:
+        out[i0 - int(a):i1 - int(a)] = x[i0:i1]
+    return out
+
+
 def trabajo():
     if len(sys.argv) < 2:
         sys.exit("Falta la carpeta de trabajo (la arma «node kit.mjs»).")

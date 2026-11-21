@@ -526,3 +526,17 @@ render quepa en la memoria del chat.
   que hará Juan antes de la Fase 5); el tope de tamaño de un adjunto de video en claude.ai, que no se puede medir desde
   aquí (los de Rofer entraron).
 
+## 17. La prueba en un chat nuevo (2026-11-21) y el kit v0.2.1
+
+Juan probó la receta entera en un chat nuevo de claude.ai con dos videos reales de Rofer: «excelente a la primera», con
+un error. En un video, «Y tres, la pregunta que casi nadie se hace…» quedó 3 s sin voz: la pieza de ese clip empezaba
+0,02 s antes del archivo y voz.py la leía con un índice negativo (la trampa, en video-y-sonido.md). El chat lo encontró y
+lo arregló en su copia; en el kit del calendario, v0.2.1:
+
+- El corte nunca empieza antes de 0 ni acaba después del final del clip (dos redes: `piezasDeToma` y `lineaDeTiempo`).
+- El Python lee los tramos con `tramo()`: silencio fuera del archivo, nunca un índice negativo (voz.py y musica.py).
+- **`huecos.py`**: la voz montada, palabra a palabra contra la transcripción. Un hueco mudo de 0,25 s o más PARA el kit en
+  `voz`, `crudo` y `final`, con su segundo y su texto. Lo debió detectar el kit solo, y ahora lo hace.
+
+Rofer v2 rehecho con el kit nuevo: el mismo corte, pieza a pieza, y ningún hueco en sus 128 palabras.
+

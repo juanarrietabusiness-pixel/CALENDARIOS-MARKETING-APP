@@ -9,7 +9,7 @@ import os
 
 import numpy as np
 
-from comun import KIT, SR, Reloj, db, escribir_wav, ffmpeg, leer_audio, leer_json, oficio, trabajo
+from comun import KIT, SR, Reloj, db, escribir_wav, ffmpeg, leer_audio, leer_json, oficio, trabajo, tramo
 
 T = trabajo()
 O = oficio(T)
@@ -42,7 +42,7 @@ for cid, c in P["clips"].items():
     vel = c.get("vel", 1) or 1
     filtro = LIMPIA + (PRESENCIA if c.get("presencia") else "") + (f",atempo={vel}" if vel != 1 else "")
     x = leer_audio(c["archivo"], filtro=filtro)
-    trozos = [x[int(p["src0"] / vel * SR): int(p["src1"] / vel * SR)] for p in P["piezas"] if p["clip"] == cid]
+    trozos = [tramo(x, int(p["src0"] / vel * SR), int((p["src1"] - p["src0"]) / vel * SR)) for p in P["piezas"] if p["clip"] == cid]
     lvl = nivel_habla(np.concatenate(trozos)) if trozos else -60.0
     limpio[cid] = (x, vel)
     ganancia[cid] = V["nivel"] + float(c.get("ganancia", 0)) - lvl
@@ -55,7 +55,7 @@ for p in P["piezas"]:
     x, vel = limpio[p["clip"]]
     a = int(round(p["src0"] / vel * SR))
     n = int(round((p["out1"] - p["out0"]) * SR))
-    s = x[a:a + n].copy() * db(ganancia[p["clip"]])
+    s = tramo(x, a, n) * db(ganancia[p["clip"]])
     if len(s) > 2 * F:
         s[:F] *= np.linspace(0, 1, F)
         s[-F:] *= np.linspace(1, 0, F)

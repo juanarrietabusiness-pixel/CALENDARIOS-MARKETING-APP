@@ -1224,3 +1224,13 @@ contradicen, manda la de más abajo (la más nueva). Una trampa nueva de esta á
 - **El contacto del video sale de la nota «Datos del negocio»** (decisión 10): `guia_de_edicion` compara sus teléfonos por
   los 8 últimos dígitos con la Ficha técnica y con el campo de la ficha del cliente y avisa de cada uno que no coincide.
 
+- **Una pieza que empezaba 0,02 s ANTES del clip dejó 3 s sin voz** (kit v0.2.0, prueba de la Fase 4 en un chat nuevo,
+  Rofer: «Y tres, la pregunta que casi nadie se hace…», del 24,8 al 27,7). Con la primera palabra casi en el segundo 0, el
+  punto callado se buscaba en un intervalo ya negativo y la pieza nacía en −0,02 s; voz.py hacía `x[int(src0·SR):…]` y en
+  numpy un índice NEGATIVO cuenta desde el FINAL del arreglo: el tramo salía vacío y la pieza, muda. Nada lo vio hasta que
+  una persona miró el video. Arreglado en tres sitios (kit v0.2.1): el corte (puro) no empieza antes de 0 ni acaba
+  después del final del clip; la línea de tiempo lo vuelve a recortar con la duración del clip; y el Python lee cada tramo
+  con `tramo()` (comun.py), que rellena con silencio lo que cae fuera del archivo y nunca indexa con un negativo. Y
+  `huecos.py` mide la voz montada palabra a palabra: una frase muda donde la transcripción dice que se habla PARA el kit en
+  voz, crudo y final (no se entrega).
+

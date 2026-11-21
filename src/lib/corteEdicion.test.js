@@ -52,6 +52,19 @@ describe("las tomas y las piezas de un clip", () => {
     expect(piezas[1][1]).toBeLessThanOrEqual(4.12);
   });
 
+  it("nunca antes del inicio ni después del final del clip (Rofer: una pieza en −0,02 s dejó 3 s sin voz)", () => {
+    // La primera palabra empieza a los 0,02 s y la última acaba 0,03 s antes del final del archivo (2,0 s).
+    const e = energia(2, [[0.02, 1.97]]);
+    const piezas = piezasDeToma([p("Y", 0.02, 0.2), p("tres", 0.3, 1.97)], e);
+    expect(piezas[0][0]).toBe(0);
+    expect(piezas.at(-1)[1]).toBeLessThanOrEqual(2);
+    // Y la red de la línea de tiempo: una pieza que pida leer fuera del clip se recorta a lo que hay.
+    const l = lineaDeTiempo([{ id: "a", piezas: [[-0.02, 1], [1.5, 2.3]], duracion: 2 }], { fps: 30, cierre: 0 });
+    expect(l.piezas.map((x) => [x.src0, x.src1])).toEqual([[0, 1], [1.5, 2]]);
+    expect(l.piezas[1].out0).toBe(1);
+    expect(lineaDeTiempo([{ id: "a", piezas: [[2.1, 2.4]], duracion: 2 }]).piezas).toEqual([]);
+  });
+
   it("corteDelClip junta las piezas de cada toma y dice qué palabras quedan", () => {
     const e = energia(6, [[1, 1.5], [2, 2.5], [4, 4.5]]);
     const palabras = [p("a", 1, 1.5), p("b", 2, 2.5), p("c", 4, 4.5)];

@@ -104,5 +104,8 @@ Tipos: `titular` (el gancho, completo en el cuadro 0), `gigante` y `tachado` (de
 - `node ~/kit/kit.mjs hoja <video>`: una hoja de contactos (un cuadro cada 1,7 s).
 - `node ~/kit/kit.mjs medir <archivo>`: LUFS y pico verdadero del archivo FINAL (después de codificar).
 - La mezcla deja en `trabajo/mezcla_informe.json` la voz frente a la música en cada tramo.
+- `voz`, `crudo` y `final` comprueban que SUENE la voz donde la transcripción dice que se habla (`python/huecos.py`): un
+  hueco mudo para el kit con su segundo y su texto (`trabajo/huecos.json`). No se entrega así: se mira el corte de esa
+  pieza.
 
 Lo terminado se sube a la galería del cliente con `subir_a_galeria`.
