@@ -78,7 +78,12 @@ function python(script, ...args) {
   mkdirSync(T, { recursive: true });
   writeFileSync(join(T, "oficio.json"), JSON.stringify(OFICIO));
   const r = spawnSync("python3", [join(KIT, "python", script), T, ...args.map(String)], { stdio: "inherit" });
-  if (r.status === 3) { console.log(`→ ${script}: falta un poco; vuelve a correr el mismo paso (o siguiente): sigue donde iba.`); return false; }
+  if (r.status === 3) {
+    console.log(`→ ${script}: falta un poco; vuelve a correr el mismo paso (o siguiente): sigue donde iba.`);
+    // También en el código de salida (3), para quien lo encadena en un bucle: «hasta que no salga con 3».
+    process.exitCode = 3;
+    return false;
+  }
   if (r.status !== 0) fallo(`El paso ${script} falló (código ${r.status}). Si el proceso se cortó, vuelve a correrlo: sigue donde iba.`);
   return true;
 }
@@ -461,7 +466,10 @@ function render(presupuesto = PRESUPUESTO) {
     if ((Date.now() - inicio) / 1000 > presupuesto) { faltan++; continue; }
     remotion("tramo", PUBLIC, ruta, tr[0], tr[1]);
   }
-  if (faltan) console.log(`→ render: faltan ${faltan} trozos de 5 s; vuelve a correr render (o siguiente): sigue donde iba.`);
+  if (faltan) {
+    console.log(`→ render: faltan ${faltan} trozos de 5 s; vuelve a correr render (o siguiente): sigue donde iba.`);
+    process.exitCode = 3;
+  }
   else console.log("Render completo. Siguiente: node kit.mjs final");
   return !faltan;
 }
