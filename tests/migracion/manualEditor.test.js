@@ -144,6 +144,6 @@ describe("/api/manual-editor", () => {
   });
 
   it("las partes que se guardan son las de la base", () => {
-    expect(PARTES_EDITOR.length).toBe(14);
+    expect(PARTES_EDITOR.length).toBe(15);
   });
 });
