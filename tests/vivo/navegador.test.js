@@ -279,9 +279,13 @@ describe.skipIf(!disponible.playwright)("la aplicación abierta en Chromium", ()
       await forma.getByLabel("Nombre").fill("Humo en obra");
       await forma.getByLabel(/El texto gigante DETRÁS/).fill("el gancho, en el cielo");
       await forma.getByLabel("Plano abierto (×)").fill("1,13");
+      // Las variantes del kit (la parte 3 de «variedad»): cómo se ve cada pieza en todos los videos de la marca.
+      await forma.getByLabel("Transición", { exact: true }).selectOption("glitch");
+      await forma.getByLabel("Entrada de texto", { exact: true }).selectOption("maquina");
       await forma.getByRole("button", { name: "Guardar el estilo" }).click();
       await zona.getByText("Humo en obra").waitFor({ timeout: 20_000 });
       await zona.getByText(/Cámara: abierto 1.13×/).waitFor();
+      await zona.getByText(/Variantes del kit: transicion «glitch», entrada «maquina»/).waitFor();
 
       await zona.getByRole("button", { name: "Editar" }).click();
       await zona.getByRole("form", { name: /Editar el estilo/ }).getByLabel("El ritmo").fill("alterno en cada corte");

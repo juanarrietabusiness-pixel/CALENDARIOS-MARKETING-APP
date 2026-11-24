@@ -1252,3 +1252,12 @@ contradicen, manda la de más abajo (la más nueva). Una trampa nueva de esta á
   sigue valiendo. El «paneo» crece mientras se mueve para que no asome el fondo por el borde, y la «máscara» es un bloque del
   acento (con una barra que barre se confundía con la máquina de escribir). Probadas pintando cuadros sueltos con Remotion
   sobre el proyecto de Rofer; el render entero de un video con cada una, no.
+- **Las variantes de una marca viven en su estilo de edición (24-nov-2026).** `estilo_de_edicion` guarda `variantes` (las
+  del kit: transición, entrada, subtítulos, cierre, ritmo, forma) y `guia_de_edicion` las da para pegarlas TAL CUAL en
+  `plan.variantes`: así los videos de una marca salen coherentes. Para que dos marcas no se vean iguales, no se guardan si
+  tienen 3 o 4 iguales de las que más se ven (transición, entrada, subtítulos y cierre) con las de otra marca del espacio
+  (`choquesConOtrasMarcas`), y la guía enseña las de las demás y el juego de siempre (Rofer v2). El juego de siempre NO
+  cuenta como de nadie al guardar (no es un estilo guardado): si se quiere apartar para Rofer, se guarda en el estilo de
+  Rofer. Los ids están escritos a mano en `estilosEdicion.js` (lo carga la carga inicial; el catálogo con nombres, no) y un
+  test comprueba que son los de `variantesEdicion.js`: una variante nueva se añade en los dos. Las propuestas del acta
+  que cambian un estilo no pasan por la comprobación de parecido (sólo cambian textos).

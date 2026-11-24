@@ -9,7 +9,7 @@
 
 import { kitDe } from "./kit.js";
 import { identidadDelCliente } from "./identidadVideo.js";
-import { estilosEdicionDe, buscarEstiloEdicion } from "./estilosEdicion.js";
+import { estilosEdicionDe, buscarEstiloEdicion, variantesDeOtrasMarcas } from "./estilosEdicion.js";
 import { ultimasActas, propuestasPendientes } from "./actasEdicion.js";
 import { versionVigente } from "../manualEditor.js";
 import { RUTA_FICHA } from "../cerebro/preparar.js";
@@ -18,6 +18,7 @@ import { resumenEstiloEdicion } from "../../../src/lib/estilosEdicion.js";
 import { contactoParaElVideo, esNotaDeDatos, listaDeControl } from "../../../src/lib/guiaEdicion.js";
 import { textoDeLexico } from "../../../src/lib/lexico.js";
 import { KIT_EDICION } from "../../../src/lib/kitEdicionVersion.js";
+import { VARIANTES_BASE, describirVariantes } from "../../../src/lib/variantesEdicion.js";
 
 const corto = (t, n) => String(t ?? "").replace(/\s+/g, " ").trim().slice(0, n);
 
@@ -62,6 +63,24 @@ export async function guiaDeEdicion(acceso, cliente, { tipo = "", estilo = "" } 
   } else {
     bloques.push("## ESTILOS DE EDICIÓN\nNinguno todavía: edita con el manual. Si a la persona le gusta el resultado, propón guardarlo como estilo (estilo_de_edicion) con su sí.");
   }
+
+  // Las VARIANTES del kit: las de la marca (coherencia entre sus videos) y las que ya usan las demás (que no se repitan).
+  const elegido = estilo ? buscarEstiloEdicion(estilos, estilo) : null;
+  const conVariantes = elegido?.variantes ? elegido : estilos.find((e) => e.variantes && (!tipoValido || !e.tipo || e.tipo === tipoValido)) ?? null;
+  const otras = await variantesDeOtrasMarcas(acceso, cliente).catch(() => []);
+  const variantes = [];
+  if (conVariantes) {
+    variantes.push(`## LAS VARIANTES DE ${cliente.name} (del estilo «${conVariantes.nombre}»): ponlas TAL CUAL en plan.variantes`,
+      `"variantes": ${JSON.stringify(conVariantes.variantes)}`, describirVariantes(conVariantes.variantes),
+      "Así todos sus videos salen coherentes. Una pieza puede llevar otra entrada sólo si la persona lo pide.");
+  } else {
+    variantes.push(`## LAS VARIANTES: ${cliente.name} aún no tiene las suyas`,
+      "Elígelas para esta marca (node kit.mjs variantes las lista) y, con el sí de la persona, guárdalas en su estilo (estilo_de_edicion, «variantes»).");
+  }
+  variantes.push("NO repitas las de otra marca (3 o 4 iguales de transicion, entrada, subtitulos y cierre se ven iguales; estilo_de_edicion no las guarda):",
+    `- El juego de siempre (Rofer v2, lo que sale sin «variantes»): ${describirVariantes(VARIANTES_BASE)}.`,
+    ...otras.slice(0, 12).map((o) => `- ${o.cliente} («${o.estilo}»): ${describirVariantes(o.variantes)}.`));
+  bloques.push(variantes.join("\n"));
 
   // Lo de la VEZ ANTERIOR y lo que espera el sí.
   const actas = await ultimasActas(acceso, cliente, 2).catch(() => []);

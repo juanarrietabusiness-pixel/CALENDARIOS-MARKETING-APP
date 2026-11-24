@@ -2,7 +2,9 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import {
   limpiarEstiloEdicion, limpiarEstilosEdicion, resumenEstiloEdicion, TIPOS_ESTILO_EDICION, MAX_ESTILOS_EDICION, MAX_ESTILO_EDICION,
+  VARIANTES_ESTILO_EDICION, igualesEntreVariantes,
 } from "./estilosEdicion.js";
+import { VARIANTES } from "./variantesEdicion.js";
 import { TIPOS_VIDEO_GRABADO } from "./manualEditor.js";
 import { limpiarKit } from "./kitMarca.js";
 
@@ -11,6 +13,18 @@ const siembra = (n) => JSON.parse(readFileSync(new URL(`../../docs/estilos-edici
 describe("estilos de edición (puro)", () => {
   it("los tipos son los del manual (menos «sólo una idea», que no es una edición)", () => {
     expect(TIPOS_ESTILO_EDICION).toEqual(TIPOS_VIDEO_GRABADO.filter((t) => t !== "solo-idea"));
+  });
+
+  it("las variantes son las del catálogo del kit, y se cuentan las que se ven iguales entre dos marcas", () => {
+    expect(VARIANTES_ESTILO_EDICION).toEqual(Object.fromEntries(Object.entries(VARIANTES).map(([k, v]) => [k, Object.keys(v.variantes)])));
+    const errores = [];
+    const e = limpiarEstiloEdicion({ nombre: "X", variantes: { transicion: "zoom", entrada: "nada", forma: "recta", colores: "x" } }, errores);
+    expect(e.variantes).toEqual({ transicion: "zoom", forma: "recta" });
+    expect(errores.join(" ")).toMatch(/variantes\.entrada: «nada»/);
+    expect(errores.join(" ")).toMatch(/variantes\.colores: no es una pieza/);
+    expect(igualesEntreVariantes({ transicion: "zoom", entrada: "golpe", ritmo: "vivo" }, { transicion: "zoom", entrada: "golpe", ritmo: "vivo" })).toBe(2);
+    expect(igualesEntreVariantes(null, { transicion: "zoom" })).toBe(0);
+    expect(resumenEstiloEdicion(e).join(" ")).toMatch(/Variantes del kit: transicion «zoom», forma «recta»/);
   });
 
   it("las dos siembras (Rofer y Comunidad) se entienden enteras, sin un solo error", () => {

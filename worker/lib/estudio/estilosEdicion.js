@@ -7,7 +7,10 @@
 // ============================================================
 
 import { kitDe, guardarKit } from "./kit.js";
-import { limpiarEstiloEdicion, limpiarEstilosEdicion, resumenEstiloEdicion, MAX_ESTILOS_EDICION } from "../../../src/lib/estilosEdicion.js";
+import {
+  limpiarEstiloEdicion, limpiarEstilosEdicion, resumenEstiloEdicion, igualesEntreVariantes, MAX_ESTILOS_EDICION, MAX_IGUALES_ENTRE_MARCAS,
+  PIEZAS_QUE_SE_VEN,
+} from "../../../src/lib/estilosEdicion.js";
 
 /** Un error de lo pedido, con su estado HTTP. */
 export class ErrorEstiloEdicion extends Error {
@@ -47,9 +50,33 @@ export function prepararEstiloEdicion(cliente, entrada) {
   return { estilo, errores, nuevo: !reemplaza, reemplaza };
 }
 
-/** Guarda un estilo ya comprobado (prepararEstiloEdicion sin errores). → { estilo, estilos }. */
+/**
+ * Las variantes de los estilos de las DEMÁS marcas del espacio: [{ cliente, estilo, variantes }] (sólo los que las
+ * tienen). Para que una marca no se vea como otra: guia_de_edicion las enseña y guardar no deja repetirlas.
+ */
+export async function variantesDeOtrasMarcas(acceso, cliente) {
+  const clientes = await acceso.leerColumnas("clients", ["id", "name", "kit_marca"], {}, "name asc", 500).catch(() => []);
+  return clientes.filter((c) => c.id !== cliente.id).flatMap((c) => estilosEdicionDe(c).filter((e) => e.variantes).map((e) => ({ cliente: c.name, estilo: e.nombre, variantes: e.variantes })));
+}
+
+/** Lo que se PARECE demasiado a otra marca (3 o 4 de transición, entrada, subtítulos y cierre iguales): los avisos. Pura. */
+export function choquesConOtrasMarcas(variantes, otras) {
+  if (!variantes) return [];
+  return otras.filter((o) => igualesEntreVariantes(variantes, o.variantes) > MAX_IGUALES_ENTRE_MARCAS)
+    .map((o) => `Las variantes se parecen demasiado a las de ${o.cliente} («${o.estilo}»: ${PIEZAS_QUE_SE_VEN.map((k) => `${k} ${o.variantes[k] ?? "—"}`).join(", ")}): ` +
+      `cambia al menos ${igualesEntreVariantes(variantes, o.variantes) - MAX_IGUALES_ENTRE_MARCAS} de ${PIEZAS_QUE_SE_VEN.join(", ")} para que no se vean iguales.`);
+}
+
+/** Comprueba un estilo y, si fija variantes, que no se parezca al de otra marca del espacio: → lo de prepararEstiloEdicion. */
+export async function comprobarEstiloEdicion(acceso, cliente, entrada) {
+  const p = prepararEstiloEdicion(cliente, entrada);
+  if (p.estilo?.variantes) p.errores.push(...choquesConOtrasMarcas(p.estilo.variantes, await variantesDeOtrasMarcas(acceso, cliente)));
+  return p;
+}
+
+/** Guarda un estilo ya comprobado (comprobarEstiloEdicion sin errores). → { estilo, estilos }. */
 export async function guardarEstiloEdicion(env, acceso, cliente, entrada) {
-  const { estilo, errores } = prepararEstiloEdicion(cliente, entrada);
+  const { estilo, errores } = await comprobarEstiloEdicion(acceso, cliente, entrada);
   if (errores.length) throw new ErrorEstiloEdicion(errores.join(" "));
   const actuales = estilosEdicionDe(cliente);
   const lista = actuales.some((e) => e.id === estilo.id) ? actuales.map((e) => (e.id === estilo.id ? estilo : e)) : [...actuales, estilo];
