@@ -61,6 +61,7 @@ const COMUNES = [
     base: lineas(
       "Antes de editar, una propuesta corta a la persona: el tipo de video, el gancho, el plan de escenas (qué pieza entra con qué palabra) y la música (de la biblioteca o, si ninguna sirve, una nueva con Suno).",
       "Con 2 o 3 CUADROS DE MUESTRA con la marca, no sólo texto: el cuadro 0 con el gancho, un gráfico detrás de la persona y los subtítulos. En Rofer, aprobar esos bocetos antes de editar fue clave.",
+      "Si la marca aún no tiene su estilo (sus variantes guardadas), la propuesta enseña 2 o 3 ESTILOS distintos con los mismos cuadros (guia_de_edicion los da; node kit.mjs estilos los pinta) para que la persona ESCOJA; el escogido (node kit.mjs elegir) se guarda con su sí como estilo de la marca (estilo_de_edicion, «variantes»).",
       "No se edita sin su «sí». Lo que corrija, se apunta para el acta.",
     ),
   },

@@ -105,7 +105,14 @@ El kit trae VARIAS maneras de pintar cada pieza, todas con los colores, las letr
 - `cierre`: tarjeta, limpio, banda, circulo.
 - `ritmo`: pausado, normal, vivo (cuánto tardan TODAS las animaciones). `forma`: redonda o recta (esquinas).
 
-Sin `variantes` sale el juego de siempre (el de Rofer v2), que es lo que hacía que todos los videos se parecieran.
+Sin `variantes` sale el juego de siempre (el de Rofer v2), que es lo que hacía que todos los videos se parecieran: por
+eso `siguiente` no pasa a las muestras sin ellas.
+
+- La marca YA tiene las suyas (su estilo de edición): `guia_de_edicion` las da; van tal cual.
+- NO las tiene: `guia_de_edicion` propone 2 o 3 estilos distintos (por su personalidad, sin repetir a otra marca). Se
+  escriben en `estilos.json` del proyecto y `node ~/kit/kit.mjs estilos` los pinta con los MISMOS cuadros (el texto que
+  entra, el cambio de clip antes y después, un subtítulo y el cierre) en `salida/estilos/estilos.jpg`. La persona escoge;
+  `node ~/kit/kit.mjs elegir B` lo pone en `plan.variantes`, y con su sí se guarda en su estilo (`estilo_de_edicion`).
 
 - **El trío**: sin `imagen`, las tres palabras van del MISMO tamaño, medidas para que quepan en su columna. Con
   `"imagen": "logo"`, el DIBUJO del logo de la marca, separado del nombre y en blanco (en Rofer, la excavadora); si el logo

@@ -7,7 +7,7 @@
 // El catálogo de variantes, en variantesEdicion.js.
 // ============================================================
 
-import { PIEZAS_CON_VARIANTE, VARIANTES_BASE } from "./variantesEdicion.js";
+import { PIEZAS_CON_VARIANTE, VARIANTES_BASE, VARIANTES } from "./variantesEdicion.js";
 
 /**
  * Cada personalidad, con las variantes que le van en orden de preferencia y lo que no le va. `senales`: palabras de su
@@ -84,4 +84,37 @@ export function variantesPorPersonalidad(personalidad, { evitar = [] } = {}) {
 /** Las personalidades en texto, para el manual: «Lujo (lento y elegante): …». Pura. */
 export function personalidadesEnTexto() {
   return Object.values(PERSONALIDADES).map((p) => `${p.nombre} (${p.como}): ${PIEZAS_CON_VARIANTE.map((k) => `${k} ${p.variantes[k].join(" o ")}`).join(", ")}. Nunca: ${p.nunca}.`);
+}
+
+const LETRAS = ["A", "B", "C"];
+const nombreDe = (k, v) => VARIANTES[k].variantes[v].nombre.toLowerCase();
+
+/**
+ * La PROPUESTA DE ESTILOS para una marca sin variantes guardadas: 2 o 3 estilos que se ven DISTINTOS entre sí (como mucho
+ * 1 igual de transición, entrada, subtítulos y cierre) y de las demás marcas (`evitar`) y del juego de Rofer. Con
+ * personalidad sugerida: dos suyos y uno de otra (el contraste ayuda a escoger); sin ella, uno de cada una de las
+ * primeras. → [{ letra, nombre, personalidad, variantes }]. Pura.
+ */
+export function estilosParaEscoger(sugerida = null, { evitar = [], n = 3 } = {}) {
+  const evita = [VARIANTES_BASE, ...evitar];
+  const orden = sugerida && PERSONALIDADES[sugerida] ? [sugerida, ...IDS_PERSONALIDAD.filter((x) => x !== sugerida)] : [...IDS_PERSONALIDAD];
+  const cupo = (id) => (id === sugerida ? 2 : 1);
+  const elegidos = [];
+  for (const id of orden) {
+    let suyos = 0;
+    for (const v of combinacionesDe(id, { evitar: evita })) {
+      if (elegidos.length >= n || suyos >= cupo(id)) break;
+      if (elegidos.every((e) => iguales(e.variantes, v) <= 1)) {
+        elegidos.push({ personalidad: id, variantes: v });
+        suyos += 1;
+      }
+    }
+    if (elegidos.length >= n) break;
+  }
+  return elegidos.map((e, i) => ({
+    letra: LETRAS[i],
+    nombre: `${PERSONALIDADES[e.personalidad].nombre}: ${nombreDe("transicion", e.variantes.transicion)}, ${nombreDe("entrada", e.variantes.entrada)}, cierre ${nombreDe("cierre", e.variantes.cierre)}`,
+    personalidad: e.personalidad,
+    variantes: e.variantes,
+  }));
 }

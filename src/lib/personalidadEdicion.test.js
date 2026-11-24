@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { PERSONALIDADES, IDS_PERSONALIDAD, personalidadDeTexto, combinacionesDe, variantesPorPersonalidad, personalidadesEnTexto } from "./personalidadEdicion.js";
+import { PERSONALIDADES, IDS_PERSONALIDAD, personalidadDeTexto, combinacionesDe, variantesPorPersonalidad, personalidadesEnTexto, estilosParaEscoger } from "./personalidadEdicion.js";
 import { esVariante, VARIANTES_BASE, PIEZAS_CON_VARIANTE } from "./variantesEdicion.js";
 import { igualesEntreVariantes, MAX_IGUALES_ENTRE_MARCAS } from "./estilosEdicion.js";
 
@@ -37,5 +37,20 @@ describe("la personalidad de la marca", () => {
     expect(segunda).not.toEqual(otra);
     expect(igualesEntreVariantes(segunda, otra)).toBeLessThanOrEqual(MAX_IGUALES_ENTRE_MARCAS);
     expect(combinacionesDe("nada")).toEqual([]);
+  });
+
+  it("la propuesta: 3 estilos que se ven distintos entre sí y de las demás marcas; con personalidad, dos suyos y uno de contraste", () => {
+    const otra = variantesPorPersonalidad("industrial");
+    const p = estilosParaEscoger("industrial", { evitar: [otra] });
+    expect(p.map((x) => x.letra)).toEqual(["A", "B", "C"]);
+    expect(p.map((x) => x.personalidad)).toEqual(["industrial", "industrial", "lujo"]);
+    for (let i = 0; i < p.length; i++) {
+      expect(igualesEntreVariantes(p[i].variantes, otra)).toBeLessThanOrEqual(MAX_IGUALES_ENTRE_MARCAS);
+      expect(igualesEntreVariantes(p[i].variantes, VARIANTES_BASE)).toBeLessThanOrEqual(MAX_IGUALES_ENTRE_MARCAS);
+      for (let j = i + 1; j < p.length; j++) expect(igualesEntreVariantes(p[i].variantes, p[j].variantes)).toBeLessThanOrEqual(1);
+    }
+    expect(p[0].nombre).toMatch(/^Industrial: /);
+    const sin = estilosParaEscoger(null);
+    expect(new Set(sin.map((x) => x.personalidad)).size).toBe(3);
   });
 });

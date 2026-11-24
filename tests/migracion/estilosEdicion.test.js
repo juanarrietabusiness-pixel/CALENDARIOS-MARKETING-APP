@@ -121,7 +121,14 @@ describe("estilo_de_edicion", () => {
     const guia = await llamar("guia_de_edicion", { cliente: "Joyas Luna", tipo: "persona-a-camara" });
     expect(guia.texto).toMatch(/aún no tiene las suyas/);
     expect(guia.texto).toMatch(/Su rubro sugiere: LUJO \(lento y elegante\)/);
-    expect(guia.texto).toMatch(/"variantes": \{"transicion":"deslizar","entrada":"escala"/);
+    // La propuesta corta: 2 o 3 estilos para escoger, listos para estilos.json del kit.
+    const json = guia.texto.split("\n").find((l) => l.startsWith("[{\"letra\":\"A\""));
+    const propuesta = JSON.parse(json);
+    expect(propuesta.length).toBeGreaterThanOrEqual(2);
+    expect(propuesta[0]).toMatchObject({ letra: "A", variantes: { transicion: "deslizar", entrada: "escala", ritmo: "pausado" } });
+    expect(propuesta[0].nombre).toMatch(/^Lujo: /);
+    expect(guia.texto).toMatch(/node ~\/kit\/kit\.mjs estilos/);
+    expect(guia.texto).toMatch(/node ~\/kit\/kit\.mjs elegir <letra>/);
     expect(guia.texto).toMatch(/El estilo de la marca|EL ESTILO DE LA MARCA/);
   });
 
