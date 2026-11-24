@@ -8,8 +8,20 @@ export const ease = Easing.inOut(Easing.cubic);
 export const eout = Easing.out(Easing.cubic);
 export const ein = Easing.in(Easing.cubic);
 export const n5 = (n) => String(n).padStart(5, "0");
-/** Un muelle que arranca en el segundo `at`. */
-export const muelle = (f, fps, at, c = { damping: 12, stiffness: 170, mass: 0.6 }) => spring({ frame: f - Math.round(at * fps), fps, config: c });
+/**
+ * Un muelle que arranca en el segundo `at`. `k`: el ritmo del estilo (datos.variantes.k: 1 normal, más de 1 pausado,
+ * menos de 1 vivo); el muelle tarda k veces lo que tardaría.
+ */
+export const muelle = (f, fps, at, c = { damping: 12, stiffness: 170, mass: 0.6 }, k = 1) => spring({ frame: f - Math.round(at * fps), fps: fps * k, config: c });
+
+/**
+ * La marca + el ESTILO de las piezas, lo que reciben todas como `C`: los colores, `k` (el ritmo) y `r(px)` (el radio de
+ * una esquina con la forma del estilo: recta lo deja en 4 px como mucho; una píldora, 999, pasa a 6).
+ */
+export function conEstilo(marca = {}, variantes = {}) {
+  const recta = variantes.forma === "recta";
+  return { ...colores(marca), k: variantes.k ?? 1, recta, r: (px) => (recta ? Math.min(px >= 999 ? 6 : 4, px) : px) };
+}
 
 /** Oscurece o aclara un #rrggbb (k < 0 oscurece). */
 export function tono(hex, k) {

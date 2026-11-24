@@ -560,3 +560,22 @@ Rofer v2 rehecho con el kit nuevo: el mismo corte, pieza a pieza, y ningún huec
    espacio (quien editó ya las vio en su chat), con el enlace a donde se deciden. Probado en Chromium: aceptar en Ajustes
    y rechazar en Kit y voz.
 
+
+## 19. Variedad real: el catálogo de variantes (2026-11-24)
+
+La prueba con otra empresa salió bien, pero el video se parecía demasiado al de Rofer: mismas animaciones de texto, mismos
+barridos, mismo ritmo; sólo cambiaban los colores. El kit tenía UN juego de piezas, sacado de Rofer v2. Lo que pidió la
+agencia, en cuatro entregas (un pull request y un despliegue cada una):
+
+1. **El catálogo de variantes en el kit (v0.3.0, hecho).** `src/lib/variantesEdicion.js` y, en Remotion, `Entradas.jsx`,
+   `Transiciones.jsx` y `Cierres.jsx`: transiciones (barrido diagonal, golpe de zoom, paneo rápido, deslizamiento, glitch,
+   corte seco con destello), entradas de texto (subir, golpe, palabra por palabra, máscara, máquina de escribir, escala
+   suave), los 4 subtítulos de identidad_video, 4 cierres (tarjeta, limpio, banda, círculo), el ritmo (pausado, normal,
+   vivo) y la forma (redonda, recta). Todo con los colores, las letras y el logo de la marca, en `plan.variantes`; una
+   pieza puede pedir su entrada. `node kit.mjs variantes` lo lista. Probado pintando cuadros sueltos de cada variante sobre
+   el proyecto de Rofer.
+2. **El manual elige por la personalidad de la marca** y nunca copia el estilo de otro cliente.
+3. **La propuesta corta enseña 2 o 3 estilos distintos** con sus cuadros de muestra cuando la marca no tiene estilo
+   guardado, y guarda el elegido.
+4. **`estilo_de_edicion` guarda la variante de cada pieza**: los videos de una marca, coherentes; los de marcas distintas,
+   distintos.

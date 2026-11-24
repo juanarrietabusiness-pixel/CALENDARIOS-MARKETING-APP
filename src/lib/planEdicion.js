@@ -23,6 +23,7 @@
 //   }
 // ============================================================
 
+import { erroresDeVariantes, esVariante, VARIANTES } from "./variantesEdicion.js";
 import { OFICIO } from "./oficioEdicion.js";
 
 export const VERSION_PLAN = 1;
@@ -96,6 +97,13 @@ export function validarPlan(plan, { palabras = null, catalogo = null, clipsEnDis
     if (e?.alinear !== undefined && !["inicio", "pico"].includes(e.alinear)) errores.push(`${donde}: «alinear» es «inicio» o «pico».`);
   });
   (plan.apartar ?? []).forEach((a, k) => comprobarInstante(a, `Apartar ${k + 1}`, palabras, errores));
+  // Las VARIANTES de las piezas (src/lib/variantesEdicion.js): el estilo del video, y la entrada propia de una pieza.
+  errores.push(...erroresDeVariantes(plan.variantes));
+  (plan.piezas ?? []).forEach((x, k) => {
+    if (x?.entrada !== undefined && !esVariante("entrada", x.entrada)) {
+      errores.push(`Pieza ${k + 1} (${x?.tipo ?? "?"}): «entrada» «${x.entrada}» no existe; son ${Object.keys(VARIANTES.entrada.variantes).join(", ")}.`);
+    }
+  });
   return { errores, avisos };
 }
 

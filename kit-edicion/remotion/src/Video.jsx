@@ -4,9 +4,11 @@
 // nunca dentro del contenedor que hace zoom (se descentraban: corrección de la agencia en Comunidad).
 import React from "react";
 import { AbsoluteFill, Img, staticFile, useCurrentFrame, continueRender, delayRender } from "remotion";
-import { clamp, lerp, ease, eout, ein, n5, muelle, colores, letras, PROGRESO_CELULAR, BURBUJA } from "./base.js";
-import { Celular, IconoWhatsApp } from "./Piezas.jsx";
+import { clamp, lerp, eout, n5, muelle, conEstilo, letras, PROGRESO_CELULAR, BURBUJA } from "./base.js";
+import { Celular } from "./Piezas.jsx";
 import { PIEZAS_DETRAS, PIEZAS_DELANTE } from "./catalogo.js";
+import { ConTransicion, DestelloCorte } from "./Transiciones.jsx";
+import { Cierre } from "./Cierres.jsx";
 
 // ------------------------------------------------------------ letras: las del kit de la marca o, si no, Anton e Inter Tight (OFL)
 const Letras = ({ marca }) => {
@@ -104,21 +106,35 @@ const Subtitulos = ({ d, f, C, L }) => {
   const may = S.mayusculas !== false;
   const txt = (w) => (may ? w.toUpperCase() : w);
   const ids = G[k].ids;
+  // «palabra»: sólo la palabra que se dice, grande y con borde, en el centro de su franja (identidad_video).
+  if (S.estilo === "palabra") {
+    let i = ids[0];
+    for (const j of ids) if (t >= W[j].s - 0.04) i = j;
+    const w = W[i];
+    const tamP = Math.min(118, (900 / Math.max(1, medir(txt(w.w), `900 100px "${L.texto}"`))) * 100);
+    const q = muelle(f, fps, w.s - 0.04, { damping: 11, stiffness: 340, mass: 0.45 }, C.k);
+    return (
+      <div style={{ position: "absolute", left: 0, width: 1080, top: S.y - tamP * 0.62, textAlign: "center" }}>
+        <span style={{ display: "inline-block", fontFamily: L.texto, fontWeight: 900, fontSize: tamP, lineHeight: 1.24, color: w.kw ? C.acento : C.claro, whiteSpace: "nowrap",
+          transform: `scale(${lerp(0.7, 1, q)})`, opacity: clamp(q * 3), WebkitTextStroke: `${tamP * 0.06}px ${C.tinta}`, paintOrder: "stroke fill", textShadow: `0 4px 0 ${C.sombra(0.8)}` }}>{txt(w.w)}</span>
+      </div>
+    );
+  }
   const base = 100;
   const ancho = ids.reduce((s, i) => s + medir(txt(W[i].w), `900 ${base}px "${L.texto}"`), 0) + medir(" ", `900 ${base}px "${L.texto}"`) * (ids.length - 1) * 1.2;
   const tam = Math.min(64, (880 / ancho) * base);
-  const q = muelle(f, fps, W[ids[0]].s - 0.08, { damping: 14, stiffness: 320, mass: 0.5 });
+  const q = muelle(f, fps, W[ids[0]].s - 0.08, { damping: 14, stiffness: 320, mass: 0.5 }, C.k);
   const placa = S.estilo === "placa";
   const padX = 0.42 * tam;
   const padY = 0.2 * tam;
   return (
     <div style={{ position: "absolute", left: 0, width: 1080, top: S.y - tam * 0.62 - padY, display: "flex", justifyContent: "center" }}>
-      <div style={{ padding: `${padY}px ${padX}px`, borderRadius: 0.3 * tam, background: placa ? C.oscuro : "transparent", boxShadow: placa ? `0 12px 30px ${C.sombra(0.45)}` : "none",
+      <div style={{ padding: `${padY}px ${padX}px`, borderRadius: C.r(0.3 * tam), background: placa ? C.oscuro : "transparent", boxShadow: placa ? `0 12px 30px ${C.sombra(0.45)}` : "none",
         whiteSpace: "nowrap", transform: `scale(${lerp(0.82, 1, q)})`, opacity: clamp(q * 2.5) }}>
         {ids.map((i, j) => {
           const w = W[i];
           const dicha = t >= w.s - 0.04;
-          const r = muelle(f, fps, w.s - 0.04, { damping: 12, stiffness: 300, mass: 0.4 });
+          const r = muelle(f, fps, w.s - 0.04, { damping: 12, stiffness: 300, mass: 0.4 }, C.k);
           return (
             <span key={i} style={{ display: "inline-block", fontFamily: L.texto, fontWeight: 900, fontSize: tam, lineHeight: 1.24, color: w.kw ? C.acento : C.claro,
               opacity: dicha ? 1 : 0.45, transform: `translateY(${dicha ? (1 - clamp(r)) * -0.08 * tam : 0}px)`, marginLeft: j ? 0.3 * tam : 0,
@@ -131,88 +147,35 @@ const Subtitulos = ({ d, f, C, L }) => {
   );
 };
 
-// ------------------------------------------------------------ transiciones
-const Barrido = ({ d, f, C }) => {
-  for (const s of [...d.cambios, d.vozFin]) {
-    const k0 = f - Math.round(s * d.fps);
-    if (k0 < -6 || k0 > 6) continue;
-    const x = lerp(-1800, 1500, ease((k0 + 6) / 12));
-    return (
-      <div style={{ position: "absolute", inset: 0, overflow: "hidden" }}>
-        <div style={{ position: "absolute", top: -400, left: x, width: 1500, height: 2720, transform: "skewX(-14deg)", background: C.oscuro, boxShadow: `-26px 0 0 ${C.acento}, 26px 0 0 ${C.acento}` }} />
-      </div>
-    );
-  }
-  return null;
-};
-const Destello = ({ d, f }) => {
-  let o = 0;
-  for (const c of d.cortes) {
-    if (d.cambios.some((s) => Math.abs(s - c) < 0.02)) continue;
-    const k = f - Math.round(c * d.fps);
-    if (k >= 0 && k < 4) o = Math.max(o, 0.22 * (1 - k / 4));
-  }
-  return o > 0 ? <div style={{ position: "absolute", inset: 0, background: "#fff", opacity: o, mixBlendMode: "soft-light" }} /> : null;
-};
-
-// ------------------------------------------------------------ cierre: logo, botón del llamado, número y @usuario
-const Cierre = ({ d, f, C, L }) => {
-  const fps = d.fps;
-  const t = f / fps;
-  const VF = d.vozFin;
-  const te = t - VF;
-  if (te < 0) return null;
-  const m = d.marca;
-  const lg = muelle(f, fps, VF + 0.08, { damping: 12, stiffness: 160, mass: 0.7 });
-  const bt = muelle(f, fps, VF + 0.45, { damping: 10, stiffness: 200, mass: 0.6 });
-  const nm = eout(clamp((te - 0.7) / 0.35));
-  const ig = eout(clamp((te - 0.95) / 0.35));
-  const late = te > 1.2 ? 1 + 0.025 * Math.max(0, Math.sin((te - 1.2) * 6)) : 1;
-  const apaga = 1 - ein(clamp((t - (d.total / fps - 0.35)) / 0.35));
-  const rayas = `repeating-linear-gradient(-45deg, ${C.oscuro} 0 34px, ${C.acento} 34px 68px)`;
-  return (
-    <AbsoluteFill style={{ background: C.oscuro, opacity: apaga }}>
-      <div style={{ position: "absolute", inset: 0, background: `radial-gradient(900px 900px at 50% 36%, rgba(255,255,255,.10), rgba(0,0,0,0) 70%), radial-gradient(1200px 900px at 50% 110%, ${C.sombra(0.6)}, rgba(0,0,0,0) 70%)` }} />
-      {d.cierre.rayas !== false && <>
-        <div style={{ position: "absolute", left: 0, top: 0, height: 30, width: 1300, background: rayas, transform: `translateX(${-60 + te * 40}px)` }} />
-        <div style={{ position: "absolute", left: 0, bottom: 0, height: 30, width: 1300, background: rayas, transform: `translateX(${-60 - te * 40}px)` }} />
-      </>}
-      {m.logo && <div style={{ position: "absolute", left: 240, top: 440, width: 600, height: 520, borderRadius: 44, background: "#fff", display: "flex", alignItems: "center", justifyContent: "center",
-        opacity: clamp(lg * 2), transform: `scale(${lerp(0.6, 1, lg)}) translateY(${(1 - lg) * 40}px)`, boxShadow: "0 30px 70px rgba(0,0,0,.45)" }}>
-        <Img src={staticFile(m.logo)} style={{ maxWidth: 540, maxHeight: 460, objectFit: "contain" }} />
-      </div>}
-      {m.llamado && <div style={{ position: "absolute", left: 0, width: 1080, top: 1030, display: "flex", justifyContent: "center", opacity: clamp(bt * 2) }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 18, padding: "20px 40px", borderRadius: 999, background: C.acento, transform: `scale(${lerp(0.5, 1, bt) * late})`, boxShadow: "0 18px 40px rgba(0,0,0,.35)" }}>
-          {m.whatsapp && <IconoWhatsApp s={70} C={C} />}
-          <div style={{ fontFamily: L.texto, fontWeight: 900, fontSize: 48, color: C.oscuro, letterSpacing: 0.5, whiteSpace: "nowrap" }}>{m.llamado}</div>
-        </div>
-      </div>}
-      {m.whatsapp && <div style={{ position: "absolute", left: 0, width: 1080, top: 1180 + 30 * (1 - nm), textAlign: "center", opacity: nm, fontFamily: L.titular, fontSize: 128, color: C.claro, letterSpacing: 4 }}>{m.whatsapp}</div>}
-      {m.usuario && <div style={{ position: "absolute", left: 0, width: 1080, top: 1360 + 24 * (1 - ig), textAlign: "center", opacity: ig, fontFamily: L.texto, fontWeight: 800, fontSize: 40, color: "rgba(255,255,255,.85)" }}>{m.usuario}</div>}
-    </AbsoluteFill>
-  );
-};
-
 // ------------------------------------------------------------ todo junto
 export const Video = ({ datos: d }) => {
   const f = useCurrentFrame();
-  const C = colores(d.marca);
+  const v = d.variantes ?? {};
+  const C = conEstilo(d.marca, v);
   const L = letras(d.marca);
   const t = f / d.fps;
-  if (t >= d.vozFin) return (<AbsoluteFill><Letras marca={d.marca} /><Cierre d={d} f={f} C={C} L={L} /><Barrido d={d} f={f} C={C} /></AbsoluteFill>);
-  const cel = d.piezas.find((p) => p.tipo === "celular" && t >= p.desde - 0.05 && t <= p.hasta + 0.05);
+  let contenido;
+  if (t >= d.vozFin) contenido = <Cierre d={d} f={f} C={C} L={L} />;
+  else {
+    const cel = d.piezas.find((p) => p.tipo === "celular" && t >= p.desde - 0.05 && t <= p.hasta + 0.05);
+    contenido = (
+      <>
+        {cel && PROGRESO_CELULAR(cel, t) > 0.001 && <AbsoluteFill style={{ background: "#000" }}>
+          <Img src={staticFile(`r/cam/${n5(Math.min(f, d.cam.length - 1))}.jpg`)} style={{ position: "absolute", width: 1080, height: 1920, filter: "blur(36px) brightness(.32) saturate(.8)", transform: "scale(1.15)", opacity: clamp(PROGRESO_CELULAR(cel, t) * 4) }} />
+        </AbsoluteFill>}
+        <Camara d={d} f={f} C={C} L={L} />
+        {cel && <Celular p={cel} f={f} fps={d.fps} C={C} L={L} />}
+        {d.piezas.map((p) => { const P = PIEZAS_DELANTE[p.tipo]; return P ? <P key={p.n} p={p} f={f} fps={d.fps} C={C} L={L} marca={d.marca} /> : null; })}
+        <Subtitulos d={d} f={f} C={C} L={L} />
+        <DestelloCorte d={d} f={f} />
+      </>
+    );
+  }
   return (
     <AbsoluteFill style={{ background: C.oscuro, overflow: "hidden" }}>
       <Letras marca={d.marca} />
-      {cel && PROGRESO_CELULAR(cel, t) > 0.001 && <AbsoluteFill style={{ background: "#000" }}>
-        <Img src={staticFile(`r/cam/${n5(Math.min(f, d.cam.length - 1))}.jpg`)} style={{ position: "absolute", width: 1080, height: 1920, filter: "blur(36px) brightness(.32) saturate(.8)", transform: "scale(1.15)", opacity: clamp(PROGRESO_CELULAR(cel, t) * 4) }} />
-      </AbsoluteFill>}
-      <Camara d={d} f={f} C={C} L={L} />
-      {cel && <Celular p={cel} f={f} fps={d.fps} C={C} L={L} />}
-      {d.piezas.map((p) => { const P = PIEZAS_DELANTE[p.tipo]; return P ? <P key={p.n} p={p} f={f} fps={d.fps} C={C} L={L} marca={d.marca} /> : null; })}
-      <Subtitulos d={d} f={f} C={C} L={L} />
-      <Destello d={d} f={f} />
-      <Barrido d={d} f={f} C={C} />
+      {/* La transición del estilo: lo que mueve TODO el cuadro (zoom, paneo, temblor) y lo que va por delante. */}
+      <ConTransicion variante={v.transicion} d={d} f={f} C={C}>{contenido}</ConTransicion>
     </AbsoluteFill>
   );
 };
