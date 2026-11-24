@@ -169,6 +169,66 @@ describe.skipIf(!disponible.playwright)("la aplicación abierta en Chromium", ()
     }
   }, 120_000);
 
+  it("Galería en el TELÉFONO: «Descargar» baja la imagen (Juan, 24-nov: «desde el celular no puedo descargar»)", async () => {
+    // Chromium no tiene hoja de compartir: aquí se ve el respaldo (el archivo ya bajado, con su nombre). La hoja de iOS
+    // (Guardar imagen / video) no se puede probar sin un iPhone: lib/descargar.js y su test cubren ese camino.
+    const contexto = await navegador.newContext({ viewport: { width: 390, height: 844 }, locale: "es-PA", isMobile: true, hasTouch: true, acceptDownloads: true });
+    const pagina = await contexto.newPage();
+    const errores = vigilar(pagina);
+    try {
+      await pagina.goto(`${espacio.base}/`);
+      await pagina.getByLabel("Correo").fill(ANA.email);
+      await pagina.getByLabel("Contraseña").fill("contrasena-de-prueba-larga");
+      await pagina.getByRole("button", { name: /Entrar/ }).click();
+      await pagina.getByRole("navigation").first().waitFor({ timeout: 20_000 });
+      expect(await pagina.evaluate(() => matchMedia("(pointer: coarse)").matches), "el teléfono emulado tiene que ser táctil").toBe(true);
+
+      // Una imagen de verdad en R2 (por la API, con la sesión de la página) y su fila en la galería.
+      // Desde la página: la cookie de sesión es Secure y el contexto de peticiones de Playwright no la manda por http.
+      const PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+      const subida = await pagina.evaluate(async ({ b64, clientId }) => {
+        const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+        const form = new FormData();
+        form.append("archivo", new File([bytes], "prueba.png", { type: "image/png" }));
+        form.append("clientId", clientId);
+        form.append("carpeta", "estudio");
+        const r = await fetch("/api/media", { method: "POST", body: form, credentials: "same-origin" });
+        return { estado: r.status, cuerpo: await r.json() };
+      }, { b64: PNG, clientId: CLIENTE.id });
+      expect(subida.estado, JSON.stringify(subida.cuerpo)).toBe(201);
+      const { clave } = subida.cuerpo;
+      const png = Buffer.from(PNG, "base64");
+      await espacio.d1(
+        `insert into estudio_archivos (id, owner_id, client_id, clave, tipo, mime, ancho, alto, bytes, prompt, origen, subido)
+         values ('arch-descarga-1', '${ANA.id}', '${CLIENTE.id}', '${clave}', 'imagen', 'image/png', 1, 1, ${png.length}, 'Foto para descargar desde el telefono', 'subida', 1);`,
+      );
+
+      await pagina.goto(`${espacio.base}/cliente/${CLIENTE.slug}/crear/galeria`);
+      await pagina.getByRole("button", { name: /Abrir: .*descargar desde el telefono/i }).click({ timeout: 30_000 });
+      const dialogo = pagina.getByRole("dialog");
+      const [descarga] = await Promise.all([
+        pagina.waitForEvent("download", { timeout: 20_000 }),
+        dialogo.getByRole("button", { name: "Descargar" }).click(),
+      ]);
+      expect(descarga.suggestedFilename()).toMatch(/^foto-para-descargar.*\.png$/);
+      expect((await descarga.createReadStream()) !== null).toBe(true);
+      // Con hoja de compartir (iOS, Android), es ella la que recibe el ARCHIVO (no un enlace): Guardar imagen / video.
+      await pagina.evaluate(() => {
+        navigator.canShare = () => true;
+        navigator.share = async ({ files }) => { window.__compartido = files.map((f) => `${f.name}|${f.type}|${f.size}`); };
+      });
+      await dialogo.getByRole("button", { name: "Descargar" }).click();
+      await pagina.waitForFunction(() => Array.isArray(window.__compartido), null, { timeout: 10_000 });
+      const compartido = await pagina.evaluate(() => window.__compartido);
+      expect(compartido).toHaveLength(1);
+      expect(compartido[0]).toMatch(new RegExp(`^foto-para-descargar.*\\.png\\|image/png\\|${png.length}$`));
+      await pagina.waitForTimeout(500);
+      expect(errores, errores.join("\n")).toEqual([]);
+    } finally {
+      await contexto.close();
+    }
+  }, 120_000);
+
   it("Ajustes → Editor de video: las últimas ediciones y el manual abren sin errores, también en el teléfono", async () => {
     // El editor de video grabado en la pantalla (Fase 5): su sección en diferido, sus actas y el manual en otro chunk.
     await espacio.d1(`insert or replace into edicion_actas (id, owner_id, client_id, tipo, kit_version, manual_version, resumen, correcciones)

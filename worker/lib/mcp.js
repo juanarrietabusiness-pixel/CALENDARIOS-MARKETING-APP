@@ -20,7 +20,8 @@ import { crearEjecutor } from "./herramientasServidor.js";
 import { difundir } from "./vivo.js";
 import { uuid, ahora } from "./ids.js";
 import { NULO } from "./acceso.js";
-import { programarLote, cancelarPendientes, resincronizarCalendario, filaPublica, filaConResumen, ErrorPublicar } from "./publicador.js";
+import { programarLote, cancelarPendientes, resincronizarCalendario, filaPublica, filaConResumen, ErrorPublicar, esDePostPeer } from "./publicador.js";
+import { redesPorDefecto, REDES as NOMBRES_REDES } from "../../src/lib/publicacion.js";
 import { prepararYProgramar, crearLoteProgramar, avanzarMientras, lotePublico } from "./programarServidor.js";
 import { diasConRespuestas } from "../../src/lib/aprobacion.js";
 import { normalizarHora } from "../../src/lib/horas.js";
@@ -49,6 +50,12 @@ import { DEFINICIONES_EQUIPO, crearHerramientasEquipo, ErrorEquipo } from "./her
 
 const FORMATOS = ["post", "reel", "carrusel", "historia", "live"];
 const REDES = ["instagram", "facebook", "tiktok", "youtube"];
+// `redes` de una publicación: sin ella salen TODAS las conectadas del cliente que puedan llevarla. Dos semanas de reels de
+// D'CASA salieron sin TikTok porque los chats pasaban ["instagram","facebook"] por costumbre (docs/trampas).
+const redesParam = {
+  type: "array", items: { type: "string", enum: REDES },
+  description: "NO lo pases salvo que la PERSONA haya pedido quitar una red: sin él salen todas las redes conectadas del cliente (Instagram, Facebook, TikTok…; TikTok también con fotos). Si lo pasas, es la lista entera: la red que falte no sale.",
+};
 
 const leerJSON = (t, d) => {
   if (t && typeof t === "object") return t;
@@ -96,7 +103,7 @@ export const HERRAMIENTAS_MCP = Object.freeze([
         formato: { type: "string", enum: FORMATOS },
         titulo: { type: "string" }, idea: { type: "string" }, descripcion: { type: "string", description: "El caption." },
         guion: { type: "string" }, hashtags: { type: "string" }, hora: { type: "string", description: "Ej.: 18:30 o 6:30 pm" },
-        redes: { type: "array", items: { type: "string", enum: REDES } },
+        redes: redesParam,
       },
       required: ["cliente", "fecha", "formato"],
     },
@@ -120,7 +127,7 @@ export const HERRAMIENTAS_MCP = Object.freeze([
           properties: { textos: { type: "array", items: { type: "string" } }, titulos: { type: "array", items: { type: "string" } }, descripcion: { type: "string" }, boton: { type: "string" } },
         },
         hashtags: { type: "string" }, hora: { type: "string" }, formato: { type: "string", enum: FORMATOS },
-        redes: { type: "array", items: { type: "string", enum: REDES } }, nota_interna: { type: "string" },
+        redes: redesParam, nota_interna: { type: "string" },
         pauta: {
           description: "Si se va a pautar en Meta: { etapa, como } para marcarla (su caption se escribe como ANUNCIO: en el Ads Manager ya no se cambia) o false para quitarla. etapa: presentacion, evaluacion, conversion o ascension; como: publicacion, anuncio o vacío (las dos).",
           anyOf: [
@@ -135,7 +142,7 @@ export const HERRAMIENTAS_MCP = Object.freeze([
   },
   { name: "mover_publicacion", description: "Cambia una publicación de día, también a otro mes. Si estaba programada, la cola se mueve con ella; lo publicado no se mueve.", inputSchema: { type: "object", properties: { ...pubParam, fecha: { type: "string", description: "AAAA-MM-DD" } }, required: ["publicacion_id", "fecha"] }, annotations: escribe() },
   { name: "eliminar_publicacion", description: "Borra una publicación del calendario. No se puede deshacer.", inputSchema: { type: "object", properties: { ...pubParam }, required: ["publicacion_id"] }, annotations: escribe(true) },
-  { name: "programar_publicacion", description: "Pone una publicación en la cola para que salga sola a su día y hora en sus redes (y su historia, si la tiene). Antes prepara sus imágenes en el servidor como la aplicación (JPEG, las copias 4:5 / 9:16 y la de TikTok): las piezas del Estudio también salen.", inputSchema: { type: "object", properties: { ...pubParam, redes: { type: "array", items: { type: "string", enum: REDES } } }, required: ["publicacion_id"] }, annotations: escribe() },
+  { name: "programar_publicacion", description: "Pone una publicación en la cola para que salga sola a su día y hora en sus redes (y su historia, si la tiene). Antes prepara sus imágenes en el servidor como la aplicación (JPEG, las copias 4:5 / 9:16 y la de TikTok): las piezas del Estudio también salen.", inputSchema: { type: "object", properties: { ...pubParam, redes: redesParam }, required: ["publicacion_id"] }, annotations: escribe() },
   { name: "programar_lo_aprobado", description: "Programa de una vez todo lo que el cliente aprobó en un mes y aún no está en la cola (con lo que respondió de verdad por su enlace; si el cliente no aprueba antes de publicar, lo que ya tiene su pieza). Prepara las imágenes en el servidor como la aplicación; lo que no quepa en esta respuesta sigue solo. Devuelve lo que no se pudo y por qué.", inputSchema: { type: "object", properties: { ...clienteParam, mes: { type: "string", description: "AAAA-MM. Si se omite, el más reciente." } }, required: ["cliente"] }, annotations: escribe() },
   { name: "cancelar_programacion", description: "Saca de la cola lo que aún no salió de una publicación.", inputSchema: { type: "object", properties: { ...pubParam }, required: ["publicacion_id"] }, annotations: escribe(true) },
   { name: "crear_tarea", description: "Crea una tarea para un cliente (o una tarea rápida sin cliente).", inputSchema: { type: "object", properties: { ...clienteParam, titulo: { type: "string" }, fecha_limite: { type: "string", description: "AAAA-MM-DD" }, para_hoy: { type: "boolean" } }, required: ["titulo"] }, annotations: escribe() },
@@ -240,6 +247,19 @@ export function crearHerramientasMCP({ env, acceso, usuario, origen = "" }) {
     throw new ErrorHerramienta(`No encontré la publicación «${postId}». Usa ver_calendario para ver los IDs.`);
   }
 
+  /** El aviso de una lista de redes que deja fuera una conectada del cliente que podía llevarla ("" si no deja ninguna). */
+  const NOMBRE_RED = Object.fromEntries(Object.entries(NOMBRES_REDES).map(([k, v]) => [k, v.nombre]));
+
+  async function avisoRedesFuera(clientId, post) {
+    if (!Array.isArray(post?.redes) || !post.redes.length) return "";
+    const cuentas = await acceso.leer("cuentas_sociales", { client_id: clientId }).catch(() => []);
+    const conectadas = [...new Set(cuentas.filter((c) => c.red !== "tiktok" || esDePostPeer(c)).map((c) => c.red))];
+    const fuera = redesPorDefecto(conectadas, post).filter((r) => conectadas.includes(r) && !post.redes.includes(r));
+    return fuera.length
+      ? `OJO: NO sale en ${fuera.map((r) => NOMBRE_RED[r] ?? r).join(" ni en ")}, que el cliente tiene conectado. Si la persona no pidió quitarlo, vuelve a llamar con redes: [${[...post.redes, ...fuera].map((r) => `"${r}"`).join(", ")}].`
+      : "";
+  }
+
   /**
    * Escribe los días del calendario, mueve la cola y avisa al espacio. Lo mismo que el PUT de la API, CON SU VERSIÓN: sólo
    * escribe si nadie guardó el mes desde que se leyó (`updated_at`). Antes ganaba la última escritura: dos
@@ -338,7 +358,7 @@ export function crearHerramientasMCP({ env, acceso, usuario, origen = "" }) {
       // Lo escrito se revisa con las reglas de «Revisar el mes» (las mismas de revisar_mes): sólo si trae texto.
       const conTexto = [titulo, idea, descripcion, guion, hashtags].some((t) => String(t ?? "").trim());
       const avisos = conTexto ? await avisosAlGuardar({ acceso, cliente: c, cal, days, postId: post.id }) : "";
-      return [`Creada: ${describir(post, fecha)} en el calendario de ${c.name}.`, avisos].filter(Boolean).join("\n\n");
+      return [`Creada: ${describir(post, fecha)} en el calendario de ${c.name}.`, await avisoRedesFuera(c.id, post), avisos].filter(Boolean).join("\n\n");
     },
 
     async editar_publicacion({
@@ -369,7 +389,8 @@ export function crearHerramientasMCP({ env, acceso, usuario, origen = "" }) {
       // Si cambió algún texto, se revisa con las reglas de «Revisar el mes» (las mismas de revisar_mes).
       const conTexto = ["title", "idea", "descripcion", "guion", "textoPieza", "hashtagsFinales", "pauta", "anuncio"].some((k) => Object.hasOwn(cambios, k));
       const avisos = conTexto ? await avisosAlGuardar({ acceso, cal, days, postId: id }) : "";
-      return [`Actualizada: ${describir(dia.posts[indice], dia.date)}. Cambió: ${Object.keys(cambios).join(", ")}.`, avisos].filter(Boolean).join("\n\n");
+      const fueraRedes = Object.hasOwn(cambios, "redes") ? await avisoRedesFuera(cal.client_id, dia.posts[indice]) : "";
+      return [`Actualizada: ${describir(dia.posts[indice], dia.date)}. Cambió: ${Object.keys(cambios).join(", ")}.`, fueraRedes, avisos].filter(Boolean).join("\n\n");
     },
 
     async mover_publicacion({ publicacion_id: id, fecha }) {

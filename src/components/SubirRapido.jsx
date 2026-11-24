@@ -160,6 +160,9 @@ export default function SubirRapido({ clients = [], clienteInicial = null, onCal
       setTrabajando("Preparando…");
       let nuevo = {
         ...completo,
+        // Sólo lo que la persona eligió: guardar las de por defecto como elección dejaba fuera la red que se conecte
+        // después (o la que aún no había cargado) en cada reprogramación.
+        redes: redes ?? undefined,
         id: uid(),
         status: "approved",
         title: completo.title || completo.idea?.slice(0, 60) || "",

@@ -391,6 +391,8 @@ src/
     bancoIdeas.js         El banco de ideas ÚNICO: vistas (de este cliente, generales, todas), referencias (enlace limpio,
                           red, formato sugerido), la idea nueva, filtrar, la fila de D1 (puro; también lo importa el Worker)
     bancoIdeasApi.js      Cliente de /api/banco-ideas y abrir «Guardar referencia» desde cualquier sitio
+    descargar.js          «Descargar» de la galería también en el teléfono: la hoja de compartir con el archivo (Guardar
+                          imagen / video; con la app instalada iOS no descarga), y si no, lo ya bajado; el ordenador, igual
     dictado.js            El micrófono del asistente: escucha hasta que se vuelve a pulsar, se reenciende si el
                           navegador lo corta, cada frase una vez, lo provisional aparte (SR inyectado)
     idioma.js             La regla del español latino neutro, puesta en toda llamada de texto (puro)

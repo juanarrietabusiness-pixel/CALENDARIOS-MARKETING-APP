@@ -19,12 +19,18 @@ describe("subir contenido", () => {
   it("las redes: TODAS las que el cliente tiene y pueden llevarla", () => {
     const reel = { format: "reel", medios: [vid] };
     expect(redesPorDefecto(["facebook", "instagram", "tiktok"], reel)).toEqual(["instagram", "facebook", "tiktok"]);
-    // Una imagen no sale en TikTok: no se marca sola.
-    expect(redesPorDefecto(["facebook", "instagram", "tiktok"], { format: "post", medios: [img(1)] })).toEqual(["instagram", "facebook"]);
+    // Las fotos también van a TikTok: «si las tres redes están conectadas y se va a subir una foto, se suba a todas».
+    expect(redesPorDefecto(["facebook", "instagram", "tiktok"], { format: "post", medios: [img(1)] })).toEqual(["instagram", "facebook", "tiktok"]);
+    expect(redesPorDefecto(["facebook", "instagram", "tiktok"], { format: "carrusel", medios: [img(1), img(2)] })).toEqual(["instagram", "facebook", "tiktok"]);
+    expect(redesPorDefecto(["instagram", "tiktok"], { format: "post" })).toEqual(["instagram", "tiktok"]);
+    // YouTube sigue siendo sólo video.
+    expect(redesPorDefecto(["instagram", "youtube"], { format: "post", medios: [img(1)] })).toEqual(["instagram"]);
+    expect(redesPorDefecto(["instagram", "youtube"], reel)).toEqual(["instagram", "youtube"]);
     // Un reel aún sin archivo sí: lo tendrá.
     expect(redesPorDefecto(["instagram", "tiktok"], { format: "reel" })).toEqual(["instagram", "tiktok"]);
     // Ni historias ni directos en las redes de video.
     expect(redesPorDefecto(["instagram", "tiktok"], { format: "historia", medios: [vid] })).toEqual(["instagram"]);
+    expect(redesPorDefecto(["instagram", "tiktok", "youtube"], { format: "historia", medios: [img(1)] })).toEqual(["instagram"]);
     expect(redesPorDefecto(["tiktok"], reel)).toEqual(["tiktok"]);
     expect(redesPorDefecto([], reel)).toEqual(["instagram"]);
   });

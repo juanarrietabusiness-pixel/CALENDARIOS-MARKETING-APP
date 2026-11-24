@@ -60,6 +60,10 @@ async function sembrar({ posts = [post()], cuentas = ["instagram", "facebook"], 
     s.prepare("insert into cuentas_sociales (id, owner_id, red, externo_id, pagina_id, token_cifrado, client_id) values (?,?,?,?,?,?,?)")
       .run(`${DUENO}:facebook:PAGE1`, DUENO, "facebook", "PAGE1", "PAGE1", token, "c1");
   }
+  if (cuentas.includes("tiktok")) {
+    s.prepare("insert into cuentas_sociales (id, owner_id, red, externo_id, client_id, datos) values (?,?,?,?,?,?)")
+      .run(`${DUENO}:tiktok:TT1`, DUENO, "tiktok", "TT1", "c1", JSON.stringify({ via: "postpeer", profileId: "perfil1" }));
+  }
 }
 
 const filas = () => db.sqlite.prepare("select * from publicaciones_programadas order by created_at").all().map((f) => ({ ...f }));
@@ -141,6 +145,23 @@ describe("programar", () => {
   it("Instagram sin JPEG no entra: el panel la convierte antes", async () => {
     await sembrar({ posts: [post({ image: "/api/media/clientes/c1/posts/foto.png" })] });
     await expect(programar(env, acceso(), { calendarId: "cal1", postId: "p1" })).rejects.toThrow(/JPEG/);
+  });
+
+  it("sin redes elegidas, TODAS las conectadas: también TikTok con una foto (Juan, 24-nov: «que siempre estén las tres»)", async () => {
+    await sembrar({ posts: [post({ redes: undefined })], cuentas: ["instagram", "facebook", "tiktok"] });
+    const creadas = await programar(env, acceso(), { calendarId: "cal1", postId: "p1" });
+    expect(creadas.map((f) => f.red)).toEqual(["instagram", "facebook", "tiktok"]);
+  });
+
+  it("al programar SOLO, lo que sólo le falla a TikTok lo deja fuera y las demás salen; pedido a mano, falla con su motivo", async () => {
+    const carrusel = post({
+      format: "carrusel", redes: undefined, image: undefined,
+      medios: [{ src: IMAGEN, tipo: "imagen", ancho: 1080, alto: 1350 }, { src: "/api/media/clientes/c1/posts/b.jpg", tipo: "imagen", ancho: 1080, alto: 1080 }],
+    });
+    await sembrar({ posts: [carrusel], cuentas: ["instagram", "facebook", "tiktok"] });
+    await expect(programar(env, acceso(), { calendarId: "cal1", postId: "p1" })).rejects.toThrow(/misma proporción/);
+    const creadas = await programar(env, acceso(), { calendarId: "cal1", postId: "p1", soloPosibles: true });
+    expect(creadas.map((f) => f.red)).toEqual(["instagram", "facebook"]);
   });
 
   it("reprogramar sustituye lo anterior: nunca dos filas vivas por red", async () => {

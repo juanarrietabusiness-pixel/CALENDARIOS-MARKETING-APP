@@ -187,10 +187,22 @@ export default function Visor({
   onEditar = null, original = null, onVerOriginal = null, anteriores = null, onPrincipal = null, onQuitarOtras = null,
   esLogo = false, onLogo = null, revision = null, onRevisar = null, galeria = [],
   clienteId = null, onEstampar = null, cliente = null, onPlantilla = null, activos = null, desdePost = null,
-  enCamino = "", onAbrirNueva = null,
+  enCamino = "", onAbrirNueva = null, onDescargar = null,
 }) {
   const ref = useDialogA11y(onCerrar);
   const id = useId();
+  // «Descargar» desde el teléfono: baja el archivo antes de la hoja de compartir (lo que tarda y lo que diga, aquí).
+  const [bajando, setBajando] = useState(false);
+  const [dichoDescarga, setDichoDescarga] = useState("");
+  const descargarAqui = async () => {
+    setBajando(true);
+    setDichoDescarga("");
+    try {
+      setDichoDescarga((await onDescargar()) || "");
+    } finally {
+      setBajando(false);
+    }
+  };
   const panel = useRef(null);
   const campo = useRef(null);
   // Lo que está abierto bajo la barra: «corregir», «otra» o «mas». Desde «Corregir esta» de una publicación, ya en
@@ -271,7 +283,13 @@ export default function Visor({
               <Icon name="sparkles" size={18} /> <span>Ganchos</span>
             </button>
           )}
-          <a className="btn btn-secondary est-barra-boton" href={a.src} download={nombreDeDescarga(a)}><Icon name="download" size={18} /> <span>Descargar</span></a>
+          {onDescargar ? (
+            <button type="button" className="btn btn-secondary est-barra-boton" disabled={bajando} onClick={descargarAqui}>
+              <Icon name="download" size={18} /> <span>{bajando ? "Bajando…" : "Descargar"}</span>
+            </button>
+          ) : (
+            <a className="btn btn-secondary est-barra-boton" href={a.src} download={nombreDeDescarga(a)}><Icon name="download" size={18} /> <span>Descargar</span></a>
+          )}
           {!lectura && (
             <button type="button" className="btn btn-secondary est-barra-boton" aria-expanded={abierto === "mas"} aria-controls={`${id}-mas`} onClick={() => setAbierto("mas")}>
               <Icon name="more" size={18} /> <span>Más</span>
@@ -283,6 +301,7 @@ export default function Visor({
           <div role="status" aria-live="polite" className={enCamino ? "est-visor-encamino" : "sr-only"}>
             {enCamino && <><Icon name="sparkles" size={14} /> {enCamino}</>}
           </div>
+          {dichoDescarga && <p role="status" className="notice">{dichoDescarga}</p>}
 
           {abierto === "corregir" && puedeCorregir && (
             <Corregir

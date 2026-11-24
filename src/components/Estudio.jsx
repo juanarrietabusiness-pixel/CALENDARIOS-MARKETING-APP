@@ -823,11 +823,18 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
     const { archivo } = await api.cambiarArchivo(client.id, a.id, { carpetaId: carpetaId || null });
     setVisor((v) => api.conVersiones(v, archivo));
   });
-  const descargar = (a) => {
-    const enlace = document.createElement("a");
-    enlace.href = a.src;
-    enlace.download = nombreDeDescarga(a);
-    enlace.click();
+  // En el ordenador, el enlace de siempre; en el teléfono, la hoja de compartir (Guardar imagen / video): con la app
+  // instalada, iOS no tiene a dónde descargar (lib/descargar.js, en diferido). Devuelve lo que haya que decir.
+  const descargar = async (a, { callado = false } = {}) => {
+    try {
+      const { descargarPiezas } = await import("../lib/descargar");
+      const r = await descargarPiezas([{ src: a.src, nombre: nombreDeDescarga(a) }]);
+      if (r.texto && !callado) avisar(true, r.texto);
+      return r.texto;
+    } catch (e) {
+      if (!callado) avisar(false, e.message);
+      return e.message;
+    }
   };
 
   /** Ponerla en la publicación: se apunta el uso (para que la papelera no se la lleve) y se la pasa a quien abrió el diálogo. */
@@ -1157,6 +1164,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
         <Visor
           archivo={visor} carpetas={carpetasPropias} lectura={lectura} cliente={client}
           onCerrar={() => setVisor(null)}
+          onDescargar={() => descargar(visor, { callado: true })}
           onFavorito={() => alternarFavorito(visor)}
           onPapelera={() => aPapelera(visor)}
           onMover={(c) => moverA(visor, c)}

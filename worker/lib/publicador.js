@@ -218,6 +218,13 @@ function planificar({ post, fecha, cal, cuentas: asignadas, hayMeta, previas, re
     }
   }
   lista = lista.filter((r) => cuentas[r]);
+  // Al programar solo (al aprobar, «Programar lo aprobado»), una red que no puede con ESTA pieza (fotos de proporciones
+  // distintas para TikTok, un texto que no le cabe…) se queda fuera y las demás salen: TikTok va por defecto también con
+  // fotos, y su regla no puede frenar Instagram y Facebook. Lo que se pide a mano sigue fallando entero, con su motivo.
+  if (soloPosibles && lista.length > 1) {
+    const caben = lista.filter((r) => !revisarPublicacion(post, [r]).errores.length);
+    if (caben.length) lista = caben;
+  }
   if (!lista.length) throw new ErrorPublicar("El cliente no tiene asignada ninguna cuenta de las redes de esta publicación.");
 
   const { errores } = revisarPublicacion(post, lista);

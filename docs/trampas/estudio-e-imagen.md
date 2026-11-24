@@ -1129,3 +1129,13 @@ contradicen, manda la de más abajo (la más nueva). Una trampa nueva de esta á
   · **Las de 2K tampoco se controlaban**: más de 3,6 MB (un PNG de 2K pesa de 4 a 8) daba un 413 que el encargo se tragaba.
   Ahora se mira la COPIA en JPEG de 1568 px de lado (`miniaturaDe`, el Container; sobre blanco: el JPEG no tiene alfa). Sin
   Container y grande, sigue el 413.
+- **«Descargar» no hacía nada en el teléfono (24-nov-2026).** Desde el celular no se podía bajar ninguna imagen ni video de la
+  galería; en el ordenador sí. La galería descargaba con un `<a download>` al `/api/media/…`, y la app se abre instalada
+  («standalone» en el manifiesto): ahí iOS no tiene a dónde descargar y el enlace no hace nada (en Safari, lo bajado va a
+  Archivos, no a Fotos). Ahora `lib/descargar.js` (en diferido): con dedo (`pointer: coarse`), baja el archivo y abre la hoja
+  de COMPARTIR con él (Guardar imagen / Guardar video, WhatsApp…), como «Publicar a mano»; sin hoja, descarga lo ya bajado
+  por un enlace a un blob. En el ordenador, el enlace de siempre. El carrusel y el reel agrupados (VisorGrupo), en el
+  teléfono, comparten las piezas en orden (el reel, su video) en vez del ZIP, que no llega a Fotos. iOS sólo comparte justo
+  después de un toque: si bajar un reel grande tardó, `share` da NotAllowedError, el archivo se guarda y el aviso pide volver
+  a tocar «Descargar» (el segundo toque comparte al momento). **No se ha probado en un iPhone real**: la prueba de Chromium
+  (tests/vivo/navegador.test.js) emula el teléfono y comprueba la descarga y que la hoja reciba el archivo.
