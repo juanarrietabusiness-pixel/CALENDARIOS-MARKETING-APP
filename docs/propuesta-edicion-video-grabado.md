@@ -574,8 +574,16 @@ agencia, en cuatro entregas (un pull request y un despliegue cada una):
    vivo) y la forma (redonda, recta). Todo con los colores, las letras y el logo de la marca, en `plan.variantes`; una
    pieza puede pedir su entrada. `node kit.mjs variantes` lo lista. Probado pintando cuadros sueltos de cada variante sobre
    el proyecto de Rofer.
-2. **El manual elige por la personalidad de la marca** y nunca copia el estilo de otro cliente.
-3. **La propuesta corta enseña 2 o 3 estilos distintos** con sus cuadros de muestra cuando la marca no tiene estilo
-   guardado, y guarda el elegido.
-4. **`estilo_de_edicion` guarda la variante de cada pieza**: los videos de una marca, coherentes; los de marcas distintas,
-   distintos.
+2. **`estilo_de_edicion` guarda la variante de cada pieza (hecho; se hizo antes que la 3 y la 4 porque éstas guardan
+   ahí):** los videos de una marca, coherentes (la guía las da para pegarlas tal cual); los de marcas distintas, distintos
+   (no se guardan con 3 o 4 iguales de transición, entrada, subtítulos y cierre a las de otra marca). También en Marca →
+   Kit y voz.
+3. **El manual elige por la personalidad de la marca (hecho):** parte nueva «El estilo de la marca» con lujo, tecnología,
+   familiar e industrial (`personalidadEdicion.js`), nunca copiar a otro cliente; la guía sugiere la personalidad por el
+   rubro.
+4. **La propuesta corta enseña 2 o 3 estilos distintos (hecho, kit v0.4.0):** la guía los propone (dos de su
+   personalidad y uno de contraste), `kit.mjs estilos` los pinta con los mismos cuadros en una imagen, `kit.mjs elegir`
+   pone el escogido en el plan y con el sí se guarda en su estilo. Probado sobre el proyecto de Rofer.
+
+Para probarlo con un cliente nuevo: que tenga su rubro escrito en la ficha (es lo que sugiere la personalidad) y ningún
+estilo de edición con variantes; en el chat, «edita este video de…» con la receta.

@@ -18,6 +18,9 @@
 //   marca <carpeta del kit>      colores, logo y letra del ZIP de kit_descargable → plan.marca (lo demás, a mano)
 //   variantes                    el catálogo de VARIANTES de las piezas (transición, entrada de texto, subtítulos, cierre,
 //                                ritmo, forma) y las de este plan: van en plan.variantes, según la personalidad de la marca
+//   estilos [estilos.json]       la marca sin variantes guardadas: 2 o 3 ESTILOS (los de guia_de_edicion) pintados con los
+//                                mismos cuadros → salida/estilos/estilos.jpg, para que la persona escoja
+//   elegir <letra>               el estilo escogido → plan.variantes (y se guarda en su estilo con estilo_de_edicion)
 //   muestras [cuadro,cuadro,…]   2 o 3 CUADROS DE MUESTRA con la marca (gancho, texto detrás, subtítulo) sin recortar ni
 //                                pintar todo: se enseñan a la persona ANTES de editar
 //   persona [segundos]           el recorte de la persona (RVM) y su geometría; por tramos, sigue donde iba
@@ -51,7 +54,7 @@ const { EFECTOS_CATALOGO } = await cargar("catalogoEfectos.datos.js");
 const { KIT_EDICION } = await cargar("kitEdicionVersion.js");
 const { camaraDelVideo } = await cargar("camaraEdicion.js");
 const { escenaParaRemotion, textosDeEscena } = await cargar("escenaEdicion.js");
-const { catalogoEnTexto, describirVariantes } = await cargar("variantesEdicion.js");
+const { catalogoEnTexto, describirVariantes, erroresDeVariantes, limpiarVariantes } = await cargar("variantesEdicion.js");
 
 const VERSION = KIT_EDICION.version;
 const DOMINIO = (process.env.KIT_DOMINIO || (existsSync(join(KIT, ".dominio")) ? readFileSync(join(KIT, ".dominio"), "utf8").trim() : "")
@@ -461,8 +464,9 @@ function anchosDeLaEscena(piezas, marca) {
 }
 
 /** La escena para Remotion y su revisión. → { datos, avisos }. */
-function escena({ hablar = true } = {}) {
-  const p = plan();
+function escena({ hablar = true, variantes = null } = {}) {
+  // `variantes`: las de un estilo propuesto (estilos), sin tocar plan.json.
+  const p = variantes ? { ...plan(), variantes } : plan();
   const { linea } = lineaYFuente();
   const { palabras } = leer(join(T, "linea.json"));
   const cam = camara(p, linea);
@@ -509,6 +513,68 @@ function muestras(lista) {
   remotion("muestras", PUBLIC, join(PROYECTO, "salida", "muestras"), cuadrosM.join(","));
   console.log("Enséñale las muestras a la persona ANTES de editar. Con su sí, pon \"aprobado\": true en plan.json.");
 }
+/**
+ * La propuesta de ESTILOS (la marca sin variantes guardadas): cada uno de estilos.json pintado con los MISMOS cuadros —un
+ * texto entrando, el cambio de clip, un subtítulo y el cierre— y todos juntos en salida/estilos/estilos.jpg.
+ */
+function estilos(archivo = "estilos.json") {
+  const ruta = resolve(PROYECTO, archivo);
+  const lista = leer(ruta, null);
+  if (!Array.isArray(lista) || lista.length < 2 || lista.length > 3) fallo(`Pon en ${archivo} los 2 o 3 estilos que propone guia_de_edicion: [{ "letra": "A", "nombre": "…", "variantes": { … } }, …].`);
+  for (const e of lista) {
+    const errores = erroresDeVariantes(e?.variantes);
+    if (!/^[A-Z]$/.test(String(e?.letra ?? "")) || !e?.variantes || errores.length) fallo(`El estilo ${e?.letra ?? "?"} no vale: ${errores.join(" ") || "le faltan «letra» (A, B, C) o «variantes»."}`);
+  }
+  const p = plan();
+  const { linea } = lineaYFuente();
+  const { palabras } = leer(join(T, "linea.json"));
+  const r0 = escenaSinCuadros(p, linea, palabras);
+  const fps = linea.fps;
+  const dentro = (f) => Math.max(0, Math.min(linea.total - 1, Math.round(f)));
+  const texto = r0.datos.piezas.find((x) => ["gigante", "trio", "sello"].includes(x.tipo) && x.desde > 0.5);
+  const cambio = (linea.cambiosClip ?? [])[0];
+  const g = r0.datos.grupos.find((x) => !x.oculto && r0.datos.palabras[x.ids[0]].s > 1.5);
+  // Los momentos en que se NOTA el estilo: el texto a medio entrar (0,1 s), la transición antes y después del corte (3
+  // cuadros antes, 1 después: ahí se ven todas, también las que en el corte justo tapan el cuadro entero) y el cierre
+  // ya puesto (2 s: el pausado tarda más).
+  const cuadrosE = [...new Set([
+    texto ? dentro((texto.desde + 0.1) * fps) : 45,
+    cambio !== undefined ? dentro(cambio * fps - 3) : null,
+    cambio !== undefined ? dentro(cambio * fps + 1) : null,
+    g ? dentro((r0.datos.palabras[g.ids.at(-1)].s + 0.1) * fps) : null,
+    Math.min(dentro((linea.vozFin + 2) * fps), linea.total - 10),
+  ].filter((x) => x !== null))].sort((a, b) => a - b);
+  const solo = new Set(cuadrosE);
+  persona(1e9, solo);
+  cuadros(1e9, solo);
+  const carpeta = join(PROYECTO, "salida", "estilos");
+  mkdirSync(carpeta, { recursive: true });
+  const conResumen = lista.map((e) => ({ letra: e.letra, nombre: e.nombre ?? "", variantes: limpiarVariantes(e.variantes), resumen: describirVariantes(e.variantes, { completas: true }) }));
+  escribir(join(carpeta, "estilos.json"), conResumen);
+  for (const e of conResumen) {
+    escena({ hablar: false, variantes: e.variantes });
+    remotion("muestras", PUBLIC, join(carpeta, e.letra), cuadrosE.join(","));
+  }
+  // datos.json vuelve a ser el del plan (si no, el render saldría con el último estilo probado).
+  escena({ hablar: false });
+  python("comparar.py", carpeta, join(carpeta, "estilos.jpg"));
+  console.log(`Enséñale a la persona salida/estilos/estilos.jpg (cuadros ${cuadrosE.join(", ")}: el texto que entra, el cambio de clip antes y después, un subtítulo y el cierre).`);
+  console.log("Con lo que escoja: node kit.mjs elegir <letra> y, con su sí, guárdalo como estilo de la marca (estilo_de_edicion, «variantes»).");
+}
+
+/** El estilo escogido de la propuesta → plan.variantes. */
+function elegir(letra) {
+  const lista = leer(join(PROYECTO, "salida", "estilos", "estilos.json"), null);
+  if (!lista) fallo("Primero la propuesta: node kit.mjs estilos.");
+  const e = lista.find((x) => x.letra === String(letra ?? "").toUpperCase());
+  if (!e) fallo(`No hay un estilo «${letra}»: son ${lista.map((x) => x.letra).join(", ")}.`);
+  const p = plan();
+  p.variantes = e.variantes;
+  escribir(PLAN, p);
+  console.log(`plan.variantes = ${JSON.stringify(e.variantes)} (${e.resumen}).`);
+  console.log(`Guárdalo como estilo de la marca con su sí: estilo_de_edicion con «variantes»: ${JSON.stringify(e.variantes)}. Así sus próximos videos salen coherentes.`);
+}
+
 function escenaSinCuadros(p, linea, palabras) {
   return escenaParaRemotion({ linea, palabras, camara: camara(p, linea), plan: p, marca: p.marca ?? {} });
 }
@@ -606,6 +672,9 @@ function pasos() {
       : { nombre: "musica", decide: "falta plan.musica (biblioteca del cliente o Suno; node kit.mjs compases <canción>)" },
     { nombre: "mezcla", falta: viejo(mezcla, voz, pt.mezcla, ...(p.musica ? [musica] : [])), por: "la voz, la música o los efectos cambiaron" },
     { nombre: "crudo", falta: viejo(join(PROYECTO, "salida", "crudo.mp4"), mezcla), por: "la mezcla cambió" },
+    ...(!p.variantes || !Object.keys(p.variantes).length
+      ? [{ nombre: "estilos", decide: "falta el ESTILO de la marca (plan.variantes): el de su estilo guardado (guia_de_edicion lo da) o, si no tiene, enséñale 2 o 3 con node kit.mjs estilos y node kit.mjs elegir <letra>" }]
+      : []),
     ...(p.aprobado !== true
       ? [{ nombre: "muestras", decide: "faltan las piezas y los cuadros de muestra aprobados: node kit.mjs muestras y, con el sí, \"aprobado\": true en plan.json" }]
       : [
@@ -663,6 +732,8 @@ async function ejecutar(paso, args) {
     case "crudo": return crudo();
     case "marca": return marca(args[0]);
     case "variantes": return variantes();
+    case "estilos": return estilos(args[0]);
+    case "elegir": return elegir(args[0]);
     case "muestras": return muestras(args[0]);
     case "persona": return persona(Number(args[0]) || PRESUPUESTO);
     case "cuadros": return cuadros(Number(args[0]) || PRESUPUESTO);

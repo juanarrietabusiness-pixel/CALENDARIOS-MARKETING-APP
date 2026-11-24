@@ -1268,3 +1268,13 @@ contradicen, manda la de más abajo (la más nueva). Una trampa nueva de esta á
   agencia había editado una de esas partes en Ajustes → Editor de video, su texto se queda (con el aviso de que la casa
   cambió esa parte): hay que revisarlo a mano. La personalidad que sugiere `guia_de_edicion` sale del rubro y el tono por
   palabras (`personalidadDeTexto`): es una pista, no una decisión; «casa» o «mueble» la llevan a familiar.
+- **La propuesta de estilos: los mismos cuadros, en los momentos en que se nota (24-nov-2026).** Con la marca sin
+  variantes guardadas, `guia_de_edicion` trae 2 o 3 estilos (`estilosParaEscoger`: dos de su personalidad y uno de
+  contraste, con como mucho 1 pieza visible igual entre ellos y sin parecerse a otra marca) y `kit.mjs estilos` los pinta
+  con los MISMOS cuadros en `salida/estilos/estilos.jpg`. Los cuadros importan más de lo que parece: en la primera prueba
+  (Rofer) el texto ya había entrado (con el ritmo vivo, a 0,22 s el golpe ya aterrizó), en el corte justo el barrido y el
+  deslizamiento tapaban el cuadro entero (dos rectángulos azules iguales) y con el ritmo pausado el número del cierre aún no
+  salía. Ahora: el texto a 0,1 s de entrar, la transición 3 cuadros antes y 1 después del corte, y el cierre a 2 s.
+  `estilos` pinta cada estilo pasando sus variantes a la escena SIN escribir plan.json, y al terminar vuelve a dejar
+  `datos.json` con el plan (si no, el render saldría con el último estilo probado). `siguiente` no pasa a las muestras
+  sin `plan.variantes`: un plan de antes (sin ellas) se para ahí y lo dice.

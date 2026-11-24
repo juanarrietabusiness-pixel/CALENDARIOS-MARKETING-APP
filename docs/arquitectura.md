@@ -1322,6 +1322,8 @@ kit-edicion/
                           para el kit (código 2) en voz, crudo y final
   python/letras.py        Los ANCHOS MEDIDOS de los textos de la escena con las letras de verdad (fontTools, también WOFF2): con
                           ellos se colocan las piezas y la revisión comprueba que nada se monte ni se salga del cuadro
+  python/comparar.py      La COMPARACIÓN DE ESTILOS: los cuadros de muestra de cada estilo propuesto (kit.mjs estilos) en una
+                          imagen, una fila por estilo con su letra y su nombre, para que la persona escoja
   python/cuadros.py       Los cuadros de salida etalonados y la persona en RGBA para Remotion; también sólo unos cuadros (muestras)
   remotion/               Las PIEZAS (Remotion 4.0.541, fijado con package-lock): src/Piezas.jsx (titular del cuadro 0, gigante
                           detrás, tachado, trío, cinta, logo, ficha, lista, sello, preguntas, botón de WhatsApp, modo celular),
@@ -1349,7 +1351,8 @@ src/lib/
                           base (el juego de Rofer v2), describir y el catálogo en texto para Claude
   personalidadEdicion.js  La PERSONALIDAD de una marca (puro): lujo, tecnología, familiar e industrial con las variantes que les
                           van y lo que no; la que sugiere el rubro, y la combinación que le va sin parecerse a otra marca ni al
-                          juego de Rofer. Lo leen el manual del editor y guia_de_edicion
+                          juego de Rofer, y la PROPUESTA de 2 o 3 estilos distintos para escoger. Lo leen el manual del editor
+                          y guia_de_edicion
   estilosEdicion.js       Los ESTILOS DE EDICIÓN (puro): las REGLAS con que se editan los videos grabados de un cliente (piezas y
                           cuándo, cámara, transiciones, gancho, cierre, música y las VARIANTES del kit de cada pieza); limpiarlos
                           con lo que no se entiende dicho, hasta 6 y ~2.000 caracteres, contarlos en frases y cuántas variantes

@@ -19,7 +19,7 @@ import { contactoParaElVideo, esNotaDeDatos, listaDeControl } from "../../../src
 import { textoDeLexico } from "../../../src/lib/lexico.js";
 import { KIT_EDICION } from "../../../src/lib/kitEdicionVersion.js";
 import { VARIANTES_BASE, describirVariantes } from "../../../src/lib/variantesEdicion.js";
-import { PERSONALIDADES, personalidadDeTexto, variantesPorPersonalidad } from "../../../src/lib/personalidadEdicion.js";
+import { PERSONALIDADES, personalidadDeTexto, estilosParaEscoger } from "../../../src/lib/personalidadEdicion.js";
 
 const corto = (t, n) => String(t ?? "").replace(/\s+/g, " ").trim().slice(0, n);
 
@@ -77,13 +77,17 @@ export async function guiaDeEdicion(acceso, cliente, { tipo = "", estilo = "" } 
   } else {
     variantes.push(`## LAS VARIANTES: ${cliente.name} aún no tiene las suyas`,
       "Elígelas por la PERSONALIDAD de la marca (el manual, «El estilo de la marca») y, con el sí de la persona, guárdalas en su estilo (estilo_de_edicion, «variantes»).");
-    // La personalidad que SUGIERE su rubro y su tono (para empezar; quien edita decide leyendo la marca).
+    // La personalidad que SUGIERE su rubro y su tono (para empezar; quien edita decide leyendo la marca), y la PROPUESTA:
+    // 2 o 3 estilos distintos entre sí y de las demás marcas, para enseñarlos con sus cuadros y que la persona escoja.
     const sugerida = personalidadDeTexto([cliente.industry, kit.estilo, kit.tono, cliente.name].filter(Boolean).join(" "));
-    if (sugerida) {
-      const v = variantesPorPersonalidad(sugerida, { evitar: otras.map((o) => o.variantes) });
-      variantes.push(`Su rubro sugiere: ${PERSONALIDADES[sugerida].nombre.toUpperCase()} (${PERSONALIDADES[sugerida].como}). Una combinación que le va y no se parece a ninguna otra marca:`,
-        `"variantes": ${JSON.stringify(v)}`);
-    } else variantes.push(`Su rubro («${cliente.industry || "sin rubro"}») no sugiere ninguna personalidad: léela en su kit y su cerebro.`);
+    variantes.push(sugerida
+      ? `Su rubro sugiere: ${PERSONALIDADES[sugerida].nombre.toUpperCase()} (${PERSONALIDADES[sugerida].como}).`
+      : `Su rubro («${cliente.industry || "sin rubro"}») no sugiere ninguna personalidad: léela en su kit y su cerebro.`);
+    const propuesta = estilosParaEscoger(sugerida, { evitar: otras.map((o) => o.variantes) }).map(({ letra, nombre, variantes: v }) => ({ letra, nombre, variantes: v }));
+    variantes.push("EN LA PROPUESTA CORTA, enséñale estos estilos con sus cuadros para que ESCOJA (cámbialos si la marca pide otra cosa, sin repetir a otra marca):",
+      "1. Escribe esto en estilos.json, en la carpeta del proyecto:", JSON.stringify(propuesta),
+      "2. node ~/kit/kit.mjs estilos → salida/estilos/estilos.jpg (los mismos cuadros con cada estilo). Enséñasela.",
+      "3. Con lo que escoja: node ~/kit/kit.mjs elegir <letra>, y con su sí, guárdalo en el estilo de la marca (estilo_de_edicion con esas «variantes»).");
   }
   variantes.push("NO repitas las de otra marca (3 o 4 iguales de transicion, entrada, subtitulos y cierre se ven iguales; estilo_de_edicion no las guarda):",
     `- El juego de siempre (Rofer v2, lo que sale sin «variantes»): ${describirVariantes(VARIANTES_BASE)}.`,
