@@ -40,6 +40,7 @@ export default function VisorGrupo({ grupo, todas = null, onCerrar, onAbrir, onS
   };
   const [bajando, setBajando] = useState(false);
   const [error, setError] = useState("");
+  const [dicho, setDicho] = useState("");
   const [confirmando, setConfirmando] = useState(false);
   const [quitando, setQuitando] = useState(false);
   const [poniendo, setPoniendo] = useState(false);
@@ -64,7 +65,17 @@ export default function VisorGrupo({ grupo, todas = null, onCerrar, onAbrir, onS
   const descargar = async () => {
     setBajando(true);
     setError("");
+    setDicho("");
     try {
+      const { esTactil, descargarPiezas } = await import("../lib/descargar");
+      if (esTactil()) {
+        // En el teléfono un ZIP no sirve (no va a Fotos): la hoja de compartir con lo que se publica, en orden.
+        const nombres = nombresParaZip(carpeta, piezas);
+        const salen = reel && paraUsar.length ? paraUsar : piezas;
+        const r = await descargarPiezas(salen.map((a) => ({ src: a.src, nombre: nombres[piezas.indexOf(a)] })), { tactil: true });
+        setDicho(r.texto);
+        return;
+      }
       const nombres = nombresParaZip(carpeta, piezas);
       const archivos = await Promise.all(piezas.map(async (a, i) => {
         const r = await fetch(a.src, { credentials: "same-origin" });
@@ -112,6 +123,7 @@ export default function VisorGrupo({ grupo, todas = null, onCerrar, onAbrir, onS
           ))}
         </ol>
         {error && <p role="alert" className="cerebro-error">{error}</p>}
+        {dicho && <p role="status" className="notice">{dicho}</p>}
         {confirmando ? (
           <div className="visor-grupo-confirmar" role="group" aria-labelledby={`${ids}-c`}>
             <p id={`${ids}-c`} style={{ margin: 0 }}>

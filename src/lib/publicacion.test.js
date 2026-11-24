@@ -82,6 +82,9 @@ describe("revisarPublicacion", () => {
       .toMatch(/1:2.13/);
     const muchas = Array.from({ length: 33 }, (_, i) => foto(i));
     expect(revisarPublicacion({ format: "carrusel", descripcion: "x", medios: muchas }, ["tiktok"]).errores.join(" ")).toMatch(/hasta 32 fotos/);
+    // TikTok va por defecto con fotos: lo que sólo le falla a TikTok se quita con un botón y no frena las otras redes.
+    const mezcladas = revisarPublicacion({ format: "carrusel", descripcion: "x", medios: [foto(1), foto(2, 1080, 1920)] }, ["instagram", "tiktok"]);
+    expect(Object.values(mezcladas.arreglos)).toContainEqual({ codigo: "quitar-red:tiktok", etiqueta: "Quitar TikTok" });
     // Con fotos, el texto entero es la descripción (4.000) y la primera línea, el título (se corta a 90).
     const largo = revisarPublicacion({ format: "post", descripcion: `${"Título muy largo ".repeat(8)}\n${"a".repeat(3000)}`, medios: [foto(1)] }, ["tiktok"]);
     expect(largo.errores).toEqual([]);

@@ -158,18 +158,19 @@ export function renombrarAdaptados(adaptados, mapa) {
   }));
 }
 
-/** Las redes que, por defecto, sólo llevan video: TikTok (por PostPeer) y YouTube. */
-const SOLO_VIDEO = new Set(["tiktok", "youtube"]);
+/** YouTube sólo publica video; TikTok, video o fotos (por PostPeer). Ninguna de las dos, historias ni directos. */
+const SOLO_VIDEO = new Set(["youtube"]);
+const SIN_HISTORIAS = new Set(["tiktok", "youtube"]);
 
 /**
- * ¿Entra SOLA esta red en la publicación (redes por defecto)? Las de video
- * necesitan un video (o, si aún no se subió nada, un reel, que lo tendrá), y
- * no tienen historias ni directos. TikTok también publica FOTOS, pero no se
- * marca solo en una publicación de fotos: se elige a mano (`fotosTikTok`).
+ * ¿Entra SOLA esta red en la publicación (redes por defecto)? Todas las conectadas, salvo lo que la red no puede llevar:
+ * historias y directos no van a TikTok ni a YouTube, y YouTube necesita un video (o, si aún no se subió nada, un reel,
+ * que lo tendrá). TikTok entra también con FOTOS: antes se elegía a mano y, como nadie lo marcaba, las fotos y los
+ * carruseles de los clientes con TikTok conectado no salían allí (la agencia lo pidió: «que siempre estén las tres»).
  */
 export function redAdmite(post, red) {
+  if (SIN_HISTORIAS.has(red) && ["historia", "live"].includes(post?.format)) return false;
   if (!SOLO_VIDEO.has(red)) return true;
-  if (["historia", "live"].includes(post?.format)) return false;
   const medios = mediosDe(post);
   return medios.length ? medios.some((m) => m.tipo === "video") : post?.format === "reel";
 }
@@ -568,12 +569,12 @@ export function revisarPublicacion(post, redes = post?.redes ?? ["instagram"], {
       const texto = textoPara(post, "tiktok");
       if (texto.length > L.caracteres) errores.push(`El texto de TikTok tiene ${texto.length} caracteres; el máximo es ${L.caracteres}.`);
     } else {
-      if (fotos.length > L.fotosMax) errores.push(`TikTok admite hasta ${L.fotosMax} fotos por publicación y hay ${fotos.length}.`);
+      if (fotos.length > L.fotosMax) con(errores, `TikTok admite hasta ${L.fotosMax} fotos por publicación y hay ${fotos.length}.`, quitarRed(redes, "tiktok"));
       const medidas = fotos.filter((m) => m.ancho > 0 && m.alto > 0).map((m) => ({ ...m, r: m.ancho / m.alto }));
       const fuera = medidas.find((m) => m.r < L.proporcionMin * 0.99 || m.r > L.proporcionMax * 1.01);
-      if (fuera) errores.push(`Una foto mide ${fuera.ancho}×${fuera.alto}: TikTok acepta de 1:2.13 (muy vertical) a 2.13:1 (muy horizontal).`);
+      if (fuera) con(errores, `Una foto mide ${fuera.ancho}×${fuera.alto}: TikTok acepta de 1:2.13 (muy vertical) a 2.13:1 (muy horizontal).`, quitarRed(redes, "tiktok"));
       else if (medidas.length > 1 && medidas.some((m) => Math.abs(m.r - medidas[0].r) / medidas[0].r > 0.01)) {
-        errores.push("En TikTok todas las fotos de un carrusel tienen que tener la misma proporción (por ejemplo, todas 4:5 o todas 9:16).");
+        con(errores, "En TikTok todas las fotos de un carrusel tienen que tener la misma proporción (por ejemplo, todas 4:5 o todas 9:16).", quitarRed(redes, "tiktok"));
       }
       const titulo = String(post?.descripcion || post?.script || "").split("\n").map((l) => l.trim()).find(Boolean) ?? "";
       if (titulo.length > L.tituloFoto) avisos.push(`En TikTok la primera línea es el título de las fotos y se corta a ${L.tituloFoto} caracteres; el texto entero va en la descripción.`);

@@ -263,6 +263,26 @@ describe("el protocolo y las herramientas", () => {
     expect(p1.descripcion).toBe("Texto de Claude");
   });
 
+  it("una lista de redes que deja fuera una conectada (TikTok) lo AVISA; sin lista, no hay aviso", async () => {
+    const s = db.sqlite;
+    for (const red of ["instagram", "facebook", "tiktok"]) {
+      s.prepare("insert into cuentas_sociales (id, owner_id, red, externo_id, client_id, datos) values (?,?,?,?,?,?)")
+        .run(`u-ana:${red}:X`, "u-ana", red, `X-${red}`, "c1", red === "tiktok" ? JSON.stringify({ via: "postpeer" }) : "{}");
+    }
+    const { access_token: tk } = await conectar();
+    const sinLista = await llamar(tk, "crear_publicacion", { cliente: "Café Luna", fecha: "2026-10-08", formato: "reel", titulo: "Receta" });
+    expect(sinLista.content[0].text).not.toMatch(/OJO: NO sale/);
+    const conLista = await llamar(tk, "crear_publicacion", { cliente: "Café Luna", fecha: "2026-10-09", formato: "post", titulo: "Foto", redes: ["instagram", "facebook"] });
+    expect(conLista.content[0].text).toMatch(/OJO: NO sale en TikTok, que el cliente tiene conectado.*redes: \["instagram", "facebook", "tiktok"\]/);
+    const editada = await llamar(tk, "editar_publicacion", { publicacion_id: "p1", redes: ["instagram"] });
+    expect(editada.content[0].text).toMatch(/NO sale en Facebook ni en TikTok/);
+    expect((await llamar(tk, "editar_publicacion", { publicacion_id: "p1", redes: ["instagram", "facebook", "tiktok"] })).content[0].text).not.toMatch(/OJO: NO sale/);
+    // La descripción del parámetro le dice a Claude que no lo pase por costumbre.
+    const lista = await (await mcp(tk, "tools/list")).json();
+    const crear = lista.result.tools.find((t) => t.name === "crear_publicacion");
+    expect(crear.inputSchema.properties.redes.description).toMatch(/NO lo pases salvo que la PERSONA/);
+  });
+
   it("una fecha que no existe no crea un día fantasma", async () => {
     const { access_token: tk } = await conectar();
     for (const fecha of ["2026-02-30", "2026-13-01", "2026-04-31"]) {

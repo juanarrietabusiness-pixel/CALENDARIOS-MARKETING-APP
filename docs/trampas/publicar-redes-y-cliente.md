@@ -154,8 +154,8 @@ contradicen, manda la de más abajo (la más nueva). Una trampa nueva de esta á
   video en la publicación sale sólo el video), todas con la MISMA proporción y entre 1:2,13 y 2,13:1 —lo comprueba
   `revisarPublicacion` con las medidas que apunta `prepararParaRedes` (`medirImagen`)—, el título es la primera
   línea cortada a 90 (`tituloTikTok`) y la descripción el texto de TikTok (4.000), con música automática. Antes de
-  gastar un crédito se comprueba que cada foto siga en R2. TikTok NO se marca solo en una publicación de fotos
-  (`redAdmite` sigue en video): se elige a mano. Portada de video tampoco va (PostPeer no la recibe). **Nada se ha
+  gastar un crédito se comprueba que cada foto siga en R2. Desde el 24-nov TikTok SÍ se marca solo en una
+  publicación de fotos (ver la entrada «TikTok, siempre marcado» al final). Portada de video tampoco va (PostPeer no la recibe). **Nada se ha
   probado contra PostPeer real**; los tests hablan con un `fetch` de mentira.
 - **Las cifras del informe NO las escribe la IA.** Las calcula
   `src/lib/resultados.js` —el mismo código que la pestaña Resultados— y
@@ -562,8 +562,8 @@ contradicen, manda la de más abajo (la más nueva). Una trampa nueva de esta á
   `redes` elegidas salía sólo en Instagram (o Instagram y Facebook), y el
   TikTok conectado del cliente se quedaba fuera sin que nadie lo decidiera.
   `redesDe()` / `redesPorDefecto()` (lib/publicacion.js) dan las conectadas
-  que pueden llevarla —TikTok y YouTube sólo video, ni historias ni
-  directos; las fotos a TikTok se marcan a mano—, y es la MISMA regla en el panel, «Subir», «Programar lo
+  que pueden llevarla —YouTube sólo video; ni TikTok ni YouTube, historias ni
+  directos; TikTok, también fotos (desde el 24-nov)—, y es la MISMA regla en el panel, «Subir», «Programar lo
   aprobado» y `planificar()` del servidor.
 - **«Ampliar» a 4:5 con Nano Banana hacía zoom.** Pedirle que ampliara la
   imagen la redibujaba más cerca. Ahora se le pide una imagen NUEVA en la
@@ -784,3 +784,18 @@ contradicen, manda la de más abajo (la más nueva). Una trampa nueva de esta á
   lista de precarga de cada chunk que lo alcanza, y el del Estudio está a pocos bytes de su tope.
 - **«Enviar a cliente» se carga en diferido** (calendario/EnviarCliente.jsx; salió de dialogos.jsx), y CalendarView importa
   `programarAprobadas.js` con `import()`: con eso la carga inicial bajó 2,8 kB (lo nuevo de este encargo cabe dentro).
+- **TikTok, siempre marcado (24-nov-2026).** Dos semanas de reels y fotos de D'CASA salieron sin TikTok con la cuenta
+  conectada. Dos causas: (1) `redAdmite` dejaba TikTok fuera de las FOTOS por regla («se marcan a mano»), y nadie lo
+  marcaba; (2) los reels SÍ lo admitían, pero los chats de Claude creaban o editaban la publicación con
+  `redes: ["instagram","facebook"]` por costumbre, y una lista explícita manda sobre las de por defecto (los reels con
+  `null` o creados en la app sí llevaban TikTok). La agencia lo quiere así: «que siempre estén encendidas las redes que
+  tenga el cliente; si no la quiero en una, la quito yo». Ahora: las fotos y los carruseles también van a TikTok por
+  defecto (YouTube sigue sólo con video; historias y directos, ni a TikTok ni a YouTube); en el MCP, `redes` dice «NO lo
+  pases salvo que la PERSONA pidió quitar una red», y `crear_publicacion`/`editar_publicacion` contestan «OJO: NO sale en
+  TikTok, que el cliente tiene conectado» si la lista deja fuera una conectada. Como TikTok entra con fotos, sus errores
+  propios (proporciones distintas en un carrusel, más de 32 fotos, una foto fuera de 1:2.13–2.13:1) traen «Quitar
+  TikTok» en el panel y, al programar SOLO (`soloPosibles`: al aprobar, «Programar lo aprobado»), `planificar()` deja
+  fuera la red que no puede con la pieza y programa las demás: TikTok no puede frenar Instagram y Facebook. Pedido a
+  mano, sigue fallando entero con su motivo. Lo ya guardado con una lista sin TikTok NO cambia solo (no se sabe si se
+  quitó a propósito): se marca en el panel y se vuelve a programar (sólo sale lo que falta). **TikTok con fotos por
+  PostPeer no se ha probado contra el servicio real.**
