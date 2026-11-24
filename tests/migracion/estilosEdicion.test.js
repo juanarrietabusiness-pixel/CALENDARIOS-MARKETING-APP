@@ -116,6 +116,15 @@ describe("estilo_de_edicion", () => {
     expect(guiaDcasa.texto).toMatch(/Rofer Service \(«Obra»\): Transición: glitch/);
   });
 
+  it("sin variantes guardadas, la guía sugiere la personalidad del rubro y una combinación que no repite a nadie", async () => {
+    db.sqlite.prepare("insert into clients (id, owner_id, name, industry) values (?,?,?,?)").run("c3", ANA, "Joyas Luna", "Joyería de alta gama");
+    const guia = await llamar("guia_de_edicion", { cliente: "Joyas Luna", tipo: "persona-a-camara" });
+    expect(guia.texto).toMatch(/aún no tiene las suyas/);
+    expect(guia.texto).toMatch(/Su rubro sugiere: LUJO \(lento y elegante\)/);
+    expect(guia.texto).toMatch(/"variantes": \{"transicion":"deslizar","entrada":"escala"/);
+    expect(guia.texto).toMatch(/El estilo de la marca|EL ESTILO DE LA MARCA/);
+  });
+
   it("hasta 6: el séptimo no entra", async () => {
     for (let i = 0; i < 6; i++) await llamar("estilo_de_edicion", { cliente: "Rofer", guardar: { nombre: `E${i}` }, confirmado: true });
     const r = await llamar("estilo_de_edicion", { cliente: "Rofer", guardar: { nombre: "E7" }, confirmado: true });

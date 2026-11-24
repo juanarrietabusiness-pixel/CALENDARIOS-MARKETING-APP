@@ -10,7 +10,7 @@ const base = (id) => PARTES_EDITOR.find((p) => p.id === id).base;
 describe("la base de la casa", () => {
   it("tiene las partes comunes en orden y los cuatro tipos", () => {
     expect(PARTES_EDITOR.filter((p) => p.grupo === "comun").map((p) => p.id)).toEqual([
-      "comun.diagnostico", "comun.propuesta", "comun.corte", "comun.gancho", "comun.imagen", "comun.textos",
+      "comun.diagnostico", "comun.propuesta", "comun.estilo", "comun.corte", "comun.gancho", "comun.imagen", "comun.textos",
       "comun.subtitulos", "comun.sonido", "comun.llamado", "comun.revision",
     ]);
     expect(TIPOS_VIDEO_GRABADO).toEqual(["persona-a-camara", "persona-y-pantalla", "sin-persona", "solo-idea"]);
@@ -38,6 +38,19 @@ describe("la base de la casa", () => {
     expect(base("comun.textos")).toMatch(/tope REAL de la cabeza o del casco/);
     expect(base("comun.diagnostico")).toMatch(/«Datos del negocio»/);
     expect(base("comun.diagnostico")).toMatch(/Si no coinciden, díselo/);
+  });
+});
+
+describe("el estilo de la marca (variedad, 2026-11-24)", () => {
+  it("pide elegir por la personalidad y no copiar a otro cliente; lo de Rofer ya no es el estilo de todos", () => {
+    const estilo = base("comun.estilo");
+    for (const x of ["Lujo (lento y elegante)", "Tecnología (glitch y cortes secos)", "Familiar (suave y redondeado)", "Industrial (golpes y barridos)"]) expect(estilo).toContain(x);
+    expect(estilo).toMatch(/NUNCA copies el estilo de otro cliente/);
+    expect(estilo).toMatch(/van TAL CUAL/);
+    const todo = PARTES_EDITOR.map((p) => p.base).join("\n");
+    expect(todo).not.toMatch(/barrido diagonal del color de la marca/);
+    expect(todo).not.toMatch(/con el barrido de la marca/);
+    expect(base("comun.imagen")).toMatch(/plan\.variantes\.transicion/);
   });
 });
 
