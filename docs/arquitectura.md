@@ -1348,11 +1348,13 @@ src/lib/
                           subtítulos (los 4 de identidad_video), cierre, ritmo y forma; limpiar, validar, completar sobre la
                           base (el juego de Rofer v2), describir y el catálogo en texto para Claude
   estilosEdicion.js       Los ESTILOS DE EDICIÓN (puro): las REGLAS con que se editan los videos grabados de un cliente (piezas y
-                          cuándo, cámara, transiciones, gancho, cierre, música); limpiarlos con lo que no se entiende dicho,
-                          hasta 6 y ~2.000 caracteres, y contarlos en frases. Lo importa kitMarca.js: pequeño y sin imports
+                          cuándo, cámara, transiciones, gancho, cierre, música y las VARIANTES del kit de cada pieza); limpiarlos
+                          con lo que no se entiende dicho, hasta 6 y ~2.000 caracteres, contarlos en frases y cuántas variantes
+                          que se ven tienen iguales dos marcas. Lo importa kitMarca.js: pequeño y sin imports
 worker/lib/estudio/
-  estilosEdicion.js       Leerlos, comprobar uno antes de guardarlo (crear o reemplazar ENTERO), guardarlo y quitarlo (el kit, sólo
-                          por aquí: `guardarKit(…, { conEdicion: true })`)
+  estilosEdicion.js       Leerlos, comprobar uno antes de guardarlo (crear o reemplazar ENTERO; sus variantes, que no se parezcan
+                          a las de otra marca del espacio), guardarlo y quitarlo (el kit, sólo por aquí: `guardarKit(…, {
+                          conEdicion: true })`), y las variantes de las demás marcas (para la guía)
   herramientasEdicion.js  El editor de video grabado por MCP: `estilo_de_edicion` (ver, ver uno, guardar y quitar sólo con
                           confirmado)
 docs/estilos-edicion/     Los estilos de SIEMBRA, escritos desde el código de Rofer v2 («Alex en obra») y Comunidad v3: se

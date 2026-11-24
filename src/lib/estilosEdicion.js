@@ -49,6 +49,29 @@ export const TRANSICIONES_EDICION = Object.freeze({
   "corte-seco": "corte seco, sin nada",
 });
 
+/**
+ * Las VARIANTES del kit que un estilo fija para cada pieza (el catálogo entero, con nombres y descripciones, está en
+ * src/lib/variantesEdicion.js; aquí sólo los ids, escritos a mano para no cargarlo en la carga inicial: un test comprueba
+ * que coinciden). Con ellas los videos de una marca salen COHERENTES y los de marcas distintas, distintos.
+ */
+export const VARIANTES_ESTILO_EDICION = Object.freeze({
+  transicion: ["barrido", "zoom", "paneo", "deslizar", "glitch", "destello"],
+  entrada: ["subir", "golpe", "palabra", "mascara", "maquina", "escala"],
+  subtitulos: ["clasico", "palabra", "placa", "limpio"],
+  cierre: ["tarjeta", "limpio", "banda", "circulo"],
+  ritmo: ["pausado", "normal", "vivo"],
+  forma: ["redonda", "recta"],
+});
+/** Las piezas que más se VEN: dos marcas con 3 o 4 iguales de éstas se ven iguales. */
+export const PIEZAS_QUE_SE_VEN = Object.freeze(["transicion", "entrada", "subtitulos", "cierre"]);
+export const MAX_IGUALES_ENTRE_MARCAS = 2;
+
+/** Cuántas de las piezas que se ven tienen la misma variante en dos estilos (0 si a alguno le falta). Pura. */
+export function igualesEntreVariantes(a, b) {
+  if (!esObjeto(a) || !esObjeto(b)) return 0;
+  return PIEZAS_QUE_SE_VEN.filter((k) => a[k] && a[k] === b[k]).length;
+}
+
 /** Lo numérico de la cámara y de la música, con su rango (lo que se sale, fuera). */
 const CAMARA = Object.freeze({ abierto: [1, 1.4], medio: [1, 2], seguir: [0, 1], maxAcercar: [1, 2.5] });
 const MUSICA = Object.freeze({ bajoVoz: [-40, 0], llamado: [-40, 0], libre: [-40, 0], cierre: [-40, 0] });
@@ -76,7 +99,8 @@ function numeros(o, rangos, donde, errores) {
  *
  *   { id, nombre, tipo, piezas: { textoDetras: "…", sello: "…", placasNumeradas: true, … },
  *     camara: { abierto, medio, seguir, maxAcercar, golpeAlEntrar }, transiciones: { entreClips, saltoMismoClip },
- *     gancho, cierre: { segundos, boton, numero, usuario }, musica: { bajoVoz, llamado, libre, cierre }, ritmo, notas }
+ *     gancho, cierre: { segundos, boton, numero, usuario }, musica: { bajoVoz, llamado, libre, cierre }, ritmo, notas,
+ *     variantes: { transicion, entrada, subtitulos, cierre, ritmo, forma } }   (las del kit: van tal cual a plan.variantes)
  */
 export function limpiarEstiloEdicion(o, errores = []) {
   if (!esObjeto(o)) return null;
@@ -113,6 +137,18 @@ export function limpiarEstiloEdicion(o, errores = []) {
       else errores.push(`transiciones.${k}: «${v}» no la pinta el kit (${Object.keys(TRANSICIONES_EDICION).join(", ")}).`);
     }
     if (Object.keys(tr).length) out.transiciones = tr;
+  }
+  if (o.variantes !== undefined) {
+    if (!esObjeto(o.variantes)) errores.push(`variantes: es un objeto { ${Object.keys(VARIANTES_ESTILO_EDICION).join(", ")} }.`);
+    else {
+      const v = {};
+      for (const [k, x] of Object.entries(o.variantes)) {
+        if (!Object.hasOwn(VARIANTES_ESTILO_EDICION, k)) errores.push(`variantes.${k}: no es una pieza con variantes (${Object.keys(VARIANTES_ESTILO_EDICION).join(", ")}).`);
+        else if (!VARIANTES_ESTILO_EDICION[k].includes(x)) errores.push(`variantes.${k}: «${x}» no la pinta el kit (${VARIANTES_ESTILO_EDICION[k].join(", ")}).`);
+        else v[k] = x;
+      }
+      if (Object.keys(v).length) out.variantes = v;
+    }
   }
   for (const k of ["gancho", "ritmo"]) {
     const t = corto(o[k], MAX_TEXTO_EDICION);
@@ -161,6 +197,7 @@ export function resumenEstiloEdicion(e) {
   if (!e) return [];
   const l = [];
   if (e.tipo) l.push(`Tipo: ${e.tipo}.`);
+  if (e.variantes) l.push(`Variantes del kit: ${Object.entries(e.variantes).map(([k, v]) => `${k} «${v}»`).join(", ")}.`);
   if (e.gancho) l.push(`Gancho: ${e.gancho}.`);
   for (const [k, v] of Object.entries(e.piezas ?? {})) {
     if (k === "placasNumeradas") l.push(`Placas numeradas: ${sn(v)}.`);

@@ -24,6 +24,10 @@ import { json, error, cuerpo, noEncontrado } from "../lib/respuesta.js";
 import { difundir, firma } from "../lib/vivo.js";
 import { estilosEdicionDe, guardarEstiloEdicion, quitarEstiloEdicion, ErrorEstiloEdicion } from "../lib/estudio/estilosEdicion.js";
 import { PIEZAS_ESTILO_EDICION, TRANSICIONES_EDICION, TIPOS_ESTILO_EDICION, MAX_ESTILOS_EDICION } from "../../src/lib/estilosEdicion.js";
+import { VARIANTES } from "../../src/lib/variantesEdicion.js";
+
+/** El catálogo de variantes para la pantalla: { pieza: { nombre, variantes: { id: nombre } } }. */
+const VARIANTES_PANTALLA = Object.fromEntries(Object.entries(VARIANTES).map(([k, v]) => [k, { nombre: v.nombre, variantes: Object.fromEntries(Object.entries(v.variantes).map(([id, x]) => [id, x.nombre])) }]));
 import { propuestasPendientes, aplicarPropuestas, descartarPropuestas, nombreDeParte, puedeCambiarManual, ErrorActa } from "../lib/estudio/actasEdicion.js";
 import { KIT_EDICION } from "../../src/lib/kitEdicionVersion.js";
 
@@ -87,7 +91,7 @@ export async function rutasEdicion(req, env, { acceso, usuario, partes, metodo }
   if (que && sub === "estilos") {
     const cliente = await acceso.leerUno("clients", { id: que });
     if (!cliente) return noEncontrado("Cliente");
-    const lista = (c) => json({ estilos: estilosEdicionDe(c), max: MAX_ESTILOS_EDICION, piezas: PIEZAS_ESTILO_EDICION, transiciones: TRANSICIONES_EDICION, tipos: TIPOS_ESTILO_EDICION });
+    const lista = (c) => json({ estilos: estilosEdicionDe(c), max: MAX_ESTILOS_EDICION, piezas: PIEZAS_ESTILO_EDICION, transiciones: TRANSICIONES_EDICION, tipos: TIPOS_ESTILO_EDICION, variantes: VARIANTES_PANTALLA });
     if (!id && metodo === "GET") return lista(cliente);
     try {
       if (!id && metodo === "PUT") {

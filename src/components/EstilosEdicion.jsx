@@ -9,7 +9,7 @@ import { resumenEstiloEdicion, MAX_NOTAS_EDICION, MAX_TEXTO_EDICION } from "../l
 // Los ESTILOS DE EDICIÓN del cliente en Marca → Kit y voz (en diferido; Fase 5 del editor de video grabado)
 //
 // Las REGLAS con que se editan sus videos GRABADOS (src/lib/estilosEdicion.js): qué piezas van y cuándo, la cámara, las
-// transiciones, el gancho, el cierre y la música. Los lee Claude al editar (guia_de_edicion). Aquí se ven en frases, se
+// transiciones, el gancho, el cierre, la música y las VARIANTES del kit de cada pieza (el catálogo lo manda el servidor). Los lee Claude al editar (guia_de_edicion). Aquí se ven en frases, se
 // editan con un formulario (lo que se deja vacío sale del manual del editor y de los números del oficio), se crean y se
 // quitan (con confirmación en la propia fila). El servidor dice lo que no entiende y entonces no guarda nada.
 // ============================================================
@@ -31,6 +31,7 @@ function enEdicion(e = {}) {
     transiciones: { entreClips: t(e.transiciones?.entreClips), saltoMismoClip: t(e.transiciones?.saltoMismoClip) },
     cierre: { segundos: t(e.cierre?.segundos).replace(".", ","), boton: t(e.cierre?.boton), numero: b(e.cierre?.numero), usuario: b(e.cierre?.usuario) },
     musica: Object.fromEntries(MUSICA.map(([k]) => [k, t(e.musica?.[k]).replace(".", ",")])),
+    variantes: { ...(e.variantes ?? {}) },
   };
 }
 
@@ -47,6 +48,7 @@ function paraGuardar(f) {
     transiciones: sinVacios({ entreClips: f.transiciones.entreClips || undefined, saltoMismoClip: f.transiciones.saltoMismoClip || undefined }),
     cierre: sinVacios({ segundos: num(f.cierre.segundos), boton: f.cierre.boton.trim(), numero: bool(f.cierre.numero), usuario: bool(f.cierre.usuario) }),
     musica: sinVacios(Object.fromEntries(MUSICA.map(([k]) => [k, num(f.musica[k])]))),
+    variantes: sinVacios(f.variantes ?? {}),
   }) ?? {};
 }
 
@@ -73,7 +75,7 @@ export default function EstilosEdicion({ client, lectura = false }) {
   }, [client.id]);
 
   if (!datos) return <p role="status" className="hint">Cargando los estilos de edición…</p>;
-  const { estilos = [], max = 6, piezas = {}, transiciones = {}, tipos = Object.keys(TIPOS) } = datos;
+  const { estilos = [], max = 6, piezas = {}, transiciones = {}, tipos = Object.keys(TIPOS), variantes = {} } = datos;
 
   const guardar = async () => {
     setOcupado(true); setAviso(null);
@@ -164,6 +166,25 @@ export default function EstilosEdicion({ client, lectura = false }) {
               <textarea id={fid(k)} className="textarea" rows={2} maxLength={MAX_TEXTO_EDICION} value={forma[k]} onChange={raiz(k)} />
             </div>
           ))}
+
+          {Object.keys(variantes).length > 0 && (
+            <fieldset className="identidad-grupo">
+              <legend className="label">Las variantes del kit: cómo se ve cada pieza en TODOS los videos de esta marca</legend>
+              <p className="hint" style={{ margin: 0 }}>
+                Claude las pone tal cual en cada edición, así los videos de la marca salen coherentes. No se guardan si se parecen a las de otra
+                marca (3 o 4 iguales de transición, entrada, subtítulos y cierre).
+              </p>
+              {Object.entries(variantes).map(([k, v]) => (
+                <div key={k} className="field">
+                  <label className="label" htmlFor={fid(`v-${k}`)} style={{ textTransform: "none" }}>{v.nombre}</label>
+                  <select id={fid(`v-${k}`)} className="input" value={forma.variantes?.[k] ?? ""} onChange={campo("variantes", k)}>
+                    <option value="">Sin fijar (la elige Claude por la marca)</option>
+                    {Object.entries(v.variantes).map(([id, nombre]) => <option key={id} value={id}>{nombre}</option>)}
+                  </select>
+                </div>
+              ))}
+            </fieldset>
+          )}
 
           <fieldset className="identidad-grupo">
             <legend className="label">Las piezas: cuándo y cómo va cada una (vacía: lo del manual)</legend>

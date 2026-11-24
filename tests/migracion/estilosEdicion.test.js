@@ -92,6 +92,30 @@ describe("estilo_de_edicion", () => {
     expect(estilos()).toEqual([]);
   });
 
+  it("guarda las VARIANTES del kit; las que se parecen a las de otra marca no se guardan", async () => {
+    db.sqlite.prepare("insert into clients (id, owner_id, name, kit_marca) values (?,?,?,?)").run("c2", ANA, "D'CASA", JSON.stringify({
+      estilosEdicion: [{ id: "ee-dcasa00001", nombre: "Tienda", variantes: { transicion: "zoom", entrada: "golpe", subtitulos: "clasico", cierre: "banda" } }],
+    }));
+    const mal = await llamar("estilo_de_edicion", { cliente: "Rofer Service", guardar: { nombre: "Obra", variantes: { transicion: "fundido" } } });
+    expect(mal.error).toBe(true);
+    expect(mal.texto).toMatch(/variantes\.transicion: «fundido» no la pinta el kit/);
+    const igual = await llamar("estilo_de_edicion", { cliente: "Rofer Service", guardar: { nombre: "Obra", variantes: { transicion: "zoom", entrada: "golpe", subtitulos: "clasico", cierre: "tarjeta" } } });
+    expect(igual.error).toBe(true);
+    expect(igual.texto).toMatch(/se parecen demasiado a las de D'CASA \(«Tienda»/);
+    const propio = { nombre: "Obra", variantes: { transicion: "glitch", entrada: "maquina", subtitulos: "clasico", cierre: "banda", ritmo: "vivo", forma: "recta" } };
+    const vista = await llamar("estilo_de_edicion", { cliente: "Rofer Service", guardar: propio });
+    expect(vista.texto).toMatch(/Variantes del kit: transicion «glitch», entrada «maquina»/);
+    expect((await llamar("estilo_de_edicion", { cliente: "Rofer Service", guardar: propio, confirmado: true })).error).toBe(false);
+    expect(estilos()[0].variantes).toEqual(propio.variantes);
+    // La guía las da para el plan y enseña las de las demás marcas, para no repetirlas.
+    const guia = await llamar("guia_de_edicion", { cliente: "Rofer Service", tipo: "persona-a-camara" });
+    expect(guia.texto).toContain(`"variantes": ${JSON.stringify(propio.variantes)}`);
+    expect(guia.texto).toMatch(/D'CASA \(«Tienda»\): Transición: golpe de zoom/);
+    expect(guia.texto).toMatch(/El juego de siempre \(Rofer v2/);
+    const guiaDcasa = await llamar("guia_de_edicion", { cliente: "D'CASA", tipo: "persona-a-camara" });
+    expect(guiaDcasa.texto).toMatch(/Rofer Service \(«Obra»\): Transición: glitch/);
+  });
+
   it("hasta 6: el séptimo no entra", async () => {
     for (let i = 0; i < 6; i++) await llamar("estilo_de_edicion", { cliente: "Rofer", guardar: { nombre: `E${i}` }, confirmado: true });
     const r = await llamar("estilo_de_edicion", { cliente: "Rofer", guardar: { nombre: "E7" }, confirmado: true });

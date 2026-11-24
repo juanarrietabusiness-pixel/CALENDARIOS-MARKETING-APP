@@ -13,12 +13,12 @@
 import { difundir } from "../vivo.js";
 import { avisar, miembrosDe } from "../equipo.js";
 import {
-  estilosEdicionDe, buscarEstiloEdicion, prepararEstiloEdicion, guardarEstiloEdicion, quitarEstiloEdicion, resumenEstiloEdicion,
+  estilosEdicionDe, buscarEstiloEdicion, comprobarEstiloEdicion, guardarEstiloEdicion, quitarEstiloEdicion, resumenEstiloEdicion,
   ErrorEstiloEdicion,
 } from "./estilosEdicion.js";
 import { guiaDeEdicion } from "./guiaEdicion.js";
 import { guardarActa, propuestasPendientes, aplicarPropuestas, descartarPropuestas, nombreDeParte, ErrorActa } from "./actasEdicion.js";
-import { PIEZAS_ESTILO_EDICION, TRANSICIONES_EDICION, TIPOS_ESTILO_EDICION, MAX_ESTILOS_EDICION } from "../../../src/lib/estilosEdicion.js";
+import { PIEZAS_ESTILO_EDICION, TRANSICIONES_EDICION, TIPOS_ESTILO_EDICION, MAX_ESTILOS_EDICION, VARIANTES_ESTILO_EDICION } from "../../../src/lib/estilosEdicion.js";
 import { TIPOS_VIDEO_GRABADO } from "../../../src/lib/manualEditor.js";
 import { textoDePropuesta } from "../../../src/lib/aprendizajeEdicion.js";
 
@@ -33,7 +33,7 @@ export const DEFINICIONES_EDICION_MCP = Object.freeze([
     description:
       "Los ESTILOS DE EDICIÓN de un cliente: las REGLAS con que se editan sus videos GRABADOS (clips de una persona hablando a " +
       "cámara): qué piezas van y cuándo (texto detrás de la persona, sello, cinta, fichas, lista…), la cámara, las transiciones, " +
-      "el gancho, el cierre y la música. Reglas, no el contenido de un video. Sin «guardar» ni «quitar»: los que tiene; con " +
+      "el gancho, el cierre, la música y las VARIANTES del kit de cada pieza (transición, entrada de texto, subtítulos, cierre, ritmo, forma). Reglas, no el contenido de un video. Sin «guardar» ni «quitar»: los que tiene; con " +
       `«estilo» (su nombre o id), ése entero en JSON. Con «guardar»: crea uno (hasta ${MAX_ESTILOS_EDICION}) o, con su id o su mismo nombre, ` +
       "lo REEMPLAZA entero. Guardar y quitar, sólo tras el sí de la persona a lo que devolvió la primera llamada (confirmado). " +
       "Lo que ya dice la identidad de video (subtítulos, músicas, efectos) no se repite aquí. No gasta nada.",
@@ -50,7 +50,11 @@ export const DEFINICIONES_EDICION_MCP = Object.freeze([
             "camara: { abierto (1–1,4), medio (1–2, más que abierto), seguir (0–1), maxAcercar (1–2,5), golpeAlEntrar: bool }, " +
             `transiciones: { entreClips, saltoMismoClip: ${Object.keys(TRANSICIONES_EDICION).join(" | ")} }, gancho (≤160), ` +
             "cierre: { segundos (0–8), boton (≤40), numero: bool, usuario: bool }, musica: { bajoVoz, llamado, libre, cierre (dB, −40…0) }, " +
-            "ritmo (≤160), notas (≤600) }. Lo que no digas sale del manual del editor y de los números del oficio.",
+            "ritmo (≤160), notas (≤600), " +
+            `variantes: { ${Object.entries(VARIANTES_ESTILO_EDICION).map(([k, v]) => `${k}: ${v.join(" | ")}`).join("; ")} } }. ` +
+            "Las VARIANTES son las del kit (node kit.mjs variantes) y van tal cual a plan.variantes: así todos los videos de la marca " +
+            "salen coherentes. No se guardan si se parecen a las de otra marca (3 o 4 iguales de transicion, entrada, subtitulos y cierre). " +
+            "Lo que no digas sale del manual del editor y de los números del oficio.",
         },
         quitar: { type: "boolean", description: "true: quita el estilo nombrado en «estilo»." },
         confirmado: { type: "boolean", description: "Sólo tras el «sí» de la persona a lo que devolvió la primera llamada." },
@@ -127,7 +131,7 @@ export function crearHerramientasEdicion({ env, acceso, resolverCliente, usuario
       const estilos = estilosEdicionDe(c);
 
       if (guardar !== undefined && guardar !== null) {
-        const p = prepararEstiloEdicion(c, guardar);
+        const p = await comprobarEstiloEdicion(acceso, c, guardar);
         if (p.errores.length) throw new ErrorEdicion(`NO SE GUARDÓ NADA. ${p.errores.join(" ")}`);
         if (confirmado !== true) {
           return [
