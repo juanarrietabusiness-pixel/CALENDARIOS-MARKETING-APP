@@ -79,7 +79,7 @@ coloca con aire sobre el tope de la cabeza:
 ```json
 "piezas": [
   { "tipo": "titular", "lineas": [{ "texto": "LO MÁS CARO" }, { "texto": "DE UNA OBRA" }], "hasta": { "palabra": 9 } },
-  { "tipo": "gigante", "texto": "+20 AÑOS", "desde": { "palabra": 30 }, "hasta": { "palabra": 34 }, "modo": "golpe" },
+  { "tipo": "gigante", "texto": "+20 AÑOS", "desde": { "palabra": 30 }, "hasta": { "palabra": 34 }, "entrada": "golpe" },
   { "tipo": "trio", "imagen": "logo", "desde": { "palabra": 68 }, "hasta": { "t": 21.7 },
     "items": [{ "texto": "MINIS", "palabra": 68 }, { "texto": "MEDIANOS", "palabra": 69 }, { "texto": "GRANDES", "palabra": 71 }] }
 ]
@@ -88,6 +88,24 @@ coloca con aire sobre el tope de la cabeza:
 Tipos: `titular` (el gancho, completo en el cuadro 0), `gigante` y `tachado` (detrás de la persona), `cinta`, `logo`,
 `ficha` (`lado`, `icono`: reloj, dinero, check, flecha; `baja`), `lista` (`titulo`, `items`), `sello` (`arriba`,
 `grande`), `preguntas` (`items`, `marcar`), `trio`, `whatsapp` (`toque`) y `celular` (`pantallas`, `titulos`).
+
+### El estilo: las variantes de cada pieza
+
+El kit trae VARIAS maneras de pintar cada pieza, todas con los colores, las letras y el logo de la marca
+(`node ~/kit/kit.mjs variantes` las lista con lo que hace cada una). Se eligen en `plan.variantes`:
+
+```json
+"variantes": { "transicion": "glitch", "entrada": "maquina", "subtitulos": "palabra", "cierre": "banda", "ritmo": "vivo", "forma": "recta" }
+```
+
+- `transicion`: barrido (diagonal), zoom (golpe de zoom), paneo (rápido), deslizar, glitch, destello (corte seco).
+- `entrada` (de los textos gigante, trío y sello): subir, golpe, palabra (por palabra), mascara, maquina (de escribir),
+  escala (suave). Una pieza puede pedir la suya: `"entrada": "golpe"` en la pieza.
+- `subtitulos`: clasico, palabra, placa, limpio (los de identidad_video; sin elegir, el de la marca).
+- `cierre`: tarjeta, limpio, banda, circulo.
+- `ritmo`: pausado, normal, vivo (cuánto tardan TODAS las animaciones). `forma`: redonda o recta (esquinas).
+
+Sin `variantes` sale el juego de siempre (el de Rofer v2), que es lo que hacía que todos los videos se parecieran.
 
 - **El trío**: sin `imagen`, las tres palabras van del MISMO tamaño, medidas para que quepan en su columna. Con
   `"imagen": "logo"`, el DIBUJO del logo de la marca, separado del nombre y en blanco (en Rofer, la excavadora); si el logo

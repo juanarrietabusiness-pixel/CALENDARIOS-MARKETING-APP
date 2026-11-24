@@ -16,6 +16,8 @@
 //   mezcla                       voz + música con ducking + efectos del catálogo; máster a −14 LUFS
 //   crudo                        el corte en crudo con la mezcla (salida/crudo.mp4) para que la persona lo apruebe
 //   marca <carpeta del kit>      colores, logo y letra del ZIP de kit_descargable → plan.marca (lo demás, a mano)
+//   variantes                    el catálogo de VARIANTES de las piezas (transición, entrada de texto, subtítulos, cierre,
+//                                ritmo, forma) y las de este plan: van en plan.variantes, según la personalidad de la marca
 //   muestras [cuadro,cuadro,…]   2 o 3 CUADROS DE MUESTRA con la marca (gancho, texto detrás, subtítulo) sin recortar ni
 //                                pintar todo: se enseñan a la persona ANTES de editar
 //   persona [segundos]           el recorte de la persona (RVM) y su geometría; por tramos, sigue donde iba
@@ -49,6 +51,7 @@ const { EFECTOS_CATALOGO } = await cargar("catalogoEfectos.datos.js");
 const { KIT_EDICION } = await cargar("kitEdicionVersion.js");
 const { camaraDelVideo } = await cargar("camaraEdicion.js");
 const { escenaParaRemotion, textosDeEscena } = await cargar("escenaEdicion.js");
+const { catalogoEnTexto, describirVariantes } = await cargar("variantesEdicion.js");
 
 const VERSION = KIT_EDICION.version;
 const DOMINIO = (process.env.KIT_DOMINIO || (existsSync(join(KIT, ".dominio")) ? readFileSync(join(KIT, ".dominio"), "utf8").trim() : "")
@@ -301,6 +304,14 @@ function marca(carpeta) {
   escribir(PLAN, p);
   console.log(`plan.marca: ${JSON.stringify(p.marca)}`);
   console.log("Completa a mano lo que no está en el kit: whatsapp (de la nota «Datos del negocio» del cerebro), usuario (@…), llamado del cierre y subtitulos (de identidad_video).");
+}
+
+/** El catálogo de variantes de las piezas y las que elige este plan (src/lib/variantesEdicion.js). */
+function variantes() {
+  console.log(catalogoEnTexto());
+  const p = existsSync(PLAN) ? leer(PLAN) : {};
+  console.log(`\nEste plan: ${p.variantes ? describirVariantes(p.variantes, { completas: true }) : "sin «variantes» (sale el juego de siempre, el de Rofer v2: elígelas según la marca)"}.`);
+  console.log("Van en plan.json: \"variantes\": { \"transicion\": …, \"entrada\": …, \"subtitulos\": …, \"cierre\": …, \"ritmo\": …, \"forma\": … }. Un texto puede pedir la suya con \"entrada\" en la pieza.");
 }
 
 /** Lo que pide Remotion de la marca, con los archivos copiados a public/. */
@@ -571,7 +582,7 @@ const partesDelPlan = (p) => ({
   voz: parte("voz", { clips: (p.clips ?? []).map((c) => [c.id, c.velocidad, c.ganancia, c.presencia]), realces: p.realces }),
   musica: parte("musica", p.musica ?? null),
   mezcla: parte("mezcla", { efectos: p.efectos, apartar: p.apartar, musica: p.musica ?? null }),
-  escena: parte("escena", { piezas: p.piezas, marca: p.marca, subtitulos: p.subtitulos, golpes: p.golpes, camara: p.camara, cierre: p.cierre, persona: p.persona }),
+  escena: parte("escena", { piezas: p.piezas, marca: p.marca, subtitulos: p.subtitulos, golpes: p.golpes, camara: p.camara, cierre: p.cierre, persona: p.persona, variantes: p.variantes }),
 });
 
 /** ¿Hay que (re)hacer `salida`? Si no existe o es más vieja que alguna de sus entradas. */
@@ -651,6 +662,7 @@ async function ejecutar(paso, args) {
     case "mezcla": return mezcla();
     case "crudo": return crudo();
     case "marca": return marca(args[0]);
+    case "variantes": return variantes();
     case "muestras": return muestras(args[0]);
     case "persona": return persona(Number(args[0]) || PRESUPUESTO);
     case "cuadros": return cuadros(Number(args[0]) || PRESUPUESTO);

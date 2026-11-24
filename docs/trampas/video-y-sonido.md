@@ -1239,3 +1239,16 @@ contradicen, manda la de más abajo (la más nueva). Una trampa nueva de esta á
   así que las guardas (aplicar exacto, versión leída, quién puede) no se duplican. Una general tiene `client_id` nulo: la
   capa de acceso no se la enseña a un colaborador (le contesta 404, no 403), y la pantalla lo dice por `puedeManual`.
 
+- **Todos los videos del editor salían como Rofer (24-nov-2026).** El kit nació con UN juego de piezas, sacado de Rofer v2:
+  el primer video de otra empresa tenía las mismas animaciones de texto, el mismo barrido y el mismo ritmo, sólo con otros
+  colores. Ahora cada pieza tiene variantes (`src/lib/variantesEdicion.js`, en el kit desde v0.3.0): 6 transiciones, 6
+  entradas de texto, los 4 subtítulos de identidad_video, 4 cierres, 3 ritmos y 2 formas, en `plan.variantes`. Sin
+  `variantes`, sale el juego de Rofer (`VARIANTES_BASE`): es lo que hay que evitar, no un buen valor por defecto. Tres
+  cosas que no se ven en el código: (1) el «modo» del gigante de antes (`golpe`, `pop`, `subir`) MANDA sobre la entrada del
+  estilo, porque es la entrada propia de esa pieza: un plan copiado de Rofer arrastra sus `modo` y vuelve a parecerse; (2) el
+  ritmo (`k`) entra en los muelles como `fps · k` (base.js, `muelle`) y en las duraciones lineales multiplicadas: una pieza
+  nueva que no lo use no sigue el ritmo; (3) ninguna entrada cambia el ancho FINAL del texto (la máquina de escribir oculta
+  con `visibility`, la máscara también, el cursor tiene ancho 0): la escena mide el texto puesto y la revisión de oficio
+  sigue valiendo. El «paneo» crece mientras se mueve para que no asome el fondo por el borde, y la «máscara» es un bloque del
+  acento (con una barra que barre se confundía con la máquina de escribir). Probadas pintando cuadros sueltos con Remotion
+  sobre el proyecto de Rofer; el render entero de un video con cada una, no.

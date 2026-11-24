@@ -1325,8 +1325,11 @@ kit-edicion/
   python/cuadros.py       Los cuadros de salida etalonados y la persona en RGBA para Remotion; también sólo unos cuadros (muestras)
   remotion/               Las PIEZAS (Remotion 4.0.541, fijado con package-lock): src/Piezas.jsx (titular del cuadro 0, gigante
                           detrás, tachado, trío, cinta, logo, ficha, lista, sello, preguntas, botón de WhatsApp, modo celular),
-                          src/Video.jsx (cámara + capas + subtítulos medidos + barrido + destello + cierre), src/base.js (la marca
-                          en colores y letras: nada fijo), src/catalogo.js (qué componente pinta cada tipo, detrás o delante),
+                          src/Video.jsx (cámara + capas + subtítulos medidos en sus 4 estilos + la transición + el cierre),
+                          src/base.js (la marca en colores y letras, y el estilo: ritmo `k` y esquinas `r()`; nada fijo),
+                          src/Entradas.jsx (las 6 entradas de texto), src/Transiciones.jsx (las 6 transiciones: lo que mueve el
+                          cuadro y lo que va encima), src/Cierres.jsx (los 4 cierres), src/catalogo.js (qué componente pinta
+                          cada tipo, detrás o delante),
                           src/Raiz.jsx + src/index.jsx (la composición, con la duración desde datos.json), render.mjs (muestras
                           y tramos con el Chromium de la máquina)
 src/lib/
@@ -1341,6 +1344,9 @@ src/lib/
 
 ```
 src/lib/
+  variantesEdicion.js     El CATÁLOGO DE VARIANTES de las piezas del editor (puro; va en el kit): transición, entrada de texto,
+                          subtítulos (los 4 de identidad_video), cierre, ritmo y forma; limpiar, validar, completar sobre la
+                          base (el juego de Rofer v2), describir y el catálogo en texto para Claude
   estilosEdicion.js       Los ESTILOS DE EDICIÓN (puro): las REGLAS con que se editan los videos grabados de un cliente (piezas y
                           cuándo, cámara, transiciones, gancho, cierre, música); limpiarlos con lo que no se entiende dicho,
                           hasta 6 y ~2.000 caracteres, y contarlos en frases. Lo importa kitMarca.js: pequeño y sin imports

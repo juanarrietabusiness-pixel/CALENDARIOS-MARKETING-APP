@@ -21,6 +21,7 @@
 import { OFICIO } from "./oficioEdicion.js";
 import { instante } from "./planEdicion.js";
 import { gruposDeSubtitulos, gruposDesdeTexto, normalizar } from "./corteEdicion.js";
+import { variantesParaRemotion, PIEZAS_CON_ENTRADA, esVariante, limpiarVariantes } from "./variantesEdicion.js";
 
 export const TIPOS_PIEZA = Object.freeze({
   titular: "El gancho completo en el cuadro 0 (portada), detrás de la persona",
@@ -178,13 +179,15 @@ const cajaCabeza = ([x, tope, ancho]) => ({ x0: x - ancho / 2, y0: tope, x1: x +
  * Resuelve las piezas del plan: instantes en segundos y posiciones por defecto. `palabras` (en salida), `cabeza` (por
  * cuadro), `fps`, `vozFin`. → [{ tipo, desde, hasta, ...con y, x, tam resueltos }]. Pura.
  */
-export function resolverPiezas(piezas, { palabras, cabeza, fps, vozFin, med = APROXIMADO }) {
+export function resolverPiezas(piezas, { palabras, cabeza, fps, vozFin, med = APROXIMADO, entrada = "subir" }) {
   const t = (x, defecto) => (x === undefined ? defecto : instante(x, palabras));
   return (piezas ?? []).map((p, k) => {
     const desde = p.tipo === "titular" ? 0 : t(p.desde, 0);
     const hasta = p.tipo === "whatsapp" ? vozFin : t(p.hasta, vozFin);
     const tope = topeMinimo(cabeza, fps, desde ?? 0, hasta ?? vozFin);
     const base = { ...p, n: k, desde: desde === null ? null : r3(desde), hasta: hasta === null ? null : r3(hasta) };
+    // La ENTRADA de un texto: la suya, o la de antes del catálogo («modo» del gigante: golpe, pop, subir), o la del estilo.
+    if (PIEZAS_CON_ENTRADA.includes(p.tipo)) base.entrada = esVariante("entrada", p.entrada) ? p.entrada : p.tipo === "gigante" && p.modo ? (p.modo === "pop" ? "golpe" : p.modo) : entrada;
     switch (p.tipo) {
       case "titular": {
         const lineas = (p.lineas ?? []).map((l, i) => ({ texto: l.texto, tam: l.tam ?? (i === 0 ? 150 : 92), color: l.color ?? (i === 0 ? "claro" : "acento") }));
@@ -195,7 +198,7 @@ export function resolverPiezas(piezas, { palabras, cabeza, fps, vozFin, med = AP
         // En el cielo, con aire sobre la cabeza; si no cabe entre la franja segura y la cabeza, que la toque un poco por
         // detrás (se permite si se lee: la revisión lo dice).
         const y = p.y ?? Math.max(ARRIBA_SEGURO + tam * 0.62, Math.min(tope - AIRE - tam * 0.62, 520));
-        return { ...base, tam, y, color: p.color ?? "claro", modo: p.modo ?? "subir" };
+        return { ...base, tam, y, color: p.color ?? "claro", modo: p.modo ?? base.entrada };
       }
       case "tachado": return { ...base, y: p.y ?? 382, ancho: p.ancho ?? 880 };
       case "cinta": return { ...base, y: p.y ?? Math.max(ARRIBA_SEGURO + 90, Math.min(tope - AIRE - 90, 400)), giro: p.giro ?? -7 };
@@ -362,7 +365,11 @@ export function revisarEscena({ piezas, cabeza, fps, grupos, palabras, med = APR
 export function escenaParaRemotion({ linea, palabras, camara, plan, marca, anchos = null }) {
   const { fps, total, vozFin } = linea;
   const med = crearMedidor(anchos);
-  const piezas = resolverPiezas(plan.piezas, { palabras, cabeza: camara.cabeza, fps, vozFin, med });
+  // El ESTILO de las piezas (src/lib/variantesEdicion.js): sin elegir, el juego de siempre; los subtítulos, si el plan no
+  // dice, los de la marca (identidad_video).
+  const elegidas = limpiarVariantes(plan.variantes);
+  const variantes = variantesParaRemotion({ ...elegidas, subtitulos: elegidas.subtitulos ?? marca?.subtitulos?.estilo });
+  const piezas = resolverPiezas(plan.piezas, { palabras, cabeza: camara.cabeza, fps, vozFin, med, entrada: variantes.entrada });
   const st = plan.subtitulos ?? {};
   const sub = subtitulos(palabras, piezas, { textos: st.textos, reemplazos: st.reemplazos, ocultar: st.ocultar });
   if (sub.error) return { error: sub.error };
@@ -376,8 +383,8 @@ export function escenaParaRemotion({ linea, palabras, camara, plan, marca, ancho
       grupos: sub.grupos,
       cam: camara.cam, cabeza: camara.cabeza,
       cortes: linea.cortes, cambios: linea.cambiosClip,
-      piezas, golpes, marca,
-      subtitulos: { y: st.y ?? 1380, estilo: marca?.subtitulos?.estilo ?? "placa", mayusculas: marca?.subtitulos?.mayusculas ?? true },
+      piezas, golpes, marca, variantes,
+      subtitulos: { y: st.y ?? 1380, estilo: variantes.subtitulos, mayusculas: marca?.subtitulos?.mayusculas ?? variantes.subtitulos !== "limpio" },
       cierre: { segundos: linea.cierre, ...(plan.cierre ?? {}) },
     },
   };
