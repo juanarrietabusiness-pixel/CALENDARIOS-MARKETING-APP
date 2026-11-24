@@ -1347,6 +1347,9 @@ src/lib/
   variantesEdicion.js     El CATÁLOGO DE VARIANTES de las piezas del editor (puro; va en el kit): transición, entrada de texto,
                           subtítulos (los 4 de identidad_video), cierre, ritmo y forma; limpiar, validar, completar sobre la
                           base (el juego de Rofer v2), describir y el catálogo en texto para Claude
+  personalidadEdicion.js  La PERSONALIDAD de una marca (puro): lujo, tecnología, familiar e industrial con las variantes que les
+                          van y lo que no; la que sugiere el rubro, y la combinación que le va sin parecerse a otra marca ni al
+                          juego de Rofer. Lo leen el manual del editor y guia_de_edicion
   estilosEdicion.js       Los ESTILOS DE EDICIÓN (puro): las REGLAS con que se editan los videos grabados de un cliente (piezas y
                           cuándo, cámara, transiciones, gancho, cierre, música y las VARIANTES del kit de cada pieza); limpiarlos
                           con lo que no se entiende dicho, hasta 6 y ~2.000 caracteres, contarlos en frases y cuántas variantes

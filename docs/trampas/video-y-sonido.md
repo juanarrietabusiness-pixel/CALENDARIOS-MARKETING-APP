@@ -1261,3 +1261,10 @@ contradicen, manda la de más abajo (la más nueva). Una trampa nueva de esta á
   Rofer. Los ids están escritos a mano en `estilosEdicion.js` (lo carga la carga inicial; el catálogo con nombres, no) y un
   test comprueba que son los de `variantesEdicion.js`: una variante nueva se añade en los dos. Las propuestas del acta
   que cambian un estilo no pasan por la comprobación de parecido (sólo cambian textos).
+- **El estilo por personalidad, en el manual (24-nov-2026).** El manual del editor tiene una parte nueva, «El estilo de la
+  marca» (`comun.estilo`), escrita con `personalidadEdicion.js` (una sola fuente para el manual y la guía): las variantes
+  por personalidad (lujo, tecnología, familiar, industrial), usar TAL CUAL las guardadas y no copiar nunca a otro cliente.
+  Las partes que decían «barrido» y «cinta de obra» como si fueran de todos ahora remiten a `plan.variantes`. Si la
+  agencia había editado una de esas partes en Ajustes → Editor de video, su texto se queda (con el aviso de que la casa
+  cambió esa parte): hay que revisarlo a mano. La personalidad que sugiere `guia_de_edicion` sale del rubro y el tono por
+  palabras (`personalidadDeTexto`): es una pista, no una decisión; «casa» o «mueble» la llevan a familiar.

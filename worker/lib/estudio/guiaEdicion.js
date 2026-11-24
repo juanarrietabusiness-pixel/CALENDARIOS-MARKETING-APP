@@ -19,6 +19,7 @@ import { contactoParaElVideo, esNotaDeDatos, listaDeControl } from "../../../src
 import { textoDeLexico } from "../../../src/lib/lexico.js";
 import { KIT_EDICION } from "../../../src/lib/kitEdicionVersion.js";
 import { VARIANTES_BASE, describirVariantes } from "../../../src/lib/variantesEdicion.js";
+import { PERSONALIDADES, personalidadDeTexto, variantesPorPersonalidad } from "../../../src/lib/personalidadEdicion.js";
 
 const corto = (t, n) => String(t ?? "").replace(/\s+/g, " ").trim().slice(0, n);
 
@@ -75,7 +76,14 @@ export async function guiaDeEdicion(acceso, cliente, { tipo = "", estilo = "" } 
       "Así todos sus videos salen coherentes. Una pieza puede llevar otra entrada sólo si la persona lo pide.");
   } else {
     variantes.push(`## LAS VARIANTES: ${cliente.name} aún no tiene las suyas`,
-      "Elígelas para esta marca (node kit.mjs variantes las lista) y, con el sí de la persona, guárdalas en su estilo (estilo_de_edicion, «variantes»).");
+      "Elígelas por la PERSONALIDAD de la marca (el manual, «El estilo de la marca») y, con el sí de la persona, guárdalas en su estilo (estilo_de_edicion, «variantes»).");
+    // La personalidad que SUGIERE su rubro y su tono (para empezar; quien edita decide leyendo la marca).
+    const sugerida = personalidadDeTexto([cliente.industry, kit.estilo, kit.tono, cliente.name].filter(Boolean).join(" "));
+    if (sugerida) {
+      const v = variantesPorPersonalidad(sugerida, { evitar: otras.map((o) => o.variantes) });
+      variantes.push(`Su rubro sugiere: ${PERSONALIDADES[sugerida].nombre.toUpperCase()} (${PERSONALIDADES[sugerida].como}). Una combinación que le va y no se parece a ninguna otra marca:`,
+        `"variantes": ${JSON.stringify(v)}`);
+    } else variantes.push(`Su rubro («${cliente.industry || "sin rubro"}») no sugiere ninguna personalidad: léela en su kit y su cerebro.`);
   }
   variantes.push("NO repitas las de otra marca (3 o 4 iguales de transicion, entrada, subtitulos y cierre se ven iguales; estilo_de_edicion no las guarda):",
     `- El juego de siempre (Rofer v2, lo que sale sin «variantes»): ${describirVariantes(VARIANTES_BASE)}.`,

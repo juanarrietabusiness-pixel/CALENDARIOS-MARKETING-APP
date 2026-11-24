@@ -23,6 +23,7 @@
 // Lo importan la pantalla, el Worker y (Fase 4) `guia_de_edicion`, que lo entrega compacto con `manualParaClaude`.
 // ============================================================
 
+import { personalidadesEnTexto } from "./personalidadEdicion.js";
 import { OFICIO, coma, rango, db } from "./oficioEdicion.js";
 
 /** Lo más largo que puede ser una parte común y una de tipo (la de la casa y la de la agencia). */
@@ -64,6 +65,19 @@ const COMUNES = [
     ),
   },
   {
+    id: "estilo",
+    nombre: "El estilo de la marca",
+    base: lineas(
+      "Cada marca tiene SU estilo: las variantes del kit (transición, entrada de texto, subtítulos, cierre, ritmo y forma) en plan.variantes; node kit.mjs variantes las lista. Sin «variantes» sale el juego de Rofer v2: eso es copiar a Rofer.",
+      "Si la marca ya tiene sus variantes guardadas (guia_de_edicion las da), van TAL CUAL: así sus videos salen coherentes entre sí.",
+      "Si no, se eligen por la PERSONALIDAD de la marca, leída en su kit, su rubro y su cerebro (guia_de_edicion sugiere una, pero decides tú):",
+      ...personalidadesEnTexto(),
+      "Una marca que no encaja en ninguna se arma con lo que más se le parezca, y se dice por qué.",
+      "NUNCA copies el estilo de otro cliente: guia_de_edicion enseña las variantes de las demás marcas; 3 o 4 iguales de transición, entrada, subtítulos y cierre se ven iguales (y estilo_de_edicion no las guarda).",
+      "Los ejemplos de este manual (Rofer, Comunidad) dicen QUÉ se escribe y DÓNDE va, no cómo se ve.",
+    ),
+  },
+  {
     id: "corte",
     nombre: "Corte",
     base: lineas(
@@ -88,7 +102,7 @@ const COMUNES = [
       `Cámara virtual por tramo: alterna abierto (≈${rango(C.abierto)}) y medio (≈${rango(C.medio)}) en cada corte, con un golpe de zoom al entrar a cada tramo.`,
       `Sigue la cabeza (desde la máscara de la persona), suavizado y sólo al ${pct(C.seguir)}.`,
       `Si la persona está lejos, acerca hasta ≈${coma(C.maxAcercar)}× y sube la nitidez de ese clip: más de ${coma(C.maxAcercar)}× se ve blando.`,
-      "Cambio de clip: barrido diagonal del color de la marca con filo del acento, y su efecto de transición. Salto dentro del mismo clip: destello corto + obturador.",
+      "Cambio de clip: la transición del estilo de la marca (plan.variantes.transicion) y su efecto de transición. Salto dentro del mismo clip: destello corto + obturador.",
     ),
   },
   {
@@ -102,14 +116,14 @@ const COMUNES = [
       "Una palabra gigante puede quedar un poco detrás de la cabeza, pero tiene que leerse: si la cabeza tapa letras clave, cambia el texto («+20 AÑOS» en una línea, no partido).",
       "Los textos van en espacio de PANTALLA, nunca dentro del cuadro que hace zoom: ahí se descentran, se inclinan o se rompen.",
       "Cada gráfico entra con la palabra que lo dice y con su efecto del catálogo alineado a su pico. Mientras un gráfico dice algo, el subtítulo no lo repite.",
-      "Sellos para los datos fuertes, cinta de obra para lo negativo, fichas con icono para los pares, preguntas numeradas en placas.",
+      "Sellos para los datos fuertes, cinta de obra para lo negativo (sólo si le va a la marca: en una de lujo o familiar, otra pieza), fichas con icono para los pares, preguntas numeradas en placas. Los textos entran con la entrada del estilo (plan.variantes.entrada).",
     ),
   },
   {
     id: "subtitulos",
     nombre: "Subtítulos",
     base: lineas(
-      "El estilo es el de la identidad de video del cliente (identidad_video): placa o no, mayúsculas, color de la palabra clave.",
+      "El estilo es el de las variantes de la marca (plan.variantes.subtitulos) o, si no lo fija, el de su identidad de video (identidad_video): clásico, palabra a palabra, sobre placa o limpio.",
       `Grupos de hasta ${ST.maxPalabras} palabras, UNA línea, con el tamaño ajustado al ancho MEDIDO de la letra y centrados; lo aún no dicho, tenue.`,
       "Sin agrandar palabras sueltas: se comen el espacio.",
       `Dentro de la franja segura de abajo (${pct(Z.abajo)}) y nunca encima de un gráfico, tampoco de uno que aún no salió.`,
@@ -132,7 +146,7 @@ const COMUNES = [
     nombre: "Llamado y cierre",
     base: lineas(
       "El llamado: la pregunta gigante detrás de la persona, un acercamiento fuerte cuando dice «escríbenos» y el botón de WhatsApp con el número cuando dice «WhatsApp», con su toque animado.",
-      `Cierre de ${CI.segundos} s sin voz: logo, botón con el llamado de la marca, número y @usuario, con los datos verificados.`,
+      `Cierre de ${CI.segundos} s sin voz, con el cierre del estilo (plan.variantes.cierre: tarjeta, limpio, banda o círculo): logo, llamado de la marca, número y @usuario, con los datos verificados.`,
     ),
   },
   {
@@ -160,10 +174,10 @@ const TIPOS = [
       lineas(
         "Nada de modo celular ni candado: no tocan en este tipo (en Rofer no se metieron, y es lo correcto).",
         "El cielo o el espacio de arriba es el lienzo: ahí van el gancho gigante, los datos fuertes y la pregunta del llamado, con la persona recortada encima.",
-        "La cámara alterna abierto y medio en cada corte; los saltos dentro de un clip, con destello y obturador; los cambios de clip, con el barrido de la marca.",
+        "La cámara alterna abierto y medio en cada corte; los saltos dentro de un clip, con destello y obturador; los cambios de clip, con la transición del estilo de la marca.",
         "Persona lejos: acercar hasta ≈2× con más nitidez. Si no aguanta, ese tramo va abierto con el gráfico arriba.",
         "La persona habla como habla; lo escrito va en el registro de la marca (Rofer trata de usted aunque Alex tutee al hablar).",
-        "Ejemplos de Rofer: el gancho «LO MÁS CARO / DE UNA OBRA», gigante detrás de Alex desde el cuadro 0; el sello «FLOTA PROPIA · 14 EQUIPOS»; la cinta «EQUIPO EQUIVOCADO»; las fichas TIEMPO / DINERO; el llamado «¿UNA OBRA POR COMENZAR?».",
+        "Ejemplos de Rofer (de QUÉ decir y dónde, no de cómo se ve: su estilo es suyo): el gancho «LO MÁS CARO / DE UNA OBRA», gigante detrás de Alex desde el cuadro 0; el sello «FLOTA PROPIA · 14 EQUIPOS»; la cinta «EQUIPO EQUIVOCADO»; las fichas TIEMPO / DINERO; el llamado «¿UNA OBRA POR COMENZAR?».",
       ),
     ].join("\n"),
   },
