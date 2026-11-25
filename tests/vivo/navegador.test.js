@@ -169,6 +169,82 @@ describe.skipIf(!disponible.playwright)("la aplicación abierta en Chromium", ()
     }
   }, 120_000);
 
+  it("«Ver el mes» → Feed y el panel → Publicar: la publicación se ve ENTERA en el teléfono y en una laptop (Juan, 25-nov)", async () => {
+    // La imagen iba siempre al ancho del teléfono de la vista previa y se salía de la pantalla por abajo: había que achicar
+    // el navegador, y en el celular no se podía. Ahora el teléfono es tan ancho como deje caber la imagen entera.
+    const CLI = "c0ffee00-0000-4000-8000-0000000000ee";
+    const CAL = "c0ffee00-0000-4000-8000-0000000000ef";
+    const hoy = fechaEnZona();
+    const [ano, mes] = hoy.split("-").map(Number);
+    await espacio.d1(`insert into clients (id, owner_id, name, industry) values ('${CLI}', '${ANA.id}', 'Cliente Feed', 'Muebles');`);
+    // Una imagen 4:5 de verdad (1080×1350, un PNG pequeño de un color) subida con la sesión de la página.
+    const subir = async (pagina) => pagina.evaluate(async (cli) => {
+      const c = document.createElement("canvas");
+      c.width = 1080; c.height = 1350;
+      c.getContext("2d").fillRect(0, 0, 1080, 1350);
+      const blob = await new Promise((ok) => c.toBlob(ok, "image/png"));
+      const f = new FormData();
+      f.append("archivo", new File([blob], "feed.png", { type: "image/png" })); f.append("clientId", cli); f.append("carpeta", "posts");
+      return (await (await fetch("/api/media", { method: "POST", body: f })).json()).clave;
+    }, CLI);
+
+    const entrar = async (vista) => {
+      const contexto = await navegador.newContext({ viewport: vista, locale: "es-PA", ...(vista.width < 500 ? { isMobile: true, hasTouch: true } : {}) });
+      const pagina = await contexto.newPage();
+      await pagina.goto(`${espacio.base}/`);
+      await pagina.getByLabel("Correo").fill(ANA.email);
+      await pagina.getByLabel("Contraseña").fill("contrasena-de-prueba-larga");
+      await pagina.getByRole("button", { name: /Entrar/ }).click();
+      await pagina.getByRole("navigation").first().waitFor({ timeout: 20_000 });
+      return { contexto, pagina };
+    };
+    // El teléfono entero (de su cabecera al final de la imagen) dentro de lo que se ve del contenedor que se desplaza.
+    const entera = (pagina) => pagina.locator(".vista-red-telefono").first().evaluate((tel) => {
+      const medio = tel.querySelector(".vista-red-medio").getBoundingClientRect();
+      let cont = tel.parentElement;
+      while (cont && !/(auto|scroll)/.test(getComputedStyle(cont).overflowY)) cont = cont.parentElement;
+      const caja = cont.getBoundingClientRect();
+      return { arriba: tel.getBoundingClientRect().top - caja.top, abajo: caja.bottom - medio.bottom, alto: medio.height };
+    });
+
+    const primera = await entrar({ width: 1366, height: 768 });
+    const clave = await subir(primera.pagina);
+    await primera.contexto.close();
+    const posts = [{ id: "pf1", format: "post", status: "approved", title: "Feed 4:5", descripcion: "Texto", publishTime: "09:00", medios: [{ src: `/api/media/${clave}`, tipo: "imagen", ancho: 1080, alto: 1350 }] }];
+    await espacio.d1(`insert into calendars (id, client_id, owner_id, month, year, days) values ('${CAL}', '${CLI}', '${ANA.id}', ${mes - 1}, ${ano}, '${JSON.stringify([{ date: hoy, posts }])}');`);
+
+    for (const vista of [{ width: 390, height: 844 }, { width: 1366, height: 768 }]) {
+      const { contexto, pagina } = await entrar(vista);
+      const errores = vigilar(pagina);
+      try {
+        await pagina.goto(`${espacio.base}/cliente/cliente-feed/${slugDeMes(ano, mes - 1)}`);
+        await pagina.locator("button.cal-post").first().waitFor({ timeout: 20_000 });
+        await pagina.getByRole("button", { name: "Ver el mes como se verá" }).click();
+        await pagina.getByRole("tab", { name: "Feed" }).click();
+        await pagina.locator(".vista-red-medio img").first().waitFor({ timeout: 20_000 });
+        await pagina.waitForTimeout(500);
+        const feed = await entera(pagina);
+        expect(feed.abajo, `Feed a ${vista.width}px: la imagen se sale ${-feed.abajo}px por abajo`).toBeGreaterThanOrEqual(0);
+        expect(feed.alto).toBeGreaterThan(200);
+        await pagina.getByRole("button", { name: "Cerrar" }).last().click();
+
+        if (vista.width > 1000) {
+          await pagina.locator("button.cal-post").first().click();
+          const panel = pagina.getByRole("dialog").filter({ has: pagina.getByRole("tablist", { name: "Secciones de la publicación" }) });
+          await panel.getByRole("tab", { name: "Publicar" }).click();
+          await panel.locator(".vista-red-medio img").first().waitFor({ timeout: 20_000 });
+          await pagina.waitForTimeout(500);
+          const dentro = await entera(pagina);
+          expect(dentro.arriba, "el panel: la vista previa empieza arriba").toBeGreaterThanOrEqual(0);
+          expect(dentro.abajo, `el panel a ${vista.width}px: la imagen se sale ${-dentro.abajo}px por abajo`).toBeGreaterThanOrEqual(0);
+        }
+        expect(errores, errores.join("\n")).toEqual([]);
+      } finally {
+        await contexto.close();
+      }
+    }
+  }, 180_000);
+
   it("Galería en el TELÉFONO: «Descargar» baja la imagen (Juan, 24-nov: «desde el celular no puedo descargar»)", async () => {
     // Chromium no tiene hoja de compartir: aquí se ve el respaldo (el archivo ya bajado, con su nombre). La hoja de iOS
     // (Guardar imagen / video) no se puede probar sin un iPhone: lib/descargar.js y su test cubren ese camino.

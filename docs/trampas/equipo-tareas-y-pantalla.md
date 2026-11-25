@@ -289,3 +289,14 @@ contradicen, manda la de más abajo (la más nueva). Una trampa nueva de esta á
     `origenDe(req)`). Sin él (tests), en relativo.
   · `ver_avisos` está anotada de sólo lectura aunque `marcar_leidos` escribe: sólo toca los avisos de QUIEN CONECTA (como la
     campana, que también deja a quien es de sólo lectura).
+- **La vista previa se salía de la pantalla (25-nov-2026).** En «Ver el mes» → Feed y en el panel → Publicar («Así se va
+  a ver»), la imagen iba siempre al ancho del teléfono de la vista previa (320–380 px): un 4:5 medía 475 px de alto, un
+  reel 675, y con la cabecera y la navegación se salía por abajo en el celular y en una laptop; había que achicar el
+  navegador (en el teléfono, imposible). Ahora `vistaRed.jsx` mide el alto visible del contenedor que se desplaza, resta lo
+  que va encima de la imagen desde el bloque que tiene que caber (`encajar`: `.vm-feed` con su navegación, `.pp-vista` con
+  su título; por defecto, la propia vista previa) y deja el teléfono tan ancho como permita la imagen ENTERA con su forma
+  (la de la imagen o el video cargados; 9:16 en las verticales), nunca por debajo de 200 px. El tope de cada sitio va en
+  `--vr-tope`, no en `max-width` (pisaría el cálculo). Y en el Feed, la miniatura escogida de la tira se centraba con
+  `scrollIntoView`, que también desplazaba la pantalla hasta la tira: al pasar de publicación, la nueva quedaba cortada por
+  arriba. Ahora la tira se mueve sólo de lado y la publicación nueva se ve desde arriba. Probado en Chromium a 390 px,
+  1366×768 y 1920×1080 (tests/vivo/navegador.test.js lo comprueba).

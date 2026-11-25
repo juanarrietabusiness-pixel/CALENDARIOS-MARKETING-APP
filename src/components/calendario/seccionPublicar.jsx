@@ -546,7 +546,8 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
     </li>
   );
 
-  const vista = <VistaRed post={{ ...post, redes }} redes={redes} client={client} />;
+  // «Así se va a ver» entero en su columna (o, en el teléfono, al llegar a ella), sin achicar la pantalla.
+  const vista = <VistaRed post={{ ...post, redes }} redes={redes} client={client} encajar=".pp-vista" />;
   const plural = (n, uno, varios) => `${n} ${n === 1 ? uno : varios}`;
   const revision = (
     <div className="revision" aria-label="Revisión antes de publicar">

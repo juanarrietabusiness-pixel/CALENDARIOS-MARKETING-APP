@@ -326,7 +326,7 @@
   padding: var(--sp-4); background: var(--surface-2); border-left: 1px solid var(--border);
 }
 .pp-vista > h3 { margin: 0; }
-.pp-vista .vista-red-telefono { max-width: 340px; }
+.pp-vista .vista-red-telefono { --vr-tope: 340px; }
 .idea-columnas, .idea-escribir, .idea-lado { display: flex; flex-direction: column; min-width: 0; }
 .idea-columnas[data-ancho] { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(300px, 1fr); gap: var(--sp-5); align-items: start; }
 .idea-columnas[data-ancho] .idea-escribir .textarea { min-height: 140px; }

@@ -104,7 +104,7 @@
 .vm-feed-donde span { color: var(--text-dim); font-size: var(--fs-2xs); }
 .vm-feed-pieza { display: flex; flex-direction: column; gap: var(--sp-2); }
 .vm-feed-pieza:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
-.vm-feed-pieza .vista-red-telefono { max-width: 380px; }
+.vm-feed-pieza .vista-red-telefono { --vr-tope: 380px; }
 .vm-feed-marcas { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--sp-1); }
 .vm-marca {
   display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-3xs); font-weight: 700; padding: 2px 8px;
@@ -116,7 +116,7 @@
 .vm-marca[data-estado="no-lista"] { background: var(--danger-soft); color: var(--text); }
 .vm-feed-acciones { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--sp-2); }
 .vm-feed-tira {
-  list-style: none; margin: 0; padding: 2px; display: flex; gap: 4px; overflow-x: auto; scrollbar-width: thin;
+  position: relative; list-style: none; margin: 0; padding: 2px; display: flex; gap: 4px; overflow-x: auto; scrollbar-width: thin;
   scroll-snap-type: x proximity;
 }
 .vm-feed-tira button {
