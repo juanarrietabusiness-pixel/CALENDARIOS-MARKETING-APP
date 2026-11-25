@@ -5,10 +5,20 @@
    pantalla no carga los 36 kB de estilos del panel.
    ============================================================ */
 .vista-red { display: flex; flex-direction: column; gap: var(--sp-2); }
-.vista-red-piezas { display: flex; flex-wrap: wrap; gap: var(--sp-1); }
+/* El teléfono y, a su izquierda, la columna de redes (iconos). */
+.vista-red-fila { display: flex; align-items: flex-start; justify-content: center; gap: var(--sp-2); min-width: 0; }
+.vista-red-piezas { display: flex; flex-direction: column; gap: var(--sp-1); flex-shrink: 0; }
+.vista-red-pieza {
+  width: var(--tap-sm); height: var(--tap-sm); display: inline-flex; align-items: center; justify-content: center; padding: 0;
+  border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--surface-2); color: var(--text-muted); cursor: pointer;
+}
+.vista-red-pieza:hover { color: var(--text); }
+.vista-red-pieza[aria-pressed="true"] { color: var(--accent); border-color: var(--accent-line); background: var(--accent-soft); }
+.vista-red-pieza:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.vista-red-cual { margin: 0; text-align: center; font-size: var(--fs-3xs); color: var(--text-dim); }
 /* El ancho: el tope de cada sitio (--vr-tope) y el que deja caber la imagen ENTERA en el alto que hay (--vr-ancho-max, lo
    mide vistaRed.jsx). Nunca por debajo de 200 px. */
-.vista-red-telefono { background: #fff; color: #0B1220; border-radius: var(--radius-lg); overflow: hidden; border: 1px solid var(--border); width: 100%; max-width: max(200px, min(var(--vr-tope, 320px), var(--vr-ancho-max, 9999px))); align-self: center; }
+.vista-red-telefono { background: #fff; color: #0B1220; border-radius: var(--radius-lg); overflow: hidden; border: 1px solid var(--border); flex: 1 1 auto; min-width: 0; width: 100%; max-width: max(200px, min(var(--vr-tope, 320px), var(--vr-ancho-max, 9999px))); }
 .vista-previa-autor { display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); font-size: var(--fs-xs); }
 .vista-previa-avatar { width: 30px; height: 30px; border-radius: 50%; background: #E4E8F0; overflow: hidden; display: inline-flex; }
 .vista-previa-avatar img { width: 100%; height: 100%; object-fit: contain; }

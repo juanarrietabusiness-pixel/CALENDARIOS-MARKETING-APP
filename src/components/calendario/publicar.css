@@ -111,6 +111,21 @@
 .pieza-mas { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
 .pieza-siguiente { align-self: flex-end; }
 
+/* La cabecera del panel: baja, con el título y la fecha en una línea. A lo ancho, las pestañas van en ella (entre el
+   título y los botones): una fila en vez de dos. */
+.panel-cabeza {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3); padding-top: calc(var(--sp-2) + var(--safe-top)); border-bottom: 1px solid var(--border);
+}
+.panel-cabeza-titulo { margin: 0; font-size: var(--fs-sm); font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.panel-cabeza-titulo span { margin-left: var(--sp-2); font-size: var(--fs-3xs); font-weight: 500; color: var(--text-dim); }
+.panel-cabeza .btn-icon { width: var(--tap-sm); height: var(--tap-sm); }
+.panel-cabeza[data-ancho] { padding-top: 0; padding-bottom: 0; }
+.panel-cabeza[data-ancho] .panel-pestanas { border-bottom: none; padding: 0; margin-right: auto; }
+@media (max-width: 599px) {
+  .panel-cabeza-titulo span { display: none; }
+}
+
 /* Las pestañas del panel (Idea · Pieza · Publicar) */
 .panel-pestanas { display: flex; border-bottom: 1px solid var(--border); padding: 0 var(--sp-4); gap: var(--sp-1); }
 .panel-pestanas [role="tab"] {
@@ -323,7 +338,7 @@
 .pp-bloque > h3 { margin: 0; }
 .pp-vista {
   min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: var(--sp-3);
-  padding: var(--sp-4); background: var(--surface-2); border-left: 1px solid var(--border);
+  padding: var(--sp-3); background: var(--surface-2); border-left: 1px solid var(--border);
 }
 .pp-vista > h3 { margin: 0; }
 .pp-vista .vista-red-telefono { --vr-tope: 340px; }

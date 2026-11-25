@@ -198,7 +198,7 @@ export default function VistaMes({
 
   return (
     <div className="overlay overlay-sheet vista-mes-overlay">
-      <div ref={ref} role="dialog" aria-modal="true" aria-labelledby={`${ids}-t`} className="sheet vista-mes" tabIndex={-1}>
+      <div ref={ref} role="dialog" aria-modal="true" aria-labelledby={`${ids}-t`} className="sheet vista-mes" data-vista={vista} tabIndex={-1}>
         <div className="sheet-header">
           <div className="vista-mes-cabeza">
             <h2 id={`${ids}-t`}>Así se verá {mesNombre.toLowerCase()} {cal.year}</h2>
@@ -472,7 +472,7 @@ function Feed({ base, feed, indice, actual, detalle, client, onIr, onAbrir, onDe
           <Icon name="chevronLeft" size={16} />
         </button>
         <p className="vm-feed-donde" aria-live="polite">
-          <strong>{indice + 1} de {total}</strong>
+          <strong><span aria-hidden="true">{indice + 1}/{total}</span><span className="sr-only">{indice + 1} de {total}</span></strong>
           <span>{cuandoTexto(actual.cuando, actual.fecha)} · {FORMATS[post.format]?.label ?? "Publicación"}</span>
         </p>
         <button type="button" className="btn btn-secondary btn-sm" onClick={() => ir(indice + 1)} disabled={indice >= total - 1} aria-label="Publicación siguiente">
@@ -487,8 +487,8 @@ function Feed({ base, feed, indice, actual, detalle, client, onIr, onAbrir, onDe
           {actual.aMano && <span className="vm-marca" data-tipo="mano"><Icon name="photo" size={12} /> La publicas tú desde el teléfono</span>}
           {detalle && <span className="vm-marca" data-estado={detalle.estado}>{NOMBRE_ESTADO_PROGRAMAR[detalle.estado]}</span>}
         </div>
-        {/* Que quepa ENTERA: la navegación, las marcas y el teléfono, con una línea del texto asomando. */}
-        <VistaRed key={post.id} post={post} redes={actual.redes} client={client} encajar=".vm-feed" reserva={44} />
+        {/* Que quepa ENTERA: la navegación, las marcas y el teléfono (el texto, debajo: no hace falta verlo entero). */}
+        <VistaRed key={post.id} post={post} redes={actual.redes} client={client} encajar=".vm-feed" />
         <div className="vm-feed-acciones">
           <button type="button" className="btn btn-secondary btn-sm" onClick={() => onAbrir(post.id)}>
             <Icon name="pencil" size={14} /> Abrir la publicación

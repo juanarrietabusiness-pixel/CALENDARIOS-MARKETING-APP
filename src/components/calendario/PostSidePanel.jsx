@@ -256,6 +256,27 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
     </button>
   );
 
+  // Las pestañas: debajo de la cabecera o, a lo ancho, dentro de ella.
+  const pestanas = (
+    <div className="panel-pestanas" role="tablist" aria-label="Secciones de la publicación">
+      {PESTANAS.map(([k, nombre, icono]) => (
+        <button
+          key={k}
+          id={`${ids}-tab-${k}`}
+          type="button"
+          role="tab"
+          aria-selected={pestana === k}
+          aria-controls={`${ids}-panel-${k}`}
+          tabIndex={pestana === k ? 0 : -1}
+          onClick={() => setPestana(k)}
+          onKeyDown={teclaPestana}
+        >
+          <Icon name={icono} size={16} /> {nombre}
+        </button>
+      ))}
+    </div>
+  );
+
   return (
     <>
     <div
@@ -265,14 +286,17 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
       aria-modal="true"
       aria-labelledby={`${ids}-title`}
     >
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "var(--sp-3)", padding: "var(--sp-4)", paddingTop: "calc(var(--sp-4) + var(--safe-top))", borderBottom: "1px solid var(--border)" }}>
+      {/* La cabecera, lo más baja posible (Juan, 25-nov: «achica los botones superiores»): el título y la fecha en una
+          línea y, a lo ancho, las pestañas en la MISMA fila, entre el título y los botones. Lo que se gana, para la vista
+          previa y lo que se configura. */}
+      <div className="panel-cabeza" data-ancho={ancho || undefined}>
         <div style={{ display: "flex", alignItems: "center", gap: "var(--sp-2)", minWidth: 0 }}>
-          <Icon name={FORMAT_ICONS[form.format] || "formatPost"} size={20} style={{ color: f.color }} />
+          <Icon name={FORMAT_ICONS[form.format] || "formatPost"} size={18} style={{ color: f.color, flexShrink: 0 }} />
           <div style={{ minWidth: 0 }}>
-            <h2 id={`${ids}-title`} style={{ fontSize: "var(--fs-sm)", fontWeight: 700 }}>
+            <h2 id={`${ids}-title`} className="panel-cabeza-titulo">
               {f.label} — {day.dayName} {(day.date || "").split("-")[2]}
+              <span>{day.date}</span>
             </h2>
-            <p style={{ fontSize: "var(--fs-2xs)", color: "var(--text-dim)" }}>{day.date}</p>
             {otroEditando && (
               <p role="status" style={{ marginTop: 4 }}>
                 <AvisoEditando persona={otroEditando} />
@@ -280,6 +304,7 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
             )}
           </div>
         </div>
+        {ancho && pestanas}
         <div style={{ display: "flex", alignItems: "center", gap: "var(--sp-2)", flexShrink: 0 }}>
           {/* A lo ancho, en Publicar, borrar y mandar al banco viven aquí: en la barra de abajo
               le quitaban una fila entera a lo que se está configurando. */}
@@ -305,23 +330,7 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
         </div>
       </div>
 
-      <div className="panel-pestanas" role="tablist" aria-label="Secciones de la publicación">
-        {PESTANAS.map(([k, nombre, icono]) => (
-          <button
-            key={k}
-            id={`${ids}-tab-${k}`}
-            type="button"
-            role="tab"
-            aria-selected={pestana === k}
-            aria-controls={`${ids}-panel-${k}`}
-            tabIndex={pestana === k ? 0 : -1}
-            onClick={() => setPestana(k)}
-            onKeyDown={teclaPestana}
-          >
-            <Icon name={icono} size={16} /> {nombre}
-          </button>
-        ))}
-      </div>
+      {!ancho && pestanas}
 
       <div
         id={`${ids}-panel-${pestana}`}
@@ -625,7 +634,7 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
       </div>
 
       {/* A lo ancho, en Publicar, estas acciones van en la barra de «¿Cuándo sale?». */}
-      {!(enPublicar && ancho) && <div style={{ padding: "var(--sp-3) var(--sp-4)", borderTop: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: "var(--sp-2)" }}>
+      {!(enPublicar && ancho) && <div style={{ padding: "var(--sp-2) var(--sp-3)", borderTop: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: "var(--sp-2)" }}>
         {duplicando && onDuplicar && (
           <div className="duplicar-fila">
             <span className="label" style={{ margin: 0 }}>Duplicar a</span>
@@ -656,7 +665,7 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
           {/* Se guarda antes de preguntar: si se cancela el borrado, el
               panel se cierra igual y lo editado no se pierde. */}
           <button
-            className="btn btn-danger"
+            className="btn btn-danger btn-sm"
             aria-label="Eliminar publicación"
             onClick={() => { save(); yaEscrito.current = true; if (onDelete) onDelete(day.date, post.id); onClose(); }}
           >
@@ -688,7 +697,7 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
           >
             <Icon name="bulb" size={16} />
           </button>
-          <button className="btn btn-primary" style={{ flex: 1 }} onClick={() => { save(); onClose(); }}>
+          <button className="btn btn-primary btn-sm" style={{ flex: 1 }} onClick={() => { save(); onClose(); }}>
             Guardar cambios
           </button>
         </div>
