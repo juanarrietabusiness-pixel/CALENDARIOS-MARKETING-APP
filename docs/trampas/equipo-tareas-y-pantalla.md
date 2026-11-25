@@ -300,3 +300,12 @@ contradicen, manda la de más abajo (la más nueva). Una trampa nueva de esta á
   `scrollIntoView`, que también desplazaba la pantalla hasta la tira: al pasar de publicación, la nueva quedaba cortada por
   arriba. Ahora la tira se mueve sólo de lado y la publicación nueva se ve desde arriba. Probado en Chromium a 390 px,
   1366×768 y 1920×1080 (tests/vivo/navegador.test.js lo comprueba).
+- **Más grande todavía: fuera lo que sobra (25-nov-2026, segunda vuelta).** Encajada, la vista previa quedaba pequeña (Juan:
+  «queda muy pequeño»). Lo que le quitaba alto: los botones de cada red encima del teléfono (con tres redes, dos líneas),
+  la cabecera del panel de la publicación (título y fecha en dos líneas, botones de 44 px) y su barra de abajo con
+  «Guardar cambios» en dos líneas, y en «Ver el mes» el pie que repetía «Programar todo lo listo» y «Cerrar», la
+  explicación de la cabecera y la navegación en dos líneas. Ahora: las redes son una columna de iconos al LADO del teléfono
+  (el nombre, en la etiqueta y debajo), el panel a lo ancho lleva las pestañas en la fila de la cabecera, la barra de abajo
+  es de botones pequeños, el Feed no tiene pie (el botón de programar va arriba, también en el teléfono) y su navegación es
+  una fila de 36 px con «2/5» (el lector de pantalla oye «2 de 5»). El texto de la publicación ya no reserva sitio: manda la
+  imagen. El alto lo sigue midiendo `vistaRed.jsx`; si se añade algo encima del teléfono, se lo come la imagen.

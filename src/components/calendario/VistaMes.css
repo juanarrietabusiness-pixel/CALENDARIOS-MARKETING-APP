@@ -47,6 +47,20 @@
   .vista-mes-pie { justify-content: flex-end; }
 }
 
+/* En el Feed manda la publicación: la cabecera, la barra y el pie, lo justo (Juan, 25-nov: «achica todo lo que ocupe
+   espacio innecesario»). La explicación de la cabecera se queda en Perfil y Detalles. */
+.vista-mes[data-vista="feed"] .sheet-header { padding-top: var(--sp-2); padding-bottom: var(--sp-2); }
+.vista-mes[data-vista="feed"] .vista-mes-cabeza .hint { display: none; }
+.vista-mes[data-vista="feed"] .vista-mes-cuerpo { padding-top: var(--sp-2); padding-bottom: var(--sp-2); }
+/* El pie repetía «Programar todo lo listo» (está arriba) y «Cerrar» (está la X): en el Feed, fuera. */
+.vista-mes[data-vista="feed"] .vista-mes-pie { display: none; }
+@media (max-width: 719px) {
+  .vista-mes-programar { padding: 0 0 var(--sp-1); }
+  .vista-mes-pestana { min-height: var(--tap-sm); }
+  .vista-mes .sheet-header { padding: var(--sp-2) var(--sp-3); }
+  .vista-mes .sheet-header .btn-icon { width: var(--tap-sm); height: var(--tap-sm); }
+}
+
 .vm-vacio { display: flex; align-items: center; gap: var(--sp-2); color: var(--text-dim); font-size: var(--fs-sm); }
 
 /* ---------- Perfil ---------- */
@@ -96,15 +110,16 @@
 .vm-celda-pasada .vm-celda { opacity: .72; }
 
 /* ---------- Feed ---------- */
-.vm-feed { max-width: 560px; margin: 0 auto; display: flex; flex-direction: column; gap: var(--sp-3); }
+.vm-feed { max-width: 560px; margin: 0 auto; display: flex; flex-direction: column; gap: var(--sp-2); }
 .vm-feed:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: var(--radius-sm); }
+/* La navegación, en una sola fila baja: flechas de --tap-sm y «3/5 · cuándo · formato» en una línea. */
 .vm-feed-nav { display: flex; align-items: center; gap: var(--sp-2); }
-.vm-feed-nav .btn { min-width: var(--tap); min-height: var(--tap); justify-content: center; }
-.vm-feed-donde { flex: 1; margin: 0; display: flex; flex-direction: column; align-items: center; text-align: center; font-size: var(--fs-xs); }
-.vm-feed-donde span { color: var(--text-dim); font-size: var(--fs-2xs); }
-.vm-feed-pieza { display: flex; flex-direction: column; gap: var(--sp-2); }
+.vm-feed-nav .btn { min-width: var(--tap-sm); min-height: var(--tap-sm); padding: 0; justify-content: center; }
+.vm-feed-donde { flex: 1; min-width: 0; margin: 0; display: flex; align-items: baseline; justify-content: center; gap: var(--sp-2); text-align: center; font-size: var(--fs-xs); }
+.vm-feed-donde span { color: var(--text-dim); font-size: var(--fs-3xs); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.vm-feed-pieza { display: flex; flex-direction: column; gap: var(--sp-1); }
 .vm-feed-pieza:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
-.vm-feed-pieza .vista-red-telefono { --vr-tope: 380px; }
+.vm-feed-pieza .vista-red-telefono { --vr-tope: 420px; }
 .vm-feed-marcas { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--sp-1); }
 .vm-marca {
   display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-3xs); font-weight: 700; padding: 2px 8px;

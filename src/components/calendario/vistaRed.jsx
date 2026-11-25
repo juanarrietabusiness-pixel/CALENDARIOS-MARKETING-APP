@@ -121,9 +121,9 @@ const CORTE_TEXTO = 125;
 
 /**
  * `encajar`: el selector del bloque que tiene que caber entero en la pantalla (por defecto, la propia vista previa);
- * `reserva`: los px que se dejan debajo de la imagen (para que asome el texto).
+ * `reserva`: los px que se dejan debajo de la imagen. El texto no hace falta verlo entero (Juan, 25-nov): manda la imagen.
  */
-export default function VistaRed({ post, redes, client, encajar = "", reserva = 24 }) {
+export default function VistaRed({ post, redes, client, encajar = "", reserva = 8 }) {
   const piezas = piezasVista(post, redes);
   const [elegida, setElegida] = useState(piezas[0]?.clave ?? "instagram");
   const [i, setI] = useState(0);
@@ -167,11 +167,14 @@ export default function VistaRed({ post, redes, client, encajar = "", reserva = 
 
   return (
     <section className="vista-red" aria-label="Vista previa">
+      <div className="vista-red-fila">
+      {/* Qué red se ve: una columna de iconos AL LADO del teléfono (encima, con tres redes, se iba a dos líneas y le quitaba
+          alto a la imagen). El nombre entero, en la etiqueta y al pasar por encima; debajo del teléfono, la que se ve. */}
       {piezas.length > 1 && (
         <div className="vista-red-piezas" role="group" aria-label="Qué previsualizar">
           {piezas.map((p) => (
-            <button key={p.clave} type="button" className="filter-chip" aria-pressed={p.clave === pieza.clave} onClick={() => setElegida(p.clave)}>
-              <Icon name={REDES[p.red]?.icono ?? "photo"} size={12} /> {p.nombre}
+            <button key={p.clave} type="button" className="vista-red-pieza" aria-pressed={p.clave === pieza.clave} aria-label={p.nombre} title={p.nombre} onClick={() => setElegida(p.clave)}>
+              <Icon name={p.historia ? "formatHistoria" : REDES[p.red]?.icono ?? "photo"} size={18} />
             </button>
           ))}
         </div>
@@ -223,6 +226,8 @@ export default function VistaRed({ post, redes, client, encajar = "", reserva = 
         )}
         {comentario && <p className="vista-previa-comentario"><strong>{usuario}</strong> {comentario}</p>}
       </div>
+      </div>
+      {piezas.length > 1 && <p className="vista-red-cual">{pieza.nombre}</p>}
       {vertical && <p className="hint">Las franjas marcadas las tapa la aplicación: que no caiga ahí nada importante.</p>}
     </section>
   );
