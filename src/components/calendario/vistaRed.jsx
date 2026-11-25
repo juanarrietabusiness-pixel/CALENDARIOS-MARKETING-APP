@@ -13,7 +13,7 @@
 // ============================================================
 
 import "./vistaRed.css";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import Icon from "../Icon";
 import {
   REDES, mediosDe, historiasDe, conHistoria, textoPara, primerComentario, destinoInstagram, objetivoDe, claveAdaptado,
@@ -38,13 +38,54 @@ function piezasVista(post, redes) {
   return piezas;
 }
 
-function Medio({ medio, objetivo, vertical, modo, color, adaptados, portada }) {
+function Medio({ medio, objetivo, vertical, modo, color, adaptados, portada, onForma }) {
   // Ampliada con IA: la copia ya tiene la forma de la red, se enseña tal cual.
   const copia = modo === "ia" && objetivo ? adaptados?.[claveAdaptado(objetivo, medio.src)] : null;
   const ajustada = useAjustada(medio.tipo === "imagen" && copia?.modo !== "ia" ? medio.src : null, medio.tipo === "imagen" ? objetivo : null, modo, color);
-  if (medio.tipo === "video") return <VideoVista src={medio.src} portada={portada} vertical={vertical} />;
-  if (copia?.modo === "ia") return <img src={copia.src} alt="" />;
-  return ajustada ? <img src={ajustada} alt="" /> : <span className="vr-cargando">Preparando…</span>;
+  // La forma de lo que se ve (ancho / alto), para que el teléfono quepa entero en la pantalla.
+  const alCargar = (e) => { const x = e.currentTarget; if (x.naturalWidth && x.naturalHeight) onForma?.(x.naturalWidth / x.naturalHeight); };
+  if (medio.tipo === "video") return <VideoVista src={medio.src} portada={portada} vertical={vertical} onForma={onForma} />;
+  if (copia?.modo === "ia") return <img src={copia.src} alt="" onLoad={alCargar} />;
+  return ajustada ? <img src={ajustada} alt="" onLoad={alCargar} /> : <span className="vr-cargando">Preparando…</span>;
+}
+
+/** El contenedor que se desplaza (overflow auto/scroll) más cercano, o null (la ventana). */
+function conScroll(el) {
+  for (let x = el?.parentElement; x && x !== document.body; x = x.parentElement) {
+    const o = getComputedStyle(x).overflowY;
+    if ((o === "auto" || o === "scroll") && x.clientHeight > 0) return x;
+  }
+  return null;
+}
+
+/**
+ * El ALTO que puede tener la imagen o el video para que la publicación se vea ENTERA sin desplazarse ni achicar la
+ * pantalla: el alto visible del contenedor que se desplaza, menos lo que va encima de la imagen desde `encajar` (el
+ * bloque que tiene que caber: en «Ver el mes», la navegación y el teléfono; en el panel, «Así se va a ver») y lo que se
+ * deja debajo (`reserva`). Se vuelve a medir al cambiar el tamaño. Antes la imagen iba siempre a todo el ancho del
+ * teléfono (320–380 px) y, en el celular o en una laptop, se salía de la pantalla por abajo.
+ */
+function useAltoMedio(medio, encajar, reserva, clave) {
+  const [alto, setAlto] = useState(null);
+  useLayoutEffect(() => {
+    const el = medio.current;
+    if (!el || typeof ResizeObserver === "undefined") return undefined;
+    const cont = conScroll(el);
+    const medir = () => {
+      const desde = (encajar && el.closest(encajar)) || el.closest(".vista-red") || el;
+      const estilo = cont ? getComputedStyle(cont) : null;
+      const visible = cont ? cont.clientHeight - parseFloat(estilo.paddingTop) - parseFloat(estilo.paddingBottom) : window.innerHeight;
+      const arriba = el.getBoundingClientRect().top - desde.getBoundingClientRect().top;
+      const nuevo = Math.max(220, Math.floor(visible - arriba - reserva));
+      setAlto((a) => (a === nuevo ? a : nuevo));
+    };
+    medir();
+    const ro = new ResizeObserver(medir);
+    ro.observe(cont ?? document.documentElement);
+    window.addEventListener("resize", medir);
+    return () => { ro.disconnect(); window.removeEventListener("resize", medir); };
+  }, [medio, encajar, reserva, clave]);
+  return alto;
 }
 
 /**
@@ -55,7 +96,7 @@ function Medio({ medio, objetivo, vertical, modo, color, adaptados, portada }) {
  * va sin fragmento, con la portada como `poster`, `playsInline` y el
  * fotograma inicial buscado a mano sólo si no hay portada.
  */
-function VideoVista({ src, portada, vertical }) {
+function VideoVista({ src, portada, vertical, onForma }) {
   return (
     <video
       key={src}
@@ -66,7 +107,11 @@ function VideoVista({ src, portada, vertical }) {
       controls
       preload={portada ? "none" : "metadata"}
       data-vertical={vertical || undefined}
-      onLoadedMetadata={(e) => { if (!portada && e.currentTarget.currentTime === 0) e.currentTarget.currentTime = 0.1; }}
+      onLoadedMetadata={(e) => {
+        const v = e.currentTarget;
+        if (v.videoWidth && v.videoHeight) onForma?.(v.videoWidth / v.videoHeight);
+        if (!portada && v.currentTime === 0) v.currentTime = 0.1;
+      }}
     />
   );
 }
@@ -74,7 +119,11 @@ function VideoVista({ src, portada, vertical }) {
 /** Hasta dónde enseña Instagram el texto antes de «… más». */
 const CORTE_TEXTO = 125;
 
-export default function VistaRed({ post, redes, client }) {
+/**
+ * `encajar`: el selector del bloque que tiene que caber entero en la pantalla (por defecto, la propia vista previa);
+ * `reserva`: los px que se dejan debajo de la imagen (para que asome el texto).
+ */
+export default function VistaRed({ post, redes, client, encajar = "", reserva = 24 }) {
   const piezas = piezasVista(post, redes);
   const [elegida, setElegida] = useState(piezas[0]?.clave ?? "instagram");
   const [i, setI] = useState(0);
@@ -82,7 +131,11 @@ export default function VistaRed({ post, redes, client }) {
   const [textoAbierto, setTextoAbierto] = useState(false);
   // El carrusel se desliza con el dedo (además de las flechas).
   const toque = useRef(null);
+  const medioRef = useRef(null);
+  // La forma de lo que se ve (ancho / alto): la de la imagen o el video cuando cargan.
+  const [forma, setForma] = useState(null);
   const pieza = piezas.find((p) => p.clave === elegida) ?? piezas[0];
+  const alto = useAltoMedio(medioRef, encajar, reserva, `${elegida}|${post?.id}`);
   useEffect(() => { setI(0); setTextoAbierto(false); }, [elegida]);
   if (!pieza) return null;
 
@@ -123,7 +176,9 @@ export default function VistaRed({ post, redes, client }) {
           ))}
         </div>
       )}
-      <div className="vista-red-telefono" data-red={pieza.red}>
+      {/* El teléfono, tan ancho como deje caber la imagen ENTERA en el alto que hay (con su forma: 9:16 las verticales). */}
+      <div className="vista-red-telefono" data-red={pieza.red}
+        style={alto ? { "--vr-ancho-max": `${Math.round(alto * (vertical ? 9 / 16 : forma ?? 4 / 5))}px` } : undefined}>
         {!esHistoria && (
           <div className="vista-previa-autor">
             <span className="vista-previa-avatar">{client?.logo ? <img src={client.logo} alt="" /> : null}</span>
@@ -131,13 +186,14 @@ export default function VistaRed({ post, redes, client }) {
           </div>
         )}
         <div
+          ref={medioRef}
           className="vista-red-medio"
           data-vertical={vertical || undefined}
           data-libre={!vertical && !objetivo ? true : undefined}
           data-carrusel={medios.length > 1 || undefined}
           {...(medios.length > 1 ? deslizar : {})}
         >
-          {m ? <Medio medio={m} objetivo={objetivo} vertical={vertical} modo={post.ajusteIG || "difuminado"} color={client?.primaryColor} adaptados={post.adaptados} portada={post.portada} /> : <span>Sin imagen ni video</span>}
+          {m ? <Medio medio={m} objetivo={objetivo} vertical={vertical} modo={post.ajusteIG || "difuminado"} color={client?.primaryColor} adaptados={post.adaptados} portada={post.portada} onForma={setForma} /> : <span>Sin imagen ni video</span>}
           {vertical && m && (
             <>
               <span className="vista-red-zona" data-lado="arriba" aria-hidden="true">{esHistoria ? usuario : ""}</span>

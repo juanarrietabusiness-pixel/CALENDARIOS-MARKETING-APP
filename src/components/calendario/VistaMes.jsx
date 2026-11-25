@@ -415,9 +415,20 @@ function Feed({ base, feed, indice, actual, detalle, client, onIr, onAbrir, onDe
   const tira = useRef(null);
   const total = feed.length;
   const ir = (i) => onIr(Math.max(0, Math.min(total - 1, i)));
-  // La miniatura escogida, a la vista en la tira.
+  // La miniatura escogida, a la vista en la tira: sólo de lado. Con scrollIntoView se desplazaba también la pantalla hacia
+  // abajo (hasta la tira) y la publicación quedaba cortada por arriba al pasar a la siguiente.
   useEffect(() => {
-    tira.current?.querySelector('[aria-current="true"]')?.scrollIntoView?.({ inline: "center", block: "nearest" });
+    const t = tira.current;
+    const b = t?.querySelector('[aria-current="true"]');
+    if (!t || !b) return;
+    t.scrollTo?.({ left: b.offsetLeft - t.clientWidth / 2 + b.offsetWidth / 2, behavior: "smooth" });
+  }, [indice]);
+  // Al pasar de publicación (también desde una miniatura de abajo), la nueva se ve desde arriba: entera.
+  const seccion = useRef(null);
+  const primera = useRef(true);
+  useEffect(() => {
+    if (primera.current) { primera.current = false; return; }
+    seccion.current?.scrollIntoView?.({ block: "start" });
   }, [indice]);
 
   if (!actual) return <p className="vm-vacio">Este mes aún no tiene publicaciones.</p>;
@@ -447,6 +458,7 @@ function Feed({ base, feed, indice, actual, detalle, client, onIr, onAbrir, onDe
 
   return (
     <section
+      ref={seccion}
       className="vm-feed"
       aria-roledescription="carrusel"
       aria-label="Las publicaciones del mes, una a una (flechas del teclado para pasar)"
@@ -475,7 +487,8 @@ function Feed({ base, feed, indice, actual, detalle, client, onIr, onAbrir, onDe
           {actual.aMano && <span className="vm-marca" data-tipo="mano"><Icon name="photo" size={12} /> La publicas tú desde el teléfono</span>}
           {detalle && <span className="vm-marca" data-estado={detalle.estado}>{NOMBRE_ESTADO_PROGRAMAR[detalle.estado]}</span>}
         </div>
-        <VistaRed key={post.id} post={post} redes={actual.redes} client={client} />
+        {/* Que quepa ENTERA: la navegación, las marcas y el teléfono, con una línea del texto asomando. */}
+        <VistaRed key={post.id} post={post} redes={actual.redes} client={client} encajar=".vm-feed" reserva={44} />
         <div className="vm-feed-acciones">
           <button type="button" className="btn btn-secondary btn-sm" onClick={() => onAbrir(post.id)}>
             <Icon name="pencil" size={14} /> Abrir la publicación
