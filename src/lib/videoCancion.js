@@ -37,6 +37,13 @@ export const DESPLAZAMIENTO_MAX = 1.5;
 export const MAX_BYTES_CANCION = 15 * 1024 * 1024;
 /** «Empezar en la voz»: el fragmento arranca esto antes de la primera palabra cantada (s). */
 export const ANTES_DE_LA_VOZ = 0.4;
+/**
+ * La COLA de un fragmento: segundos que se añaden DESPUÉS de «hasta» para el cierre (el reel de una canción termina en
+ * negro con el logo pequeño: regla de Juan). Por defecto la música se va con un fundido corto y la cola va en silencio;
+ * con `colaSuena`, la canción sigue sonando en la cola y se va con un fundido largo.
+ */
+export const COLA_MAX = 4;
+export const FUNDIDO_COLA = 0.4;
 /** Un hueco sin letra de más de esto lleva su escena en la prueba de sincronía (intro, puente, final). */
 export const HUECO_INSTRUMENTAL = 2;
 /** Lo más que mide una línea en pantalla: una más larga se parte en frases. */
@@ -351,9 +358,11 @@ export function lineasConTiempos(letra, oidas) {
  * «voz» (la primera palabra cantada menos `ANTES_DE_LA_VOZ`); `hasta`: un número (sin él, el final). Sin ninguno, null
  * (la canción entera). Pura.
  */
-export function limpiarRecorte({ desde, hasta } = {}, s) {
+export function limpiarRecorte({ desde, hasta, cola = 0, colaSuena = false } = {}, s) {
   const vacio = (x) => x === undefined || x === null || x === "";
-  if (vacio(desde) && vacio(hasta)) return null;
+  const c = Number(cola) || 0;
+  if (c < 0 || c > COLA_MAX) return { error: `«cola» va de 0 a ${COLA_MAX} s (lo que sigue al corte para el cierre).` };
+  if (vacio(desde) && vacio(hasta) && !c) return null;
   const dura = Number(s?.duracion) || 0;
   let a = 0;
   if (desde === "voz" || desde === "primera_palabra") {
@@ -369,8 +378,8 @@ export function limpiarRecorte({ desde, hasta } = {}, s) {
   if (!Number.isFinite(b) || b <= a) return { error: "«hasta» es el segundo de la canción donde acaba el fragmento (después de «desde»)." };
   const fin = Math.min(b, dura);
   if (fin - a < MIN_SEGUNDOS) return { error: `El fragmento dura ${(fin - a).toFixed(1)} s: el mínimo es ${MIN_SEGUNDOS}.` };
-  if (fin - a > MAX_SEGUNDOS_CANCION + 0.5) return { error: `El fragmento dura ${Math.round(fin - a)} s y el video admite ${MAX_SEGUNDOS_CANCION}.` };
-  return { desde: r3(a), hasta: r3(fin) };
+  if (fin - a + c > MAX_SEGUNDOS_CANCION + 0.5) return { error: `El fragmento dura ${Math.round(fin - a + c)} s y el video admite ${MAX_SEGUNDOS_CANCION}.` };
+  return { desde: r3(a), hasta: r3(fin), ...(c > 0 ? { cola: r3(c), ...(colaSuena === true ? { colaSuena: true } : {}) } : {}) };
 }
 
 /**
@@ -383,7 +392,9 @@ export function limpiarRecorte({ desde, hasta } = {}, s) {
 export function recorteDeSincronia(s, recorte) {
   if (!recorte) return s;
   const { desde, hasta } = recorte;
-  const dura = r3(hasta - desde);
+  const cola = Number(recorte.cola) || 0;
+  // El video dura el tramo MÁS su cola (las palabras, sólo las del tramo).
+  const dura = r3(hasta - desde + cola);
   const oidas = Array.isArray(s?.oidas) ? s.oidas : [];
   const dentro = (p) => Number.isFinite(p?.desde) && p.desde >= desde - 0.05 && p.desde < hasta - 0.1;
   // La letra del fragmento: renglón a renglón, las palabras de cada uno que caen dentro (las `oidas` son una por palabra
@@ -407,8 +418,26 @@ export function recorteDeSincronia(s, recorte) {
   return {
     ...s, oidas: nuevas, letra: renglones.join("\n"), duracion: dura,
     ...(golpes ? { golpes } : {}),
-    recorte: { desde, hasta, cancion: r3(Number(s.duracion) || 0) },
+    recorte: { desde, hasta, cancion: r3(Number(s.duracion) || 0), ...(cola > 0 ? { cola: r3(cola), ...(recorte.colaSuena ? { colaSuena: true } : {}) } : {}) },
   };
+}
+
+/**
+ * Lo que SUENA de un fragmento: { desde, hasta, fundidoSalida? } en segundos de la canción entera (lo que corta el
+ * Container y lo que toca la vista previa). Con cola en silencio, hasta «hasta» con un fundido de `FUNDIDO_COLA`; con la
+ * cola que suena, hasta «hasta» + la cola (sin pasar del final) con un fundido que dura la cola. Sin recorte, null. Pura.
+ */
+export function audioDelRecorte(recorte) {
+  if (!recorte || !(Number(recorte.hasta) > Number(recorte.desde))) return null;
+  const desde = Number(recorte.desde);
+  const hasta = Number(recorte.hasta);
+  const cola = Number(recorte.cola) || 0;
+  if (!cola) return { desde, hasta };
+  if (recorte.colaSuena) {
+    const fin = Number(recorte.cancion) > 0 ? Math.min(Number(recorte.cancion), hasta + cola) : hasta + cola;
+    return { desde, hasta: r3(fin), fundidoSalida: Math.max(FUNDIDO_COLA, r3(fin - hasta)) };
+  }
+  return { desde, hasta, fundidoSalida: FUNDIDO_COLA };
 }
 
 /** Los huecos sin letra de más de `HUECO_INSTRUMENTAL` (intro, puentes, final) → [{ desde, hasta, cual }]. Pura. */

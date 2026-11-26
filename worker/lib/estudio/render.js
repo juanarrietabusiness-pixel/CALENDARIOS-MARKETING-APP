@@ -36,7 +36,7 @@ import { MAX_BYTES_SONIDO } from "../../../src/lib/bibliotecaSonido.js";
 import { dbDeVolumenGuion } from "../../../src/lib/musica.js";
 import { avisarRender } from "../equipo.js";
 import { esVideoDeFoto, postConMusica } from "../../../src/lib/conMusica.js";
-import { esCancion } from "../../../src/lib/videoCancion.js";
+import { esCancion, audioDelRecorte } from "../../../src/lib/videoCancion.js";
 
 const leerJSON = (t, d) => { try { return typeof t === "string" ? JSON.parse(t) : (t ?? d); } catch { return d; } };
 const SISTEMA = { userId: "sistema", nombre: "Render", color: "", tab: null };
@@ -427,7 +427,8 @@ export async function sonidoParaElContainer(env, fila, guion, { clienteId, owner
     }
   }
   // El FRAGMENTO de la canción (segundos de la entera): el Container corta ahí la toma, con fundidos.
-  const recorte = conCancion && locucion.recorte ? { desde: Number(locucion.recorte.desde) || 0, hasta: Number(locucion.recorte.hasta) || 0 } : null;
+  // Con su COLA: en silencio tras un fundido corto, o la canción que sigue sonando con un fundido largo.
+  const recorte = conCancion ? audioDelRecorte(locucion.recorte) : null;
   return { audio, recorte, musica, nombreMusica: musica ? sonido.musica.nombre || "Música" : null, sonido, propios, libreria, avisos, conCancion };
 }
 

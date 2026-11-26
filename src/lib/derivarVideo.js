@@ -56,7 +56,7 @@ function momentoMovido(m, primera, n) {
  * `hasta`: el tramo en segundos del maestro. → { guion, escenas, dentro (palabras), primera (el id de su primera
  * escena), avisos } o { error }. Pura.
  */
-export function derivarGuion(maestro, { palabras = [], linea, desde = 0, hasta = Infinity, formato = "9:16", gancho = false } = {}) {
+export function derivarGuion(maestro, { palabras = [], linea, desde = 0, hasta = Infinity, formato = "9:16", gancho = false, cola = 0 } = {}) {
   if (!FORMATOS_VIDEO[formato]) return { error: `«${formato}» no es un formato: ${Object.keys(FORMATOS_VIDEO).join(", ")}.` };
   if (!(hasta > desde)) return { error: "«hasta» va después de «desde»." };
   const escenas = [];
@@ -95,8 +95,8 @@ export function derivarGuion(maestro, { palabras = [], linea, desde = 0, hasta =
     });
   });
   if (!dentro) return { error: `Entre el segundo ${r3(desde)} y el ${r3(hasta)} del video no se canta nada: escoge otro tramo.` };
-  if (Number.isFinite(hasta) && hasta - ultimaPalabra < CIERRE_MINIMO) {
-    avisos.push(`El cierre dura ${Math.max(0, r3(hasta - ultimaPalabra))} s (tras la última palabra): con menos de ${CIERRE_MINIMO} s casi no se ve. Alarga «hasta» si la canción sigue.`);
+  if (Number.isFinite(hasta) && hasta + cola - ultimaPalabra < CIERRE_MINIMO) {
+    avisos.push(`El cierre dura ${Math.max(0, r3(hasta + cola - ultimaPalabra))} s (tras la última palabra): con menos de ${CIERRE_MINIMO} s casi no se ve. Dale una «cola» (hasta ${4} s después del corte) o alarga «hasta».`);
   }
   escenas.push(cierreDelFormato(formato));
   if (gancho && escenas.length) {

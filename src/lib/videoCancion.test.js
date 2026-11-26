@@ -485,3 +485,42 @@ describe("la calidad del mp4 (más ligero para YouTube)", () => {
     expect(minutosDeRender(360)).toBeLessThan(15);
   });
 });
+
+describe("la COLA de un fragmento (el reel termina en negro con el logo pequeño)", async () => {
+  const { limpiarRecorte: limpiar, recorteDeSincronia: recortar, audioDelRecorte, COLA_MAX, FUNDIDO_COLA } = await import("./videoCancion.js");
+  const s = { duracion: 60, letra: "uno dos tres", oidas: ["uno", "dos", "tres"].map((texto, i) => ({ texto, desde: 10 + i * 5, hasta: 11 + i * 5 })) };
+
+  it("se suma después de «hasta»: el video dura el tramo más la cola; las palabras, sólo las del tramo", () => {
+    const r = limpiar({ desde: 9, hasta: 25, cola: 2.5 }, s);
+    expect(r).toEqual({ desde: 9, hasta: 25, cola: 2.5 });
+    const f = recortar(s, r);
+    expect(f.duracion).toBe(18.5);
+    expect(f.oidas).toHaveLength(3);
+    expect(f.recorte).toEqual({ desde: 9, hasta: 25, cancion: 60, cola: 2.5 });
+    expect(limpiar({ desde: 9, hasta: 25, cola: COLA_MAX + 1 }, s).error).toMatch(/cola/);
+  });
+
+  it("lo que suena: en silencio tras un fundido corto, o la canción que sigue con un fundido largo", () => {
+    expect(audioDelRecorte({ desde: 9, hasta: 25 })).toEqual({ desde: 9, hasta: 25 });
+    expect(audioDelRecorte({ desde: 9, hasta: 25, cola: 2 })).toEqual({ desde: 9, hasta: 25, fundidoSalida: FUNDIDO_COLA });
+    expect(audioDelRecorte({ desde: 9, hasta: 25, cola: 2, colaSuena: true, cancion: 60 })).toEqual({ desde: 9, hasta: 27, fundidoSalida: 2 });
+    // Sin pasar del final de la canción.
+    expect(audioDelRecorte({ desde: 50, hasta: 59, cola: 3, colaSuena: true, cancion: 60 }).hasta).toBe(60);
+    expect(audioDelRecorte(null)).toBeNull();
+  });
+
+  it("el audio del render: el fundido de la cola, y el resto hasta el último cuadro en silencio", () => {
+    const muestreo = 100;
+    const toma = new Uint8Array(40 * muestreo * BYTES_MUESTRA);
+    const v = new DataView(toma.buffer);
+    for (let i = 0; i < 40 * muestreo * 2; i++) v.setInt16(i * 2, 1000, true);
+    const pcm = recortarPcm(toma, audioDelRecorte({ desde: 9, hasta: 25, cola: 2 }), muestreo);
+    expect(pcm.length).toBe(16 * muestreo * BYTES_MUESTRA);
+    const w = new DataView(pcm.buffer, pcm.byteOffset, pcm.byteLength);
+    expect(w.getInt16(Math.round(15.5 * muestreo) * BYTES_MUESTRA, true)).toBe(1000);
+    expect(w.getInt16(Math.round(15.95 * muestreo) * BYTES_MUESTRA, true)).toBeLessThan(200);
+    // armarPcm rellena hasta lo que dura el video (tramo + cola) con silencio.
+    const total = armarPcm(pcm, [{ tipo: "voz", desde: 0, hasta: null }], 18, muestreo);
+    expect(new DataView(total.buffer).getInt16(Math.round(17 * muestreo) * BYTES_MUESTRA, true)).toBe(0);
+  });
+});

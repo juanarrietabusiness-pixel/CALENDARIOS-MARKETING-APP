@@ -1332,3 +1332,13 @@ contradicen, manda la de más abajo (la más nueva). Una trampa nueva de esta á
   del texto. Los Shorts, hasta 3 minutos (antes 60 s). Sin probar contra YouTube: `publishAt`, la categoría y la
   miniatura (`thumbnails.set` exige canal verificado; si falla queda un aviso). El recorte de la letra larga por bytes
   tenía un bucle infinito (quitaba la línea «…» que acababa de añadir): ahora cuenta renglones.
+- **La COLA de un fragmento: el reel de una canción termina en negro con el logo pequeño (regla de Juan, 26-nov-2026).** En
+  modo canción el video dura lo que el fragmento y la «pausa» se ignora: si la siguiente palabra cantada viene justo
+  después del corte («Somos» a 76,1 s con hasta 75,7 en BENDECIDOS), no queda música libre para el cierre. `cola` (0 a
+  `COLA_MAX` = 4 s, en `video_con_cancion`, `derivar_video` y `ajustar_cancion` para un video hecho) se suma DESPUÉS de
+  «hasta»: el video dura el tramo más la cola, las palabras son sólo las del tramo y la última escena sin letra ocupa la
+  cola. Lo que suena lo dice `audioDelRecorte` (el render, la escucha y la vista previa leen lo mismo): por defecto la
+  canción se va con un fundido de 0,4 s en el corte y la cola va en silencio (`armarPcm` rellena hasta el último cuadro);
+  con `colaSuena`, la canción sigue hasta «hasta» + cola (sin pasar del final) y se va con un fundido que dura la cola.
+  `ajustar_cancion` cambia también `guion.cancion.duracion` (si no, `estadoDeCancion` deja de dar la canción por buena):
+  sube la versión y devuelve el video a borrador.
