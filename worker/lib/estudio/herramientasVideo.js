@@ -423,6 +423,8 @@ export const DEFINICIONES_VIDEO = Object.freeze([
         desplazamiento: { type: "number", description: `El ajuste fino de la letra, de −${DESPLAZAMIENTO_MAX} a ${DESPLAZAMIENTO_MAX} s (0 por defecto).` },
         desde: { description: "Opcional, para un FRAGMENTO: el segundo de la canción donde empieza (número), o \"voz\" (0,4 s antes de la primera palabra cantada). La letra sigue siendo la de la canción ENTERA." },
         hasta: { type: "number", description: "Opcional, para un FRAGMENTO: el segundo de la canción donde acaba (sin él, el final)." },
+        cola: { type: "number", description: "Opcional, con un FRAGMENTO: de 0 a 4 s que se añaden DESPUÉS de «hasta» para el cierre (el reel de una canción termina en negro con el logo pequeño): la música se va con un fundido de 0,4 s y la cola va en silencio. La última escena sin letra la ocupa." },
+        cola_suena: { type: "boolean", description: "Con cola: true deja sonar la canción en la cola (se va con un fundido largo) en vez del silencio." },
         estilo_id: { type: "string", description: "Un ESTILO DE VIDEO guardado del cliente (de estilos_video): la IA diseña con sus reglas y la aplicación impone su forma (también a la prueba de sincronía). Si el estilo lleva imágenes de fondo, el video las pide aunque no pongas con_fondos. Si el cliente tiene uno para canciones, ofrécelo." },
         confirmado: { type: "boolean", description: "SÓLO true si la persona dijo que sí al costo de sincronizar que dio la llamada anterior." },
       },
@@ -439,10 +441,26 @@ export const DEFINICIONES_VIDEO = Object.freeze([
         formato: { type: "string", enum: ["9:16", "1:1", "16:9"], description: "El formato del derivado (9:16 por defecto: el reel)." },
         desde: { description: "Opcional: el segundo del MAESTRO donde empieza (número) o \"voz\". Sin él, el principio." },
         hasta: { type: "number", description: "Opcional: el segundo del MAESTRO donde acaba. Sin él, el final." },
+        cola: { type: "number", description: "Opcional, con un FRAGMENTO: de 0 a 4 s que se añaden DESPUÉS de «hasta» para el cierre (el reel de una canción termina en negro con el logo pequeño): la música se va con un fundido de 0,4 s y la cola va en silencio. La última escena sin letra la ocupa." },
+        cola_suena: { type: "boolean", description: "Con cola: true deja sonar la canción en la cola (se va con un fundido largo) en vez del silencio." },
         gancho: { type: "boolean", description: "true: la primera escena con más fuerza y un solo efecto al empezar." },
         titulo: { type: "string", description: "Opcional: el nombre del derivado (si no, el del maestro con su formato)." },
       },
       required: ["video_id"],
+    },
+  },
+  {
+    name: "ajustar_cancion",
+    description: "Ajusta la CANCIÓN de un video que ya existe, sin volver a sincronizar: la COLA de un fragmento (0 a 4 s después del corte, para el cierre en negro con el logo pequeño; en silencio tras un fundido de 0,4 s, o con cola_suena la canción sigue y se va con un fundido largo) y/o el ajuste fino (desplazamiento, ±1,5 s). La cola cambia lo que dura el video: sube la versión y lo devuelve a borrador (apruébalo otra vez con el sí de la persona). Después, añade la escena de cierre con editar_escena (habla vacío: ocupa la cola) y renderizar_video. No gasta nada.",
+    input_schema: {
+      type: "object",
+      properties: {
+        ...clienteParam, ...videoParam, ...versionParam,
+        cola: { type: "number", description: "De 0 a 4 s (0 la quita). Sólo con un fragmento (desde/hasta)." },
+        cola_suena: { type: "boolean", description: "true: la canción sigue sonando en la cola (fundido largo); por defecto, silencio." },
+        desplazamiento: { type: "number", description: "Opcional: el ajuste fino de la letra, de −1,5 a 1,5 s." },
+      },
+      required: ["video_id", "version"],
     },
   },
   {
@@ -549,7 +567,7 @@ export const DEFINICIONES_VIDEO = Object.freeze([
 ]);
 
 /** Las que escriben (en el MCP van como escritura; las demás, de sólo lectura). */
-export const ESCRIBEN_VIDEO = Object.freeze(["identidad_video", "plantilla_video", "guardar_estructura", "eliminar_estructura", "voz_de_marca", "lexico_de_marca", "guardar_estilo_video", "aplicar_estilo_video", "fondos_video", "video_con_cancion", "derivar_video", "preparar_youtube", "publicar_con_musica", "crear_video", "guardar_video", "editar_escena", "aprobar_video", "renderizar_video", "ligar_video", "sonido_video", "volver_a_version", "personaje_video"]);
+export const ESCRIBEN_VIDEO = Object.freeze(["identidad_video", "plantilla_video", "guardar_estructura", "eliminar_estructura", "voz_de_marca", "lexico_de_marca", "guardar_estilo_video", "aplicar_estilo_video", "fondos_video", "video_con_cancion", "derivar_video", "ajustar_cancion", "preparar_youtube", "publicar_con_musica", "crear_video", "guardar_video", "editar_escena", "aprobar_video", "renderizar_video", "ligar_video", "sonido_video", "volver_a_version", "personaje_video"]);
 
 /** Lo que falta para el siguiente paso, en una frase para el modelo. Pura. */
 /** ¿La locución es de la versión aprobada? (un video «aprobado» con voz de esa versión ya no la necesita otra vez). */
@@ -669,7 +687,7 @@ export function crearHerramientasVideo({ env, acceso, resolverCliente, usuario, 
   };
 
   return {
-    async video_con_cancion({ cliente, musica_id: musicaId = "", letra = "", formato = "9:16", publicacion_id: postId = "", titulo = "", disenar = false, indicacion = "", desplazamiento = 0, con_fondos: conFondos = false, estilo_id: estiloId = "", desde = null, hasta = null, confirmado }) {
+    async video_con_cancion({ cliente, musica_id: musicaId = "", letra = "", formato = "9:16", publicacion_id: postId = "", titulo = "", disenar = false, indicacion = "", desplazamiento = 0, con_fondos: conFondos = false, estilo_id: estiloId = "", desde = null, hasta = null, cola = 0, cola_suena: colaSuena = false, confirmado }) {
       const c = await resolverCliente(cliente);
       // En el momento: cancion.js lee guionAnimado.js → mercado.js, que estático cerraría el ciclo con herramientas.js.
       const { sincronizarCancion, crearVideoConCancion, resumenDeSincronia, ErrorCancion } = await import("./cancion.js");
@@ -678,7 +696,7 @@ export function crearHerramientasVideo({ env, acceso, resolverCliente, usuario, 
           const s = await sincronizarCancion(env, acceso, c, { musicaId: String(musicaId), letra: String(letra), confirmado: confirmado === true, usuario });
           const r = await crearVideoConCancion(env, acceso, c, {
             huella: s.huella, modo: disenar === true ? "ia" : "karaoke", formato, titulo: String(titulo ?? ""), postId: String(postId ?? ""),
-            desplazamiento, indicacion: String(indicacion ?? ""), conFondos: disenar === true && conFondos === true, estiloId: String(estiloId ?? ""), desde, hasta, usuario,
+            desplazamiento, indicacion: String(indicacion ?? ""), conFondos: disenar === true && conFondos === true, estiloId: String(estiloId ?? ""), desde, hasta, cola, colaSuena: colaSuena === true, usuario,
           });
           avisar(c.id, r.video.id);
           // Con un fragmento, lo que se resume es el fragmento (sus líneas desde su 0), no la canción entera.
@@ -709,13 +727,13 @@ export function crearHerramientasVideo({ env, acceso, resolverCliente, usuario, 
       });
     },
 
-    async derivar_video({ cliente, video_id: id, formato = "9:16", desde = null, hasta = null, gancho = false, titulo = "" }) {
+    async derivar_video({ cliente, video_id: id, formato = "9:16", desde = null, hasta = null, gancho = false, titulo = "", cola = 0, cola_suena: colaSuena = false }) {
       const c = await resolverCliente(cliente);
       const { derivarVideo, ErrorCancion } = await import("./cancion.js");
       return conErrores(async () => {
         const fila = await proyectoDe(acceso, c.id, id);
         try {
-          const r = await derivarVideo(env, acceso, c, fila, { formato, desde, hasta, gancho: gancho === true, titulo: String(titulo ?? ""), usuario });
+          const r = await derivarVideo(env, acceso, c, fila, { formato, desde, hasta, gancho: gancho === true, titulo: String(titulo ?? ""), cola, colaSuena: colaSuena === true, usuario });
           avisar(c.id, r.video.id);
           const video = { ...r.video, locucion: await locucionAlDia(acceso, r.video.locucion) };
           const texto = [
@@ -729,6 +747,38 @@ export function crearHerramientasVideo({ env, acceso, resolverCliente, usuario, 
           if (e instanceof ErrorCancion) throw new Fallo(e.message);
           throw e;
         }
+      });
+    },
+
+    async ajustar_cancion({ cliente, video_id: id, version, cola, cola_suena: colaSuena = false, desplazamiento }) {
+      const c = await resolverCliente(cliente);
+      const { ajustarCola, ajustarCancion, ErrorCancion } = await import("./cancion.js");
+      return conErrores(async () => {
+        let fila = await proyectoDe(acceso, c.id, id);
+        const hecho = [];
+        try {
+          if (cola !== undefined && cola !== null) {
+            await ajustarCola(acceso, c, fila, { cola, colaSuena: colaSuena === true, version, por: por?.nombre ?? null });
+            fila = await proyectoDe(acceso, c.id, id);
+            hecho.push(Number(cola) > 0 ? `cola de ${Number(cola)} s ${colaSuena === true ? "con la canción sonando (fundido largo)" : "en silencio (fundido de 0,4 s en el corte)"}` : "sin cola");
+          }
+          if (desplazamiento !== undefined && desplazamiento !== null) {
+            await ajustarCancion(acceso, c, fila, { desplazamiento });
+            fila = await proyectoDe(acceso, c.id, id);
+            hecho.push(`ajuste fino ${desplazamiento > 0 ? "+" : ""}${desplazamiento} s`);
+          }
+        } catch (e) {
+          if (e instanceof ErrorCancion) throw new Fallo(e.message);
+          throw e;
+        }
+        if (!hecho.length) throw new Fallo("Dime qué ajustar: cola (0 a 4 s) o desplazamiento.");
+        avisar(c.id, id);
+        const video = { ...deFila(fila), locucion: await locucionAlDia(acceso, deFila(fila).locucion) };
+        return [
+          `Ajustada la canción de «${video.titulo}»: ${hecho.join("; ")}. Ahora dura ${Number(video.locucion?.duracion ?? 0).toFixed(1)} s (versión ${video.version}, ${video.estado === "borrador" ? "en borrador: apruébalo otra vez con el sí de la persona" : video.estado}).`,
+          Number(cola) > 0 ? "La cola la ocupa la última escena: pon una de cierre con habla vacío (editar_escena), p. ej. fondo plano oscuro y el logo pequeño, y renderiza." : "",
+          textoDelVideo(video, { conGuion: false }),
+        ].filter(Boolean).join("\n");
       });
     },
 

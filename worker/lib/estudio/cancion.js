@@ -35,7 +35,7 @@ import { escribirGuionCancion, ErrorGuion } from "./guionAnimado.js";
 import { fondosPendientes } from "../../../src/lib/fondosVideo.js";
 import { alContenedor, aBase64 } from "./cuadros.js";
 import { limpiarGolpes } from "../../../src/lib/golpes.js";
-import { crearProyecto, publicacionDelCliente, deFila, ErrorVideo } from "../videosProyectos.js";
+import { crearProyecto, guardarProyecto, publicacionDelCliente, deFila, ErrorVideo } from "../videosProyectos.js";
 import { estiloDelCliente, ErrorEstilo, estiloDeLaMarca } from "./estilosVideo.js";
 import { aplicarEstilo } from "../../../src/lib/estilosVideo.js";
 import { ErrorIA } from "../cerebro/ia.js";
@@ -46,7 +46,7 @@ import { textoCosto } from "../../../src/lib/estudioCatalogo.js";
 import {
   limpiarLetra, leerAlineacion, medirAlineacion, letraEstimada, pedidoDeTiemposCancion, costoDeSincronia, duracionDeAudio,
   extractoCrudo, lineasConTiempos, huecosInstrumentales, guionKaraoke, conDesplazamiento, limpiarDesplazamiento, esCancion,
-  conPalabrasDeCancion, limpiarRecorte, recorteDeSincronia, palabrasDeLaCancion, conLaCancion, ANTES_DE_LA_VOZ, MAX_BYTES_CANCION,
+  conPalabrasDeCancion, limpiarRecorte, recorteDeSincronia, palabrasDeLaCancion, conLaCancion, ANTES_DE_LA_VOZ, COLA_MAX, MAX_BYTES_CANCION,
   COINCIDENCIA_MINIMA, FUENTES_CANCION,
 } from "../../../src/lib/videoCancion.js";
 
@@ -274,8 +274,8 @@ export function locucionDeSincronia(s, guion, version, { desplazamiento = 0 } = 
 }
 
 /** El fragmento [desde, hasta) de una sincronía entera (o ella misma, sin recorte); lo que no vale, con su error. */
-function fragmentoDe(s, { desde = null, hasta = null } = {}) {
-  const rec = limpiarRecorte({ desde, hasta }, s);
+function fragmentoDe(s, { desde = null, hasta = null, cola = 0, colaSuena = false } = {}) {
+  const rec = limpiarRecorte({ desde, hasta, cola, colaSuena }, s);
   if (rec?.error) throw new ErrorCancion(rec.error, 400);
   const f = recorteDeSincronia(s, rec);
   if (f?.error) throw new ErrorCancion(f.error, 400);
@@ -289,7 +289,7 @@ function fragmentoDe(s, { desde = null, hasta = null } = {}) {
  * código impone su forma (también a la prueba de sincronía, que sigue gratis); el video recuerda cuál (`origen`).
  * → { video, avisos, corregido, aviso, fondos, estilo }.
  */
-export async function crearVideoConCancion(env, acceso, cliente, { huella, modo = "karaoke", formato = "9:16", titulo = "", postId = "", calendarId = "", desplazamiento = 0, indicacion = "", conFondos = false, estiloId = "", desde = null, hasta = null, usuario = null }) {
+export async function crearVideoConCancion(env, acceso, cliente, { huella, modo = "karaoke", formato = "9:16", titulo = "", postId = "", calendarId = "", desplazamiento = 0, indicacion = "", conFondos = false, estiloId = "", desde = null, hasta = null, cola = 0, colaSuena = false, usuario = null }) {
   let estilo = null;
   if (estiloId) {
     try {
@@ -307,7 +307,7 @@ export async function crearVideoConCancion(env, acceso, cliente, { huella, modo 
   // La canción tiene que seguir en la biblioteca (si se quitó, el render no tendría audio).
   await cancionDelCliente(acceso, cliente.id, entera.archivo);
   // Un FRAGMENTO de la canción ya sincronizada (el reel de la canción de YouTube): sus tiempos, gratis.
-  const s = fragmentoDe(entera, { desde, hasta });
+  const s = fragmentoDe(entera, { desde, hasta, cola, colaSuena });
   const d = limpiarDesplazamiento(desplazamiento);
   const lineas = lineasConTiempos(s.letra, conDesplazamiento(s.oidas, d, s.duracion));
   if (!lineas.length) throw new ErrorCancion("La sincronización no tiene líneas: vuelve a sincronizar la letra.", 400);
@@ -386,7 +386,7 @@ export async function resincronizarVideo(env, acceso, cliente, fila, { confirmad
  * si se pide. La canción, la del maestro recortada desde su sincronía ENTERA (gratis); el sonido, el suyo sin lo que ya
  * no tiene dónde sonar. → { video, avisos, derivado: { de, desde, hasta, formato } }.
  */
-export async function derivarVideo(env, acceso, cliente, fila, { formato = "9:16", desde = null, hasta = null, gancho = false, titulo = "", usuario = null }) {
+export async function derivarVideo(env, acceso, cliente, fila, { formato = "9:16", desde = null, hasta = null, gancho = false, titulo = "", cola = 0, colaSuena = false, usuario = null }) {
   const l = leerJSON(fila.locucion, {});
   if (!esCancion(l) || l.estado !== "lista") throw new ErrorCancion("Sólo se deriva un video con su canción sincronizada (video_con_cancion).", 409);
   const maestro = leerJSON(fila.guion, null);
@@ -402,11 +402,11 @@ export async function derivarVideo(env, acceso, cliente, fila, { formato = "9:16
   const a = desde === "voz" || desde === "primera_palabra" ? Math.max(0, (primera?.desde ?? 0) - ANTES_DE_LA_VOZ) : Math.max(0, Number(desde) || 0);
   const b = hasta === null || hasta === undefined || hasta === "" ? total : Math.min(total, Number(hasta));
   if (!(b > a)) throw new ErrorCancion("«hasta» va después de «desde» (segundos del video maestro).", 400);
-  const d = derivarGuion(maestro, { palabras, linea, desde: a, hasta: b, formato, gancho: gancho === true });
+  const d = derivarGuion(maestro, { palabras, linea, desde: a, hasta: b, formato, gancho: gancho === true, cola: Number(cola) || 0 });
   if (d.error) throw new ErrorCancion(d.error, 400);
   // La canción del tramo: segundos de la canción ENTERA (el maestro pudo ser ya un fragmento).
   const desplazado = Number(l.recorte?.desde) || 0;
-  const s = fragmentoDe(entera, { desde: desplazado + a, hasta: desplazado + b });
+  const s = fragmentoDe(entera, { desde: desplazado + a, hasta: desplazado + b, cola, colaSuena });
   const v = validarGuion(conLaCancion(d.guion, { archivo: s.archivo, duracion: s.duracion, nombre: s.nombre }));
   if (!v.ok) throw new ErrorCancion(`El derivado no valida: ${v.errores.slice(0, 3).map((x) => `${x.donde}: ${x.mensaje}`).join(" · ")}`, 400);
   const origen = leerJSON(fila.origen, {});
@@ -420,5 +420,30 @@ export async function derivarVideo(env, acceso, cliente, fila, { formato = "9:16
     video: r.video, avisos: [...d.avisos, ...v.avisos.map((x) => x.mensaje ?? x), ...r.avisos],
     derivado: { de: fila.id, desde: Math.round(a * 1000) / 1000, hasta: Math.round(b * 1000) / 1000, formato, escenas: d.escenas },
   };
+}
+
+/**
+ * La COLA de un video con un fragmento de canción (src/lib/videoCancion.js): 0 a `COLA_MAX` s después de «hasta» para el
+ * cierre (el reel de una canción termina en negro con el logo pequeño), en silencio o con la canción sonando
+ * (`colaSuena`). El video dura el tramo más su cola: el guion cambia lo que dura su canción (otra versión, a borrador).
+ * → { video, avisos }.
+ */
+export async function ajustarCola(acceso, cliente, fila, { cola = 0, colaSuena = false, version, por = null }) {
+  const l = leerJSON(fila.locucion, {});
+  if (!esCancion(l)) throw new ErrorVideo("Este video no va con una canción.", 409);
+  if (!l.recorte) throw new ErrorVideo("La cola es para un FRAGMENTO de la canción (desde/hasta): este video lleva la canción entera.", 409);
+  if (fila.estado === "renderizando") throw new ErrorVideo("Se está renderizando: espera a que termine.", 409);
+  const c = Number(cola) || 0;
+  if (c < 0 || c > COLA_MAX) throw new ErrorVideo(`«cola» va de 0 a ${COLA_MAX} s.`, 400);
+  const { desde, hasta } = l.recorte;
+  const duracion = Math.round((hasta - desde + c) * 1000) / 1000;
+  const recorte = { desde, hasta, cancion: l.recorte.cancion, ...(c > 0 ? { cola: c, ...(colaSuena === true ? { colaSuena: true } : {}) } : {}) };
+  const guion = leerJSON(fila.guion, {});
+  const r = await guardarProyecto(acceso, cliente, fila, { guion: { ...guion, cancion: { ...(guion.cancion ?? {}), duracion } }, version, por });
+  const nueva = conPalabrasDeCancion(r.video.guion, { ...l, recorte, duracion });
+  const momento = ahora();
+  await acceso.actualizar("videos_proyectos", { id: fila.id, client_id: cliente.id }, { locucion: JSON.stringify(nueva), updated_at: momento });
+  const otra = await acceso.leerUno("videos_proyectos", { id: fila.id, client_id: cliente.id });
+  return { video: deFila(otra), avisos: r.avisos };
 }
 

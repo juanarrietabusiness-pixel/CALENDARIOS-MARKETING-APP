@@ -27,7 +27,7 @@ import { textoDeSubtitulo } from "../lib/subtitulos";
 import { listarVideos, leerVideo, crearVideo, guardarVideo, aprobarVideo, borrarVideo } from "../lib/videosApi";
 import { limpiarKit } from "../lib/kitMarca";
 import { conPersonajeDelKit } from "../lib/personajeVideo";
-import { palabrasParaLinea, esCancion } from "../lib/videoCancion";
+import { palabrasParaLinea, esCancion, audioDelRecorte } from "../lib/videoCancion";
 import { conGolpes } from "../lib/golpes";
 import { editaLaAgencia } from "../lib/sesionActual";
 import RenderVideo from "./RenderVideo";
@@ -441,7 +441,8 @@ function VistaPrevia({ guion, locucion, kit, archivos }) {
 
   // El FRAGMENTO de una canción: el archivo es la canción entera y el video empieza en su segundo `desde`.
   const inicioAudio = cancion ? Number(locucion?.recorte?.desde) || 0 : 0;
-  const finAudio = cancion && locucion?.recorte ? Number(locucion.recorte.hasta) || 0 : 0;
+  // Hasta donde suena: «hasta», o su cola si la canción sigue sonando en ella (después, silencio).
+  const finAudio = cancion && locucion?.recorte ? audioDelRecorte(locucion.recorte)?.hasta ?? 0 : 0;
 
   /** Pone el audio en el segundo que toca para el instante `x` del video y lo hace sonar (o lo calla en un silencio). */
   const sonarDesde = useCallback((x) => {

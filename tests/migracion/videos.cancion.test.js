@@ -537,6 +537,55 @@ describe("derivar_video (YouTube: del maestro largo, su reel)", () => {
   });
 });
 
+describe("la cola del cierre (reel de canción: negro con el logo pequeño)", () => {
+  const herramientas = () => crearHerramientasEstudio({
+    env, acceso: crearAcceso(db, JEFE), resolverCliente: async () => db.sqlite.prepare("select * from clients where id = 'bc'").get(),
+    usuario: { id: JEFE, nombre: "Juan" }, origen: "claude", por: { userId: JEFE, nombre: "Juan" },
+  });
+
+  it("al crear y al ajustar un video hecho: dura el tramo más la cola, la última escena la ocupa y el render corta con su fundido", async () => {
+    servicios();
+    const h = herramientas();
+    await h.video_con_cancion({ musica_id: "can1", letra: LETRA, confirmado: true });
+    const maestro = db.sqlite.prepare("select id from videos_proyectos").get().id;
+    // Derivado con cola: 7 s de tramo + 2 de cola.
+    await h.derivar_video({ video_id: maestro, desde: 5, hasta: 12, cola: 2 });
+    const id = db.sqlite.prepare("select id from videos_proyectos where id != ?").get(maestro).id;
+    let d = video(id);
+    expect(JSON.parse(d.guion).cancion.duracion).toBe(9);
+    expect(JSON.parse(d.locucion).recorte).toMatchObject({ desde: 5, hasta: 12, cola: 2 });
+    let leido = (await (await pedir(`/videos/bc/${id}`, { method: "GET" })).json()).video;
+    expect(leido.valido).toBe(true);
+    const l = lineaDeTiempo(leido.guion, leido.locucion.palabras);
+    expect(l.total).toBe(9);
+    // El cierre (sin letra) ocupa la cola.
+    expect(l.escenas.at(-1).hasta).toBe(9);
+    expect(l.escenas.at(-1).hasta - l.escenas.at(-1).desde).toBeGreaterThan(2);
+
+    // Ajustar la de un video ya hecho: cola de 3 s que suena; otra versión y a borrador.
+    const r = await h.ajustar_cancion({ video_id: id, version: d.version, cola: 3, cola_suena: true });
+    expect(r).toMatch(/cola de 3 s con la canción sonando/);
+    d = video(id);
+    expect(JSON.parse(d.guion).cancion.duracion).toBe(10);
+    expect(JSON.parse(d.locucion)).toMatchObject({ duracion: 10, recorte: { cola: 3, colaSuena: true } });
+    leido = (await (await pedir(`/videos/bc/${id}`, { method: "GET" })).json()).video;
+    expect(leido.valido).toBe(true);
+    expect(leido.locucion.coincidenciaGuion).toBe(1);
+
+    // El render manda lo que suena: hasta 15 (12 + 3) con un fundido de 3 s.
+    await pedir(`/videos/bc/${id}/aprobar`, { body: { version: d.version } });
+    const encargos = [];
+    env.RENDER = { idFromName: (n) => n, get: () => ({ fetch: async (req) => { encargos.push(await req.json()); return new Response("{}", { status: 202 }); } }) };
+    expect((await pedir(`/videos/bc/${id}/render`, { body: { version: d.version } })).status).toBe(202);
+    const recibidos = [];
+    const MP4 = new Uint8Array([0, 0, 0, 0x18, 0x66, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6f, 0x6d, 0, 0, 2, 0, 1, 2, 3]);
+    await ejecutarRender(env, encargos[0], async (ruta, cuerpo) => { recibidos.push(cuerpo); return new Response(MP4); });
+    expect(recibidos[0].recorte).toEqual({ desde: 5, hasta: 15, fundidoSalida: 3 });
+    // Al maestro (la canción entera) no se le pone cola.
+    await expect(h.ajustar_cancion({ video_id: maestro, version: 1, cola: 2 })).rejects.toThrow(/FRAGMENTO/);
+  });
+});
+
 describe("preparar_youtube (YouTube: descripción, capítulos, miniatura)", () => {
   const herramientas = () => crearHerramientasEstudio({
     env, acceso: crearAcceso(db, JEFE), resolverCliente: async () => db.sqlite.prepare("select * from clients where id = 'bc'").get(),

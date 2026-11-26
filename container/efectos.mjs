@@ -92,7 +92,10 @@ export async function prepararEfectos({ guion, linea, efectos = true, colocados 
 export function recorteDelPedido(r) {
   const desde = Number(r?.desde);
   const hasta = Number(r?.hasta);
-  return Number.isFinite(desde) && Number.isFinite(hasta) && desde >= 0 && hasta > desde ? { desde, hasta } : null;
+  if (!(Number.isFinite(desde) && Number.isFinite(hasta) && desde >= 0 && hasta > desde)) return null;
+  // El fundido de salida de la COLA (src/lib/videoCancion.js, `audioDelRecorte`), si viene.
+  const f = Number(r?.fundidoSalida);
+  return { desde, hasta, ...(Number.isFinite(f) && f > 0 && f <= 10 ? { fundidoSalida: f } : {}) };
 }
 
 /**
