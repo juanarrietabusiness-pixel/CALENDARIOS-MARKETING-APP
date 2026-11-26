@@ -341,6 +341,10 @@
   padding: var(--sp-3); background: var(--surface-2); border-left: 1px solid var(--border);
 }
 .pp-vista > h3 { margin: 0; }
+/* En Pieza, en el teléfono, la vista previa va debajo del archivo, sin la columna. */
+.pp-vista-pieza { padding: var(--sp-3) 0 0; background: none; border-left: none; border-top: 1px solid var(--border); overflow: visible; }
+/* En Pieza a lo ancho la izquierda no lleva barra fija debajo: sólo desplaza lo suyo. */
+.pestana-pieza-columnas .pestana-pieza { max-width: none; }
 .pp-vista .vista-red-telefono { --vr-tope: 340px; }
 .idea-columnas, .idea-escribir, .idea-lado { display: flex; flex-direction: column; min-width: 0; }
 .idea-columnas[data-ancho] { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(300px, 1fr); gap: var(--sp-5); align-items: start; }
