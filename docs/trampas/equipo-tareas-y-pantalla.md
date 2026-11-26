@@ -309,3 +309,9 @@ contradicen, manda la de más abajo (la más nueva). Una trampa nueva de esta á
   es de botones pequeños, el Feed no tiene pie (el botón de programar va arriba, también en el teléfono) y su navegación es
   una fila de 36 px con «2/5» (el lector de pantalla oye «2 de 5»). El texto de la publicación ya no reserva sitio: manda la
   imagen. El alto lo sigue midiendo `vistaRed.jsx`; si se añade algo encima del teléfono, se lo come la imagen.
+- **La vista previa también en Pieza (26-nov-2026).** Se sube o se crea la imagen en Pieza y, para ver cómo salía, había
+  que pasar a Publicar. Ahora Pieza también enseña «Así se va a ver»: a lo ancho, en la columna de la derecha, en el MISMO
+  sitio que en Publicar (`enColumnas` en PostSidePanel: Pieza y Publicar en dos columnas), así al pasar de una a otra no
+  se mueve; en el teléfono, debajo del archivo (`.pp-vista-pieza`, que también es `.pp-vista` para que `encajar` la mida).
+  Sin archivo, a lo ancho dice que ahí se verá; en el teléfono no sale. Siguen siendo tres pestañas (Idea · Pieza ·
+  Publicar): juntar Pieza y Publicar devolvería la columna larga de la «Subir» de antes.

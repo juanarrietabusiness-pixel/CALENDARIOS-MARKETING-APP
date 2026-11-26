@@ -237,6 +237,12 @@ describe.skipIf(!disponible.playwright)("la aplicación abierta en Chromium", ()
           const dentro = await entera(pagina);
           expect(dentro.arriba, "el panel: la vista previa empieza arriba").toBeGreaterThanOrEqual(0);
           expect(dentro.abajo, `el panel a ${vista.width}px: la imagen se sale ${-dentro.abajo}px por abajo`).toBeGreaterThanOrEqual(0);
+          // Y en Pieza, la MISMA vista previa a la derecha (Juan, 26-nov: subía el archivo e iba a Publicar a verlo).
+          await panel.getByRole("tab", { name: "Pieza" }).click();
+          await panel.locator(".pp-vista .vista-red-medio img").first().waitFor({ timeout: 20_000 });
+          await pagina.waitForTimeout(500);
+          const enPieza = await entera(pagina);
+          expect(enPieza.abajo, `Pieza: la imagen se sale ${-enPieza.abajo}px por abajo`).toBeGreaterThanOrEqual(0);
         }
         expect(errores, errores.join("\n")).toEqual([]);
       } finally {
