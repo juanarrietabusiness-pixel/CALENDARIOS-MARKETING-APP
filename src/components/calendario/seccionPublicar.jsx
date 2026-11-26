@@ -755,7 +755,11 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
         )}
       </Plegable>
     );
-    return (
+    // «Así se va a ver» también aquí (Juan, 26-nov: subía el archivo y tenía que ir a Publicar para verlo). A lo ancho, en
+    // la columna de la derecha, en el MISMO sitio que en Publicar (al pasar de una a otra no se mueve); en el teléfono,
+    // debajo del archivo. Sin archivo no hay nada que ver.
+    const hayPieza = mediosDe(post).length > 0;
+    const piezaContenido = (
       <div className="pestana-pieza">
         {/* Lo que pidió cambiar el cliente, con «Rehacer la imagen» (la misma imagen, sólo ese cambio). */}
         <CambiosDelCliente post={post} setForm={setForm} clientId={clientId} uso={cal && post.id ? { calendarId: cal.dbId || cal.id, postId: post.id } : null} />
@@ -829,6 +833,13 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
           {masFormas}
         </section>
 
+        {!ancho && hayPieza && (
+          <section className="pp-vista pp-vista-pieza" aria-label="Cómo se va a ver">
+            <h3 className="label">Así se va a ver</h3>
+            {vista}
+          </section>
+        )}
+
         {clientId && ofreceMusica(post) && (
           <Suspense fallback={null}>
             <ConMusica post={post} setForm={setForm} client={client} clientId={clientId} cal={cal} onError={onError} enlaceAMano={enlaceAMano} onIrA={onIrA}
@@ -871,6 +882,16 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
           </button>
         )}
         {dialogos}
+      </div>
+    );
+    if (!ancho) return piezaContenido;
+    return (
+      <div className="pestana-publicar pestana-pieza-columnas" data-ancho>
+        <div className="pp-izquierda"><div className="pp-config">{piezaContenido}</div></div>
+        <aside className="pp-vista" aria-label="Cómo se va a ver">
+          <h3 className="label">Así se va a ver</h3>
+          {hayPieza ? vista : <p className="hint" style={{ margin: 0 }}>Cuando la pieza tenga su imagen o su video, aquí se ve cómo sale.</p>}
+        </aside>
       </div>
     );
   }

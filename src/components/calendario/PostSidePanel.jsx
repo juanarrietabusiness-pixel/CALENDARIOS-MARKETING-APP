@@ -98,6 +98,8 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
     document.getElementById(`${ids}-tab-${otra}`)?.focus();
   };
   const enPublicar = pestana === "salida";
+  // A lo ancho, Pieza y Publicar van en dos columnas: lo que se hace a la izquierda y «Así se va a ver» a la derecha.
+  const enColumnas = ancho && (enPublicar || pestana === "pieza");
   const sf = (k, v) => setForm((p) => ({ ...p, [k]: v }));
 
   // ---- El asistente de esta publicación ----
@@ -337,15 +339,15 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
         role="tabpanel"
         aria-labelledby={`${ids}-tab-${pestana}`}
         className="panel-cuerpo"
-        data-columnas={enPublicar && ancho ? true : undefined}
-        style={enPublicar && ancho
+        data-columnas={enColumnas ? true : undefined}
+        style={enColumnas
           // A lo ancho cada columna desplaza por su cuenta (publicar.css):
           // la vista previa, entera y a la vista; la barra, bajo la izquierda.
           ? { flex: 1, minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column" }
           : { flex: 1, overflowY: "auto", padding: "var(--sp-4)", paddingBottom: enPublicar ? 0 : "var(--sp-4)" }}
       >
         {fieldError && (
-          <p role="alert" className="notice notice-error" style={enPublicar && ancho ? { margin: "var(--sp-3) var(--sp-4) 0" } : undefined}>{fieldError}</p>
+          <p role="alert" className="notice notice-error" style={enColumnas ? { margin: "var(--sp-3) var(--sp-4) 0" } : undefined}>{fieldError}</p>
         )}
         <div aria-live="polite">{fieldAviso && pestana === "idea" && <p role="status" className="hint" style={{ marginTop: 0 }}>{fieldAviso}</p>}</div>
 
