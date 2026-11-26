@@ -159,5 +159,9 @@ export function publicarElDesdePanama(local) {
   const m = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})$/.exec(String(local ?? "").trim());
   if (!m) return null;
   const ms = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4]) + 5, Number(m[5]));
-  return Number.isFinite(ms) ? new Date(ms).toISOString() : null;
+  if (!Number.isFinite(ms)) return null;
+  // Un INSTANTE para la API (no un día del calendario): compuesto a mano en UTC.
+  const d = new Date(ms);
+  const p = (n, k = 2) => String(n).padStart(k, "0");
+  return `${p(d.getUTCFullYear(), 4)}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}T${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:00.000Z`;
 }
