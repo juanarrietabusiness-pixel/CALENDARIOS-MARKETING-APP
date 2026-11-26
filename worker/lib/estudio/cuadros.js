@@ -18,7 +18,7 @@ import { ErrorVideo } from "../videosProyectos.js";
 import { kitDe } from "./kit.js";
 import { conPersonajeDelKit } from "../../../src/lib/personajeVideo.js";
 import { claveDelCliente } from "./archivos.js";
-import { validarGuion, archivosDelGuion, videosDelGuion, FORMATOS_VIDEO } from "../../../src/lib/videoEscenas.js";
+import { validarGuion, archivosDelGuion, videosDelGuion, FORMATOS_VIDEO, guionParaFormato } from "../../../src/lib/videoEscenas.js";
 import { palabrasParaLinea } from "../../../src/lib/videoCancion.js";
 
 /**
@@ -70,8 +70,9 @@ export async function pedidoDelVideo(env, acceso, cliente, fila, { formato } = {
   const v = validarGuion(leerJSON(fila.guion, null));
   if (!v.ok) throw new ErrorVideo("El guion tiene errores: corrígelos antes de mirarlo.", 400, { errores: v.errores });
   const kit = kitDe(cliente);
-  // El personaje se dibuja con el aspecto del kit si el guion no trae uno propio.
-  const guion = conPersonajeDelKit(v.guion, kit);
+  // El personaje se dibuja con el aspecto del kit si el guion no trae uno propio; cada imagen, la de ESTE formato.
+  const enFormato = FORMATOS_VIDEO[formato] ? formato : v.guion.formatos[0];
+  const guion = guionParaFormato(conPersonajeDelKit(v.guion, kit), enFormato);
   // Las de la locución, o las de la CANCIÓN sacadas del guion de ahora contra su letra (con el ajuste fino).
   const locucion = leerJSON(fila.locucion, {});
   const palabras = palabrasParaLinea(guion, locucion);
@@ -117,7 +118,7 @@ export async function pedidoDelVideo(env, acceso, cliente, fila, { formato } = {
   return {
     guion, palabras,
     pedido: {
-      guion, palabras, formato: FORMATOS_VIDEO[formato] ? formato : guion.formatos[0], paleta: kit.paleta ?? [],
+      guion, palabras, formato: enFormato, paleta: kit.paleta ?? [],
       // Los golpes de la canción (si los hay): el `pulso` de una capa late con ellos.
       ...(Array.isArray(locucion.golpes) && locucion.golpes.length ? { golpes: locucion.golpes } : {}),
       imagenes, logo, fuentes: { titular: titular ? { datos: titular } : null, cuerpo: cuerpo ? { datos: cuerpo } : null },

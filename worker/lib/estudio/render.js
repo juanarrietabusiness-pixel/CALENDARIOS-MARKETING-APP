@@ -28,7 +28,7 @@ import { conVideoEnPost, rellenarVacios } from "../../../src/lib/resultadoEnPost
 import { pedidoDelVideo, aBase64, subirClips, subirImagenes, sinLoQueNoSubio } from "./cuadros.js";
 import { claveDeArchivo, claveDelCliente, slugCorto } from "./archivos.js";
 import { puedeRenderizar, esMp4, PLAZO_RENDER_MS, limpiarCalidad } from "../../../src/lib/renderVideo.js";
-import { tieneHabla, lineaDeTiempo } from "../../../src/lib/videoEscenas.js";
+import { tieneHabla, lineaDeTiempo, FORMATOS_VIDEO } from "../../../src/lib/videoEscenas.js";
 import { instanteLleno } from "../../../src/lib/revisionEscenas.js";
 import { limpiarSonido, SITIOS_EFECTO } from "../../../src/lib/sonidoVideo.js";
 import { claveDeSonido } from "./sonidos.js";
@@ -53,7 +53,7 @@ const avisar = (env, ownerId, clienteId, id, por = SISTEMA) => difundir(env, own
  * Pide el render del video (la fila, con la `version` que se leyó). → { video }. 409 si no se puede todavía (con el
  * motivo), 503 sin Container (en local).
  */
-export async function pedirRender(env, acceso, cliente, fila, { version, usuario, por, calidad = "normal" }) {
+export async function pedirRender(env, acceso, cliente, fila, { version, usuario, por, calidad = "normal", formatos = null }) {
   if (!Number.isInteger(version)) throw new ErrorVideo("Falta la versión que tenías abierta.", 400);
   if (version !== fila.version) throw new ErrorVideo("Otra persona cambió este video mientras lo tenías abierto. Vuelve a abrirlo.", 409, { video: deFila(fila) });
   const puede = puedeRenderizar({ ...fila, locucion: leerJSON(fila.locucion, {}), guion: leerJSON(fila.guion, null) });
@@ -61,6 +61,10 @@ export async function pedirRender(env, acceso, cliente, fila, { version, usuario
   if (!env.RENDER) throw new ErrorVideo("El render no está disponible aquí (en local no hay Container: se prueba con container/probar.mjs).", 503);
 
   const anterior = leerJSON(fila.render, {});
+  // Los FORMATOS: un mp4 por cada uno, uno detrás de otro (cada uno en su vuelta de la alarma: su propio plazo). Sin
+  // pedirlos, el principal del guion.
+  const lista = formatosDelRender(formatos, leerJSON(fila.guion, {}));
+  if (lista.error) throw new ErrorVideo(lista.error, 400);
   const intento = uuid();
   const momento = ahora();
   const render = {
@@ -68,6 +72,7 @@ export async function pedirRender(env, acceso, cliente, fila, { version, usuario
     estado: "en_curso", intento, version: fila.version, pedidoAt: momento, por: usuario?.nombre ?? null, porId: usuario?.id ?? null,
     // La calidad del mp4 (src/lib/renderVideo.js, CALIDADES_RENDER): «normal» si no se pide otra.
     calidad: limpiarCalidad(calidad),
+    formatos: lista.formatos, pendientes: lista.formatos, porFormato: {},
     // Lo que ya había salido se recuerda: si este falla, el mp4 anterior sigue en la galería y en la publicación.
     ...(anterior.estado === "listo" ? { anterior: { clave: anterior.clave, archivoId: anterior.archivoId, version: anterior.version } } : anterior.anterior ? { anterior: anterior.anterior } : {}),
   };
@@ -87,6 +92,33 @@ export async function pedirRender(env, acceso, cliente, fila, { version, usuario
   }
   avisar(env, acceso.ownerId, cliente.id, fila.id, por);
   return { video: deFila({ ...fila, estado: "renderizando", render: JSON.stringify(render), updated_at: momento }) };
+}
+
+/**
+ * Los formatos de un render: los pedidos (sin repetir, de FORMATOS_VIDEO) o, sin pedir ninguno, el principal del guion.
+ * → { formatos } o { error }. Pura.
+ */
+export function formatosDelRender(pedidos, guion) {
+  const lista = (Array.isArray(pedidos) ? pedidos : pedidos ? [pedidos] : []).map(String);
+  const malos = lista.filter((f) => !FORMATOS_VIDEO[f]);
+  if (malos.length) return { error: `«${malos[0]}» no es un formato: son ${Object.keys(FORMATOS_VIDEO).join(", ")}.` };
+  const unicos = [...new Set(lista)];
+  return { formatos: unicos.length ? unicos : [guion?.formatos?.[0] ?? "9:16"] };
+}
+
+/** El formato que va a la publicación ligada: el vertical si se hace (un reel, una historia); si no, el primero. Pura. */
+export const formatoLigable = (formatos, guion) => {
+  const lista = formatos.filter(Boolean);
+  if (!lista.length) return guion?.formatos?.[0];
+  return lista.includes("9:16") ? "9:16" : lista[0];
+};
+
+/** Apunta una vuelta hecha de un render de varios formatos (si sigue siendo el que espera el proyecto). → si se escribió. */
+async function seguir(acceso, clienteId, id, intento, render) {
+  const fila = await acceso.leerUno("videos_proyectos", { id, client_id: clienteId });
+  if (!fila || fila.estado !== "renderizando" || leerJSON(fila.render, {}).intento !== intento) return false;
+  return (await acceso.actualizar("videos_proyectos", { id, client_id: clienteId, estado: "renderizando" },
+    { render: JSON.stringify(render), updated_at: ahora() })) > 0;
 }
 
 /** Cierra el render de ESE intento (si sigue siendo el que espera el proyecto). → si se escribió. */
@@ -225,7 +257,11 @@ export async function ejecutarRender(env, { ownerId, clienteId, videoId, intento
   async function renderUnaVez() {
     const cliente = await acceso.leerUno("clients", { id: clienteId });
     if (!cliente) throw new Error("El cliente ya no existe.");
-    const armado = await pedidoDelVideo(env, acceso, cliente, fila);
+    // El formato de ESTA vuelta: el primero que falta (un render de antes, sin lista: el principal del guion).
+    const formatos = Array.isArray(render.formatos) && render.formatos.length ? render.formatos : [null];
+    const pendientes = Array.isArray(render.pendientes) ? render.pendientes : formatos;
+    const formato = pendientes[0] ?? formatos[0];
+    const armado = await pedidoDelVideo(env, acceso, cliente, fila, { formato });
     const { clips, porSubir, guion, palabras } = armado;
     // Los clips de video y las imágenes que no cabían en el pedido, al Container del render por flujo ANTES del pedido.
     // Un clip que no sube sale con su «Video» de espera; una imagen, con su marcador.
@@ -249,11 +285,14 @@ export async function ejecutarRender(env, { ownerId, clienteId, videoId, intento
     const alto = num("X-Alto") ?? 0;
     const duracion = num("X-Duracion") ?? 0;
 
-    const clave = claveDeArchivo(clienteId, `video ${fila.titulo}`, "video/mp4");
+    const formatoHecho = armado.pedido.formato;
+    const conVarios = formatos.length > 1;
+    const clave = claveDeArchivo(clienteId, `video ${fila.titulo}${conVarios ? ` ${formatoHecho.replace(":", "x")}` : ""}`, "video/mp4");
     const bytes = { byteLength: await guardarMp4(env, clave, r) };
     const medio = medioDelRender(fila, { clave, ancho, alto, duracion });
     const portadaMs = portadaDelVideo(guion, palabras);
-    const puesto = await ponerEnPublicacion(env, acceso, fila, medio, { portadaMs });
+    // A la publicación ligada va UNO: el vertical si se hizo (un reel o una historia), si no, el primero.
+    const puesto = formatoHecho === formatoLigable(formatos, guion) ? await ponerEnPublicacion(env, acceso, fila, medio, { portadaMs }) : null;
     const momento = ahora();
     const archivoId = uuid();
     const usos = puesto?.postId ? [{ clave: `${puesto.calendarId}:${puesto.postId}`, calendarId: puesto.calendarId, postId: puesto.postId, en: momento }] : [];
@@ -275,16 +314,34 @@ export async function ejecutarRender(env, { ownerId, clienteId, videoId, intento
     const deAntes = !carpetaId && render.anterior?.archivoId ? String(render.anterior.archivoId) : null;
     await acceso.insertar("estudio_archivos", {
       id: archivoId, client_id: clienteId, clave, tipo: "video", mime: "video/mp4", ancho, alto, bytes: bytes.byteLength,
-      prompt: `Video animado: ${fila.titulo}`, modelo: "video-animado", ajustes: JSON.stringify({ ...datos, ...(deAntes ? { deArchivo: deAntes } : {}) }), trabajo_id: null, carpeta_id: carpetaId,
+      prompt: `Video animado: ${fila.titulo}${conVarios ? ` (${formatoHecho})` : ""}`, modelo: "video-animado", ajustes: JSON.stringify({ ...datos, ...(deAntes ? { deArchivo: deAntes } : {}) }), trabajo_id: null, carpeta_id: carpetaId,
       origen: "estudio", costo: 0, favorito: 0, subido: 0, usado_en: JSON.stringify(usos), borrado_at: null, created_at: momento, updated_at: momento,
     });
     if (carpetaId) await alFrenteDelOrden(acceso, clienteId, carpetaId, archivoId).catch(() => null);
-    const listo = {
-      ...render, estado: "listo", clave, archivoId, bytes: bytes.byteLength, ancho, alto, ...datos, terminadoAt: momento,
+    const hecho = {
+      formato: formatoHecho, clave, archivoId, bytes: bytes.byteLength, ancho, alto, ...datos,
       adjunto: puesto?.postId ? { calendarId: puesto.calendarId, postId: puesto.postId } : null,
       aviso: [sinClips, ...son.avisos, avisoContainer, sinSitio ? `${sinSitio === 1 ? "Un efecto de la lista no sonó" : `${sinSitio} efectos de la lista no sonaron`}: su momento ya no existe (míralo con escuchar_video).` : "", puesto?.aviso].filter(Boolean).join(" ") || null,
     };
+    const porFormato = conVarios ? { ...(render.porFormato ?? {}), [formatoHecho]: hecho } : null;
+    const quedan = pendientes.slice(1);
+    if (conVarios && quedan.length) {
+      // Falta otro formato: se apunta este y la alarma vuelve (otra vuelta, con su plazo).
+      const sigue = { ...render, porFormato, pendientes: quedan, tramoAt: momento };
+      const ok = await seguir(acceso, clienteId, videoId, intento, sigue);
+      avisar(env, ownerId, clienteId, videoId);
+      return ok ? { ...sigue, siguiente: true } : null;
+    }
+    // El de arriba (lo que leen ver_video, la galería y el reel) es el del PRIMER formato pedido.
+    const principal = porFormato ? porFormato[formatos[0]] ?? hecho : hecho;
+    const adjunto = porFormato ? Object.values(porFormato).find((x) => x.adjunto)?.adjunto ?? null : hecho.adjunto;
+    const aviso = porFormato ? [...new Set(Object.values(porFormato).map((x) => x.aviso).filter(Boolean))].join(" ") || null : hecho.aviso;
+    const listo = {
+      ...render, estado: "listo", ...principal, adjunto, aviso, terminadoAt: momento, pendientes: [],
+      ...(porFormato ? { porFormato } : {}),
+    };
     delete listo.anterior;
+    delete listo.formato;
     const escrito = await terminar(acceso, clienteId, videoId, intento, "renderizado", listo);
     avisar(env, ownerId, clienteId, videoId);
     // A la campana de quien lo pidió: el render sigue aunque se cierre la aplicación, y si no, nadie se enteraba.
@@ -433,7 +490,8 @@ export async function guardarMp4(env, clave, r) {
 export async function renderAlDia(acceso, fila, ahoraMs = Date.now()) {
   if (fila?.estado !== "renderizando") return fila;
   const render = leerJSON(fila.render, {});
-  const desde = Date.parse(render.pedidoAt ?? fila.updated_at);
+  // Con varios formatos, cada uno tiene su plazo desde que empezó su vuelta.
+  const desde = Date.parse(render.tramoAt ?? render.pedidoAt ?? fila.updated_at);
   if (!(ahoraMs - desde > PLAZO_RENDER_MS)) return fila;
   const cerrado = { ...render, estado: "fallido", error: "El render no terminó a tiempo: vuelve a pedirlo.", terminadoAt: ahora() };
   const escrito = await terminar(acceso, fila.client_id, fila.id, render.intento, "fallido", cerrado);

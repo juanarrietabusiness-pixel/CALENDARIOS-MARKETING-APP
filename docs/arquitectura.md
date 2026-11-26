@@ -131,6 +131,9 @@ src/
                           si sigue valiendo, la prueba de sincronía (`guionKaraoke`), `comprobarLetra`, el FRAGMENTO de una
                           canción ya sincronizada (`limpiarRecorte`, `recorteDeSincronia`), lo que dura un audio (MP3, WAV,
                           M4A) y el costo aproximado (puro: Worker, Container y pantalla)
+    derivarVideo.js       DERIVAR un video de su maestro con canción (derivar_video): las mismas escenas en otro formato y sólo
+                          un tramo, el cierre del formato (YouTube: logo y «Suscríbete»; vertical: logo pequeño sobre negro) y
+                          el gancho con un solo efecto (puro: lo usa worker/lib/estudio/cancion.js)
     cancionApi.js         Cliente de /api/videos/<cliente>/cancion (sincronizar, crear el borrador, ajuste fino, volver a sincronizar)
     subtitulos.js         Los SUBTÍTULOS por palabra: grupos por trozos de frase y parejos, la palabra clave, qué está dicho,
                           diciéndose o falta en cada instante (puro: lo leen el motor, la vista previa y el render)

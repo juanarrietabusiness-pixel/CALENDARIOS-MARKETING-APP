@@ -222,6 +222,56 @@ describe("hacer el render (la alarma del objeto)", () => {
     expect(dias()[0].posts[0].portada).toBe("/api/media/clientes/bc/otra.jpg");
   });
 
+  it("YouTube: VARIOS formatos, uno por vuelta de la alarma; a la publicación va el vertical; arriba, el primero pedido", async () => {
+    const id = await video();
+    expect((await pedir(`/videos/bc/${id}/render`, { method: "POST", body: JSON.stringify({ version: 1, formatos: ["16:9", "9:16"] }) })).status).toBe(202);
+    const encargo = encargos.at(-1).cuerpo;
+    expect(JSON.parse(fila(id).render)).toMatchObject({ formatos: ["16:9", "9:16"], pendientes: ["16:9", "9:16"] });
+    const recibidos = [];
+    // Primera vuelta: el 16:9. Sigue «Renderizando» y pide otra vuelta; no toca la publicación.
+    const a = await ejecutarRender(env, encargo, container(recibidos));
+    expect(a.siguiente).toBe(true);
+    expect(recibidos[0].cuerpo.formato).toBe("16:9");
+    expect(fila(id).estado).toBe("renderizando");
+    expect(JSON.parse(fila(id).render)).toMatchObject({ pendientes: ["9:16"], porFormato: { "16:9": { formato: "16:9" } } });
+    expect(dias()[0].posts[0].medios[0].tipo).toBe("imagen");
+    // Segunda: el 9:16, que va a la publicación. Arriba queda el 16:9 (el primero pedido) y los dos en porFormato.
+    const b = await ejecutarRender(env, encargo, container(recibidos));
+    expect(b.siguiente).toBeUndefined();
+    expect(recibidos[1].cuerpo.formato).toBe("9:16");
+    const render = JSON.parse(fila(id).render);
+    expect(fila(id).estado).toBe("renderizado");
+    expect(Object.keys(render.porFormato)).toEqual(["16:9", "9:16"]);
+    expect(render.clave).toBe(render.porFormato["16:9"].clave);
+    expect(render.porFormato["16:9"].clave).not.toBe(render.porFormato["9:16"].clave);
+    expect(render.adjunto).toEqual({ calendarId: "cal1", postId: "p1" });
+    expect(dias()[0].posts[0].medios[0].src).toBe(`/api/media/${render.porFormato["9:16"].clave}`);
+    expect(db.sqlite.prepare("select count(*) n from estudio_archivos where tipo = 'video'").get().n).toBe(2);
+    // Un formato que no existe: 400.
+    const otro = await video();
+    expect((await pedir(`/videos/bc/${otro}/render`, { method: "POST", body: JSON.stringify({ version: 1, formatos: ["4:5"] }) })).status).toBe(400);
+  });
+
+  it("la alarma del objeto vuelve sola para el siguiente formato", async () => {
+    const id = await video();
+    await pedir(`/videos/bc/${id}/render`, { method: "POST", body: JSON.stringify({ version: 1, formatos: ["16:9", "9:16"] }) });
+    const guardado = new Map();
+    const alarmas = [];
+    const state = { storage: { get: async (k) => guardado.get(k), put: async (k, v) => { guardado.set(k, v); }, delete: async (k) => { guardado.delete(k); }, setAlarm: async (t) => { alarmas.push(t); } } };
+    guardado.set("encargo", encargos.at(-1).cuerpo);
+    const objeto = new RenderVideo(state, env);
+    const recibidos = [];
+    objeto.puerto = async () => ({ fetch: async (req) => container(recibidos)(new URL(req.url).pathname, await req.json()) });
+    await objeto.alarm();
+    expect(alarmas).toHaveLength(1);
+    expect(guardado.get("encargo")).toBeTruthy();
+    await objeto.alarm();
+    expect(alarmas).toHaveLength(1);
+    expect(guardado.has("encargo")).toBe(false);
+    expect(recibidos.map((r) => r.cuerpo.formato)).toEqual(["16:9", "9:16"]);
+    expect(fila(id).estado).toBe("renderizado");
+  });
+
   it("manda el sonido: los efectos (encendidos por defecto) y la música de la galería con su volumen; sin ella, avisa", async () => {
     const { encargo } = await encargado();
     const recibidos = [];

@@ -58,7 +58,7 @@ import {
 } from "../../../src/lib/personajeVideo.js";
 import { VOLUMEN_MUSICA } from "../../../src/lib/sonidoVideo.js";
 import { locucionAlDia, fijarVozDeMarca } from "./locucion.js";
-import { lineaDeTiempo, MAX_SEGUNDOS_CANCION, NOMBRE_ESTADO_VIDEO, NOMBRE_TIPO_ESCENA, puedeGenerarVoz, sinEtiquetas, palabrasMudas, palabrasDe, textoDeLocucion, tieneHabla } from "../../../src/lib/videoEscenas.js";
+import { lineaDeTiempo, MAX_SEGUNDOS_CANCION, FORMATOS_VIDEO, NOMBRE_ESTADO_VIDEO, NOMBRE_TIPO_ESCENA, puedeGenerarVoz, sinEtiquetas, palabrasMudas, palabrasDe, textoDeLocucion, tieneHabla } from "../../../src/lib/videoEscenas.js";
 import { formatoParaLaIA } from "../../../src/lib/videoFormatoIA.js";
 import { textoDeSubtitulo } from "../../../src/lib/subtitulos.js";
 import { esCancion, estadoDeCancion, FUENTES_CANCION, DESPLAZAMIENTO_MAX } from "../../../src/lib/videoCancion.js";
@@ -259,6 +259,7 @@ export const DEFINICIONES_VIDEO = Object.freeze([
       properties: {
         ...clienteParam, ...videoParam, ...versionParam,
         publicacion_id: { type: "string", description: "Opcional: la publicación del calendario donde se pone el mp4 al salir (de ver_calendario). Si se omite, la que ya tenga ligada." },
+        formatos: { type: "array", items: { type: "string", enum: Object.keys(FORMATOS_VIDEO) }, description: "Opcional: un mp4 POR FORMATO, en este orden (el primero es el principal: el que ve ver_video arriba). P. ej. [\"16:9\", \"9:16\"] para YouTube y su vertical. Se hacen uno detrás de otro, cada uno con su tiempo; a la publicación ligada va el 9:16 si está. Sin él, el formato principal del guion. Antes, revisar_video con cada formato." },
         calidad: { type: "string", enum: Object.keys(CALIDADES_RENDER), description: "«normal» (por defecto: crf 21 con tope de 10 Mbps, lo que pide YouTube para 1080p; ≈ 350 MB una canción de 6 minutos) o «alta» (tope de 16 Mbps, para lo que se vaya a volver a editar o tenga mucho detalle). Pide «alta» sólo si la persona lo quiere." },
       },
       required: ["video_id", "version"],
@@ -429,6 +430,22 @@ export const DEFINICIONES_VIDEO = Object.freeze([
     },
   },
   {
+    name: "derivar_video",
+    description: "DERIVA un video de su MAESTRO con canción (p. ej. el 16:9 de YouTube con la canción entera): un borrador NUEVO en otro formato (el reel 9:16) con las MISMAS escenas, estilo y fondos, y si se pide sólo un TRAMO (desde/hasta, segundos del maestro; desde=\"voz\": 0,4 s antes de la primera palabra cantada). Los tiempos salen de la sincronía de la canción entera: GRATIS, sin volver a subir ni a sincronizar. El cierre cambia con el formato: en 16:9 el logo y «Suscríbete»; en vertical sólo el logo pequeño sobre negro. gancho=true: la primera escena con más fuerza (se acerca, el texto entra de golpe) y UN efecto al empezar; en una canción no van efectos en las transiciones, así que ése es el único. Los fondos: si el maestro los tiene en ese formato (archivos), los usa; si no, recorta los suyos: fondos_video con ese formato los hace a su medida. Después: revisar_video, aprobar_video (con el sí de la persona) y renderizar_video. No gasta nada.",
+    input_schema: {
+      type: "object",
+      properties: {
+        ...clienteParam, ...videoParam,
+        formato: { type: "string", enum: ["9:16", "1:1", "16:9"], description: "El formato del derivado (9:16 por defecto: el reel)." },
+        desde: { description: "Opcional: el segundo del MAESTRO donde empieza (número) o \"voz\". Sin él, el principio." },
+        hasta: { type: "number", description: "Opcional: el segundo del MAESTRO donde acaba. Sin él, el final." },
+        gancho: { type: "boolean", description: "true: la primera escena con más fuerza y un solo efecto al empezar." },
+        titulo: { type: "string", description: "Opcional: el nombre del derivado (si no, el del maestro con su formato)." },
+      },
+      required: ["video_id"],
+    },
+  },
+  {
     name: "identidad_video",
     description: "La IDENTIDAD DE VIDEO del cliente: lo que comparten TODOS sus videos para verse y sonar igual —su estilo de la marca (uno de estilos_video, que se aplica solo a cada video animado nuevo que no pida otro), sus músicas (de musicas: un video nuevo toma una de la lista; escoge tú otra DE LA LISTA según el tono), sus efectos por momento (de efectos_sonido: transicion, impacto, subida, sello, logo, item, cifra; rotan en los automáticos) y el estilo de sus subtítulos (clasico, palabra, placa, limpio; con pos, maxPalabras, acento y mayusculas)—. Sin «guardar»: la que tiene, con sus opciones. Con «guardar»: cambia SÓLO las partes que traigas (null quita una); hazlo cuando la persona lo pida, nunca por tu cuenta. Con muestra=true: un cuadro por estilo de subtítulos con la marca del cliente, para que la persona escoja. Se aplica al CREAR un video: lo ya hecho no cambia. No gasta nada.",
     input_schema: {
@@ -475,10 +492,14 @@ export const DEFINICIONES_VIDEO = Object.freeze([
   },
   {
     name: "fondos_video",
-    description: "Crea las IMÁGENES DE FONDO por sección de un video animado: las capas «imagen» a sangre con «pide» y sin archivo del guion GUARDADO (las pone la IA con con_fondos, o tú al escribir el guion: ver formato_video). Las diseña el DIRECTOR de arte de la agencia con el kit y el estilo de los videos de la marca, en 9:16, sin texto ni logo, con el modelo de imagen del cliente, por un encargo del servidor; al terminar se ponen solas en el guion (otra versión). La PRIMERA llamada, sin confirmado, NO crea nada: devuelve cuántas y el costo; díselo a la persona y, sólo con su «sí», repite con confirmado=true. EXCEPCIÓN: con «crear sin preguntar» fijado (Ajustes → IA) y dentro de su tope, la primera llamada ya crea, y la respuesta lo dice. Mira cómo va con ver_video.",
+    description: "Crea las IMÁGENES DE FONDO por sección de un video animado: las capas «imagen» a sangre con «pide» y sin archivo del guion GUARDADO (las pone la IA con con_fondos, o tú al escribir el guion: ver formato_video). Las diseña el DIRECTOR de arte de la agencia con el kit y el estilo de los videos de la marca, UNA POR FORMATO del video (los del guion, o «formatos»: un video para YouTube y su reel, [\"16:9\", \"9:16\"]) con la proporción de cada uno, sin texto ni logo, con el modelo de imagen del cliente, por un encargo del servidor; al terminar se ponen solas en el guion (otra versión). La PRIMERA llamada, sin confirmado, NO crea nada: devuelve cuántas y el costo; díselo a la persona y, sólo con su «sí», repite con confirmado=true. EXCEPCIÓN: con «crear sin preguntar» fijado (Ajustes → IA) y dentro de su tope, la primera llamada ya crea, y la respuesta lo dice. Mira cómo va con ver_video.",
     input_schema: {
       type: "object",
-      properties: { ...clienteParam, ...videoParam, confirmado: { type: "boolean", description: "SÓLO true si la persona dijo que sí al costo que dio la llamada anterior." } },
+      properties: {
+        ...clienteParam, ...videoParam,
+        formatos: { type: "array", items: { type: "string", enum: Object.keys(FORMATOS_VIDEO) }, description: "Opcional: los formatos en que se crea cada fondo (cada uno se paga). Sin él, los del guion. Un fondo ya hecho en un formato no se repite." },
+        confirmado: { type: "boolean", description: "SÓLO true si la persona dijo que sí al costo que dio la llamada anterior." },
+      },
       required: ["video_id"],
     },
   },
@@ -511,7 +532,7 @@ export const DEFINICIONES_VIDEO = Object.freeze([
 ]);
 
 /** Las que escriben (en el MCP van como escritura; las demás, de sólo lectura). */
-export const ESCRIBEN_VIDEO = Object.freeze(["identidad_video", "plantilla_video", "guardar_estructura", "eliminar_estructura", "voz_de_marca", "lexico_de_marca", "guardar_estilo_video", "aplicar_estilo_video", "fondos_video", "video_con_cancion", "publicar_con_musica", "crear_video", "guardar_video", "editar_escena", "aprobar_video", "renderizar_video", "ligar_video", "sonido_video", "volver_a_version", "personaje_video"]);
+export const ESCRIBEN_VIDEO = Object.freeze(["identidad_video", "plantilla_video", "guardar_estructura", "eliminar_estructura", "voz_de_marca", "lexico_de_marca", "guardar_estilo_video", "aplicar_estilo_video", "fondos_video", "video_con_cancion", "derivar_video", "publicar_con_musica", "crear_video", "guardar_video", "editar_escena", "aprobar_video", "renderizar_video", "ligar_video", "sonido_video", "volver_a_version", "personaje_video"]);
 
 /** Lo que falta para el siguiente paso, en una frase para el modelo. Pura. */
 /** ¿La locución es de la versión aprobada? (un video «aprobado» con voz de esa versión ya no la necesita otra vez). */
@@ -586,8 +607,9 @@ function textoDelVideo(video, { conGuion = true } = {}) {
       : loc.estado === "fallida" ? `La voz falló: ${loc.error ?? "sin motivo"}.` : "Sin locución todavía.";
   const r = video.render ?? {};
   const render = r.estado === "listo"
-    ? `Render: mp4 de ${Number(r.duracion ?? 0).toFixed(1)} s, ${r.ancho}×${r.alto}, ${(Number(r.bytes ?? 0) / 1048576).toFixed(1)} MB${r.lufs !== null && r.lufs !== undefined ? `, ${r.lufs} LUFS` : ""}, de la versión ${r.version} (en /api/media/${r.clave})${r.adjunto ? ", puesto en su publicación" : ""}${r.aviso ? ` · ${r.aviso}` : ""}.`
-    : r.estado === "en_curso" ? `Render en curso desde ${String(r.pedidoAt ?? "").slice(11, 19)} (UTC).`
+    ? `Render: mp4 de ${Number(r.duracion ?? 0).toFixed(1)} s, ${r.ancho}×${r.alto}, ${(Number(r.bytes ?? 0) / 1048576).toFixed(1)} MB${r.lufs !== null && r.lufs !== undefined ? `, ${r.lufs} LUFS` : ""}, de la versión ${r.version} (en /api/media/${r.clave})${r.adjunto ? ", puesto en su publicación" : ""}${r.aviso ? ` · ${r.aviso}` : ""}.${
+      r.porFormato && Object.keys(r.porFormato).length > 1 ? ` Un mp4 por formato: ${Object.values(r.porFormato).map((x) => `${x.formato} ${x.ancho}×${x.alto} (archivo ${x.archivoId}, /api/media/${x.clave})`).join(" · ")}.` : ""}`
+    : video.estado === "renderizando" ? `Render en curso desde ${String(r.pedidoAt ?? "").slice(11, 19)} (UTC)${r.formatos?.length > 1 ? `: ${Object.keys(r.porFormato ?? {}).length} de ${r.formatos.length} formatos hechos` : ""}.`
       : r.estado === "fallido" ? `El render falló: ${r.error ?? "sin motivo"}.` : "";
   return [
     `Video «${video.titulo}» (ID ${video.id}) — ${NOMBRE_ESTADO_VIDEO[video.estado] ?? video.estado}, versión ${video.version}${video.aprobadaVersion ? ` (aprobada la ${video.aprobadaVersion})` : ""}.`,
@@ -670,6 +692,29 @@ export function crearHerramientasVideo({ env, acceso, resolverCliente, usuario, 
       });
     },
 
+    async derivar_video({ cliente, video_id: id, formato = "9:16", desde = null, hasta = null, gancho = false, titulo = "" }) {
+      const c = await resolverCliente(cliente);
+      const { derivarVideo, ErrorCancion } = await import("./cancion.js");
+      return conErrores(async () => {
+        const fila = await proyectoDe(acceso, c.id, id);
+        try {
+          const r = await derivarVideo(env, acceso, c, fila, { formato, desde, hasta, gancho: gancho === true, titulo: String(titulo ?? ""), usuario });
+          avisar(c.id, r.video.id);
+          const video = { ...r.video, locucion: await locucionAlDia(acceso, r.video.locucion) };
+          const texto = [
+            `Derivado «${r.video.titulo}» (ID ${r.video.id}) de ${fila.titulo ? `«${fila.titulo}»` : id}: ${r.derivado.formato}, del segundo ${r.derivado.desde} al ${r.derivado.hasta} del maestro, ${r.derivado.escenas} escenas (con su cierre${r.derivado.formato === "16:9" ? ": logo y «Suscríbete»" : ": el logo pequeño sobre negro"})${gancho === true ? ", con gancho (un solo efecto, al empezar)" : ""}. En borrador, versión 1. No costó nada.`,
+            ...r.avisos,
+            "Siguiente: revisar_video con su formato, ver_escenas, aprobar_video (con el sí de la persona) y renderizar_video. Si sus fondos son de otro formato, fondos_video los hace a su medida (con su costo).",
+            textoDelVideo(video, { conGuion: false }),
+          ].filter(Boolean).join("\n");
+          return { texto, imagenes: [], vista: await vistaDeVideo(env, { video, clienteId: c.id, cliente: { id: c.id, nombre: c.name } }) };
+        } catch (e) {
+          if (e instanceof ErrorCancion) throw new Fallo(e.message);
+          throw e;
+        }
+      });
+    },
+
     async identidad_video({ cliente, guardar, muestra = false, estilos } = {}) {
       const c = await resolverCliente(cliente);
       try {
@@ -747,7 +792,7 @@ export function crearHerramientasVideo({ env, acceso, resolverCliente, usuario, 
       });
     },
 
-    async fondos_video({ cliente, video_id: videoId, confirmado }) {
+    async fondos_video({ cliente, video_id: videoId, formatos, confirmado }) {
       const c = await resolverCliente(cliente);
       const fila = await acceso.leerUno("videos_proyectos", { id: String(videoId ?? ""), client_id: c.id });
       if (!fila) throw new Fallo("No encuentro ese video animado en este cliente (listar_videos).");
@@ -755,7 +800,7 @@ export function crearHerramientasVideo({ env, acceso, resolverCliente, usuario, 
       const { pedirFondos } = await import("./fondosVideo.js");
       return conErrores(async () => {
         try {
-          const r = await pedirFondos(env, acceso, c, fila, { confirmado: confirmado === true, usuario });
+          const r = await pedirFondos(env, acceso, c, fila, { confirmado: confirmado === true, usuario, formatos: Array.isArray(formatos) ? formatos : null });
           return [
             `Pedidas ${r.fondos === 1 ? "la imagen de fondo" : `las ${r.fondos} imágenes de fondo`} del video «${fila.titulo}» al director (${r.modelo}, unos ${r.texto}). Encargo ${r.encargo?.id}.`,
             r.sinPreguntar ?? "",
@@ -962,7 +1007,7 @@ export function crearHerramientasVideo({ env, acceso, resolverCliente, usuario, 
           ? "Ya se puede generar la voz con generar_locucion (pide confirmar el costo)." : ""}`.trim();
       });
     },
-    async renderizar_video({ cliente, video_id: id, version, publicacion_id: postId, calidad = "normal" }) {
+    async renderizar_video({ cliente, video_id: id, version, publicacion_id: postId, calidad = "normal", formatos = null, formato = null }) {
       const c = await resolverCliente(cliente);
       return conErrores(async () => {
         let fila = await renderAlDia(acceso, await proyectoDe(acceso, c.id, id));
@@ -971,10 +1016,11 @@ export function crearHerramientasVideo({ env, acceso, resolverCliente, usuario, 
           await ligarAPublicacion(env, acceso, c, fila, { postId, por });
           fila = await proyectoDe(acceso, c.id, id);
         }
-        const r = await pedirRender(env, acceso, c, fila, { version, usuario, por, calidad });
+        const r = await pedirRender(env, acceso, c, fila, { version, usuario, por, calidad, formatos: formatos ?? formato });
         const dura = lineaDeTiempo(r.video.guion ?? {}, palabrasParaLinea(r.video.guion, r.video.locucion)).total;
+        const cuantos = r.video.render?.formatos?.length ?? 1;
         const minutos = minutosDeRender(dura);
-        const texto = `Render encargado: «${r.video.titulo}» (versión ${r.video.version}, ${Math.round(dura)} s, calidad ${limpiarCalidad(calidad)}) se está renderizando; tarda unos ${minutos} minuto${minutos === 1 ? "" : "s"}. Míralo con ver_video.${minutos > 12 ? " Es largo: si pasa de 15 minutos el render se da por perdido (el plazo del objeto que lo hace)." : ""}${fila.post_id ? ` Al terminar, el mp4 se pone en la publicación ${fila.post_id}.` : " No va ligado a ninguna publicación: queda en la galería (ligar_video para ponerlo en una)."}`;
+        const texto = `Render encargado: «${r.video.titulo}» (versión ${r.video.version}, ${Math.round(dura)} s, calidad ${limpiarCalidad(calidad)}${cuantos > 1 ? `, ${cuantos} formatos: ${r.video.render.formatos.join(", ")}` : ""}) se está renderizando; tarda unos ${minutos * cuantos} minuto${minutos * cuantos === 1 ? "" : "s"}${cuantos > 1 ? ` (unos ${minutos} por formato, uno detrás de otro)` : ""}. Míralo con ver_video.${minutos > 12 ? " Es largo: si un formato pasa de 15 minutos se da por perdido (el plazo del objeto que lo hace)." : ""}${fila.post_id ? ` Al terminar, el mp4 se pone en la publicación ${fila.post_id}.` : " No va ligado a ninguna publicación: queda en la galería (ligar_video para ponerlo en una)."}`;
         // La vista previa del chat de Claude espera el mp4 y lo reproduce ahí mismo cuando sale.
         const video = { ...r.video, locucion: await locucionAlDia(acceso, r.video.locucion) };
         return { texto, imagenes: [], vista: await vistaDeVideo(env, { video, clienteId: c.id, cliente: { id: c.id, nombre: c.name } }) };

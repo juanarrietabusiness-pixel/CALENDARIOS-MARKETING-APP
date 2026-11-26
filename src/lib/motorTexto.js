@@ -45,6 +45,12 @@ export const ESCALA_ENFASIS = 1.22;
 /** El rol gigante: lo más grande que sale una línea (fracción del lado corto: una palabra corta sola no se desborda). */
 // `alto` 1,04: apretado, pero sin que la tilde de una mayúscula («MÁS») se meta en la línea de arriba (con 0,94 se metía).
 export const GIGANTE = Object.freeze({ maxTam: 0.36, alto: 1.04, corta: 3, larga: 8, letras: 12 });
+/**
+ * El gigante en un cuadro APAISADO (16:9): con una o dos palabras por línea se apilaba hasta llenar todo el alto en una
+ * columna estrecha («NOS UNIÓ A LA / VID / PERFECTA» ocupaba el 40 % del ancho y la cita le caía encima: prueba de 57DMC,
+ * 26-nov-2026). Ahí van de 2 a 4 palabras por línea (hasta `letras`) y como mucho `maxLineas` líneas.
+ */
+export const GIGANTE_APAISADO = Object.freeze({ letras: 22, larga: 13, maxLineas: 3 });
 
 const ENFASIS = /\*([^*\n]+)\*/g;
 /** ¿Lleva algo entre asteriscos? Pura. */
@@ -199,7 +205,8 @@ export function encajarRico(ctx, palabras, { ancho, lado, rol, familia, impacto 
  * Los cortes del rol GIGANTE: una o dos palabras por línea. Lo que va con énfasis va en sus propias líneas; una palabra
  * corta («de», «la», «y») se junta con la siguiente; una larga va sola. Pura.
  */
-export function lineasGigantes(palabras = []) {
+export function lineasGigantes(palabras = [], { apaisado = false } = {}) {
+  const tope = apaisado ? GIGANTE_APAISADO : GIGANTE;
   const letras = (i, j) => palabras.slice(i, j).reduce((n, p) => n + normalizar(p.texto).length, 0);
   const corta = (p) => normalizar(p.texto).length <= GIGANTE.corta;
   // 1. Grupos: las cortas van con la palabra que las sigue («DE LA HISTORIA» es uno); el énfasis corta un grupo.
@@ -215,11 +222,26 @@ export function lineasGigantes(palabras = []) {
   for (let k = 0; k < grupos.length; k++) {
     const [a, b] = grupos[k];
     const sig = grupos[k + 1];
-    const larga = (x, y) => palabras.slice(x, y).some((p) => normalizar(p.texto).length >= GIGANTE.larga);
-    if (sig && palabras[a].enfasis === palabras[sig[0]].enfasis && !larga(a, b) && !larga(sig[0], sig[1]) && letras(a, sig[1]) <= GIGANTE.letras) {
+    const larga = (x, y) => palabras.slice(x, y).some((p) => normalizar(p.texto).length >= tope.larga);
+    if (sig && palabras[a].enfasis === palabras[sig[0]].enfasis && !larga(a, b) && !larga(sig[0], sig[1]) && letras(a, sig[1]) <= tope.letras) {
       cortes.push([a, sig[1]]);
       k++;
     } else cortes.push([a, b]);
+  }
+  if (!apaisado) return cortes;
+  // Apaisado: dos líneas seguidas que juntas caben se juntan (de 2 a 4 palabras por línea; cada palabra conserva su
+  // énfasis y su color, así que «VID PERFECTA» puede ir en una)…
+  for (let k = 0; k < cortes.length - 1;) {
+    const [a] = cortes[k];
+    const [, d] = cortes[k + 1];
+    if (letras(a, d) <= tope.letras && d - a <= 4) cortes.splice(k, 2, [a, d]);
+    else k++;
+  }
+  // …y si aún pasan de `maxLineas`, se juntan las dos seguidas más cortas hasta que no.
+  while (cortes.length > tope.maxLineas) {
+    let mejor = 0;
+    for (let k = 1; k < cortes.length - 1; k++) if (letras(cortes[k][0], cortes[k + 1][1]) < letras(cortes[mejor][0], cortes[mejor + 1][1])) mejor = k;
+    cortes.splice(mejor, 2, [cortes[mejor][0], cortes[mejor + 1][1]]);
   }
   return cortes;
 }
@@ -229,8 +251,8 @@ export function lineasGigantes(palabras = []) {
  * del lado, y si el bloque no cabe en `maxAlto`, todas las líneas más pequeñas por igual. Con la letra de impacto y en
  * mayúsculas (lo hace quien parte las palabras). → la forma de `encajarRico`. Pura salvo medir.
  */
-export function encajarGigante(ctx, palabras, { ancho, lado, maxAlto = Infinity, impacto }) {
-  const cortes = lineasGigantes(palabras);
+export function encajarGigante(ctx, palabras, { ancho, lado, maxAlto = Infinity, impacto, apaisado = false }) {
+  const cortes = lineasGigantes(palabras, { apaisado });
   const MUESTRA = 100;
   const fuente = (t) => `${impacto.peso} ${Math.round(t)}px ${impacto.familia}`;
   ctx.font = fuente(MUESTRA);
@@ -238,7 +260,8 @@ export function encajarGigante(ctx, palabras, { ancho, lado, maxAlto = Infinity,
   let tams = cortes.map(([i, j]) => {
     ctx.font = fuente(MUESTRA);
     const w = anchoDe(palabras.slice(i, j).map((p) => ctx.measureText(p.texto).width), espacio100, 0, j - i) || 1;
-    return Math.min(lado * GIGANTE.maxTam, (MUESTRA * ancho) / w);
+    // Un 1,5 % de margen: medida a 100 px y pintada a su tamaño redondeado, «BENDECIDOS» salía 2 px más ancha que su caja.
+    return Math.min(lado * GIGANTE.maxTam, ((MUESTRA * ancho) / w) * 0.985);
   });
   const total = tams.reduce((a, t) => a + t * GIGANTE.alto, 0);
   if (total > maxAlto) tams = tams.map((t) => (t * maxAlto) / total);

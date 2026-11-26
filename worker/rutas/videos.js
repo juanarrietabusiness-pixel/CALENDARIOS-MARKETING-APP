@@ -468,7 +468,7 @@ async function rutasDelCliente(req, env, { acceso, usuario, partes, metodo }) {
   if (accion === "fondos" && metodo === "GET") return json(await estadoDeFondos(env, acceso, cliente, fila));
   if (accion === "fondos" && metodo === "POST") {
     const bf = (await cuerpo(req)) ?? {};
-    const r = await pedirFondos(env, acceso, cliente, fila, { confirmado: bf.confirmado === true, usuario });
+    const r = await pedirFondos(env, acceso, cliente, fila, { confirmado: bf.confirmado === true, usuario, formatos: Array.isArray(bf.formatos) ? bf.formatos : null });
     return json(r, 202);
   }
 
@@ -538,7 +538,7 @@ async function rutasDelCliente(req, env, { acceso, usuario, partes, metodo }) {
   }
 
   if (accion === "render" && metodo === "POST") {
-    const r = await pedirRender(env, acceso, cliente, fila, { version: b.version, usuario, por: firma(usuario, req), calidad: texto(b.calidad) });
+    const r = await pedirRender(env, acceso, cliente, fila, { version: b.version, usuario, por: firma(usuario, req), calidad: texto(b.calidad), formatos: Array.isArray(b.formatos) ? b.formatos : null });
     return json(r, 202);
   }
 

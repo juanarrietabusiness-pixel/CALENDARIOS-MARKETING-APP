@@ -502,6 +502,7 @@ export function describirUso(nombre, entrada = {}) {
     case "lexico_de_marca": return entrada.reglas === undefined ? "Miró el léxico de la marca" : "Cambió el léxico de la marca";
     case "sonido_video": return entrada.efectos === undefined && entrada.musica_id === undefined && entrada.volumen === undefined ? "Miró el sonido de un video animado" : "Cambió el sonido de un video animado (efectos o música)";
     case "musicas": return `Miró las músicas de fondo${entrada.cliente ? ` de ${entrada.cliente}` : ""}`;
+    case "derivar_video": return `Derivó un video en ${entrada.formato ?? "9:16"} de su maestro con canción`;
     case "video_con_cancion": return entrada.confirmado === true ? `Creó un video animado con una canción${entrada.disenar === true ? " (escenas de la IA)" : " (prueba de sincronía)"}` : "Miró el costo de sincronizar una canción (sin crear nada)";
     case "versiones_video": return "Miró el historial de un video animado";
     case "volver_a_version": return `Volvió un video animado a su versión ${entrada.a_version ?? ""}`;

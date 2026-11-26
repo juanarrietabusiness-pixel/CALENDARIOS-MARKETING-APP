@@ -181,6 +181,8 @@ const E = (lista, def) => ({ t: "enum", lista, def });
 const N = (min, max, def, req = false) => ({ t: "num", min, max, def, req });
 const C = (def) => ({ t: "color", def });
 const B = (def = false) => ({ t: "bool", def });
+/** Un id de la galería POR FORMATO ({ "9:16": id, "16:9": id }): la misma imagen hecha para cada proporción. */
+const PF = (max) => ({ t: "porFormato", max, def: undefined, omitir: true });
 
 /** Lo más que lleva un dibujo (lienzo libre). */
 export const MAX_FORMAS = 24;
@@ -255,9 +257,11 @@ export const COMPONENTES = Object.freeze({
       encuadre: { ...E(["caja", "completo"], "caja"), omitir: true }, movimiento: { ...E(MOVIMIENTOS_IMAGEN, "ninguno"), omitir: true },
       dura: { ...N(0, MAX_TRAMO_VIDEO, 0), omitir: true }, oscurecer: { ...N(0, 0.85, 0), omitir: true },
       pide: { ...T(MAX_PIDE_FONDO), omitir: true }, tratamiento: { ...E(TRATAMIENTOS_IMAGEN, "color"), omitir: true },
+      // La imagen de cada formato (un fondo hecho en 9:16 y otro en 16:9: recortar uno al otro dejaba media imagen).
+      archivos: PF(64),
     },
     comprobar: (p) => {
-      if (!p.archivo && !p.pide) return [{ campo: "archivo", mensaje: "Falta y es obligatorio." }];
+      if (!p.archivo && !p.pide && !p.archivos) return [{ campo: "archivo", mensaje: "Falta y es obligatorio." }];
       if (p.pide && p.encuadre !== "completo") return [{ campo: "pide", mensaje: "«pide» es para un FONDO a sangre: va con «encuadre»: «completo»." }];
       return [];
     },
@@ -383,6 +387,18 @@ function validarProp(def, valor, donde, errores) {
     case "bool":
       if (typeof valor !== "boolean") { errores.push({ donde, mensaje: "Tiene que ser true o false." }); return def.def; }
       return valor;
+    case "porFormato": {
+      if (!esObjeto(valor)) { errores.push({ donde, mensaje: "Es un objeto { \"9:16\": id, \"16:9\": id } (la imagen de cada formato)." }); return undefined; }
+      const salida = {};
+      for (const [f, id] of Object.entries(valor)) {
+        if (!FORMATOS_VIDEO[f]) { errores.push({ donde: `${donde}.${f}`, mensaje: `«${f}» no es un formato: ${Object.keys(FORMATOS_VIDEO).join(", ")}.` }); continue; }
+        const s = recorta(id);
+        if (!s) continue;
+        if (s.length > def.max) { errores.push({ donde: `${donde}.${f}`, mensaje: `Pasa de ${def.max} caracteres.` }); continue; }
+        salida[f] = s;
+      }
+      return Object.keys(salida).length ? salida : undefined;
+    }
     case "textos": {
       if (!Array.isArray(valor) || !valor.length) { errores.push({ donde, mensaje: "Tiene que ser una lista de textos." }); return []; }
       if (valor.length > def.max) errores.push({ donde, mensaje: `Como mucho ${def.max} elementos.` });
@@ -834,6 +850,26 @@ function lineaDeCancion(guion, palabras) {
   return { total, estimado, escenas: salida, silencios: [], cancion: true, avisos };
 }
 
+/**
+ * El guion como se dibuja en un FORMATO: cada imagen con `archivos` usa la de ese formato (si la tiene; si no, su
+ * `archivo`, recortada). Así el render, la vista previa y la revisión de cada formato piden y pintan la suya. Pura.
+ */
+export function guionParaFormato(guion, formato) {
+  if (!guion?.escenas?.some((e) => (e.capas ?? []).some((c) => c?.archivos))) return guion;
+  return {
+    ...guion,
+    escenas: guion.escenas.map((e) => ({
+      ...e,
+      capas: (e.capas ?? []).map((c) => {
+        if (!c?.archivos) return c;
+        const { archivos, ...resto } = c;
+        const id = archivos[formato] ?? c.archivo ?? Object.values(archivos)[0];
+        return id ? { ...resto, archivo: id } : resto;
+      }),
+    })),
+  };
+}
+
 /** Los ids de la galería que nombra un guion como IMAGEN (imágenes, teléfonos, antes y después). Pura. */
 export function archivosDelGuion(guion) {
   const ids = new Set();
@@ -843,6 +879,7 @@ export function archivosDelGuion(guion) {
     for (const c of e.capas ?? []) {
       if (c.tipo === "video") continue;
       for (const k of ["archivo", "archivoAntes", "archivoDespues"]) if (c[k]) ids.add(c[k]);
+      for (const id of Object.values(c.archivos ?? {})) if (id) ids.add(id);
     }
   }
   return [...ids];

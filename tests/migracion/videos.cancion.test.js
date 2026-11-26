@@ -493,6 +493,50 @@ describe("Claude y el asistente: video_con_cancion", () => {
   });
 });
 
+describe("derivar_video (YouTube: del maestro largo, su reel)", () => {
+  const herramientas = () => crearHerramientasEstudio({
+    env, acceso: crearAcceso(db, JEFE), resolverCliente: async () => db.sqlite.prepare("select * from clients where id = 'bc'").get(),
+    usuario: { id: JEFE, nombre: "Juan" }, origen: "claude", por: { userId: JEFE, nombre: "Juan" },
+  });
+
+  it("un tramo en otro formato: gratis, las mismas escenas que caen dentro, su cierre y el gancho con un solo efecto", async () => {
+    servicios();
+    const h = herramientas();
+    await h.video_con_cancion({ musica_id: "can1", letra: LETRA, formato: "16:9", confirmado: true });
+    const maestro = video(db.sqlite.prepare("select id from videos_proyectos").get().id);
+    const antes = llamadas.length;
+    // Del 5 al 12 del maestro: «sin alcohol y sin perfume», «cuidan su piel desde el primer día» y el principio del coro.
+    const r = await h.derivar_video({ video_id: maestro.id, formato: "9:16", desde: 5, hasta: 12, gancho: true });
+    expect(llamadas.length).toBe(antes);
+    expect(r.texto).toMatch(/Derivado .* 9:16, del segundo 5 al 12 del maestro/);
+    const id = db.sqlite.prepare("select id from videos_proyectos where id != ?").get(maestro.id).id;
+    const d = video(id);
+    const g = JSON.parse(d.guion);
+    const l = JSON.parse(d.locucion);
+    expect(g.formatos).toEqual(["9:16"]);
+    expect(g.cancion.duracion).toBe(7);
+    expect(l.recorte).toMatchObject({ desde: 5, hasta: 12 });
+    expect(l.recorte.cancion).toBeCloseTo(20, 1);
+    // Lo que se canta: «sin alcohol y sin perfume», «cuidan su piel desde el primer día» y «Toallitas suaves para».
+    expect(g.escenas.map((e) => e.habla).filter(Boolean).join(" ")).toBe("sin alcohol y sin perfume cuidan su piel desde el primer día Toallitas suaves para");
+    expect(g.escenas.at(-1)).toMatchObject({ id: "cierre-derivado", tipo: "cierre" });
+    expect(g.escenas.at(-1).capas.map((c) => c.tipo)).toEqual(["logo"]);
+    // El gancho: la primera escena se acerca y su texto entra de golpe; UN efecto, al empezar.
+    expect(g.escenas[0].camara).toBe("acercar");
+    expect(JSON.parse(d.sonido).colocados).toEqual([expect.objectContaining({ escena: g.escenas[0].id })]);
+    // La canción vale para el guion (la letra del tramo, en orden) y la línea dura lo que el tramo.
+    const leido = (await (await pedir(`/videos/bc/${id}`, { method: "GET" })).json()).video;
+    expect(leido.valido).toBe(true);
+    expect(leido.locucion.coincidenciaGuion).toBe(1);
+    expect(lineaDeTiempo(leido.guion, leido.locucion.palabras).total).toBe(7);
+    // En 16:9, el cierre de YouTube.
+    const y = await h.derivar_video({ video_id: maestro.id, formato: "16:9" });
+    expect(y.texto).toMatch(/«Suscríbete»/);
+    // Un tramo sin letra o un video sin canción: se dice.
+    await expect(h.derivar_video({ video_id: maestro.id, desde: 15, hasta: 20 })).rejects.toThrow(/no se canta nada/);
+  });
+});
+
 describe("guardar el guion entero no se lleva la canción", async () => {
   const { conLaCancionGuardada } = await import("../../worker/lib/videosProyectos.js");
   const cancion = { archivo: "m1", duracion: 30 };

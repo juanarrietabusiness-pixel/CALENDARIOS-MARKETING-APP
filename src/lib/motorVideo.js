@@ -250,7 +250,8 @@ export const colorDe = (c, paleta) => (HEX.test(String(c ?? "")) ? c : paleta?.[
 export const ZONA_SEGURA = Object.freeze({
   "9:16": Object.freeze({ arriba: 0.12, abajo: 0.2, lados: 0.09 }),
   "1:1": Object.freeze({ arriba: 0.07, abajo: 0.1, lados: 0.07 }),
-  "16:9": Object.freeze({ arriba: 0.08, abajo: 0.12, lados: 0.06 }),
+  // 16:9 es YouTube: un 5 % a cada lado (lo que recorta una tele); la esquina de abajo a la derecha la vigila la revisión.
+  "16:9": Object.freeze({ arriba: 0.08, abajo: 0.12, lados: 0.05 }),
 });
 
 /** El rectángulo donde se puede poner algo, en píxeles. Pura. */
@@ -300,6 +301,8 @@ export const MIN_LOGO_CIERRE = 0.5;
  * texto usa todo el ancho que le toca; el `tam` sólo manda si pide más. La etiqueta, el sello y el llamado, menos.
  */
 export const ANCHO_TEXTO = Object.freeze({ texto: 0.94, cifra: 0.94, llamado: 0.82, sello: 0.6 });
+/** El ancho mínimo del gigante en un cuadro apaisado, en fracción del ancho del cuadro. */
+export const ANCHO_GIGANTE_APAISADO = 0.75;
 
 /**
  * El ancho que pide una capa: su `tam` por el lado corto; el logo del cierre, al menos `MIN_LOGO_CIERRE` (salvo con
@@ -310,7 +313,10 @@ function anchoPedido(capa, c, anchoMax = 0, { fija = false } = {}) {
   if (fija && c.exacta) return capa.tam * c.lado;
   const tam = capa.tipo === "logo" && c.tipoEscena === "cierre" && !fija ? Math.max(capa.tam, MIN_LOGO_CIERRE) : capa.tam;
   const minimo = capa.tipo === "texto" && capa.rol === "etiqueta" ? 0 : (ANCHO_TEXTO[capa.tipo] ?? 0) * anchoMax;
-  return Math.max(tam * c.lado, minimo);
+  // El GIGANTE en un cuadro apaisado: su `tam` va por el lado CORTO (1080) y en 16:9 quedaba en medio cuadro; como poco,
+  // el 75 % del ancho (lo que deje su columna).
+  const gigante = capa.tipo === "texto" && capa.rol === "gigante" && c.ancho > c.alto * 1.2 ? ANCHO_GIGANTE_APAISADO * c.ancho : 0;
+  return Math.max(tam * c.lado, minimo, gigante);
 }
 
 /**
@@ -937,13 +943,13 @@ export const esTextoRico = (capa) => capa?.tipo === "texto" && (capa.rol === "gi
  * del kit, o la de la casa). La usan el dibujo y la revisión. → { tam, lineas: [{ palabras, ancho, alto, tam }], alto,
  * anchoMax, espacio, gigante }. Pura salvo medir.
  */
-export function encajarCapaTexto(ctx, capa, { ancho, lado, fuentes = {}, maxAlto = Infinity }) {
+export function encajarCapaTexto(ctx, capa, { ancho, lado, fuentes = {}, maxAlto = Infinity, apaisado = false }) {
   const r = TIPO_POR_ROL[capa.rol] ?? TIPO_POR_ROL.titular;
   const titular = fuentes?.titular || FUENTE_RESPALDO;
   const familia = r.fuente === "cuerpo" ? fuentes?.cuerpo || titular : titular;
   const impacto = impactoDe(fuentes?.titular);
   const palabras = partirEnfasis(capa.texto, { mayusculas: capa.mayusculas === true || Boolean(r.mayusculas) });
-  if (capa.rol === "gigante") return { ...encajarGigante(ctx, palabras, { ancho, lado, maxAlto, impacto }), gigante: true };
+  if (capa.rol === "gigante") return { ...encajarGigante(ctx, palabras, { ancho, lado, maxAlto, impacto, apaisado }), gigante: true };
   return { ...encajarRico(ctx, palabras, { ancho, lado, rol: r, familia, impacto }), gigante: false };
 }
 
@@ -964,7 +970,7 @@ export function tiemposRelativos(capa, momento, cuando) {
  */
 function dibujarTextoRico(ctx, capa, estado, c, w) {
   const { paleta, lado } = c;
-  const lay = encajarCapaTexto(ctx, capa, { ancho: w, lado, fuentes: c.fuentes, maxAlto: c.altoUtil ?? c.alto * 0.55 });
+  const lay = encajarCapaTexto(ctx, capa, { ancho: w, lado, fuentes: c.fuentes, maxAlto: c.altoUtil ?? c.alto * 0.55, apaisado: c.ancho > c.alto * 1.2 });
   const pad = lado * 0.035;
   const pw = lay.anchoMax + pad * 2;
   const alto = lay.alto;

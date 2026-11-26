@@ -1296,3 +1296,22 @@ contradicen, manda la de más abajo (la más nueva). Una trampa nueva de esta á
   desde `recorte.desde` (`inicioAudio` en VideoAnimado.jsx): cualquier otro sitio que reproduzca la canción de un video
   tiene que sumar ese segundo. «Volver a sincronizar» un fragmento sincroniza la canción ENTERA con la letra de la
   sincronía de la que salió y recorta otra vez: la letra de la locución es sólo la del tramo.
+- **YouTube, fase 2: un proyecto, varios formatos (26-nov-2026).** (1) `renderizar_video` con `formatos` hace UN mp4 POR
+  FORMATO, uno por VUELTA de la alarma del objeto del render (`render.pendientes`; `ejecutarRender` devuelve `siguiente` y
+  `RenderVideo.alarm` vuelve a poner el encargo): cada formato tiene sus 15 minutos (el plazo cuenta desde `tramoAt`). Arriba
+  en `render` queda el PRIMER formato pedido (lo que leen ver_video, la galería y el reel) y todos en `porFormato`; a la
+  publicación va el 9:16 si se hizo. (2) Los FONDOS por formato: un fondo de 9:16 recortado a 16:9 dejaba la franja del
+  centro (casi negra en la prueba de 57DMC). Cada `pide` se crea en cada formato (`fondos_video` con `formatos`, o los del
+  guion) con su proporción, y queda en `archivos` de la capa ({ "9:16": id, "16:9": id }); `guionParaFormato` pone en
+  `archivo` el de cada formato ANTES de dibujar (el Worker al armar el pedido, la vista previa con su formato). Un
+  `archivo` de antes cuenta como hecho en el formato que dice su ancho y alto en la galería (`formatosDeLosFondos`). (3)
+  El GIGANTE en 16:9: su `tam` va por el lado corto y con una o dos palabras por línea se apilaba en una columna estrecha
+  que llenaba todo el alto (y la cita le caía encima). En un cuadro apaisado las líneas juntan de 2 a 4 palabras (hasta 22
+  letras, aunque una vaya con énfasis: cada palabra conserva su color), como mucho 3 líneas y al menos el 75 % del ancho;
+  y el tamaño lleva un 1,5 % de margen (medido a 100 px y pintado a su tamaño redondeado, «BENDECIDOS» se pasaba 2 px y
+  revisar_video daba GRAVE). (4) La zona segura de 16:9 es la de YouTube: un 5 % a los lados y nada esencial en la esquina
+  de abajo a la derecha (12 %: la marca del canal y las tarjetas), que `revisar_video` avisa. (5) `derivar_video`: del
+  maestro con canción, otro borrador en otro formato y con un tramo; los tiempos salen de la sincronía ENTERA (el maestro
+  pudo ser ya un fragmento: se suma su `recorte.desde`) y la selección de palabras se hace SIN el ajuste fino (el mismo
+  reloj que la sincronía). El cierre del maestro (`tipo: "cierre"`) se cambia por el del formato. Lo no medido: un render
+  de dos formatos de 6 minutos (dos vueltas de 11–14 minutos cada una) y la calidad del director con fondos en 16:9.
