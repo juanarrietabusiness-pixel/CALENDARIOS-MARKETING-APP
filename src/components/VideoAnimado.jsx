@@ -19,7 +19,7 @@
 
 import { lazy, Suspense, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import Icon from "./Icon";
-import { validarGuion, lineaDeTiempo, FORMATOS_VIDEO, NOMBRE_ESTADO_VIDEO, NOMBRE_TIPO_ESCENA, tramoDeAudio, palabrasMudas } from "../lib/videoEscenas";
+import { validarGuion, lineaDeTiempo, FORMATOS_VIDEO, NOMBRE_ESTADO_VIDEO, NOMBRE_TIPO_ESCENA, tramoDeAudio, palabrasMudas, guionParaFormato } from "../lib/videoEscenas";
 import { dibujarFrame, paletaDelGuion, escenaEn, COMPONENTES_LISTOS, areaSegura, bandaDeSubtitulos } from "../lib/motorVideo";
 import { prepararRecursos } from "../lib/motorVideoNavegador";
 import { revisarEscenas } from "../lib/revisionEscenas";
@@ -394,6 +394,8 @@ function VistaPrevia({ guion, locucion, kit, archivos }) {
   const paleta = useMemo(() => paletaDelGuion(guion, kit.paleta), [guion, kit.paleta]);
   const f = guion.formatos.includes(formato) ? formato : guion.formatos[0];
   const { ancho, alto } = FORMATOS_VIDEO[f];
+  // Cada imagen con `archivos`, la de ESTE formato (un fondo hecho en 16:9 no se recorta del de 9:16).
+  const guionF = useMemo(() => guionParaFormato(guion, f), [guion, f]);
 
   // Las imágenes, el logo y la letra: se vuelven a preparar sólo si cambian las que pide el guion o el kit.
   const clavePrep = JSON.stringify([guion.escenas.map((e) => e.capas.map((c) => c.archivo ?? "")), guion.estilo.fuentes, kit.logo, kit.fuente?.clave, archivos.length]);
@@ -417,9 +419,9 @@ function VistaPrevia({ guion, locucion, kit, archivos }) {
     if (!ctx) return;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.scale(w / ancho, h / alto);
-    dibujarFrame(ctx, { guion, linea, t: tiempo, formato: f, paleta, recursos: prep.recursos, fuentes: prep.fuentes });
+    dibujarFrame(ctx, { guion: guionF, linea, t: tiempo, formato: f, paleta, recursos: prep.recursos, fuentes: prep.fuentes });
     if (zonas) pintarZonas(ctx, guion, f, ancho, alto);
-  }, [guion, linea, f, paleta, prep, ancho, alto, zonas]);
+  }, [guion, guionF, linea, f, paleta, prep, ancho, alto, zonas]);
 
   useEffect(() => { pintar(t); }, [pintar, t]);
   useEffect(() => { setT((x) => Math.min(x, linea.total)); }, [linea.total]);

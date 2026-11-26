@@ -13,6 +13,7 @@ import { marcaParaElVideo, paletaEnTokens, lineaDeReferenciasVideo } from "../..
 import { pedidoDeGuionAnimado, pedidoDeGuionCancion } from "../../src/lib/guionAnimadoIA.js";
 import { fondosPendientes, conFondosPuestos, erroresDeFondos, MAX_FONDOS, encargoDeFondo } from "../../src/lib/fondosVideo.js";
 import { limpiarKit, fundirKit, clavesDeLaMarca } from "../../src/lib/kitMarca.js";
+import { validarGuion, guionParaFormato, archivosDelGuion } from "../../src/lib/videoEscenas.js";
 
 // ============================================================
 // El ESTILO del video animado: el kit entero llega al guion (paleta en tokens, estilo, letra, reglas, lo aprendido,
@@ -157,9 +158,32 @@ describe("el kit contado al video (puro)", () => {
 describe("los fondos por crear (puro)", () => {
   it("uno por cada «pide» distinto (sin mayúsculas ni espacios de más), con sus escenas", () => {
     expect(fondosPendientes(guionConFondos())).toEqual([
-      { pide: "Grabado de unas manos abiertas hacia la luz", escenas: ["e1"] },
-      { pide: "Grabado de una multitud en el desierto", escenas: ["e2", "e3"] },
+      { pide: "Grabado de unas manos abiertas hacia la luz", escenas: ["e1"], formatos: ["9:16"] },
+      { pide: "Grabado de una multitud en el desierto", escenas: ["e2", "e3"], formatos: ["9:16"] },
     ]);
+  });
+
+  it("POR FORMATO (YouTube): cada «pide» en cada formato; lo hecho en un formato no cuenta para otro", () => {
+    const g = guionConFondos();
+    // Pedidos en 9:16 y 16:9: los dos por crear en los dos.
+    expect(fondosPendientes(g, { formatos: ["9:16", "16:9"] }).map((f) => f.formatos)).toEqual([["9:16", "16:9"], ["9:16", "16:9"]]);
+    // Puestos por formato: cada capa guarda los suyos en `archivos` y su `archivo`, el del principal.
+    const { guion, n } = conFondosPuestos(g, { "grabado de una multitud en el desierto": { "9:16": "v", "16:9": "h" } });
+    expect(n).toBe(2);
+    expect(guion.escenas[1].capas[0]).toMatchObject({ archivo: "v", archivos: { "9:16": "v", "16:9": "h" } });
+    expect(fondosPendientes(guion, { formatos: ["9:16", "16:9"] }).map((f) => f.pide)).toEqual(["Grabado de unas manos abiertas hacia la luz"]);
+    // Un `archivo` de antes hecho en 9:16 (lo dice la galería): en 16:9 sigue por crear.
+    const viejo = conFondosPuestos(g, { "grabado de unas manos abiertas hacia la luz": "img1" }).guion;
+    expect(fondosPendientes(viejo, { formatos: ["16:9"], formatoDe: { img1: "9:16" } })[0]).toMatchObject({ pide: "Grabado de unas manos abiertas hacia la luz", formatos: ["16:9"] });
+    // Cada formato dibuja la suya; sin la de ese formato, la que haya.
+    const valido = validarGuion(guion);
+    expect(valido.ok).toBe(true);
+    expect(valido.guion.escenas[1].capas[0].archivos).toEqual({ "9:16": "v", "16:9": "h" });
+    expect(guionParaFormato(valido.guion, "16:9").escenas[1].capas[0]).toMatchObject({ archivo: "h" });
+    expect(guionParaFormato(valido.guion, "16:9").escenas[1].capas[0].archivos).toBeUndefined();
+    expect(guionParaFormato(valido.guion, "1:1").escenas[1].capas[0].archivo).toBe("v");
+    expect(archivosDelGuion(valido.guion)).toEqual(expect.arrayContaining(["v", "h"]));
+    expect(validarGuion({ ...guion, escenas: [{ ...guion.escenas[1], capas: [{ ...guion.escenas[1].capas[0], archivos: { "4:5": "x" } }] }] }).errores[0].donde).toMatch(/archivos\.4:5/);
   });
 
   it("al ponerlos, sólo las capas sin archivo con ese «pide»; lo demás no se toca", () => {
@@ -272,6 +296,29 @@ describe("crear las imágenes de fondo de un video guardado", () => {
     expect(g.escenas[2].capas[0].archivo).toBe("img2");
     expect(despues.version).toBe(video.version + 1);
     expect(JSON.parse(db.sqlite.prepare("select datos from estudio_encargos").get().datos).fondosPuestos).toEqual({ n: 3 });
+  });
+
+  it("YouTube: con «formatos», cada fondo en cada formato con su proporción; al cerrarse, cada formato en «archivos»", async () => {
+    const video = await videoGuardado();
+    const r = await pedir("POST", `/videos/bc/${video.id}/fondos`, { confirmado: true, formatos: ["16:9", "9:16"] });
+    expect(r.status).toBe(202);
+    const fila = db.sqlite.prepare("select * from estudio_encargos").get();
+    const datos = JSON.parse(fila.datos);
+    const pasos = JSON.parse(fila.pasos);
+    // Dos fondos × dos formatos.
+    expect(pasos).toHaveLength(4);
+    expect(pasos.map((p) => p.encargo.proporcion)).toEqual(["16:9", "9:16", "16:9", "9:16"]);
+    expect(pasos[0].encargo.escena).toMatch(/HORIZONTAL 16:9/);
+    expect(pasos[0].pedido.ajustes?.aspectRatio ?? "16:9").toBe("16:9");
+    expect(Object.values(datos.fondosVideo.formatos)).toEqual(["16:9", "9:16", "16:9", "9:16"]);
+    const hechos = pasos.map((p, i) => ({ ...p, fase: "hecho", opciones: [{ id: `img${i + 1}`, fase: "hecho" }], finales: [`img${i + 1}`] }));
+    db.sqlite.prepare("update estudio_encargos set pasos = ? where id = ?").run(JSON.stringify(hechos), fila.id);
+    await avanzarEncargo(env, crearAcceso(db, JEFE), fila.id);
+    const g = JSON.parse(db.sqlite.prepare("select guion from videos_proyectos where id = ?").get(video.id).guion);
+    expect(g.escenas[0].capas[0]).toMatchObject({ archivo: "img2", archivos: { "16:9": "img1", "9:16": "img2" } });
+    expect(g.escenas[2].capas[0]).toMatchObject({ archivos: { "16:9": "img3", "9:16": "img4" } });
+    // Ya no falta nada en esos formatos.
+    expect((await (await pedir("GET", `/videos/bc/${video.id}/fondos`)).json()).pendientes).toBe(0);
   });
 
   it("sin fondos por crear, 409 sin crear nada", async () => {

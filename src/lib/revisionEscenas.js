@@ -53,6 +53,14 @@ const seVenALaVez = (a, b) => a && b && a.desde < b.hasta && b.desde < a.hasta;
 const ESENCIAL = new Set(["texto", "llamado", "sello", "cifra"]);
 /** La zona estricta del texto esencial en 9:16, en fracciones del cuadro. */
 export const ZONA_ESTRICTA_916 = Object.freeze({ arriba: 0.135, abajo: 0.76, izq: 0.055, der: 0.91 });
+/**
+ * La ESQUINA de YouTube en 16:9: abajo a la derecha (el 12 % del ancho y del alto) van la marca del canal, las tarjetas y
+ * la pantalla final; nada esencial ahí. (Los lados, al 5 %: ZONA_SEGURA de motorVideo.js.)
+ */
+export const ESQUINA_YOUTUBE = Object.freeze({ ancho: 0.12, alto: 0.12 });
+/** ¿La caja pisa la esquina de YouTube? Pura. */
+export const enLaEsquinaDeYouTube = (caja, ancho, alto, z = ESQUINA_YOUTUBE) =>
+  caja.x + caja.w > ancho * (1 - z.ancho) + TOLERANCIA && caja.y + caja.h > alto * (1 - z.alto) + TOLERANCIA;
 /** ¿La caja se sale de la zona estricta? (con la misma tolerancia que el resto de la revisión). Pura. */
 export function fueraDeLaZonaEstricta(caja, ancho, alto, z = ZONA_ESTRICTA_916) {
   return caja.y < alto * z.arriba - TOLERANCIA || caja.y + caja.h > alto * z.abajo + TOLERANCIA
@@ -128,7 +136,7 @@ export function revisarEscenas(ctx, { guion, linea, formato, recursos = {}, fuen
     if (capa?.tipo !== "texto") return caja;
     const anchoTexto = caja.ancho ?? caja.w;
     let tinta;
-    if (esTextoRico(capa)) tinta = encajarCapaTexto(ctx, capa, { ancho: anchoTexto, lado, fuentes, maxAlto }).anchoMax;
+    if (esTextoRico(capa)) tinta = encajarCapaTexto(ctx, capa, { ancho: anchoTexto, lado, fuentes, maxAlto, apaisado: ancho > alto * 1.2 }).anchoMax;
     else {
       const familia = (TIPO_POR_ROL[capa.rol] ?? TIPO_POR_ROL.titular).fuente === "titular" ? titular : cuerpo;
       const enc = encajarTexto(ctx, capa.mayusculas ? String(capa.texto ?? "").toUpperCase() : (capa.texto ?? ""), { ancho: anchoTexto, lado, rol: capa.rol, familia });
@@ -144,7 +152,7 @@ export function revisarEscenas(ctx, { guion, linea, formato, recursos = {}, fuen
   function revisarTextoRico(capa, caja, de) {
     const r = TIPO_POR_ROL[capa.rol] ?? TIPO_POR_ROL.titular;
     const anchoTexto = caja.ancho ?? caja.w;
-    const lay = encajarCapaTexto(ctx, capa, { ancho: anchoTexto, lado, fuentes, maxAlto });
+    const lay = encajarCapaTexto(ctx, capa, { ancho: anchoTexto, lado, fuentes, maxAlto, apaisado: ancho > alto * 1.2 });
     const escala = caja.escala ?? 1;
     const nombre = `«${caja.id}»`;
     if (lay.anchoMax > anchoTexto + TOLERANCIA) {
@@ -201,6 +209,10 @@ export function revisarEscenas(ctx, { guion, linea, formato, recursos = {}, fuen
       //     casi siempre dentro; esto caza una posición x/y o un tamaño que lo empuja.
       else if (f === "9:16" && ESENCIAL.has(caja.tipo) && fueraDeLaZonaEstricta(cajaVisible(porId.get(caja.id), caja), ancho, alto)) {
         de(caja, "zona_esencial", `${nombre} es texto esencial y queda fuera de la zona estricta de 9:16 (del 13,5 al 76 % del alto y del 5,5 al 91 % del ancho): ahí lo tapan la descripción o los botones de la red.`, false);
+      }
+      // 2c. En 16:9 (YouTube), la esquina de abajo a la derecha: la marca del canal y las tarjetas.
+      else if (f === "16:9" && (ESENCIAL.has(caja.tipo) || caja.tipo === "logo") && enLaEsquinaDeYouTube(cajaVisible(porId.get(caja.id), caja), ancho, alto)) {
+        de(caja, "esquina_youtube", `${nombre} pisa la esquina de abajo a la derecha (el 12 % del ancho y del alto): en YouTube ahí van la marca del canal y las tarjetas. Súbelo o llévalo al centro.`, false);
       }
       // 3. Encima de los subtítulos.
       if (banda && cruce(caja, banda) > 0 && CON_LETRAS.has(caja.tipo)) {

@@ -21,18 +21,30 @@ export const MAX_GALERIA_FONDOS = 24;
 const clave = (pide) => String(pide ?? "").replace(/\s+/g, " ").trim().toLowerCase();
 
 /**
- * Los fondos por crear de un guion: [{ pide, escenas: [ids] }], uno por cada `pide` distinto (sin mayúsculas ni espacios
- * de más), en el orden en que aparecen. Sólo las capas `imagen` con `pide` y sin `archivo`. Pura.
+ * Los fondos por crear de un guion: [{ pide, escenas: [ids], formatos: [los que le faltan] }], uno por cada `pide`
+ * distinto (sin mayúsculas ni espacios de más), en el orden en que aparecen.
+ *
+ * POR FORMATO (YouTube, 26-nov-2026): un fondo hecho en 9:16 recortado a 16:9 dejaba sólo la franja del centro (casi
+ * negra en la prueba de 57DMC). Cada `pide` se crea en cada formato de `formatos` (por defecto, los del guion) y queda en
+ * `archivos` de la capa ({ "9:16": id, "16:9": id }). Una capa con `archivo` (lo de antes) cuenta como hecha en el formato
+ * de esa imagen (`formatoDe`: { id → formato }, lo mide el servidor) o, sin saberlo, en el principal del guion. Sin
+ * `formatos`, igual que siempre: sólo lo que no tiene ni `archivo`. Pura.
  */
-export function fondosPendientes(guion) {
+export function fondosPendientes(guion, { formatos = null, formatoDe = {} } = {}) {
+  const principal = guion?.formatos?.[0] ?? "9:16";
+  const lista = Array.isArray(formatos) && formatos.length ? formatos : [principal];
   const porClave = new Map();
   for (const e of guion?.escenas ?? []) {
     for (const c of e.capas ?? []) {
-      if (c?.tipo !== "imagen" || c.archivo || !clave(c.pide)) continue;
+      if (c?.tipo !== "imagen" || !clave(c.pide)) continue;
+      const hecho = (f) => Boolean(c.archivos?.[f]) || (c.archivo && (formatoDe[c.archivo] ?? principal) === f);
+      const faltan = lista.filter((f) => !hecho(f));
+      if (!faltan.length) continue;
       const k = clave(c.pide);
-      if (!porClave.has(k)) porClave.set(k, { pide: String(c.pide).trim(), escenas: [] });
-      const f = porClave.get(k);
-      if (!f.escenas.includes(e.id)) f.escenas.push(e.id);
+      if (!porClave.has(k)) porClave.set(k, { pide: String(c.pide).trim(), escenas: [], formatos: [] });
+      const fondo = porClave.get(k);
+      if (!fondo.escenas.includes(e.id)) fondo.escenas.push(e.id);
+      for (const f of faltan) if (!fondo.formatos.includes(f)) fondo.formatos.push(f);
     }
   }
   return [...porClave.values()];
@@ -42,21 +54,30 @@ export function fondosPendientes(guion) {
 export const conFondosPorCrear = (guion) => fondosPendientes(guion).length > 0;
 
 /**
- * El guion con los fondos ya creados puestos: a cada capa `imagen` con `pide` y sin `archivo` le pone el id de la galería
- * de su `pide` (`puestos`: { pide → archivoId }). Lo que no está en `puestos` sigue por crear; una capa que alguien ya
- * cambió (con su `archivo`, o con otro `pide`) no se toca. → { guion, n } (n: capas puestas). Pura.
+ * El guion con los fondos ya creados puestos. `puestos`: { pide → archivoId } (lo de antes: su `archivo`, sólo si no lo
+ * tenía) o { pide → { formato → archivoId } } (cada uno en `archivos`; y en `archivo` el del formato principal si la capa
+ * no tenía ninguno). Una capa que alguien ya cambió (con otro `pide`) no se toca. → { guion, n } (n: capas puestas). Pura.
  */
 export function conFondosPuestos(guion, puestos = {}) {
-  const porClave = new Map(Object.entries(puestos ?? {}).map(([pide, id]) => [clave(pide), String(id ?? "")]).filter(([, id]) => id));
+  const principal = guion?.formatos?.[0] ?? "9:16";
+  const porClave = new Map(Object.entries(puestos ?? {}).map(([pide, v]) => [clave(pide), v]).filter(([, v]) => v));
   let n = 0;
   const escenas = (guion?.escenas ?? []).map((e) => ({
     ...e,
     capas: (e.capas ?? []).map((c) => {
-      if (c?.tipo !== "imagen" || c.archivo) return c;
-      const id = porClave.get(clave(c.pide));
-      if (!id) return c;
+      if (c?.tipo !== "imagen") return c;
+      const v = porClave.get(clave(c.pide));
+      if (!v) return c;
+      if (typeof v !== "object") {
+        if (c.archivo) return c;
+        n++;
+        return { ...c, archivo: String(v) };
+      }
+      const nuevos = Object.fromEntries(Object.entries(v).filter(([, id]) => id).map(([f, id]) => [f, String(id)]));
+      if (!Object.keys(nuevos).length) return c;
       n++;
-      return { ...c, archivo: id };
+      const archivos = { ...(c.archivos ?? {}), ...nuevos };
+      return { ...c, archivos, ...(c.archivo ? {} : { archivo: archivos[principal] ?? Object.values(archivos)[0] }) };
     }),
   }));
   return { guion: { ...guion, escenas }, n };
@@ -105,11 +126,12 @@ export function erroresDeFondos(guion, { maxFondos = MAX_FONDOS } = {}) {
  * manda); `idea`, para qué es y el ESTILO DEL VIDEO de la marca (obligatorio); `indicacion`, lo que manda sobre todo
  * (sin texto ni logo: el video los pone encima). Pura.
  */
-export function encargoDeFondo(pide, { estiloVideo = "", marca = "" } = {}) {
+export function encargoDeFondo(pide, { estiloVideo = "", marca = "", proporcion = "9:16" } = {}) {
   const estilo = String(estiloVideo ?? "").replace(/\s+/g, " ").trim();
-  const idea = `Fondo a sangre (9:16) de una sección de un video animado${marca ? ` de ${marca}` : ""}: el video pone encima su texto y su logo.${estilo ? ` Estilo de los videos de esta marca (obligatorio): ${estilo}` : ""}`;
+  const idea = `Fondo a sangre (${proporcion}) de una sección de un video animado${marca ? ` de ${marca}` : ""}: el video pone encima su texto y su logo.${estilo ? ` Estilo de los videos de esta marca (obligatorio): ${estilo}` : ""}`;
   return {
-    formato: "historia", proporcion: "9:16", tipo: "", texto: "", sinTexto: true,
+    // Un 16:9 no es una historia: es el fondo de un video de YouTube (la pieza «post» con su proporción).
+    formato: proporcion === "9:16" ? "historia" : "post", proporcion, tipo: "", texto: "", sinTexto: true,
     escena: String(pide ?? "").replace(/\s+/g, " ").trim().slice(0, 900),
     idea: idea.slice(0, 900),
     indicacion: "Es el FONDO de un video: SIN ningún texto, letra, logo, marco ni placa; con aire arriba o abajo para el texto y ninguna cara donde irá.",

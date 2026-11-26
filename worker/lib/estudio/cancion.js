@@ -20,6 +20,9 @@
 //     paga otra sincronía; el audio se corta al renderizar (`recorte` en la locución).
 //   · `ajustarCancion`: el ajuste fino (±1,5 s), que se aplica al leer (no se paga otra vez).
 //   · `resincronizarVideo`: «Volver a sincronizar» la canción de un video (paga otra vez, con su confirmación).
+//   · `derivarVideo`: de un video con canción (el MAESTRO, p. ej. el 16:9 de YouTube con la canción entera), otro en
+//     otro formato y, si se pide, sólo un tramo, con las mismas escenas, estilo y fondos (src/lib/derivarVideo.js). Los
+//     tiempos salen de la sincronía de la canción entera: gratis.
 // ============================================================
 
 import { sha256, ahora } from "../ids.js";
@@ -36,13 +39,15 @@ import { crearProyecto, publicacionDelCliente, deFila, ErrorVideo } from "../vid
 import { estiloDelCliente, ErrorEstilo, estiloDeLaMarca } from "./estilosVideo.js";
 import { aplicarEstilo } from "../../../src/lib/estilosVideo.js";
 import { ErrorIA } from "../cerebro/ia.js";
-import { palabrasDe, MIN_SEGUNDOS, MAX_SEGUNDOS_CANCION } from "../../../src/lib/videoEscenas.js";
+import { palabrasDe, lineaDeTiempo, validarGuion, MIN_SEGUNDOS, MAX_SEGUNDOS_CANCION } from "../../../src/lib/videoEscenas.js";
+import { derivarGuion, sonidoDerivado } from "../../../src/lib/derivarVideo.js";
 import { USD_POR_CARACTER_ELEVENLABS, leerTranscripcionConTiempos } from "../../../src/lib/voces.js";
 import { textoCosto } from "../../../src/lib/estudioCatalogo.js";
 import {
   limpiarLetra, leerAlineacion, medirAlineacion, letraEstimada, pedidoDeTiemposCancion, costoDeSincronia, duracionDeAudio,
   extractoCrudo, lineasConTiempos, huecosInstrumentales, guionKaraoke, conDesplazamiento, limpiarDesplazamiento, esCancion,
-  conPalabrasDeCancion, limpiarRecorte, recorteDeSincronia, MAX_BYTES_CANCION, COINCIDENCIA_MINIMA, FUENTES_CANCION,
+  conPalabrasDeCancion, limpiarRecorte, recorteDeSincronia, palabrasDeLaCancion, conLaCancion, ANTES_DE_LA_VOZ, MAX_BYTES_CANCION,
+  COINCIDENCIA_MINIMA, FUENTES_CANCION,
 } from "../../../src/lib/videoCancion.js";
 
 /** Un error de lo pedido, con su estado HTTP y lo que la pantalla necesita (`codigo`, `costo`…). */
@@ -374,3 +379,46 @@ export async function resincronizarVideo(env, acceso, cliente, fila, { confirmad
   await acceso.actualizar("videos_proyectos", { id: fila.id, client_id: cliente.id }, { locucion: JSON.stringify(nueva), updated_at: momento });
   return { video: deFila({ ...fila, locucion: JSON.stringify(nueva), updated_at: momento }), sincronia: resumenDeSincronia(s, { desplazamiento: nueva.desplazamiento }) };
 }
+
+/**
+ * DERIVAR un video de su maestro con canción (src/lib/derivarVideo.js): otro borrador en `formato`, sólo con el tramo
+ * [`desde`, `hasta`) del maestro (segundos de SU video; `desde` "voz": 0,4 s antes de la primera palabra), con `gancho`
+ * si se pide. La canción, la del maestro recortada desde su sincronía ENTERA (gratis); el sonido, el suyo sin lo que ya
+ * no tiene dónde sonar. → { video, avisos, derivado: { de, desde, hasta, formato } }.
+ */
+export async function derivarVideo(env, acceso, cliente, fila, { formato = "9:16", desde = null, hasta = null, gancho = false, titulo = "", usuario = null }) {
+  const l = leerJSON(fila.locucion, {});
+  if (!esCancion(l) || l.estado !== "lista") throw new ErrorCancion("Sólo se deriva un video con su canción sincronizada (video_con_cancion).", 409);
+  const maestro = leerJSON(fila.guion, null);
+  if (!maestro?.escenas?.length) throw new ErrorCancion("El maestro no tiene escenas.", 409);
+  const entera = await leerSincronia(env, acceso.ownerId, cliente.id, String(l.sincronia ?? ""));
+  if (!entera) throw new ErrorCancion("No encuentro la sincronización de la canción de este video: vuelve a sincronizarla.", 404);
+  await cancionDelCliente(acceso, cliente.id, entera.archivo);
+  // Los tiempos del maestro SIN el ajuste fino (el mismo reloj que la sincronía, que es la que se recorta).
+  const palabras = palabrasDeLaCancion(maestro, { ...l, desplazamiento: 0 }).palabras ?? [];
+  const linea = lineaDeTiempo(maestro, palabras);
+  const total = Number(l.duracion) || linea.total;
+  const primera = palabras.find((p) => Number.isFinite(p?.desde));
+  const a = desde === "voz" || desde === "primera_palabra" ? Math.max(0, (primera?.desde ?? 0) - ANTES_DE_LA_VOZ) : Math.max(0, Number(desde) || 0);
+  const b = hasta === null || hasta === undefined || hasta === "" ? total : Math.min(total, Number(hasta));
+  if (!(b > a)) throw new ErrorCancion("«hasta» va después de «desde» (segundos del video maestro).", 400);
+  const d = derivarGuion(maestro, { palabras, linea, desde: a, hasta: b, formato, gancho: gancho === true });
+  if (d.error) throw new ErrorCancion(d.error, 400);
+  // La canción del tramo: segundos de la canción ENTERA (el maestro pudo ser ya un fragmento).
+  const desplazado = Number(l.recorte?.desde) || 0;
+  const s = fragmentoDe(entera, { desde: desplazado + a, hasta: desplazado + b });
+  const v = validarGuion(conLaCancion(d.guion, { archivo: s.archivo, duracion: s.duracion, nombre: s.nombre }));
+  if (!v.ok) throw new ErrorCancion(`El derivado no valida: ${v.errores.slice(0, 3).map((x) => `${x.donde}: ${x.mensaje}`).join(" · ")}`, 400);
+  const origen = leerJSON(fila.origen, {});
+  const r = await crearProyecto(acceso, cliente, {
+    guion: v.guion, titulo: titulo || `${fila.titulo || "Video"} · ${formato}${b - a < total - 0.5 ? " (fragmento)" : ""}`, usuario,
+    origen: { tipo: "cancion", ...(origen.estiloId ? { estiloId: origen.estiloId } : {}) },
+    locucion: locucionDeSincronia(s, v.guion, 1, { desplazamiento: l.desplazamiento ?? 0 }),
+    sonido: sonidoDerivado(leerJSON(fila.sonido, {}), { escenas: v.guion.escenas, gancho: gancho === true, primera: d.primera }),
+  });
+  return {
+    video: r.video, avisos: [...d.avisos, ...v.avisos.map((x) => x.mensaje ?? x), ...r.avisos],
+    derivado: { de: fila.id, desde: Math.round(a * 1000) / 1000, hasta: Math.round(b * 1000) / 1000, formato, escenas: d.escenas },
+  };
+}
+

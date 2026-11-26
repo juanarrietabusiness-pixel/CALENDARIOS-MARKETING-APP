@@ -142,13 +142,21 @@ export async function vistaDeVideo(env, { video, clienteId, cliente = null }) {
   const videos = [];
   const audios = [];
   if (r.estado === "listo" && r.clave) {
-    videos.push(await medioDeArchivo(env, { id: r.archivoId || `render-${video.id}`, clave: r.clave, client_id: clienteId, mime: "video/mp4" }, {
-      titulo: `${titulo} · versión ${r.version ?? video.version}`, duracion: r.duracion,
-      nota: [r.ancho && r.alto ? `${r.ancho}×${r.alto}` : "", r.adjunto ? "puesto en su publicación" : ""].filter(Boolean).join(" · "),
-    }));
-    if (!r.archivoId) delete videos[0].ref;
+    // Con varios formatos, un mp4 por cada uno (el primero, el principal).
+    const hechos = r.porFormato && Object.keys(r.porFormato).length > 1
+      ? (r.formatos ?? Object.keys(r.porFormato)).map((f) => r.porFormato[f]).filter((x) => x?.clave) : [r];
+    for (const h of hechos) {
+      const m = await medioDeArchivo(env, { id: h.archivoId || `render-${video.id}-${h.formato ?? ""}`, clave: h.clave, client_id: clienteId, mime: "video/mp4" }, {
+        titulo: `${titulo}${h.formato && hechos.length > 1 ? ` · ${h.formato}` : ""} · versión ${r.version ?? video.version}`, duracion: h.duracion,
+        nota: [h.ancho && h.alto ? `${h.ancho}×${h.alto}` : "", h.adjunto ? "puesto en su publicación" : ""].filter(Boolean).join(" · "),
+      });
+      if (!h.archivoId) delete m.ref;
+      videos.push(m);
+    }
   } else if (video.estado === "renderizando" || r.estado === "en_curso") {
-    videos.push(medioDe({ id: `render-${video.id}`, titulo, estado: "en_marcha", nota: "Renderizándose a mp4: menos de un minuto." }));
+    const hechos = Object.keys(r.porFormato ?? {});
+    videos.push(medioDe({ id: `render-${video.id}`, titulo, estado: "en_marcha", nota: r.formatos?.length > 1
+      ? `Renderizándose a mp4: ${hechos.length} de ${r.formatos.length} formatos (${r.formatos.join(", ")}).` : "Renderizándose a mp4." }));
   }
   if (esCancion(loc) && loc.estado === "lista" && loc.clave) {
     // La CANCIÓN del video (de la biblioteca del cliente o de la agencia): por su clave, que la puso el servidor.

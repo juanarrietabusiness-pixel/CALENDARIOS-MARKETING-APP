@@ -160,7 +160,7 @@ export class RenderVideo extends ConContenedor {
     const encargo = await this.state.storage.get("encargo");
     if (!encargo) return;
     await this.state.storage.delete("encargo");
-    await ejecutarRender(this.env, encargo, async (ruta, cuerpo) => {
+    const r = await ejecutarRender(this.env, encargo, async (ruta, cuerpo) => {
       const puerto = await this.puerto();
       return puerto.fetch(new Request(`http://contenedor${ruta}`, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(cuerpo),
@@ -170,5 +170,10 @@ export class RenderVideo extends ConContenedor {
       const puerto = await this.puerto();
       return puerto.fetch(new Request(`http://contenedor${ruta}`, init));
     });
+    // Un render de VARIOS formatos: hecho uno, la alarma vuelve para el siguiente (cada vuelta, su propio plazo).
+    if (r?.siguiente) {
+      await this.state.storage.put("encargo", encargo);
+      await this.state.storage.setAlarm(Date.now());
+    }
   }
 }
