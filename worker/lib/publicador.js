@@ -36,7 +36,7 @@ import { uuid, ahora } from "./ids.js";
 import { ErrorMeta, graph, mensajeMeta, descifrarMeta, urlMedioPublico, urlGraphVideo } from "./meta.js";
 import {
   ErrorPostPeer, mensajePostPeer, postpeerConfigurado, infoCreador, problemaConCreador, cuerpoPublicacion, cuerpoFotos,
-  crearPublicacion, consultarPublicacion, leerPublicacion, datosDe, PRIVACIDAD_PUBLICA,
+  crearPublicacion, consultarPublicacion, leerPublicacion, datosDe, PRIVACIDAD_PUBLICA, cuerpoYouTube, VISIBILIDADES_YOUTUBE,
 } from "./postpeer.js";
 import {
   ErrorYouTube, mensajeYouTube, tokenYouTube, privacidadDe, recursoDeVideo, abrirSubidaYouTube, subirTrozoYouTube,
@@ -496,13 +496,17 @@ export async function procesarPublicacion(env, { id, owner_id: ownerId }) {
     }
 
     const cuenta = fila.cuenta_id ? await acceso.leerUno("cuentas_sociales", { id: fila.cuenta_id }) : null;
-    if (!cuenta || (fila.red !== "tiktok" && !cuenta.token_cifrado)) throw new ErrorPublicar("La cuenta de destino ya no está conectada. Revísala en Ajustes → Integraciones.");
+    if (!cuenta || (fila.red !== "tiktok" && !esDePostPeer(cuenta) && !cuenta.token_cifrado)) throw new ErrorPublicar("La cuenta de destino ya no está conectada. Revísala en Ajustes → Integraciones.");
     let token;
     let origen = "";
     if (fila.red === "tiktok") {
       // Por PostPeer: sin token por cuenta, la llave es del Worker.
       if (!esDePostPeer(cuenta)) throw new ErrorPublicar(ANTERIOR);
       if (!postpeerConfigurado(env)) throw new ErrorPublicar("Falta POSTPEER_API_KEY en el Worker: sin ella no se publica en TikTok.");
+      origen = leerJSON(cuenta.datos, {}).origen || (await acceso.leerUno("integracion_meta", { id: ownerId }))?.origen || "";
+    } else if (fila.red === "youtube" && esDePostPeer(cuenta)) {
+      // YouTube por PostPeer: como TikTok, sin token por cuenta.
+      if (!postpeerConfigurado(env)) throw new ErrorPublicar("Falta POSTPEER_API_KEY en el Worker: sin ella no se publica en YouTube por PostPeer.");
       origen = leerJSON(cuenta.datos, {}).origen || (await acceso.leerUno("integracion_meta", { id: ownerId }))?.origen || "";
     } else if (fila.red === "youtube") {
       token = await tokenYouTube(env, acceso, cuenta);
@@ -809,7 +813,8 @@ async function pasoFacebook(env, { cuenta, token, origen, carga, guardar, fila: 
 const ANTERIOR = "El TikTok de este cliente está conectado con la app anterior de TikTok, que ya no publica. Conéctalo con PostPeer en Ajustes → Integraciones.";
 
 /** ¿Es una cuenta de TikTok conectada por PostPeer? (Las de la app anterior no publican.) */
-export const esDePostPeer = (cuenta) => cuenta?.red === "tiktok" && leerJSON(cuenta.datos, {})?.via === "postpeer";
+/** ¿Va por PostPeer? TikTok (siempre, la app anterior ya no publica) y YouTube (desde que Juan conectó su canal allí). */
+export const esDePostPeer = (cuenta) => ["tiktok", "youtube"].includes(cuenta?.red) && leerJSON(cuenta.datos, {})?.via === "postpeer";
 
 /** Cuánto se espera a que PostPeer diga que salió antes de darlo por perdido. */
 export const PLAZO_TIKTOK_MS = 30 * 60_000;
@@ -899,7 +904,8 @@ async function pasoTikTok(env, { cuenta, origen, carga, guardar, fila: actual })
   return seguirPostPeer({ carga, guardar, fila: actual() }, lectura);
 }
 
-async function seguirPostPeer({ carga, guardar, fila }, lectura) {
+async function seguirPostPeer({ carga, guardar, fila }, lectura, red = "tiktok") {
+  const nombre = red === "youtube" ? "YouTube" : "TikTok";
   const pp = (carga.postpeer ??= {});
   pp.estado = lectura.estadoPostPeer;
   if (lectura.privacidad) pp.privacidad = lectura.privacidad;
@@ -909,13 +915,13 @@ async function seguirPostPeer({ carga, guardar, fila }, lectura) {
     return { hecho: true };
   }
   if (lectura.estado === "fallida") {
-    throw new ErrorPublicar(`TikTok no la publicó (PostPeer): ${lectura.error || lectura.estadoPostPeer || "sin motivo"}.`);
+    throw new ErrorPublicar(`${nombre} no la publicó (PostPeer): ${lectura.error || lectura.estadoPostPeer || "sin motivo"}.`);
   }
   const desde = Date.parse(pp.desde ?? fila.updated_at ?? "");
   if (Number.isFinite(desde) && Date.now() - desde > PLAZO_TIKTOK_MS) {
     throw new ErrorPublicar(
       `PostPeer lleva más de ${PLAZO_TIKTOK_MS / 60_000} minutos sin terminar (último estado: ${lectura.estadoPostPeer ?? "desconocido"}). ` +
-      "Mira el perfil de TikTok y el panel de PostPeer antes de reintentar, para no publicarla dos veces.",
+      `Mira ${red === "youtube" ? "el canal de YouTube" : "el perfil de TikTok"} y el panel de PostPeer antes de reintentar, para no publicarla dos veces.`,
     );
   }
   await guardar({});
@@ -943,7 +949,7 @@ function avisoDePublicada(lectura) {
 export async function aplicarAvisoPostPeer(env, { id, owner_id: ownerId }, lectura, eventoId = null) {
   const acceso = crearAcceso(env.DB, ownerId);
   const fila = await acceso.leerUno("publicaciones_programadas", { id });
-  if (!fila || fila.red !== "tiktok" || fila.externo_id || !EN_COLA.includes(fila.estado)) return false;
+  if (!fila || !["tiktok", "youtube"].includes(fila.red) || fila.externo_id || !EN_COLA.includes(fila.estado)) return false;
   const carga = leerJSON(fila.carga, {});
   const pp = (carga.postpeer ??= {});
   if (eventoId && (pp.eventos ?? []).includes(eventoId)) return false;
@@ -956,7 +962,7 @@ export async function aplicarAvisoPostPeer(env, { id, owner_id: ownerId }, lectu
     carga.aviso = avisoDePublicada(lectura);
     cambios = { estado: "publicada", externo_id: fila.contenedor_id, enlace: lectura.enlace, error: null, siguiente_intento: null, publicada_at: ahora() };
   } else if (lectura.estado === "fallida") {
-    cambios = { estado: "error", error: `TikTok no la publicó (PostPeer): ${lectura.error || lectura.estadoPostPeer || "sin motivo"}.`, siguiente_intento: null };
+    cambios = { estado: "error", error: `${fila.red === "youtube" ? "YouTube" : "TikTok"} no la publicó (PostPeer): ${lectura.error || lectura.estadoPostPeer || "sin motivo"}.`, siguiente_intento: null };
   }
   const n = await acceso.actualizar("publicaciones_programadas", { id, updated_at: fila.updated_at }, {
     ...cambios, carga: JSON.stringify(carga), updated_at: ahora(),
@@ -983,6 +989,68 @@ export async function aplicarAvisoPostPeer(env, { id, owner_id: ownerId }, lectu
 const TROZOS_POR_VUELTA = 4;
 
 /**
+ * YOUTUBE POR POSTPEER (worker/lib/postpeer.js): como TikTok. El video y la miniatura van por su dirección firmada
+ * (`/api/medio-publico/`), PostPeer los descarga y sube; el id de su publicación se guarda LO PRIMERO y después sólo se
+ * pregunta cómo va. Lo que preparó preparar_youtube (`post.youtube`: título, descripción, etiquetas, categoría,
+ * privacidad, miniatura) manda; si no, lo que sale del texto de la publicación. La hora es la de la cola (a su hora se
+ * manda con `publishNow`): `post.youtube.publicarEl` no se usa por aquí.
+ */
+async function pasoYouTubePostPeer(env, { cuenta, origen, carga, guardar, fila: actual }) {
+  const fila = actual();
+  if (fila.externo_id) return { hecho: true };
+  const pp = (carga.postpeer ??= {});
+  if (fila.contenedor_id) {
+    return seguirPostPeer({ carga, guardar, fila }, leerPublicacion(await consultarPublicacion(env, fila.contenedor_id), "youtube"), "youtube");
+  }
+  if (pp.enviadoAt) {
+    throw new ErrorPublicar(
+      "Se mandó a PostPeer y no llegó respuesta: no se sabe si la recibió. Mira el canal de YouTube y el panel de PostPeer " +
+      "antes de reintentar, para no publicarla dos veces.",
+    );
+  }
+  const post = publicacionDeVariante(carga.post ?? {}, fila.variante);
+  const video = mediosDe(post).find((m) => m.tipo === "video");
+  const clave = String(video?.src ?? "").replace(/^\/api\/media\//, "");
+  if (!/^clientes\/[^/]+\//.test(clave)) throw new ErrorPublicar("Para YouTube, el video tiene que estar subido a la publicación.");
+  if (!(await env.MEDIA.head(clave))) throw new ErrorPublicar("El video ya no está en el almacenamiento: vuelve a añadirlo a la publicación.");
+  if (!env.META_APP_SECRET) throw new ErrorPublicar("Falta META_APP_SECRET en el Worker: firma la dirección de la que PostPeer descarga el archivo.");
+  if (!origen) throw new ErrorPublicar("No se sabe en qué dirección está la aplicación para que PostPeer descargue el video: vuelve a vincular el YouTube del cliente en Ajustes → Integraciones.");
+  // La miniatura: la de preparar_youtube o la portada (una imagen subida); sin ella, la que escoja YouTube.
+  const miniatura = String(post.youtube?.miniatura || post.portada || "");
+  const conMiniatura = miniatura.startsWith("/api/media/clientes/") && !/\.(mp4|mov|m4v|webm)/i.test(miniatura);
+  const privacidad = VISIBILIDADES_YOUTUBE.includes(post.youtube?.privacidad) ? post.youtube.privacidad : privacidadDe(cuenta);
+  const cuerpo = cuerpoYouTube({
+    descripcion: descripcionYouTube(post), titulo: tituloYouTube(post), etiquetas: etiquetasYouTube(post), visibilidad: privacidad,
+    categoria: post.youtube?.categoria ?? "22", accountId: cuenta.externo_id, urlVideo: await urlMedioPublico(env, origen, video.src),
+    urlMiniatura: conMiniatura ? await urlMedioPublico(env, origen, miniatura) : "", clave: fila.id,
+  });
+  pp.enviadoAt = ahora();
+  await guardar({});
+  let respuesta;
+  try {
+    respuesta = await crearPublicacion(env, cuerpo);
+  } catch (e) {
+    if (e instanceof ErrorPostPeer && (e.sinRespuesta || e.estado >= 500)) {
+      throw new ErrorPublicar(
+        `PostPeer no contestó bien al mandarla (${mensajePostPeer(e)}) y no se sabe si la recibió. Mira el canal de YouTube y el panel ` +
+        "de PostPeer antes de reintentar, para no publicarla dos veces.",
+      );
+    }
+    delete pp.enviadoAt;
+    await guardar({});
+    throw e;
+  }
+  const lectura = leerPublicacion(respuesta, "youtube");
+  if (!lectura.postId) {
+    const campos = Object.keys(datosDe(respuesta) ?? {}).slice(0, 12).join(", ") || "nada";
+    throw new ErrorPublicar(`PostPeer aceptó el video pero no devolvió su id (llegó: ${campos}). Mira su panel antes de reintentar, para no publicarlo dos veces.`);
+  }
+  pp.desde = ahora();
+  await guardar({ contenedor_id: lectura.postId });
+  return seguirPostPeer({ carga, guardar, fila: actual() }, lectura, "youtube");
+}
+
+/**
  * 1. Abrir la sesión de subida y GUARDARLA antes de mandar nada: con ella
  *    guardada, un fallo se reanuda en la misma sesión en vez de abrir
  *    otra (que, si la primera llegó a terminar, sería un segundo video).
@@ -992,6 +1060,7 @@ const TROZOS_POR_VUELTA = 4;
  *    portada, que si falla sólo deja un aviso.
  */
 async function pasoYouTube(env, contexto) {
+  if (esDePostPeer(contexto.cuenta)) return pasoYouTubePostPeer(env, contexto);
   const { cuenta, token, carga, guardar, fila: actual } = contexto;
   const fila = actual();
   const post = publicacionDeVariante(carga.post ?? {}, fila.variante);

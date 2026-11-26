@@ -871,7 +871,7 @@ export async function colaPorPostPeer(db, postId) {
   const id = String(postId ?? "");
   if (!id) return [];
   const { results } = await db
-    .prepare(`select id, owner_id from publicaciones_programadas where red = 'tiktok' and contenedor_id = ? limit 5`)
+    .prepare(`select id, owner_id from publicaciones_programadas where red in ('tiktok', 'youtube') and contenedor_id = ? limit 5`)
     .bind(id)
     .all();
   return results ?? [];
