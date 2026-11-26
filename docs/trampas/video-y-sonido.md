@@ -1278,3 +1278,21 @@ contradicen, manda la de más abajo (la más nueva). Una trampa nueva de esta á
   `estilos` pinta cada estilo pasando sus variantes a la escena SIN escribir plan.json, y al terminar vuelve a dejar
   `datos.json` con el plan (si no, el render saldría con el último estilo probado). `siguiente` no pasa a las muestras
   sin `plan.variantes`: un plan de antes (sin ellas) se para ahí y lo dice.
+- **YouTube, fase 1: canciones de 6 minutos, mp4 más ligero y el fragmento sin volver a sincronizar (26-nov-2026).** El
+  modo canción admite 360 s y 160 escenas (antes 180 y 80: «BENDECIDOS» dura 194 s). Lo que no se ha medido con 6 minutos
+  y se dice: (1) el RENDER se encarga en la alarma del Durable Object, que tiene 15 minutos; medido, 55–75 ms por cuadro
+  con fondos de imagen (162 s = 294 s de render), así que 6 minutos son 11–14 minutos: cabe, justo. `minutosDeRender` lo
+  estima y `renderizar_video` avisa si pasa de 12. Si una canción larga se pierde por el plazo, la salida es partir el
+  render en tramos (no está hecho). (2) ElevenLabs con 6 minutos: el plazo de la llamada subió a 240 s y no está probado.
+  (3) La canción sigue con tope de 15 MB: 6 minutos en MP3 a 320 kbps son 14,4 MB; en WAV no cabe (se dice al subirla).
+  El mp4: crf 21 con tope de 10 Mbps y buffer de 16 (antes crf 20 y 12: con fondos y grano iba pegado al tope, 162 s en
+  226 MB) y el audio AAC a 320 kbps; «alta» (`calidad` en `renderizar_video`) sube a crf 19 y 16 Mbps. El FRAGMENTO
+  (`desde`/`hasta` o «voz» en `video_con_cancion` y en la pantalla): con la letra ENTERA y la misma canción, la huella es la
+  de la sincronía entera (gratis si ya se hizo); `recorteDeSincronia` se queda con las palabras que EMPIEZAN en el tramo,
+  las mueve al 0 y rehace la letra del tramo renglón a renglón (las `oidas` son una por palabra de la letra: la misma
+  cuenta de `lineasConTiempos`). El fragmento NO se guarda en R2: vive en la locución (`recorte`: segundos de la canción
+  entera), y el audio se corta al renderizar y al escuchar (`recortarPcm`: fundido de entrada de 0,08 s sólo si no empieza
+  en el 0 —quita el clic— y de salida de 0,6 s sólo si no acaba en el final). La vista previa toca el archivo entero
+  desde `recorte.desde` (`inicioAudio` en VideoAnimado.jsx): cualquier otro sitio que reproduzca la canción de un video
+  tiene que sumar ese segundo. «Volver a sincronizar» un fragmento sincroniza la canción ENTERA con la letra de la
+  sincronía de la que salió y recorta otra vez: la letra de la locución es sólo la del tramo.

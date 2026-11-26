@@ -7,8 +7,12 @@ import {
   limpiarLetra, lineasDeLetra, leerAlineacion, medirAlineacion, palabrasDeLaCancion, conDesplazamiento, limpiarDesplazamiento,
   estadoDeCancion, cancionSigueValiendo, palabrasParaLinea, conPalabrasDeCancion, lineasConTiempos, huecosInstrumentales,
   guionKaraoke, comprobarLetra, conLaCancion, duracionDeAudio, costoDeSincronia, partirLinea, letraEstimada, DESPLAZAMIENTO_MAX,
+  limpiarRecorte, recorteDeSincronia, MAX_SEGUNDOS_CANCION,
 } from "./videoCancion.js";
-import { puedeRenderizar, tramosDeAudio, armarPcm, BYTES_MUESTRA } from "./renderVideo.js";
+import {
+  puedeRenderizar, tramosDeAudio, armarPcm, BYTES_MUESTRA, recortarPcm, FUNDIDO_RECORTE, argumentosDeCalidad, limpiarCalidad, CALIDADES_RENDER,
+  RENDER, minutosDeRender,
+} from "./renderVideo.js";
 import { formatoParaLaIA } from "./videoFormatoIA.js";
 import { pedidoDeGuionCancion, letraParaLaIA } from "./guionAnimadoIA.js";
 import { revisarEscenas } from "./revisionEscenas.js";
@@ -94,12 +98,12 @@ describe("el MODO CANCIÓN en el formato", () => {
     expect(v.errores.some((e) => /necesita «pausa»/.test(e.mensaje))).toBe(true);
   });
 
-  it("topes del modo canción: hasta 180 s y 80 escenas; la canción mal dicha es un error con su sitio", () => {
+  it("topes del modo canción: hasta 360 s y 160 escenas; la canción mal dicha es un error con su sitio", () => {
     const muchas = Array.from({ length: MAX_ESCENAS + 5 }, (_, i) => `palabra${i}`);
     expect(validarGuion(conCancion(muchas, 120)).ok).toBe(true);
     expect(validarGuion({ escenas: conCancion(muchas, 120).escenas }).errores.some((e) => /Como mucho 40 escenas/.test(e.mensaje))).toBe(true);
-    expect(validarGuion(conCancion(Array.from({ length: MAX_ESCENAS_CANCION + 1 }, (_, i) => `p${i}`), 170)).errores.some((e) => /80 escenas/.test(e.mensaje))).toBe(true);
-    expect(validarGuion(conCancion(["hola"], 200)).errores[0].donde).toBe("cancion.duracion");
+    expect(validarGuion(conCancion(Array.from({ length: MAX_ESCENAS_CANCION + 1 }, (_, i) => `p${i}`), 170)).errores.some((e) => new RegExp(`${MAX_ESCENAS_CANCION} escenas`).test(e.mensaje))).toBe(true);
+    expect(validarGuion(conCancion(["hola"], 400)).errores[0].donde).toBe("cancion.duracion");
     expect(validarGuion({ ...conCancion(["hola"]), cancion: { archivo: "../x", duracion: 20 } }).errores[0].donde).toBe("cancion.archivo");
     // Una canción de 170 s vale (pasa de los 150 de un video con voz).
     expect(validarGuion(conCancion(["hola mundo"], 170)).ok).toBe(true);
@@ -111,7 +115,7 @@ describe("el MODO CANCIÓN en el formato", () => {
     const f = formatoParaLaIA();
     expect(f).toMatch(/MODO CANCIÓN/);
     expect(f).toMatch(/LETRA TAL CUAL/);
-    expect(f).toMatch(/180 s y 80 escenas/);
+    expect(f).toMatch(/360 s y 160 escenas/);
   });
 });
 
@@ -189,7 +193,7 @@ describe("la letra", () => {
     expect(r.palabras).toBe(6);
     expect(r.avisos[0]).toMatch(/escríbela entera/);
     expect(limpiarLetra("").error).toMatch(/Pega la letra/);
-    expect(limpiarLetra("x".repeat(6001)).error).toMatch(/6000/);
+    expect(limpiarLetra("x".repeat(9001)).error).toMatch(/9000/);
   });
 
   it("parte una línea larga por la coma más al centro", () => {
@@ -400,5 +404,84 @@ describe("lo que dura un audio y lo que cuesta", () => {
     expect(c.maximo).toBeGreaterThan(c.minimo + c.aislar - 0.001);
     expect(c.aprox).toBe(true);
     expect(costoDeSincronia(60, { elevenlabs: false })).toMatchObject({ minimo: 0.01, maximo: 0.01 });
+  });
+});
+
+describe("el FRAGMENTO de una canción ya sincronizada (YouTube: el reel de la canción entera)", () => {
+  // Una canción de 60 s con tres renglones; la letra entera sincronizada (una oída por palabra).
+  const letra = "uno dos tres\ncuatro cinco seis\nsiete ocho nueve";
+  const oidas = ["uno", "dos", "tres", "cuatro", "cinco", "seis", "siete", "ocho", "nueve"].map((texto, i) => ({ texto, desde: 6 + i * 5, hasta: 6 + i * 5 + 1.5 }));
+  const s = { huella: "a".repeat(24), archivo: "c1", nombre: "Canción", duracion: 60, letra, oidas, coincidencia: 0.95, fuente: "elevenlabs", golpes: [1, 20, 21, 40, 59] };
+
+  it("ya admite una canción entera de 6 minutos y 160 escenas", () => {
+    expect(MAX_SEGUNDOS_CANCION).toBe(360);
+    expect(MAX_ESCENAS_CANCION).toBe(160);
+  });
+
+  it("sin desde ni hasta, la canción entera; «voz» empieza 0,4 s antes de la primera palabra", () => {
+    expect(limpiarRecorte({}, s)).toBeNull();
+    expect(limpiarRecorte({ desde: "voz" }, s)).toEqual({ desde: 5.6, hasta: 60 });
+    expect(limpiarRecorte({ desde: 10, hasta: 40 }, s)).toEqual({ desde: 10, hasta: 40 });
+    expect(limpiarRecorte({ desde: 10, hasta: 200 }, s)).toEqual({ desde: 10, hasta: 60 });
+    expect(limpiarRecorte({ desde: 10, hasta: 12 }, s).error).toMatch(/mínimo/);
+    expect(limpiarRecorte({ desde: 70 }, s).error).toMatch(/no puede empezar/);
+    expect(limpiarRecorte({ desde: -1 }, s).error).toBeTruthy();
+  });
+
+  it("mueve los tiempos al 0 del tramo, deja la letra de dentro con sus renglones y recorta los golpes", () => {
+    const f = recorteDeSincronia(s, { desde: 15, hasta: 40 });
+    // Empiezan dentro de [15, 40): cuatro (21), cinco (26), seis (31), siete (36); «tres» (16) también.
+    expect(f.oidas.map((p) => p.texto)).toEqual(["tres", "cuatro", "cinco", "seis", "siete"]);
+    expect(f.oidas[0]).toEqual({ texto: "tres", desde: 1, hasta: 2.5 });
+    expect(f.letra).toBe("tres\ncuatro cinco seis\nsiete");
+    expect(f.duracion).toBe(25);
+    expect(f.golpes).toEqual([5, 6]);
+    expect(f.recorte).toEqual({ desde: 15, hasta: 40, cancion: 60 });
+    expect(f.huella).toBe(s.huella);
+    // Las líneas salen de la letra del fragmento con sus oídas, como las de una canción corta.
+    expect(lineasConTiempos(f.letra, f.oidas).map((l) => l.texto)).toEqual(["tres", "cuatro cinco seis", "siete"]);
+    // La prueba de sincronía de un fragmento valida y dura lo que él.
+    const g = guionKaraoke({ lineas: lineasConTiempos(f.letra, f.oidas), duracion: f.duracion, cancion: { archivo: f.archivo, nombre: f.nombre } });
+    expect(g.cancion.duracion).toBe(25);
+  });
+
+  it("un tramo sin letra se dice", () => {
+    expect(recorteDeSincronia(s, { desde: 50, hasta: 60 }).error).toMatch(/no se canta nada/);
+    expect(recorteDeSincronia(s, null)).toBe(s);
+  });
+
+  it("el audio del fragmento: se corta en su tramo, con fundido de entrada y de salida", () => {
+    const muestreo = 100;
+    // 10 s de toma a 100 muestras por segundo, todo a 1000.
+    const toma = new Uint8Array(10 * muestreo * BYTES_MUESTRA);
+    const v = new DataView(toma.buffer);
+    for (let i = 0; i < 10 * muestreo * 2; i++) v.setInt16(i * 2, 1000, true);
+    const r = recortarPcm(toma, { desde: 2, hasta: 6 }, muestreo);
+    expect(r.length).toBe(4 * muestreo * BYTES_MUESTRA);
+    const w = new DataView(r.buffer, r.byteOffset, r.byteLength);
+    const en = (seg) => w.getInt16(Math.round(seg * muestreo) * BYTES_MUESTRA, true);
+    expect(en(0)).toBe(0); // entra desde el silencio
+    expect(en(2)).toBe(1000); // en medio, tal cual
+    expect(en(3.99)).toBeLessThan(100); // sale al final
+    // Sin recorte, la toma tal cual; empezando en el 0 y acabando en el final, sin fundidos.
+    expect(recortarPcm(toma, null, muestreo)).toBe(toma);
+    const entera = recortarPcm(toma, { desde: 0, hasta: 10 }, muestreo);
+    expect(new DataView(entera.buffer).getInt16(0, true)).toBe(1000);
+    expect(FUNDIDO_RECORTE.entrada).toBeLessThan(0.2);
+  });
+});
+
+describe("la calidad del mp4 (más ligero para YouTube)", () => {
+  it("normal: crf con tope de 10 Mbps y buffer de 16; audio AAC a 320 kbps", () => {
+    expect(argumentosDeCalidad()).toEqual(["-crf", "21", "-maxrate", "10000k", "-bufsize", "16000k"]);
+    expect(argumentosDeCalidad("alta")).toEqual(["-crf", "19", "-maxrate", "16000k", "-bufsize", "32000k"]);
+    expect(limpiarCalidad("ultra")).toBe("normal");
+    expect(RENDER.kbpsAudio).toBe(320);
+    expect(Object.keys(CALIDADES_RENDER)).toEqual(["normal", "alta"]);
+  });
+
+  it("dice cuánto tarda un render: una canción de 6 minutos, menos de los 15 de la alarma", () => {
+    expect(minutosDeRender(30)).toBeLessThanOrEqual(2);
+    expect(minutosDeRender(360)).toBeLessThan(15);
   });
 });

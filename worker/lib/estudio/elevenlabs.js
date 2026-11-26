@@ -255,8 +255,8 @@ export async function anadirDeLaBiblioteca(env, { publico, voz, nombre }) {
 // «Video con tu canción»: alinear la letra con la canción y aislar la voz (worker/lib/estudio/cancion.js)
 // ------------------------------------------------------------
 
-/** Lo que tarda como mucho alinear o aislar una canción de 3 minutos. */
-const PLAZO_CANCION_MS = 120_000;
+/** Lo que tarda como mucho alinear o aislar una canción de hasta 6 minutos (con 3 bastaban 2; no medido con 6). */
+const PLAZO_CANCION_MS = 240_000;
 /** Lo más que pesa la voz aislada que devuelve (una canción de 3 minutos en MP3 son unos 4 MB). */
 const TOPE_AISLADA = 40 * 1024 * 1024;
 

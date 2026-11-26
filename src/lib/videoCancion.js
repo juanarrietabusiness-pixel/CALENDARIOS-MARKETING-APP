@@ -2,8 +2,8 @@
 // «Video con tu canción»: el video animado sobre una CANCIÓN YA GRABADA (puro: lo leen el Worker, el Container y la
 // pantalla)
 //
-// La agencia sube el MP3 terminado de una canción (voz e instrumental mezclados; el FRAGMENTO del reel ya recortado,
-// hasta 3 minutos) y pega su letra. No se genera voz: la canción ES la locución. Lo que vive aquí:
+// La agencia sube el MP3 terminado de una canción (voz e instrumental mezclados; entera, hasta 6 minutos, o el
+// fragmento del reel) y pega su letra. No se genera voz: la canción ES la locución. Lo que vive aquí:
 //
 //   · la LETRA: limpiarla (las marcas de sección fuera), partirla en líneas, cuántas palabras;
 //   · leer la SINCRONÍA que devuelve ElevenLabs (Forced Alignment) o Gemini, con tolerancia, y alinearla a la letra
@@ -12,6 +12,9 @@
 //     GRATIS del guion de ahora contra `oidas` (`palabrasDeLaCancion`), con el ajuste fino (`desplazamiento`, ±1,5 s)
 //     aplicado al leer; la canción sigue valiendo mientras lo que dice el guion coincida con la letra
 //     (`cancionSigueValiendo`, ≥ `COINCIDENCIA_MINIMA`);
+//   · el FRAGMENTO (`recorteDeSincronia`): un tramo de la canción ya sincronizada entera —el reel de la canción de
+//     YouTube— sin volver a subirla ni a pagar la sincronía: sus tiempos movidos al 0 del tramo y la letra de ese tramo;
+//     el audio se corta al renderizar (`recorte` en la locución, src/lib/renderVideo.js `recortarPcm`, con fundidos);
 //   · la PRUEBA DE SINCRONÍA (`guionKaraoke`): un guion gratis, una escena por línea con la línea de titular, escenas sin
 //     letra en los huecos instrumentales y el logo al cierre; valida y se renderiza tal cual;
 //   · comprobar que la `habla` de un guion es la letra TAL CUAL (`comprobarLetra`), para lo que diseña la IA;
@@ -20,18 +23,20 @@
 // ============================================================
 
 import {
-  palabrasDe, textoDeLocucion, validarGuion, MAX_SEGUNDOS_CANCION, MAX_ESCENAS_CANCION, MAX_HABLA, MIN_ESCENA, FORMATOS_VIDEO,
+  palabrasDe, textoDeLocucion, validarGuion, MIN_SEGUNDOS, MAX_SEGUNDOS_CANCION, MAX_ESCENAS_CANCION, MAX_HABLA, MIN_ESCENA, FORMATOS_VIDEO,
 } from "./videoEscenas.js";
 import { alinearPalabras, normalizarPalabra, COINCIDENCIA_MINIMA, palabrasEstimadas, duracionMp3 } from "./voces.js";
 
 export { MAX_SEGUNDOS_CANCION, COINCIDENCIA_MINIMA };
 
-/** Lo más que se acepta de letra (una canción de 3 minutos son unos 1.500 caracteres). */
-export const MAX_LETRA = 6000;
+/** Lo más que se acepta de letra (una canción de 3 minutos son unos 1.500 caracteres; una de 6, con sus coros, cabe). */
+export const MAX_LETRA = 9000;
 /** Lo que se puede mover la letra entera si va adelantada o atrasada (s). */
 export const DESPLAZAMIENTO_MAX = 1.5;
-/** Lo que pesa como mucho la canción (lo de la música de la biblioteca de sonido). */
+/** Lo que pesa como mucho la canción (lo de la música de la biblioteca de sonido: 6 minutos en MP3 a 320 kbps son 14,4 MB). */
 export const MAX_BYTES_CANCION = 15 * 1024 * 1024;
+/** «Empezar en la voz»: el fragmento arranca esto antes de la primera palabra cantada (s). */
+export const ANTES_DE_LA_VOZ = 0.4;
 /** Un hueco sin letra de más de esto lleva su escena en la prueba de sincronía (intro, puente, final). */
 export const HUECO_INSTRUMENTAL = 2;
 /** Lo más que mide una línea en pantalla: una más larga se parte en frases. */
@@ -339,6 +344,71 @@ export function lineasConTiempos(letra, oidas) {
     salida.push({ texto, desde: tramo[0].desde, hasta: tramo.at(-1).hasta, coro: (veces.get(claveDeLinea(texto)) ?? 0) > 1 });
   }
   return salida;
+}
+
+/**
+ * Lo que se pide como fragmento → { desde, hasta } en segundos de la canción entera, o { error }. `desde`: un número o
+ * «voz» (la primera palabra cantada menos `ANTES_DE_LA_VOZ`); `hasta`: un número (sin él, el final). Sin ninguno, null
+ * (la canción entera). Pura.
+ */
+export function limpiarRecorte({ desde, hasta } = {}, s) {
+  const vacio = (x) => x === undefined || x === null || x === "";
+  if (vacio(desde) && vacio(hasta)) return null;
+  const dura = Number(s?.duracion) || 0;
+  let a = 0;
+  if (desde === "voz" || desde === "primera_palabra") {
+    const primera = (s?.oidas ?? []).find((p) => Number.isFinite(p?.desde));
+    if (!primera) return { error: "La sincronización no tiene palabras: no sé dónde empieza la voz." };
+    a = Math.max(0, primera.desde - ANTES_DE_LA_VOZ);
+  } else if (!vacio(desde)) {
+    a = Number(desde);
+    if (!Number.isFinite(a) || a < 0) return { error: "«desde» es el segundo de la canción donde empieza el fragmento (o «voz»: en la primera palabra cantada)." };
+  }
+  if (a >= dura) return { error: `La canción dura ${dura.toFixed(1)} s: el fragmento no puede empezar en el ${a.toFixed(1)}.` };
+  const b = vacio(hasta) ? dura : Number(hasta);
+  if (!Number.isFinite(b) || b <= a) return { error: "«hasta» es el segundo de la canción donde acaba el fragmento (después de «desde»)." };
+  const fin = Math.min(b, dura);
+  if (fin - a < MIN_SEGUNDOS) return { error: `El fragmento dura ${(fin - a).toFixed(1)} s: el mínimo es ${MIN_SEGUNDOS}.` };
+  if (fin - a > MAX_SEGUNDOS_CANCION + 0.5) return { error: `El fragmento dura ${Math.round(fin - a)} s y el video admite ${MAX_SEGUNDOS_CANCION}.` };
+  return { desde: r3(a), hasta: r3(fin) };
+}
+
+/**
+ * El FRAGMENTO de una sincronía ya hecha (la canción entera): las palabras que EMPIEZAN dentro de [desde, hasta), con su
+ * tiempo movido al 0 del fragmento (y su final, sin pasarse); la letra del fragmento (las de la entera que se cantan en
+ * él, con sus renglones: una línea a medias queda a medias), los golpes de dentro y `recorte` (para cortar el audio al
+ * renderizar y en la vista previa). La huella sigue siendo la de la entera: el fragmento no se guarda aparte. Gratis.
+ * → la sincronía del fragmento, o { error }. Pura.
+ */
+export function recorteDeSincronia(s, recorte) {
+  if (!recorte) return s;
+  const { desde, hasta } = recorte;
+  const dura = r3(hasta - desde);
+  const oidas = Array.isArray(s?.oidas) ? s.oidas : [];
+  const dentro = (p) => Number.isFinite(p?.desde) && p.desde >= desde - 0.05 && p.desde < hasta - 0.1;
+  // La letra del fragmento: renglón a renglón, las palabras de cada uno que caen dentro (las `oidas` son una por palabra
+  // de la letra, en orden: la misma cuenta que hace `lineasConTiempos`).
+  let i = 0;
+  const renglones = [];
+  const nuevas = [];
+  for (const linea of lineasDeLetra(s?.letra)) {
+    const palabras = palabrasDe(linea);
+    const quedan = [];
+    for (const w of palabras) {
+      const p = oidas[i++];
+      if (!p || !dentro(p)) continue;
+      quedan.push(w);
+      nuevas.push({ texto: String(p.texto ?? w), desde: r3(Math.max(0, p.desde - desde)), hasta: r3(Math.min(dura, Math.max(p.desde, p.hasta) - desde)) });
+    }
+    if (quedan.length) renglones.push(quedan.join(" "));
+  }
+  if (!nuevas.length) return { error: `Entre el segundo ${desde.toFixed(1)} y el ${hasta.toFixed(1)} no se canta nada de la letra: escoge otro tramo.` };
+  const golpes = Array.isArray(s.golpes) ? s.golpes.filter((g) => g >= desde && g < hasta).map((g) => r3(g - desde)) : null;
+  return {
+    ...s, oidas: nuevas, letra: renglones.join("\n"), duracion: dura,
+    ...(golpes ? { golpes } : {}),
+    recorte: { desde, hasta, cancion: r3(Number(s.duracion) || 0) },
+  };
 }
 
 /** Los huecos sin letra de más de `HUECO_INSTRUMENTAL` (intro, puentes, final) → [{ desde, hasta, cual }]. Pura. */

@@ -332,6 +332,43 @@ describe("el video con la canción", () => {
     expect(listo.aviso).toMatch(/la canción ya es la música/);
   });
 
+  it("un FRAGMENTO de la canción ya sincronizada: gratis, con sus tiempos desde su 0, y el render corta el audio (YouTube)", async () => {
+    const s = await sincronizada();
+    const antes = llamadas.length;
+    // «voz»: 0,4 s antes de la primera palabra cantada (3 s), hasta el 9,6 de la canción.
+    const res = await pedir("/videos/bc/cancion/video", { body: { huella: s.huella, modo: "karaoke", desde: "voz", hasta: 9.6 } });
+    expect(res.status).toBe(201);
+    const { video: v } = await res.json();
+    expect(llamadas.length).toBe(antes); // no se oye nada otra vez
+    expect(v.locucion.recorte).toEqual({ desde: 2.6, hasta: 9.6, cancion: s.duracion });
+    expect(v.locucion.duracion).toBe(7);
+    expect(v.guion.cancion.duracion).toBe(7);
+    expect(v.segundos).toBe(7);
+    // Lo que se canta en el tramo: los dos primeros renglones y «cuidan su piel desde el» (las palabras que empiezan antes del 9,5).
+    expect(v.locucion.letra).toBe("Toallitas suaves para tu bebé\nsin alcohol y sin perfume\ncuidan su piel desde el");
+    expect(v.locucion.palabras).toHaveLength(15);
+    expect(v.locucion.palabras[0].desde).toBe(0.4);
+    expect(v.valido).toBe(true);
+    // Un tramo sin letra o al revés: 400 con el motivo.
+    expect((await pedir("/videos/bc/cancion/video", { body: { huella: s.huella, desde: 14, hasta: 20 } })).status).toBe(400);
+    expect((await (await pedir("/videos/bc/cancion/video", { body: { huella: s.huella, desde: 8, hasta: 6 } })).json()).error).toMatch(/hasta/);
+
+    // El render manda el recorte con la canción ENTERA y la calidad pedida.
+    await pedir(`/videos/bc/${v.id}/aprobar`, { body: { version: 1 } });
+    const encargos = [];
+    env.RENDER = { idFromName: (n) => n, get: () => ({ fetch: async (req) => { encargos.push(await req.json()); return new Response("{}", { status: 202 }); } }) };
+    expect((await pedir(`/videos/bc/${v.id}/render`, { body: { version: 1, calidad: "alta" } })).status).toBe(202);
+    const recibidos = [];
+    const MP4 = new Uint8Array([0, 0, 0, 0x18, 0x66, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6f, 0x6d, 0, 0, 2, 0, 1, 2, 3]);
+    const listo = await ejecutarRender(env, encargos[0], async (ruta, cuerpo) => { recibidos.push(cuerpo); return new Response(MP4); });
+    expect(listo.estado).toBe("listo");
+    expect(listo.calidad).toBe("alta");
+    expect(recibidos[0].recorte).toEqual({ desde: 2.6, hasta: 9.6 });
+    expect(recibidos[0].calidad).toBe("alta");
+    expect(recibidos[0].audio).toBe(Buffer.from(env.MEDIA.objetos.get("clientes/bc/estudio/cancion.mp3").bytes).toString("base64"));
+    expect(lineaDeTiempo(recibidos[0].guion, recibidos[0].palabras).total).toBe(7);
+  });
+
   it("con una canción de la AGENCIA, el render la lee de su biblioteca", async () => {
     servicios();
     const s = (await (await pedir("/videos/bc/cancion", { body: { musicaId: "ag1", letra: LETRA, confirmado: true } })).json()).sincronia;

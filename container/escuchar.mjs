@@ -19,7 +19,7 @@ import { usosDeVideo } from "../src/lib/motorVideo.js";
 import { RENDER } from "../src/lib/renderVideo.js";
 import { informeDeEscucha, reloj, SUELO_DB } from "../src/lib/escucharSonido.js";
 import { BAJADA_MUSICA } from "../src/lib/efectosColocados.js";
-import { sonidoPorPistas, propiosDelPedido, libreriaDelPedido, efectosMarcaDelPedido } from "./efectos.mjs";
+import { sonidoPorPistas, propiosDelPedido, libreriaDelPedido, efectosMarcaDelPedido, recorteDelPedido } from "./efectos.mjs";
 import { decodificadorEn, medirPcm } from "./render.mjs";
 
 const FFMPEG = process.env.FFMPEG || "ffmpeg";
@@ -188,7 +188,7 @@ export async function escuchar(base, p) {
     const audio = typeof p.audio === "string" && p.audio ? Buffer.from(p.audio, "base64") : null;
     const musica = typeof p.musica?.audio === "string" && p.musica.audio ? { audio: Buffer.from(p.musica.audio, "base64"), volumen: Number(p.musica.volumen) || 0 } : null;
     const s = await sonidoPorPistas({
-      audio, linea: base.linea, total: base.linea.total, guion: base.guion, efectos: p.efectos === true,
+      audio, recorte: recorteDelPedido(p.recorte), linea: base.linea, total: base.linea.total, guion: base.guion, efectos: p.efectos === true,
       colocados: Array.isArray(p.colocados) ? p.colocados : [], propios: propiosDelPedido(p), libreria: libreriaDelPedido(p), efectosMarca: efectosMarcaDelPedido(p),
       musica, clips, decodificar: decodificadorEn(carpeta),
     });

@@ -34,8 +34,10 @@ export function sincronizarCancion(clienteId, { musicaId, letra, confirmado = fa
  * Crea el borrador con la canción: `modo` «karaoke» (gratis) o «ia». `estiloId`: un estilo guardado del cliente (su forma
  * se impone). → { video, avisos, corregido, aviso, fondos, estilo? }.
  */
-export async function crearVideoConCancion(clienteId, { huella, modo = "karaoke", formato = "9:16", titulo = "", postId = "", calendarId = "", desplazamiento = 0, indicacion = "", conFondos = false, estiloId = "" }) {
-  const r = await pedir(`${base(clienteId)}/cancion/video`, json("POST", { huella, modo, formato, titulo, postId, calendarId, desplazamiento, indicacion, ...(conFondos ? { conFondos: true } : {}), ...(estiloId ? { estiloId } : {}) }));
+export async function crearVideoConCancion(clienteId, { huella, modo = "karaoke", formato = "9:16", titulo = "", postId = "", calendarId = "", desplazamiento = 0, indicacion = "", conFondos = false, estiloId = "", desde = null, hasta = null }) {
+  // `desde` / `hasta` (segundos de la canción): sólo un FRAGMENTO de la canción sincronizada entera.
+  const fragmento = { ...(desde !== null && desde !== "" ? { desde } : {}), ...(hasta !== null && hasta !== "" ? { hasta } : {}) };
+  const r = await pedir(`${base(clienteId)}/cancion/video`, json("POST", { huella, modo, formato, titulo, postId, calendarId, desplazamiento, indicacion, ...(conFondos ? { conFondos: true } : {}), ...(estiloId ? { estiloId } : {}), ...fragmento }));
   avisar(clienteId, r?.video?.id);
   return r;
 }

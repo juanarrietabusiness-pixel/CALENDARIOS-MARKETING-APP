@@ -98,9 +98,12 @@ export const MIN_ESCENA = 0.6;
 export const COLA_FINAL = 0.4;
 /** Lo que dura como mucho el tramo fijo (`hasta − desde`) de una capa de video. */
 export const MAX_TRAMO_VIDEO = 60;
-/** En MODO CANCIÓN (una canción ya grabada): hasta 3 minutos y más escenas (una por línea de la letra). */
-export const MAX_SEGUNDOS_CANCION = 180;
-export const MAX_ESCENAS_CANCION = 80;
+/**
+ * En MODO CANCIÓN (una canción ya grabada): hasta 6 minutos (una canción entera para YouTube; antes 3, el reel) y más
+ * escenas (una por línea de la letra).
+ */
+export const MAX_SEGUNDOS_CANCION = 360;
+export const MAX_ESCENAS_CANCION = 160;
 /** El id de la canción en la biblioteca de sonido (del cliente o de la agencia). */
 const ID_CANCION = /^[\w-]{1,80}$/;
 
@@ -601,7 +604,7 @@ function validarCancion(c, errores) {
   if (!ID_CANCION.test(archivo)) errores.push({ donde: "cancion.archivo", mensaje: "«archivo» es el id de la canción en la biblioteca de sonido." });
   const duracion = Number(c.duracion);
   if (!(Number.isFinite(duracion) && duracion >= MIN_SEGUNDOS && duracion <= MAX_SEGUNDOS_CANCION)) {
-    errores.push({ donde: "cancion.duracion", mensaje: `Lo que dura la canción, en segundos: entre ${MIN_SEGUNDOS} y ${MAX_SEGUNDOS_CANCION} (3 minutos).` });
+    errores.push({ donde: "cancion.duracion", mensaje: `Lo que dura la canción, en segundos: entre ${MIN_SEGUNDOS} y ${MAX_SEGUNDOS_CANCION} (6 minutos).` });
   }
   const nombre = recorta(c.nombre).slice(0, 120);
   return { archivo, duracion: Number.isFinite(duracion) ? Math.round(duracion * 1000) / 1000 : 0, ...(nombre ? { nombre } : {}) };

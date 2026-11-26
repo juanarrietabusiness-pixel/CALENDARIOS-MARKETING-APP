@@ -13,6 +13,9 @@ import { estadoDeCancion, FUENTES_CANCION, DESPLAZAMIENTO_MAX, COINCIDENCIA_MINI
 const dinero = (n) => (n < 0.01 ? "menos de 1 ¢" : `${Number(n).toLocaleString("es-PA", { minimumFractionDigits: 2, maximumFractionDigits: 3 })} $`);
 const conSigno = (n) => `${n > 0 ? "+" : ""}${Number(n).toFixed(2).replace(".", ",")} s`;
 
+/** Un segundo como «m:ss». */
+const mmss = (x) => { const n = Math.max(0, Math.round(Number(x) || 0)); return `${Math.floor(n / 60)}:${String(n % 60).padStart(2, "0")}`; };
+
 export default function CancionVideo({ client, video, sucio, onCambio }) {
   const ids = useId();
   const loc = video.locucion ?? {};
@@ -52,7 +55,8 @@ export default function CancionVideo({ client, video, sucio, onCambio }) {
     <div className="va-locucion">
       <strong>La canción</strong>
       <p className="hint">
-        «{loc.nombre ?? "La canción"}»{loc.de === "agencia" ? " (de la agencia)" : ""} · {Number(loc.duracion ?? 0).toFixed(1)} s · sincronizada por {FUENTES_CANCION[loc.fuente] ?? loc.fuente}
+        «{loc.nombre ?? "La canción"}»{loc.de === "agencia" ? " (de la agencia)" : ""} · {Number(loc.duracion ?? 0).toFixed(1)} s
+        {loc.recorte ? ` (el fragmento del ${mmss(loc.recorte.desde)} al ${mmss(loc.recorte.hasta)} de la canción)` : ""} · sincronizada por {FUENTES_CANCION[loc.fuente] ?? loc.fuente}
         {" "}({Math.round(Number(loc.coincidencia ?? 0) * 100)} % de la letra encontrada). No se genera voz: la canción es el audio.
       </p>
       {Number(loc.coincidencia ?? 0) < COINCIDENCIA_MINIMA && (

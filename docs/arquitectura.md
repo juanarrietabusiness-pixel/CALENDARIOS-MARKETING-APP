@@ -128,13 +128,15 @@ src/
     videosApi.js          Cliente de /api/videos/<cliente>
     videoCancion.js       «Video con tu canción»: la letra (limpiar, líneas, coro), leer la sincronía de ElevenLabs o Gemini y
                           alinearla a la letra, el ajuste fino, las palabras del guion contra la canción (`palabrasParaLinea`),
-                          si sigue valiendo, la prueba de sincronía (`guionKaraoke`), `comprobarLetra`, lo que dura un audio
-                          (MP3, WAV, M4A) y el costo aproximado (puro: Worker, Container y pantalla)
+                          si sigue valiendo, la prueba de sincronía (`guionKaraoke`), `comprobarLetra`, el FRAGMENTO de una
+                          canción ya sincronizada (`limpiarRecorte`, `recorteDeSincronia`), lo que dura un audio (MP3, WAV,
+                          M4A) y el costo aproximado (puro: Worker, Container y pantalla)
     cancionApi.js         Cliente de /api/videos/<cliente>/cancion (sincronizar, crear el borrador, ajuste fino, volver a sincronizar)
     subtitulos.js         Los SUBTÍTULOS por palabra: grupos por trozos de frase y parejos, la palabra clave, qué está dicho,
                           diciéndose o falta en cada instante (puro: lo leen el motor, la vista previa y el render)
-    renderVideo.js        El RENDER a mp4: los cuadros, la voz en tramos con los silencios insertados (copiando muestras), la
-                          ganancia a -14 LUFS, cuándo se puede renderizar (puro: lo leen el Container, el Worker y la pantalla)
+    renderVideo.js        El RENDER a mp4: los cuadros, la voz en tramos con los silencios insertados (copiando muestras), el
+                          fragmento de una canción con sus fundidos (`recortarPcm`), la ganancia a -14 LUFS, la calidad del
+                          mp4 (`CALIDADES_RENDER`), lo que tarda y cuándo se puede renderizar (puro: Container, Worker y pantalla)
     sonidoVideo.js        Lo que suena DEBAJO de la voz (aparte del guion): limpiar el sonido del video, la música con ducking,
                           fundido y repetida (puro: Worker, Container y pantalla)
     conMusica.js          «Publicar con música»: el guion de UNA escena que sale de una foto (a sangre, con su movimiento y su

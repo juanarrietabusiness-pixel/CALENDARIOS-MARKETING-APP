@@ -15,7 +15,9 @@
 //     y `fuente`. El resultado se guarda en R2 (`canciones/<espacio>/<cliente>/<huella>.json`, fuera de `clientes/`): la
 //     misma canción con la misma letra otra vez sale GRATIS, y crear el video lo lee de ahí (no lo que mande el navegador).
 //   · `crearVideoConCancion`: la PRUEBA DE SINCRONÍA (`guionKaraoke`, gratis) o «Diseñar las escenas con IA»
-//     (`escribirGuionCancion`, texto) y el borrador con la canción como su locución (`origen: "cancion"`).
+//     (`escribirGuionCancion`, texto) y el borrador con la canción como su locución (`origen: "cancion"`). Con `desde` /
+//     `hasta`, sólo un FRAGMENTO de la canción ya sincronizada entera (`recorteDeSincronia`): no se sube otra vez ni se
+//     paga otra sincronía; el audio se corta al renderizar (`recorte` en la locución).
 //   · `ajustarCancion`: el ajuste fino (±1,5 s), que se aplica al leer (no se paga otra vez).
 //   · `resincronizarVideo`: «Volver a sincronizar» la canción de un video (paga otra vez, con su confirmación).
 // ============================================================
@@ -40,7 +42,7 @@ import { textoCosto } from "../../../src/lib/estudioCatalogo.js";
 import {
   limpiarLetra, leerAlineacion, medirAlineacion, letraEstimada, pedidoDeTiemposCancion, costoDeSincronia, duracionDeAudio,
   extractoCrudo, lineasConTiempos, huecosInstrumentales, guionKaraoke, conDesplazamiento, limpiarDesplazamiento, esCancion,
-  conPalabrasDeCancion, MAX_BYTES_CANCION, COINCIDENCIA_MINIMA, FUENTES_CANCION,
+  conPalabrasDeCancion, limpiarRecorte, recorteDeSincronia, MAX_BYTES_CANCION, COINCIDENCIA_MINIMA, FUENTES_CANCION,
 } from "../../../src/lib/videoCancion.js";
 
 /** Un error de lo pedido, con su estado HTTP y lo que la pantalla necesita (`codigo`, `costo`…). */
@@ -100,6 +102,8 @@ export function resumenDeSincronia(s, { desplazamiento = 0 } = {}) {
     intentos: s.intentos ?? [], avisos: s.avisos ?? [], costo: s.costo ?? 0,
     // El ritmo de la canción, si el Container lo sacó (los golpes van con la locución del video).
     bpm: s.bpm ?? 0, golpes: Array.isArray(s.golpes) ? s.golpes.length : 0,
+    // El fragmento (segundos de la canción entera), si es uno.
+    ...(s.recorte ? { recorte: s.recorte } : {}),
   };
 }
 
@@ -162,7 +166,7 @@ export async function sincronizarCancion(env, acceso, cliente, { musicaId, letra
   const duracion = duracionDeAudio(bytes, mime) || pista.duracion || 0;
   if (!(duracion > 0)) throw new ErrorCancion("No pude medir lo que dura la canción: ábrela en la biblioteca de sonido (la mide al oírla) y vuelve a intentarlo.", 400);
   if (duracion < MIN_SEGUNDOS) throw new ErrorCancion(`La canción dura ${duracion.toFixed(1)} s: el mínimo es ${MIN_SEGUNDOS}.`, 400);
-  if (duracion > MAX_SEGUNDOS_CANCION + 0.5) throw new ErrorCancion(`La canción dura ${Math.round(duracion)} s y el video admite ${MAX_SEGUNDOS_CANCION} (3 minutos): sube sólo el fragmento del reel.`, 400);
+  if (duracion > MAX_SEGUNDOS_CANCION + 0.5) throw new ErrorCancion(`La canción dura ${Math.round(duracion)} s y el video admite ${MAX_SEGUNDOS_CANCION} (6 minutos): sube una versión más corta.`, 400);
 
   const conLlave = Boolean(env.ELEVENLABS_API_KEY);
   const costo = costoDeSincronia(duracion, { elevenlabs: conLlave });
@@ -259,7 +263,18 @@ export function locucionDeSincronia(s, guion, version, { desplazamiento = 0 } = 
     intentos: (s.intentos ?? []).slice(0, 4), crudo: extractoCrudo(s.crudo ?? {}, 1500), costo: s.costo ?? 0, terminadoAt: s.creada ?? ahora(),
     // Los golpes de la canción (si el Container los sacó): no se mueven con el ajuste fino (son del audio, no de la letra).
     ...(Array.isArray(s.golpes) && s.golpes.length ? { bpm: s.bpm ?? 0, golpes: s.golpes } : {}),
+    // El FRAGMENTO: de qué segundo a qué segundo de la canción entera suena (el render y la vista previa cortan ahí).
+    ...(s.recorte ? { recorte: s.recorte } : {}),
   });
+}
+
+/** El fragmento [desde, hasta) de una sincronía entera (o ella misma, sin recorte); lo que no vale, con su error. */
+function fragmentoDe(s, { desde = null, hasta = null } = {}) {
+  const rec = limpiarRecorte({ desde, hasta }, s);
+  if (rec?.error) throw new ErrorCancion(rec.error, 400);
+  const f = recorteDeSincronia(s, rec);
+  if (f?.error) throw new ErrorCancion(f.error, 400);
+  return f;
 }
 
 /**
@@ -269,7 +284,7 @@ export function locucionDeSincronia(s, guion, version, { desplazamiento = 0 } = 
  * código impone su forma (también a la prueba de sincronía, que sigue gratis); el video recuerda cuál (`origen`).
  * → { video, avisos, corregido, aviso, fondos, estilo }.
  */
-export async function crearVideoConCancion(env, acceso, cliente, { huella, modo = "karaoke", formato = "9:16", titulo = "", postId = "", calendarId = "", desplazamiento = 0, indicacion = "", conFondos = false, estiloId = "", usuario = null }) {
+export async function crearVideoConCancion(env, acceso, cliente, { huella, modo = "karaoke", formato = "9:16", titulo = "", postId = "", calendarId = "", desplazamiento = 0, indicacion = "", conFondos = false, estiloId = "", desde = null, hasta = null, usuario = null }) {
   let estilo = null;
   if (estiloId) {
     try {
@@ -282,10 +297,12 @@ export async function crearVideoConCancion(env, acceso, cliente, { huella, modo 
     // Sin estilo pedido, el de la MARCA (identidad de video del cliente) si es para canciones o para todo.
     estilo = estiloDeLaMarca(cliente, "cancion");
   }
-  const s = await leerSincronia(env, acceso.ownerId, cliente.id, String(huella ?? ""));
-  if (!s) throw new ErrorCancion("No encuentro esa sincronización de la letra: vuelve a sincronizarla.", 404);
+  const entera = await leerSincronia(env, acceso.ownerId, cliente.id, String(huella ?? ""));
+  if (!entera) throw new ErrorCancion("No encuentro esa sincronización de la letra: vuelve a sincronizarla.", 404);
   // La canción tiene que seguir en la biblioteca (si se quitó, el render no tendría audio).
-  await cancionDelCliente(acceso, cliente.id, s.archivo);
+  await cancionDelCliente(acceso, cliente.id, entera.archivo);
+  // Un FRAGMENTO de la canción ya sincronizada (el reel de la canción de YouTube): sus tiempos, gratis.
+  const s = fragmentoDe(entera, { desde, hasta });
   const d = limpiarDesplazamiento(desplazamiento);
   const lineas = lineasConTiempos(s.letra, conDesplazamiento(s.oidas, d, s.duracion));
   if (!lineas.length) throw new ErrorCancion("La sincronización no tiene líneas: vuelve a sincronizar la letra.", 400);
@@ -345,7 +362,12 @@ export async function resincronizarVideo(env, acceso, cliente, fila, { confirmad
   const l = leerJSON(fila.locucion, {});
   if (!esCancion(l)) throw new ErrorVideo("Este video no va con una canción.", 409);
   if (fila.estado === "renderizando") throw new ErrorVideo("Se está renderizando: espera a que termine.", 409);
-  const s = await sincronizarCancion(env, acceso, cliente, { musicaId: l.archivo, letra: l.letra, confirmado, forzar: true, usuario });
+  // Con un fragmento, se sincroniza otra vez la canción ENTERA (su letra completa está en la sincronía de la que salió) y
+  // se vuelve a recortar en el mismo tramo.
+  const deEntera = l.recorte ? await leerSincronia(env, acceso.ownerId, cliente.id, l.sincronia) : null;
+  if (l.recorte && !deEntera) throw new ErrorVideo("No encuentro la sincronización de la canción entera de este fragmento: crea el video otra vez con la canción.", 404);
+  const nueva0 = await sincronizarCancion(env, acceso, cliente, { musicaId: l.archivo, letra: deEntera?.letra ?? l.letra, confirmado, forzar: true, usuario });
+  const s = l.recorte ? fragmentoDe(nueva0, l.recorte) : nueva0;
   const guion = leerJSON(fila.guion, {});
   const nueva = locucionDeSincronia(s, guion, l.version ?? fila.version, { desplazamiento: l.desplazamiento ?? 0 });
   const momento = ahora();

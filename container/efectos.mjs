@@ -16,7 +16,7 @@ import { efectoDelCatalogo, CARPETA_EFECTOS } from "../src/lib/catalogoEfectos.j
 import { muestrasDeEfecto, picoDeEfecto, sintetizar, armarSonido, MAX_EFECTO_CATALOGO, MAX_EFECTO_PROPIO } from "../src/lib/efectosSonido.js";
 import { limpiarPaleta } from "../src/lib/identidadVideo.js";
 import { momentosColocados, colocadosAutomaticos, bajadasDeMusica, limpiarColocados, EFECTO_AUTOMATICO } from "../src/lib/efectosColocados.js";
-import { RENDER, armarPcm, tramosDeAudio } from "../src/lib/renderVideo.js";
+import { RENDER, armarPcm, tramosDeAudio, recortarPcm } from "../src/lib/renderVideo.js";
 import { mezclarClip } from "../src/lib/sonidoVideo.js";
 import { audioDe } from "./clips.mjs";
 
@@ -88,14 +88,23 @@ export async function prepararEfectos({ guion, linea, efectos = true, colocados 
   return { lista, automaticos, momentos, muestras, sinSitio, movidos, bajadas: bajadasDeMusica(momentos), avisos };
 }
 
+/** El recorte que llega en un pedido ({ desde, hasta } en segundos, hasta > desde ≥ 0), o null. */
+export function recorteDelPedido(r) {
+  const desde = Number(r?.desde);
+  const hasta = Number(r?.hasta);
+  return Number.isFinite(desde) && Number.isFinite(hasta) && desde >= 0 && hasta > desde ? { desde, hasta } : null;
+}
+
 /**
  * El audio del video POR PISTAS, antes del volumen final: la toma de la voz con sus silencios hasta el último cuadro, el
  * sonido de los clips (`clips`: los usos de `usosDeVideo` con sonido), la música (`musica`: { audio, volumen }) y los
- * efectos. `decodificar(bytes, nombre)` → PCM. → { mezcla, pistas, medidas, sinArchivo, efectos (lo de
- * prepararEfectos), toma (bytes de la voz decodificada), conClips }.
+ * efectos. `decodificar(bytes, nombre)` → PCM. `recorte` ({ desde, hasta }): el FRAGMENTO de una canción, que se corta
+ * de la toma con sus fundidos antes de nada. → { mezcla, pistas, medidas, sinArchivo, efectos (lo de prepararEfectos),
+ * toma (bytes de la voz decodificada), conClips }.
  */
-export async function sonidoPorPistas({ audio, linea, total, guion = null, efectos = false, colocados = [], propios = {}, libreria = {}, efectosMarca = null, musica = null, clips = [], decodificar }) {
-  const toma = audio?.length ? await decodificar(audio, "voz", "No se pudo leer el audio de la locución") : new Uint8Array(0);
+export async function sonidoPorPistas({ audio, recorte = null, linea, total, guion = null, efectos = false, colocados = [], propios = {}, libreria = {}, efectosMarca = null, musica = null, clips = [], decodificar }) {
+  const entera = audio?.length ? await decodificar(audio, "voz", "No se pudo leer el audio de la locución") : new Uint8Array(0);
+  const toma = recortarPcm(entera, recorteDelPedido(recorte), RENDER.muestreo);
   const voz = armarPcm(toma, tramosDeAudio(linea.silencios), total, RENDER.muestreo);
   // El sonido de los clips va con la voz (lo que «habla»): la música baja también debajo de él.
   let conClips = 0;

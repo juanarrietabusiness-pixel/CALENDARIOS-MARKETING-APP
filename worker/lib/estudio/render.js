@@ -27,7 +27,7 @@ import { cambiarPublicacion } from "./ponerEnPost.js";
 import { conVideoEnPost, rellenarVacios } from "../../../src/lib/resultadoEnPost.js";
 import { pedidoDelVideo, aBase64, subirClips, subirImagenes, sinLoQueNoSubio } from "./cuadros.js";
 import { claveDeArchivo, claveDelCliente, slugCorto } from "./archivos.js";
-import { puedeRenderizar, esMp4, PLAZO_RENDER_MS } from "../../../src/lib/renderVideo.js";
+import { puedeRenderizar, esMp4, PLAZO_RENDER_MS, limpiarCalidad } from "../../../src/lib/renderVideo.js";
 import { tieneHabla, lineaDeTiempo } from "../../../src/lib/videoEscenas.js";
 import { instanteLleno } from "../../../src/lib/revisionEscenas.js";
 import { limpiarSonido, SITIOS_EFECTO } from "../../../src/lib/sonidoVideo.js";
@@ -53,7 +53,7 @@ const avisar = (env, ownerId, clienteId, id, por = SISTEMA) => difundir(env, own
  * Pide el render del video (la fila, con la `version` que se leyó). → { video }. 409 si no se puede todavía (con el
  * motivo), 503 sin Container (en local).
  */
-export async function pedirRender(env, acceso, cliente, fila, { version, usuario, por }) {
+export async function pedirRender(env, acceso, cliente, fila, { version, usuario, por, calidad = "normal" }) {
   if (!Number.isInteger(version)) throw new ErrorVideo("Falta la versión que tenías abierta.", 400);
   if (version !== fila.version) throw new ErrorVideo("Otra persona cambió este video mientras lo tenías abierto. Vuelve a abrirlo.", 409, { video: deFila(fila) });
   const puede = puedeRenderizar({ ...fila, locucion: leerJSON(fila.locucion, {}), guion: leerJSON(fila.guion, null) });
@@ -66,6 +66,8 @@ export async function pedirRender(env, acceso, cliente, fila, { version, usuario
   const render = {
     // `porId`: a quién le llega el aviso de la campana al terminar (equipo.js, `avisarRender`).
     estado: "en_curso", intento, version: fila.version, pedidoAt: momento, por: usuario?.nombre ?? null, porId: usuario?.id ?? null,
+    // La calidad del mp4 (src/lib/renderVideo.js, CALIDADES_RENDER): «normal» si no se pide otra.
+    calidad: limpiarCalidad(calidad),
     // Lo que ya había salido se recuerda: si este falla, el mp4 anterior sigue en la galería y en la publicación.
     ...(anterior.estado === "listo" ? { anterior: { clave: anterior.clave, archivoId: anterior.archivoId, version: anterior.version } } : anterior.anterior ? { anterior: anterior.anterior } : {}),
   };
@@ -236,7 +238,7 @@ export async function ejecutarRender(env, { ownerId, clienteId, videoId, intento
     ].filter(Boolean).join(" ") || null;
     const son = await sonidoParaElContainer(env, fila, guion, { clienteId, ownerId });
     const { musica, sonido } = son;
-    const r = await enviar("/render", { ...pedido, ...cuerpoDeSonido(son) });
+    const r = await enviar("/render", { ...pedido, ...cuerpoDeSonido(son), calidad: limpiarCalidad(render.calidad) });
     if (!r.ok) {
       const j = await r.json().catch(() => ({}));
       throw new Error(j.error || `El Container respondió ${r.status}.`);
@@ -296,7 +298,7 @@ export async function ejecutarRender(env, { ownerId, clienteId, videoId, intento
  * grabada), la música de fondo (la de «Sonido» o, sin ella, la del guion) y los efectos: la lista colocada, los de la
  * biblioteca que usa (en base64, como mucho 2 MB cada uno) y los que sustituyen a los automáticos. Lo que ya no está no
  * tumba nada: va en `avisos`. `vozOpcional`: sin locución todavía no falla (escuchar antes de pagar la voz).
- * → { audio, musica, nombreMusica, sonido, propios, libreria, avisos, conCancion }.
+ * → { audio, recorte (el fragmento de la canción, o null), musica, nombreMusica, sonido, propios, libreria, avisos, conCancion }.
  */
 export async function sonidoParaElContainer(env, fila, guion, { clienteId, ownerId, vozOpcional = false }) {
   // Un montaje sin habla no tiene locución: el audio es el de los clips (y la música).
@@ -367,13 +369,16 @@ export async function sonidoParaElContainer(env, fila, guion, { clienteId, owner
       avisos.push(`${sinEfecto.length === 1 ? `El efecto «${sinEfecto[0]}» ya no está` : `Los efectos ${sinEfecto.map((x) => `«${x}»`).join(" y ")} ya no están`} en la biblioteca: ${conLista ? "no sonó" : "sonó el de la aplicación"}.`);
     }
   }
-  return { audio, musica, nombreMusica: musica ? sonido.musica.nombre || "Música" : null, sonido, propios, libreria, avisos, conCancion };
+  // El FRAGMENTO de la canción (segundos de la entera): el Container corta ahí la toma, con fundidos.
+  const recorte = conCancion && locucion.recorte ? { desde: Number(locucion.recorte.desde) || 0, hasta: Number(locucion.recorte.hasta) || 0 } : null;
+  return { audio, recorte, musica, nombreMusica: musica ? sonido.musica.nombre || "Música" : null, sonido, propios, libreria, avisos, conCancion };
 }
 
 /** El sonido de `sonidoParaElContainer` como va en el cuerpo del pedido al Container. */
 export function cuerpoDeSonido(son) {
   return {
-    ...(son.audio ? { audio: son.audio } : {}), efectos: son.sonido.efectos, ...(son.musica ? { musica: son.musica } : {}),
+    ...(son.audio ? { audio: son.audio } : {}), ...(son.audio && son.recorte ? { recorte: son.recorte } : {}),
+    efectos: son.sonido.efectos, ...(son.musica ? { musica: son.musica } : {}),
     ...(son.sonido.colocados?.length ? { colocados: son.sonido.colocados } : {}),
     ...(Object.keys(son.propios).length ? { propios: son.propios } : {}),
     ...(Object.keys(son.libreria).length ? { libreria: son.libreria } : {}),
