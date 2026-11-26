@@ -19,7 +19,7 @@
 // generó.
 // ============================================================
 
-import { json, error, cuerpo, noEncontrado } from "../lib/respuesta.js";
+import { json, error, cuerpo, noEncontrado, rangoServido } from "../lib/respuesta.js";
 import { crearAcceso, colaPorPostPeer } from "../lib/acceso.js";
 import { difundir, firma } from "../lib/vivo.js";
 import { ahora, testigo, igualSeguro } from "../lib/ids.js";
@@ -114,29 +114,50 @@ export async function rutaMetaCallback(req, env) {
 }
 
 /**
- * GET /api/medio-publico/<testigo>/<nombre>
+ * GET|HEAD /api/medio-publico/<testigo>/<nombre>
  *
- * Lo que Meta descarga al publicar. Sólo abre el archivo que dice el
- * testigo firmado, y sólo tres días. Nada se ejecuta en este origen:
- * imagen o video, con `nosniff` y `sandbox`.
+ * Lo que Meta y PostPeer descargan al publicar. Sólo abre el archivo que
+ * dice el testigo firmado, y sólo tres días. Nada se ejecuta en este
+ * origen: imagen o video, con `nosniff` y `sandbox`.
+ *
+ * HEAD y `Range` (206) también: PostPeer pregunta el TAMAÑO del video con
+ * un HEAD antes de subirlo a YouTube, y sin él contestaba el 401 de las
+ * rutas con sesión → «Could not determine video file size» (26-nov-2026).
  */
-export async function rutaMedioPublico(env, partes) {
+export async function rutaMedioPublico(req, env, partes) {
   const clave = await claveDeMedioPublico(env, partes[1] ?? "");
   if (!clave) return noEncontrado("Archivo");
-  const objeto = await env.MEDIA.get(clave);
+  const cabeza = req.method === "HEAD";
+  const rango = req.headers.get("Range") ?? "";
+  let objeto;
+  try {
+    objeto = cabeza ? await env.MEDIA.head(clave) : await env.MEDIA.get(clave, /^bytes=/.test(rango) ? { range: req.headers } : undefined);
+  } catch {
+    // Un rango que no existe (más allá del final): R2 lanza.
+    return new Response(null, { status: 416, headers: { "Content-Range": "bytes */*" } });
+  }
   if (!objeto) return noEncontrado("Archivo");
   const tipo = objeto.httpMetadata?.contentType ?? "";
-  if (!/^(image\/(jpeg|png|webp|gif)|video\/)/.test(tipo)) return noEncontrado("Archivo");
-  return new Response(objeto.body, {
-    headers: {
-      "Content-Type": tipo,
-      "Content-Length": String(objeto.size),
-      "Cache-Control": "private, max-age=3600",
-      "X-Content-Type-Options": "nosniff",
-      "Content-Security-Policy": "sandbox",
-      etag: objeto.httpEtag,
-    },
+  if (!/^(image\/(jpeg|png|webp|gif)|video\/)/.test(tipo)) {
+    Promise.resolve(objeto.body?.cancel?.()).catch(() => {});
+    return noEncontrado("Archivo");
+  }
+  const cabeceras = new Headers({
+    "Content-Type": tipo,
+    "Accept-Ranges": "bytes",
+    "Cache-Control": "private, max-age=3600",
+    "X-Content-Type-Options": "nosniff",
+    "Content-Security-Policy": "sandbox",
   });
+  if (objeto.httpEtag) cabeceras.set("ETag", objeto.httpEtag);
+  const trozo = !cabeza && rango && objeto.range ? rangoServido(objeto.range, objeto.size) : null;
+  if (trozo) {
+    cabeceras.set("Content-Range", `bytes ${trozo.inicio}-${trozo.fin}/${objeto.size}`);
+    cabeceras.set("Content-Length", String(trozo.fin - trozo.inicio + 1));
+    return new Response(objeto.body, { status: 206, headers: cabeceras });
+  }
+  if (Number.isFinite(objeto.size)) cabeceras.set("Content-Length", String(objeto.size));
+  return new Response(cabeza ? null : objeto.body, { headers: cabeceras });
 }
 
 // ------------------------------------------------------------
@@ -473,6 +494,8 @@ export async function rutasPublicar(req, env, { acceso, usuario, partes, metodo,
     // anterior a PostPeer (la guarda contra publicar dos veces) se suelta.
     const carga = leerJSON(fila.carga, {});
     delete carga.postpeer;
+    // Cada reintento con su propia clave contra duplicados (publicador.js, `claveIdempotencia`).
+    carga.reintento = (Number(carga.reintento) || 0) + 1;
     await acceso.actualizar("publicaciones_programadas", { id }, {
       estado: "programada", intentos: 0, error: null, siguiente_intento: null, contenedor_id: null,
       programada_para: ahora(), carga: JSON.stringify(carga), updated_at: ahora(),

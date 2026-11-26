@@ -835,3 +835,12 @@ contradicen, manda la de más abajo (la más nueva). Una trampa nueva de esta á
   pantalla lo dice. Las COLABORACIONES no existen por API (ni de Google ni de PostPeer): se menciona con @; el idioma, la
   ubicación, la licencia y «notificar a los suscriptores» tampoco los manda PostPeer. Nada de esto probado contra PostPeer
   de verdad (las listas, sobre todo: los nombres de su respuesta salen de su documentación y se leen con tolerancia).
+- **«Could not determine video file size» al subir a YouTube por PostPeer (26-nov-2026, el primer video de 57DMC).**
+  PostPeer pregunta el TAMAÑO del video con un `HEAD` a la dirección firmada antes de subirlo; `/api/medio-publico/` sólo
+  contestaba a `GET` y el `HEAD` caía en las rutas con sesión: 401. Con TikTok no pasaba (descarga directo). Ahora la
+  ruta contesta `HEAD` (con `Content-Length`) y por trozos (`Range` → 206), como `/api/vista-medio/`. Dos cosas más que
+  salieron al mirarlo: «Reintentar» mandaba la MISMA `idempotencyKey` (la fila), y PostPeer podía devolver el envío que
+  ya había fallado: cada reintento lleva la suya (`<fila>-r<n>`, `carga.reintento`); y la categoría «automática» que
+  promete el panel no existía al publicar (salía «Gente y blogs»): ahora, sin categoría propia, un video animado CON
+  CANCIÓN sale como Música (`categoriaYouTube`). Comprobado con curl contra el sitio (el HEAD daba 401); lo de PostPeer,
+  sólo con su error real: la subida buena no se ha visto todavía.

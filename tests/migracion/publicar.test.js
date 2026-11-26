@@ -465,6 +465,40 @@ describe("por la puerta del Worker", () => {
     expect((await worker.fetch(new Request(falsa), env, {})).status).toBe(404);
   });
 
+  it("el medio público contesta a HEAD con su tamaño y por trozos (PostPeer pregunta el tamaño antes de subir a YouTube)", async () => {
+    const bytes = new Uint8Array(1000).fill(7);
+    const meta = { size: 1000, httpEtag: '"v"', httpMetadata: { contentType: "video/mp4" } };
+    env.MEDIA = {
+      async head(clave) { return clave === "clientes/c1/estudio/v.mp4" ? meta : null; },
+      async get(clave, opciones) {
+        if (clave !== "clientes/c1/estudio/v.mp4") return null;
+        const m = /^bytes=(\d+)-(\d+)$/.exec(opciones?.range?.get?.("Range") ?? "");
+        if (!m) return { ...meta, body: bytes };
+        const offset = Number(m[1]);
+        const length = Number(m[2]) - offset + 1;
+        return { ...meta, body: bytes.slice(offset, offset + length), range: { offset, length } };
+      },
+    };
+    const url = await urlMedioPublico(env, "https://calendarios.test", "/api/media/clientes/c1/estudio/v.mp4");
+    // Antes, un HEAD caía en las rutas con sesión: 401 y «Could not determine video file size».
+    const cabeza = await worker.fetch(new Request(url, { method: "HEAD" }), env, {});
+    expect(cabeza.status).toBe(200);
+    expect(cabeza.headers.get("Content-Length")).toBe("1000");
+    expect(cabeza.headers.get("Accept-Ranges")).toBe("bytes");
+    expect(cabeza.headers.get("Content-Type")).toBe("video/mp4");
+    expect(cabeza.headers.get("Content-Security-Policy")).toBe("sandbox");
+    const trozo = await worker.fetch(new Request(url, { headers: { Range: "bytes=0-99" } }), env, {});
+    expect(trozo.status).toBe(206);
+    expect(trozo.headers.get("Content-Range")).toBe("bytes 0-99/1000");
+    expect(trozo.headers.get("Content-Length")).toBe("100");
+    const entero = await worker.fetch(new Request(url), env, {});
+    expect(entero.status).toBe(200);
+    expect(entero.headers.get("Content-Length")).toBe("1000");
+    // Un HEAD con un testigo falso no abre nada.
+    const falsa = url.replace(/\/medio-publico\/([^/]+)\//, (_, t) => `/medio-publico/${t.slice(0, -2)}xx/`);
+    expect((await worker.fetch(new Request(falsa, { method: "HEAD" }), env, {})).status).toBe(404);
+  });
+
   it("un medio fuera de la carpeta de clientes no se firma", async () => {
     await expect(urlMedioPublico(env, "https://x", "/api/media/../secreto")).rejects.toThrow();
   });

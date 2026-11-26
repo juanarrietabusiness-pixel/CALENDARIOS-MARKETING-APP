@@ -30,6 +30,7 @@
 
 import { sincronizarAvisosAMano } from "./avisosAMano.js";
 import { crearAcceso, colaPendiente } from "./acceso.js";
+import { esCancion } from "../../src/lib/videoCancion.js";
 import { difundir } from "./vivo.js";
 import { despertar } from "./despertar.js";
 import { uuid, ahora } from "./ids.js";
@@ -989,6 +990,27 @@ export async function aplicarAvisoPostPeer(env, { id, owner_id: ownerId }, lectu
 const TROZOS_POR_VUELTA = 4;
 
 /**
+ * La CATEGORÍA de YouTube: la de su configuración; si no, la automática que promete el panel: «Música» (10) si el video
+ * es un video animado CON CANCIÓN, y si no «Gente y blogs» (22). Lee el proyecto por la capa de acceso (su dueño es el
+ * de la fila).
+ */
+async function categoriaYouTube(env, fila, post) {
+  if (/^\d{1,3}$/.test(String(post.youtube?.categoria ?? ""))) return String(post.youtube.categoria);
+  const id = (Array.isArray(post.medios) ? post.medios : []).find((m) => m?.videoAnimado)?.videoAnimado;
+  if (!id || !fila.owner_id) return "22";
+  try {
+    const proyecto = await crearAcceso(env.DB, fila.owner_id).leerUno("videos_proyectos", { id: String(id), client_id: fila.client_id });
+    return proyecto && esCancion(leerJSON(proyecto.locucion, {})) ? "10" : "22";
+  } catch {
+    return "22";
+  }
+}
+
+/** La clave contra duplicados de PostPeer: la fila y, si una persona la reintentó, el número de reintento (con la misma
+ * clave PostPeer podría devolver el envío que ya falló en vez de intentarlo otra vez). */
+export const claveIdempotencia = (fila, carga) => (Number(carga?.reintento) > 0 ? `${fila.id}-r${Number(carga.reintento)}` : fila.id);
+
+/**
  * YOUTUBE POR POSTPEER (worker/lib/postpeer.js): como TikTok. El video y la miniatura van por su dirección firmada
  * (`/api/medio-publico/`), PostPeer los descarga y sube; el id de su publicación se guarda LO PRIMERO y después sólo se
  * pregunta cómo va. Lo que preparó preparar_youtube (`post.youtube`: título, descripción, etiquetas, categoría,
@@ -1021,8 +1043,8 @@ async function pasoYouTubePostPeer(env, { cuenta, origen, carga, guardar, fila: 
   const privacidad = VISIBILIDADES_YOUTUBE.includes(post.youtube?.privacidad) ? post.youtube.privacidad : privacidadDe(cuenta);
   const cuerpo = cuerpoYouTube({
     descripcion: descripcionYouTube(post), titulo: tituloYouTube(post), etiquetas: etiquetasYouTube(post), visibilidad: privacidad,
-    categoria: post.youtube?.categoria ?? "22", accountId: cuenta.externo_id, urlVideo: await urlMedioPublico(env, origen, video.src),
-    urlMiniatura: conMiniatura ? await urlMedioPublico(env, origen, miniatura) : "", clave: fila.id,
+    categoria: await categoriaYouTube(env, fila, post), accountId: cuenta.externo_id, urlVideo: await urlMedioPublico(env, origen, video.src),
+    urlMiniatura: conMiniatura ? await urlMedioPublico(env, origen, miniatura) : "", clave: claveIdempotencia(fila, carga),
     playlistId: post.youtube?.playlistId ?? "", primerComentario: post.youtube?.primerComentario ?? "", ia: post.youtube?.ia === true,
   });
   pp.enviadoAt = ahora();
@@ -1097,7 +1119,7 @@ async function pasoYouTube(env, contexto) {
       recurso: recursoDeVideo({
         titulo: tituloYouTube(post), descripcion: descripcionYouTube(post), etiquetas: etiquetasYouTube(post), privacidad,
         // Lo que preparó preparar_youtube: la categoría (Música en una canción) y la hora a la que lo publica YouTube.
-        categoria: post.youtube?.categoria ?? "22", publicarEl: post.youtube?.publicarEl ?? null,
+        categoria: await categoriaYouTube(env, fila, post), publicarEl: post.youtube?.publicarEl ?? null,
       }),
     });
     carga.youtube = { clave, tamano: cabeza.size, tipo, enviados: 0, privacidad, short: esShortYouTube(post) };
