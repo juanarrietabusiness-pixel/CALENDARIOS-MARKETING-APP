@@ -821,3 +821,17 @@ contradicen, manda la de más abajo (la más nueva). Una trampa nueva de esta á
   (www.postpeer.dev/docs/platforms/youtube, /docs/posts/create-post, leída el 26-nov-2026); NADA probado contra PostPeer de
   verdad. Sus cifras no se leen desde la aplicación (no hay token de Google). Nada sale sin aprobar: la publicación
   espera en el calendario como cualquier otra.
+- **La «Configuración de YouTube» de la publicación (26-nov-2026, aprobada por Juan).** Hasta hoy el título de YouTube
+  era la primera línea del texto y la descripción el texto entero; nada lo decía en la pantalla. Ahora, al marcar YouTube
+  en «¿Qué sale y dónde?», aparece su plegable (configYouTube.jsx, lazy) y escribe `post.youtube`. LO VACÍO VALE LO DE
+  SIEMPRE: sin título, la primera línea; sin descripción propia, el mismo texto; sin etiquetas, los hashtags (las propias
+  REEMPLAZAN a los hashtags, no se suman); sin categoría, la automática; sin privacidad, la del canal; sin miniatura, la
+  portada. Los campos se guardan TAL CUAL se escriben (limpiarlos al teclear se comía el espacio de «Hola mundo»): los
+  limpian el publicador y `limpiarYouTube` (MCP). Un HUECO sin llenar («[PEGAR ENLACE…]», «[COMPLETAR]», `huecosSinLlenar`)
+  en el título, la descripción o el primer comentario NO deja programar (la descripción de BENDECIDOS llegó con uno).
+  `preparar_youtube` ya no pisa la configuración: FUSIONA (lo que no prepara se queda) y acepta `descripcion` propia o
+  `conservar_descripcion`. La lista de reproducción, el primer comentario y «contenido sintético» van SÓLO por PostPeer
+  (`playlistId`, `firstComment`, `containsSyntheticMedia`): con la conexión de Google el permiso es el de subir y la
+  pantalla lo dice. Las COLABORACIONES no existen por API (ni de Google ni de PostPeer): se menciona con @; el idioma, la
+  ubicación, la licencia y «notificar a los suscriptores» tampoco los manda PostPeer. Nada de esto probado contra PostPeer
+  de verdad (las listas, sobre todo: los nombres de su respuesta salen de su documentación y se leen con tolerancia).

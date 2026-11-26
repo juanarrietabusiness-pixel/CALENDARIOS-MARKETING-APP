@@ -29,6 +29,9 @@
 //   POST   /api/videos/<c>/<id>/render      { version }: el RENDER a mp4 (voz, escenas y subtítulos, -14 LUFS). Sólo
 //                                           con el guion aprobado y su locución; contesta ya (202) y el Durable Object
 //                                           del render lo hace (worker/lib/estudio/render.js). No gasta IA
+//   POST   /api/videos/<c>/<id>/youtube    { titulo?, intro?, miniatura? }: lo que el video da para YOUTUBE (la descripción
+//                                           con la letra, los capítulos y las citas; con `miniatura`, la de 1280×720 en la
+//                                           galería), SIN tocar la publicación. Gratis
 //   POST   /api/videos/<c>/<id>/publicacion { postId, calendarId? }: ligarlo a una publicación del cliente (postId vacío:
 //                                           desligarlo). Si el mp4 ya está hecho, se pone en ella ya
 //   PUT    /api/videos/<c>/<id>/sonido      { efectos, musica: { archivoId, volumen } | null, efectosPropios?: { transicion,
@@ -498,6 +501,21 @@ async function rutasDelCliente(req, env, { acceso, usuario, partes, metodo }) {
     const r = await guardarEstilo(env, acceso, cliente, fila, { nombre: b.nombre, nota: b.nota, para: b.para }, usuario);
     difundir(env, acceso.ownerId, { tipo: "estudio", clientId: cliente.id, por: firma(usuario, req) });
     return json(r, 201);
+  }
+
+  // «Armar con la letra y los capítulos» / «Crear miniatura» de la Configuración de YouTube: lo que el video da para
+  // YouTube, SIN escribirlo en la publicación (la pantalla lo pone en sus campos y lo guarda al cerrar). Gratis.
+  if (accion === "youtube" && metodo === "POST") {
+    const { prepararYouTube } = await import("../lib/estudio/youtubeVideo.js");
+    const r = await prepararYouTube(env, acceso, cliente, fila, {
+      titulo: typeof b.titulo === "string" ? b.titulo : "", intro: typeof b.intro === "string" ? b.intro.slice(0, 600) : "",
+      miniatura: b.miniatura === true,
+    });
+    if (r.miniatura) difundir(env, acceso.ownerId, { tipo: "estudio", clientId: cliente.id, por: firma(usuario, req) });
+    return json({
+      titulo: r.titulo, descripcion: r.descripcion, categoria: r.categoria, capitulos: r.capitulos, citas: r.citas,
+      miniatura: r.miniatura?.clave ? `/api/media/${r.miniatura.clave}` : null, avisos: r.avisos,
+    });
   }
 
   // A qué publicación va: no toca el guion, así que no pide la versión.

@@ -474,7 +474,10 @@ export const DEFINICIONES_VIDEO = Object.freeze([
         titulo: { type: "string", description: "Opcional: el título en YouTube (≤ 100). Sin él, el del video." },
         intro: { type: "string", description: "Opcional: un párrafo de presentación al principio de la descripción (≤ 600)." },
         etiquetas: { type: "array", items: { type: "string" }, description: "Opcional: las etiquetas (sin #)." },
-        publicar_el: { type: "string", description: "Opcional: «AAAA-MM-DDTHH:mm» en hora de Panamá: YouTube lo publica a esa hora." },
+        publicar_el: { type: "string", description: "Opcional: «AAAA-MM-DDTHH:mm» en hora de Panamá: YouTube lo publica a esa hora (sólo con la conexión de Google; por PostPeer la hora la pone la cola)." },
+        descripcion: { type: "string", description: "Opcional: una descripción PROPIA (la que escribiste tú), en vez de la armada con la letra y los capítulos." },
+        conservar_descripcion: { type: "boolean", description: "true: deja la descripción que ya tiene la publicación (su texto) y sólo pone lo demás." },
+        privacidad: { type: "string", enum: ["public", "unlisted", "private"], description: "Opcional: la privacidad de ESTA publicación (si no, la del canal)." },
         miniatura: { type: "boolean", description: "false: sin miniatura (por defecto, se hace)." },
       },
       required: ["video_id"],
@@ -782,12 +785,15 @@ export function crearHerramientasVideo({ env, acceso, resolverCliente, usuario, 
       });
     },
 
-    async preparar_youtube({ cliente, video_id: id, publicacion_id: postId = "", titulo = "", intro = "", etiquetas = [], publicar_el: publicarEl = "", miniatura = true }) {
+    async preparar_youtube({ cliente, video_id: id, publicacion_id: postId = "", titulo = "", intro = "", etiquetas = [], publicar_el: publicarEl = "", miniatura = true, descripcion = null, conservar_descripcion: conservar = false, privacidad = "" }) {
       const c = await resolverCliente(cliente);
       const { prepararYouTube } = await import("./youtubeVideo.js");
       return conErrores(async () => {
         const fila = await proyectoDe(acceso, c.id, id);
-        const r = await prepararYouTube(env, acceso, c, fila, { titulo: String(titulo ?? ""), intro: String(intro ?? "").slice(0, 600), etiquetas, publicarEl: String(publicarEl ?? ""), miniatura: miniatura !== false, postId: String(postId ?? "") });
+        const r = await prepararYouTube(env, acceso, c, fila, {
+          titulo: String(titulo ?? ""), intro: String(intro ?? "").slice(0, 600), etiquetas, publicarEl: String(publicarEl ?? ""), miniatura: miniatura !== false,
+          postId: String(postId ?? ""), descripcion: typeof descripcion === "string" ? descripcion : null, conservarDescripcion: conservar === true, privacidad: String(privacidad ?? ""),
+        });
         if (r.puesto) avisar(c.id, id);
         const texto = [
           `Preparado para YouTube: «${r.titulo}» (categoría ${r.categoria === "10" ? "Música" : "Gente y blogs"}${r.publicarEl ? `, se publica el ${r.publicarEl} UTC` : ""}).`,

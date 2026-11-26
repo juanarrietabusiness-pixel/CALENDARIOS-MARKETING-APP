@@ -17,7 +17,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import Icon from "../Icon";
 import {
   REDES, mediosDe, historiasDe, conHistoria, textoPara, primerComentario, destinoInstagram, objetivoDe, claveAdaptado,
-  conHistorias, esShortYouTube, tituloYouTube, descripcionYouTube,
+  conHistorias, esShortYouTube, tituloYouTube, descripcionYouTube, miniaturaYouTube, hashtagsSobreTitulo,
 } from "../../lib/publicacion";
 import { useAjustada } from "../../hooks/useAjustada";
 
@@ -149,7 +149,11 @@ export default function VistaRed({ post, redes, client, encajar = "", reserva = 
   const usuario = (client?.instagram || client?.name || "cuenta").replace(/^@/, "");
   // En YouTube, el título (la primera línea) y debajo la descripción entera.
   const texto = esHistoria && pieza.red !== "youtube" ? "" : pieza.red === "youtube" ? descripcionYouTube(post) : textoPara(post, pieza.red);
-  const cortado = pieza.red === "instagram" && texto.length > CORTE_TEXTO && !textoAbierto;
+  // YouTube también la enseña cortada («…más»), como Instagram.
+  const cortado = (pieza.red === "instagram" || pieza.red === "youtube") && texto.length > CORTE_TEXTO && !textoAbierto;
+  // En un video normal se ve la MINIATURA (la de su configuración o la portada) y encima del título, tres hashtags.
+  const deYouTube = pieza.red === "youtube";
+  const portadaVista = deYouTube && !vertical ? miniaturaYouTube(post) || post.portada : post.portada;
   const corto = cortado ? `${texto.slice(0, CORTE_TEXTO).trimEnd()}…` : texto;
   const deslizar = {
     onTouchStart: (e) => { const t = e.touches[0]; toque.current = { x: t.clientX, y: t.clientY }; },
@@ -196,7 +200,7 @@ export default function VistaRed({ post, redes, client, encajar = "", reserva = 
           data-carrusel={medios.length > 1 || undefined}
           {...(medios.length > 1 ? deslizar : {})}
         >
-          {m ? <Medio medio={m} objetivo={objetivo} vertical={vertical} modo={post.ajusteIG || "difuminado"} color={client?.primaryColor} adaptados={post.adaptados} portada={post.portada} onForma={setForma} /> : <span>Sin imagen ni video</span>}
+          {m ? <Medio medio={m} objetivo={objetivo} vertical={vertical} modo={post.ajusteIG || "difuminado"} color={client?.primaryColor} adaptados={post.adaptados} portada={portadaVista} onForma={setForma} /> : <span>Sin imagen ni video</span>}
           {vertical && m && (
             <>
               <span className="vista-red-zona" data-lado="arriba" aria-hidden="true">{esHistoria ? usuario : ""}</span>
@@ -214,7 +218,8 @@ export default function VistaRed({ post, redes, client, encajar = "", reserva = 
         {!esHistoria && (
           <p className="vista-previa-texto">
             {pieza.red === "instagram" && <strong>{usuario} </strong>}
-            {pieza.red === "youtube" && <strong className="vista-previa-titulo">{tituloYouTube(post) || "Sin título"}</strong>}
+            {deYouTube && hashtagsSobreTitulo(post).length > 0 && <span className="vista-previa-hashtags">{hashtagsSobreTitulo(post).join(" ")}</span>}
+            {deYouTube && <strong className="vista-previa-titulo">{tituloYouTube(post) || "Sin título"}</strong>}
             {corto || <em>Sin texto</em>}
             {cortado && (
               <>

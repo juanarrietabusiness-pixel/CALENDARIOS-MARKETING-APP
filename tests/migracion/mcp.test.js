@@ -222,6 +222,14 @@ describe("el protocolo y las herramientas", () => {
     await llamar(tk, "editar_publicacion", { publicacion_id: nueva.id, pauta: false });
     expect(dias().find((d) => d.date === "2026-10-08").posts[0].pauta).toBe(false);
 
+    // La «Configuración de YouTube»: se fusiona con la que tenga, «""» vacía un campo y null la quita.
+    await llamar(tk, "editar_publicacion", { publicacion_id: nueva.id, youtube: { titulo: "Receta en 1 minuto", privacidad: "unlisted", categoria: "99" } });
+    expect(dias().find((d) => d.date === "2026-10-08").posts[0].youtube).toEqual({ titulo: "Receta en 1 minuto", privacidad: "unlisted" });
+    await llamar(tk, "editar_publicacion", { publicacion_id: nueva.id, youtube: { privacidad: "", primerComentario: "¿La pruebas?" } });
+    expect(dias().find((d) => d.date === "2026-10-08").posts[0].youtube).toEqual({ titulo: "Receta en 1 minuto", primerComentario: "¿La pruebas?" });
+    await llamar(tk, "editar_publicacion", { publicacion_id: nueva.id, youtube: null });
+    expect(dias().find((d) => d.date === "2026-10-08").posts[0].youtube).toBeNull();
+
     await llamar(tk, "mover_publicacion", { publicacion_id: nueva.id, fecha: "2026-10-09" });
     expect(dias().find((d) => d.date === "2026-10-09").posts.map((p) => p.id)).toEqual([nueva.id]);
     // Calendario siempre activo: a otro mes también se mueve, y el mes

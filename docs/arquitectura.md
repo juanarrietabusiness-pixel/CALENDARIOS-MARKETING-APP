@@ -552,6 +552,10 @@ src/
                           también lo que llega por «Compartir» (/compartir) y cómo dejarlo en la hoja de compartir
     calendario/BankPanel.jsx  El banco de ideas (junto al calendario y en la pestaña Ideas): filtros, empresa, enlace
     calendario/cuandoSale.jsx   «¿Cuándo sale?» del panel: Ahora / Programar / La publico yo
+    calendario/configYouTube.jsx «Configuración de YouTube» del panel (lazy; sólo con YouTube elegido): título, descripción
+                          propia o la misma (y «Armar con la letra y los capítulos»), etiquetas, categoría, privacidad,
+                          miniatura (galería o «Crear miniatura»), lista de reproducción, primer comentario, contenido
+                          sintético; lo que no se puede (colaboraciones…) dicho. Guarda en `post.youtube`
     calendario/horaSugerida.jsx La hora con mejores resultados, compartida por los dos
     calendario/destinoRedes.jsx «¿Qué sale y dónde?»: formato y cada red con su casilla y
                           lo que sale en ella; la usan el panel y «Subir»
@@ -1414,5 +1418,6 @@ worker/rutas/
   edicion.js              /api/edicion: las actas, los estilos de edición de un cliente (leer, guardar entero, quitar) y las
                           propuestas (verlas, aceptarlas y rechazarlas por las mismas funciones que acta_de_edicion)
 tests/migracion/edicionPantalla.test.js  /api/edicion contra D1: lo que ve cada quien
+tests/migracion/configYouTube.test.js  La «Configuración de YouTube»: lo vacío y lo propio, los huecos que no dejan programar, el
+                          cuerpo de PostPeer y las listas del canal
 ```
-

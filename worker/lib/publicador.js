@@ -45,7 +45,7 @@ import {
 import {
   REDES, revisarPublicacion, mediosDe, textoPara, primerComentario, destinoInstagram,
   esJPEG, piezasDe, publicacionDeVariante, momentoDeVariante, mediosParaRed, colaboradoresDe, conHistoria, redesDe,
-  tituloYouTube, descripcionYouTube, etiquetasYouTube, esShortYouTube, fotosTikTok, tituloTikTok,
+  tituloYouTube, descripcionYouTube, etiquetasYouTube, esShortYouTube, fotosTikTok, tituloTikTok, miniaturaYouTube,
 } from "../../src/lib/publicacion.js";
 import { tipoAprobacion } from "../../src/lib/aprobacion.js";
 import { estaVigente } from "../../src/lib/vigenciaHistorias.js";
@@ -1015,14 +1015,15 @@ async function pasoYouTubePostPeer(env, { cuenta, origen, carga, guardar, fila: 
   if (!(await env.MEDIA.head(clave))) throw new ErrorPublicar("El video ya no está en el almacenamiento: vuelve a añadirlo a la publicación.");
   if (!env.META_APP_SECRET) throw new ErrorPublicar("Falta META_APP_SECRET en el Worker: firma la dirección de la que PostPeer descarga el archivo.");
   if (!origen) throw new ErrorPublicar("No se sabe en qué dirección está la aplicación para que PostPeer descargue el video: vuelve a vincular el YouTube del cliente en Ajustes → Integraciones.");
-  // La miniatura: la de preparar_youtube o la portada (una imagen subida); sin ella, la que escoja YouTube.
-  const miniatura = String(post.youtube?.miniatura || post.portada || "");
-  const conMiniatura = miniatura.startsWith("/api/media/clientes/") && !/\.(mp4|mov|m4v|webm)/i.test(miniatura);
+  // La miniatura: la de su configuración de YouTube o la portada (una imagen subida); sin ella, la que escoja YouTube.
+  const miniatura = miniaturaYouTube(post);
+  const conMiniatura = Boolean(miniatura);
   const privacidad = VISIBILIDADES_YOUTUBE.includes(post.youtube?.privacidad) ? post.youtube.privacidad : privacidadDe(cuenta);
   const cuerpo = cuerpoYouTube({
     descripcion: descripcionYouTube(post), titulo: tituloYouTube(post), etiquetas: etiquetasYouTube(post), visibilidad: privacidad,
     categoria: post.youtube?.categoria ?? "22", accountId: cuenta.externo_id, urlVideo: await urlMedioPublico(env, origen, video.src),
     urlMiniatura: conMiniatura ? await urlMedioPublico(env, origen, miniatura) : "", clave: fila.id,
+    playlistId: post.youtube?.playlistId ?? "", primerComentario: post.youtube?.primerComentario ?? "", ia: post.youtube?.ia === true,
   });
   pp.enviadoAt = ahora();
   await guardar({});
@@ -1089,7 +1090,7 @@ async function pasoYouTube(env, contexto) {
     if (!/^clientes\/[^/]+\//.test(clave)) throw new ErrorPublicar("Para YouTube, el video tiene que estar subido a la publicación.");
     const cabeza = await env.MEDIA.head(clave);
     if (!cabeza) throw new ErrorPublicar("El video ya no está en el almacenamiento: vuelve a añadirlo a la publicación.");
-    const privacidad = privacidadDe(cuenta);
+    const privacidad = ["public", "unlisted", "private"].includes(post.youtube?.privacidad) ? post.youtube.privacidad : privacidadDe(cuenta);
     const tipo = cabeza.httpMetadata?.contentType || "video/mp4";
     const sesion = await abrirSubidaYouTube(token, {
       tamano: cabeza.size, tipo,

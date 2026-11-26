@@ -15,6 +15,7 @@ import { kitDe } from "./kit.js";
 import { claveDelCliente } from "./archivos.js";
 import { cambiarPublicacion } from "./ponerEnPost.js";
 import { coloresPlantilla } from "../../../src/lib/carrusel.js";
+import { limpiarYouTube } from "../../../src/lib/publicacion.js";
 import { ErrorVideo } from "../videosProyectos.js";
 import { lineaDeTiempo, textoDeLocucion, guionParaFormato } from "../../../src/lib/videoEscenas.js";
 import { esCancion, palabrasParaLinea } from "../../../src/lib/videoCancion.js";
@@ -44,7 +45,7 @@ export function imagenPrincipal(guion, linea) {
  * Panamá), `etiquetas`, `miniatura` (false: sin ella), `postId` (la publicación donde dejarlo). → { titulo, descripcion,
  * capitulos, citas, etiquetas, categoria, publicarEl, miniatura (la ficha de la galería) | null, puesto, avisos }.
  */
-export async function prepararYouTube(env, acceso, cliente, fila, { titulo = "", publicarEl = "", etiquetas = [], miniatura = true, postId = "", intro = "" } = {}) {
+export async function prepararYouTube(env, acceso, cliente, fila, { titulo = "", publicarEl = "", etiquetas = [], miniatura = true, postId = "", intro = "", descripcion = null, conservarDescripcion = false, privacidad = "" } = {}) {
   const guion = leerJSON(fila.guion, null);
   if (!guion?.escenas?.length) throw new ErrorVideo("El video no tiene escenas.", 409);
   const locucion = leerJSON(fila.locucion, {});
@@ -56,9 +57,11 @@ export async function prepararYouTube(env, acceso, cliente, fila, { titulo = "",
   if (!capitulos.length) avisos.push("Sin capítulos: YouTube pide al menos 3, el primero en 0:00 y de 10 s o más cada uno (este video no los da).");
   const citas = citasDelGuion(guion);
   const letra = cancion ? String(locucion.letra ?? "") : textoDeLocucion(guion);
-  const descripcion = descripcionYouTubeDelVideo({
+  // La descripción: la PROPIA si se da; la de la publicación si se pide conservarla; si no, la armada (letra, capítulos…).
+  const armada = descripcionYouTubeDelVideo({
     titulo: nombre, intro, capitulos, letra, citas, redes: { instagram: cliente.instagram ?? "", whatsapp: cliente.whatsapp ?? "" },
   });
+  const propia = typeof descripcion === "string" && descripcion.trim() ? descripcion.trim() : "";
   const publicar = publicarEl ? publicarElDesdePanama(publicarEl) : null;
   if (publicarEl && !publicar) avisos.push(`«${publicarEl}» no es una fecha con hora (AAAA-MM-DDTHH:mm, hora de Panamá): no se programa.`);
   const limpias = (Array.isArray(etiquetas) ? etiquetas : []).map((t) => String(t).replace(/^#/, "").trim()).filter(Boolean).slice(0, 30);
@@ -95,16 +98,18 @@ export async function prepararYouTube(env, acceso, cliente, fila, { titulo = "",
   }
 
   const datos = {
-    titulo: nombre, descripcion, ...(limpias.length ? { etiquetas: limpias } : {}),
+    titulo: nombre, ...(conservarDescripcion ? {} : { descripcion: propia || armada }), ...(limpias.length ? { etiquetas: limpias } : {}),
     categoria: cancion ? CATEGORIA_MUSICA : CATEGORIA_PERSONAS,
+    ...(["public", "unlisted", "private"].includes(privacidad) ? { privacidad } : {}),
     ...(publicar ? { publicarEl: publicar } : {}),
     ...(ficha?.clave ? { miniatura: `/api/media/${ficha.clave}` } : {}),
   };
   let puesto = null;
   if (postId) {
-    const r = await cambiarPublicacion(env, acceso, { clienteId: cliente.id, postId: String(postId), cambiar: (post) => ({ ...post, youtube: datos }) });
+    // Se FUSIONA con lo que ya tenga su configuración de YouTube (lo que no se prepara aquí se queda).
+    const r = await cambiarPublicacion(env, acceso, { clienteId: cliente.id, postId: String(postId), cambiar: (post) => ({ ...post, youtube: limpiarYouTube({ ...(post.youtube ?? {}), ...datos }) }) });
     if (r?.aviso) avisos.push(r.aviso);
     else puesto = { calendarId: r.calendarId, postId: String(postId) };
   }
-  return { ...datos, capitulos, citas, miniatura: ficha, puesto, avisos };
+  return { ...datos, descripcion: datos.descripcion ?? "(la de la publicación)", capitulos, citas, miniatura: ficha, puesto, avisos };
 }

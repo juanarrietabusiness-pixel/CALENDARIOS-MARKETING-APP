@@ -32,7 +32,7 @@ import { lazy, Suspense, useEffect, useId, useMemo, useRef, useState } from "rea
 import Icon from "../Icon";
 import {
   revisarPublicacion, aplicarArreglo, REDES, mediosDe, objetivoDe, necesitaAjuste, conMedios, destinoInstagram,
-  historiasDe, contarHashtags, colaboradoresDe, LIMITES, redesDe, esReelConVideo, conPortada as ponerDePortada,
+  historiasDe, contarHashtags, colaboradoresDe, LIMITES, redesDe, esReelConVideo, conPortada as ponerDePortada, resumenYouTube,
 } from "../../lib/publicacion";
 import { EditorMedios, CamposRedes, Plegable } from "./editorPublicacion";
 import AjusteImagen from "./ajusteImagen";
@@ -63,6 +63,8 @@ const CarruselIA = lazy(() => import("./CarruselIA"));
 const ReelIA = lazy(() => import("./ReelIA"));
 // «De la galería»: lo ya hecho en el Estudio (imágenes sueltas o un carrusel entero).
 const GaleriaSelector = lazy(() => import("../GaleriaSelector"));
+// La «Configuración de YouTube»: sólo si YouTube está entre las redes (aparte, para no pesar en la carga del panel).
+const ConfigYouTube = lazy(() => import("./configYouTube"));
 // El tipo, el estilo y la plantilla de «Crear la imagen aquí»: lee el kit, va aparte.
 const OpcionesCrearAqui = lazy(() => import("./OpcionesCrearAqui"));
 const VideoListo = lazy(() => import("../VideoListo"));
@@ -998,6 +1000,14 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
           {redes.includes("facebook") && (
             <Plegable titulo="Configuración de Facebook" icono="globe" resumen={post.textoFacebook ? "texto propio" : "mismo texto"}>
               <CamposRedes post={post} sf={sf} partes={["facebook"]} />
+            </Plegable>
+          )}
+          {redes.includes("youtube") && (
+            <Plegable titulo="Configuración de YouTube" icono="play" resumen={resumenYouTube(post)}>
+              <Suspense fallback={<p className="hint">Cargando…</p>}>
+                <ConfigYouTube post={post} setForm={setForm} clientId={clientId} onError={onError}
+                  via={(publicacion?.estadoRedes?.cuentas ?? []).find((c) => c.clientId === clientId && c.red === "youtube")?.via ?? null} />
+              </Suspense>
             </Plegable>
           )}
           {post.format !== "live" && (
