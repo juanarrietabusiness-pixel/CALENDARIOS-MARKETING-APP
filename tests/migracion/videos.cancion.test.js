@@ -537,6 +537,37 @@ describe("derivar_video (YouTube: del maestro largo, su reel)", () => {
   });
 });
 
+describe("preparar_youtube (YouTube: descripción, capítulos, miniatura)", () => {
+  const herramientas = () => crearHerramientasEstudio({
+    env, acceso: crearAcceso(db, JEFE), resolverCliente: async () => db.sqlite.prepare("select * from clients where id = 'bc'").get(),
+    usuario: { id: JEFE, nombre: "Juan" }, origen: "claude", por: { userId: JEFE, nombre: "Juan" },
+  });
+
+  it("la descripción con la letra y las redes, Música, la hora de Panamá; en la publicación, lo usa el publicador", async () => {
+    servicios();
+    db.sqlite.prepare("update clients set instagram = '@babycaleb' where id = 'bc'").run();
+    const posts = [{ id: "y1", format: "post", status: "pending" }];
+    db.sqlite.prepare("insert into calendars (id, client_id, owner_id, month, year, days) values (?,?,?,?,?,?)").run("cal1", "bc", JEFE, 11, 2026, JSON.stringify([{ date: "2026-12-01", posts }]));
+    const h = herramientas();
+    await h.video_con_cancion({ musica_id: "can1", letra: LETRA, formato: "16:9", confirmado: true });
+    const id = db.sqlite.prepare("select id from videos_proyectos").get().id;
+    const r = await h.preparar_youtube({ video_id: id, publicacion_id: "y1", titulo: "Toallitas", publicar_el: "2026-12-01T19:30", etiquetas: ["#bebe", "toallitas"] });
+    expect(r.texto).toMatch(/Preparado para YouTube: «Toallitas» \(categoría Música, se publica el 2026-12-02T00:30:00\.000Z UTC\)/);
+    expect(r.texto).toMatch(/Letra:\nToallitas suaves para tu bebé/);
+    expect(r.texto).toMatch(/Instagram: https:\/\/www\.instagram\.com\/babycaleb/);
+    // Sin Container aquí: sin miniatura, y se dice.
+    expect(r.texto).toMatch(/Sin miniatura/);
+    const post = JSON.parse(db.sqlite.prepare("select days from calendars where id = 'cal1'").get().days)[0].posts[0];
+    expect(post.youtube).toMatchObject({ titulo: "Toallitas", categoria: "10", publicarEl: "2026-12-02T00:30:00.000Z", etiquetas: ["bebe", "toallitas"] });
+    expect(post.youtube.descripcion).toMatch(/^Toallitas\n\n/);
+    // Lo que sube el publicador.
+    const { tituloYouTube, descripcionYouTube, etiquetasYouTube } = await import("../../src/lib/publicacion.js");
+    expect(tituloYouTube(post)).toBe("Toallitas");
+    expect(descripcionYouTube(post)).toMatch(/Letra:/);
+    expect(etiquetasYouTube(post)).toEqual(["bebe", "toallitas"]);
+  });
+});
+
 describe("guardar el guion entero no se lleva la canción", async () => {
   const { conLaCancionGuardada } = await import("../../worker/lib/videosProyectos.js");
   const cancion = { archivo: "m1", duracion: 30 };

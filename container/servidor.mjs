@@ -48,7 +48,7 @@ import { Buffer } from "node:buffer";
 import process from "node:process";
 import { createCanvas, loadImage } from "@napi-rs/canvas";
 import { validarGuion, lineaDeTiempo, FORMATOS_VIDEO } from "../src/lib/videoEscenas.js";
-import { dibujarFrame, paletaDelGuion, escenaEn } from "../src/lib/motorVideo.js";
+import { dibujarFrame, paletaDelGuion, escenaEn, FILTRO_BYN } from "../src/lib/motorVideo.js";
 import { revisarEscenas, textoDeRevision, instanteLleno } from "../src/lib/revisionEscenas.js";
 import { prepararRecursos, registrarRespaldo, registrarLetraDeLaCasa, registrarFuente, cuadrosParaUnInstante } from "./recursos.mjs";
 import { guardarClip, tieneClip, ErrorClip } from "./clips.mjs";
@@ -60,6 +60,7 @@ import { renderizar } from "./render.mjs";
 import { escuchar } from "./escuchar.mjs";
 import { propiosDelPedido, libreriaDelPedido, efectosMarcaDelPedido, recorteDelPedido } from "./efectos.mjs";
 import { limpiarCalidad } from "../src/lib/renderVideo.js";
+import { lineasDePortada, PORTADA_YOUTUBE } from "../src/lib/youtubeVideo.js";
 import { unir, muestraDeColor, fotograma } from "./unir.mjs";
 import { golpesDeCancion } from "./golpes.mjs";
 import { conGolpes, limpiarGolpes } from "../src/lib/golpes.js";
@@ -176,6 +177,52 @@ async function acabado(p) {
   return { cuerpo: Buffer.from(json), tipo: "application/json", cabeceras: {} };
 }
 
+/**
+ * La PORTADA de YouTube (preparar_youtube): 1280×720, la imagen principal del video a sangre (en blanco y negro si el
+ * video la lleva así), un degradado oscuro abajo y el título en la letra del kit, grande, en una o dos líneas, con una
+ * raya del acento encima. → JSON { datos (JPEG en base64), mime, ancho, alto }.
+ */
+async function portadaYouTube(p) {
+  if (typeof p.imagen !== "string" || !p.imagen) throw new ErrorPedido("Falta la imagen.");
+  let img;
+  try { img = await loadImage(Buffer.from(p.imagen, "base64")); } catch { throw new ErrorPedido("No es una imagen que se pueda leer."); }
+  const W = PORTADA_YOUTUBE.ancho;
+  const H = PORTADA_YOUTUBE.alto;
+  const lienzo = createCanvas(W, H);
+  const ctx = lienzo.getContext("2d");
+  const k = Math.max(W / img.width, H / img.height);
+  if (p.byn === true) ctx.filter = FILTRO_BYN;
+  ctx.drawImage(img, (W - img.width * k) / 2, (H - img.height * k) / 2, img.width * k, img.height * k);
+  ctx.filter = "none";
+  const g = ctx.createLinearGradient(0, H * 0.35, 0, H);
+  g.addColorStop(0, "rgba(0,0,0,0)");
+  g.addColorStop(1, "rgba(0,0,0,0.82)");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, W, H);
+  const colores = p.colores ?? {};
+  const texto = COLOR.test(String(colores.texto ?? "")) ? colores.texto : "#FFFFFF";
+  const acento = COLOR.test(String(colores.acento ?? "")) ? colores.acento : "#F5A623";
+  const familia = letraDe(registrarFuente(p.fuente) || String(p.familia ?? ""), "Anton, Roboto, sans-serif");
+  const lineas = lineasDePortada(String(p.titulo ?? "").toUpperCase());
+  // El tamaño: el más grande con el que la línea más larga cabe en el 88 % del ancho (sin pasar de 170 px).
+  let tam = 170;
+  const mide = (t) => { ctx.font = `900 ${tam}px ${familia}`; return ctx.measureText(t).width; };
+  while (tam > 40 && Math.max(...lineas.map(mide), 0) > W * 0.88) tam -= 4;
+  ctx.font = `900 ${tam}px ${familia}`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "alphabetic";
+  const alto = tam * 1.02;
+  let y = H - 56 - alto * (lineas.length - 1);
+  ctx.fillStyle = acento;
+  ctx.fillRect(W / 2 - 70, y - tam - 26, 140, 10);
+  ctx.fillStyle = texto;
+  ctx.shadowColor = "rgba(0,0,0,0.55)";
+  ctx.shadowBlur = 18;
+  for (const l of lineas) { ctx.fillText(l, W / 2, y); y += alto; }
+  const bytes = await lienzo.encode("jpeg", 90);
+  return { cuerpo: Buffer.from(JSON.stringify({ datos: bytes.toString("base64"), mime: "image/jpeg", ancho: W, alto: H })), tipo: "application/json", cabeceras: {} };
+}
+
 const MODOS_ENCAJE = new Set(["difuminado", "color", "recorte"]);
 const crearLienzo = (w, h) => createCanvas(Math.max(1, Math.round(w)), Math.max(1, Math.round(h)));
 
@@ -211,6 +258,7 @@ async function atender(ruta, p) {
   if (ruta === "/miniatura") return miniatura(p);
   if (ruta === "/imagen-redes") return imagenRedes(p);
   if (ruta === "/acabado") return acabado(p);
+  if (ruta === "/portada-youtube") return portadaYouTube(p);
   // «Mejorar mi video»: un cuadro con un color (para escogerlo) y un fotograma entero (para alargar o un gancho nuevo).
   if (ruta === "/muestra-color") return { cuerpo: await muestraDeColor(p), tipo: "image/jpeg", cabeceras: {} };
   if (ruta === "/fotograma") return { cuerpo: await fotograma(p), tipo: "image/jpeg", cabeceras: {} };

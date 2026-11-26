@@ -27,7 +27,7 @@ import { aplicarLexicoAlGuion } from "../../src/lib/lexico.js";
 import { sonidoParaVideo, musicaDeLaMarca } from "./estudio/sonidos.js";
 import { efectoDelCatalogo } from "../../src/lib/catalogoEfectos.js";
 import { conSubtitulosDeIdentidad, paletaDeIdentidad, musicaQueToca, estiloDeMarcaDelKit } from "../../src/lib/identidadVideo.js";
-import { aplicarEstilo } from "../../src/lib/estilosVideo.js";
+import { aplicarEstilo, rellenarConEstilo, limpiarEstilosVideo } from "../../src/lib/estilosVideo.js";
 import { conFondosPorCrear } from "../../src/lib/fondosVideo.js";
 
 export const ID_VIDEO = /^[\w-]{1,80}$/;
@@ -252,12 +252,23 @@ function comprobarVersion(fila, version) {
  * Guarda el guion y/o el título de la versión que se tenía abierta. Un guion distinto sube la versión y devuelve el
  * proyecto a borrador. → { video, avisos, cambio } (`cambio`: si se escribió algo).
  */
+/** El estilo guardado con que se hizo un video (`origen.estiloId`), si sigue en el kit del cliente; si no, null. */
+function estiloDelVideo(cliente, fila) {
+  const id = leerJSON(fila?.origen, {})?.estiloId;
+  if (!id) return null;
+  return limpiarEstilosVideo(leerJSON(cliente?.kit_marca, {})?.estilosVideo).find((x) => x.id === id) ?? null;
+}
+
 export async function guardarProyecto(acceso, cliente, fila, { guion: entrada, titulo, version, por = null }) {
   comprobarVersion(fila, version);
   const cambios = {};
   let avisos = [];
   if (entrada !== undefined) {
-    const r = guionConLexico(conLaCancionGuardada(entrada, fila), cliente);
+    // Lo que no se escribió de una capa, con el ESTILO del video (el que se le aplicó al crearlo), no con lo de siempre.
+    const estilo = estiloDelVideo(cliente, fila);
+    const antes = estilo ? new Set((leerJSON(fila.guion, {})?.escenas ?? []).map((x) => JSON.stringify(x))) : null;
+    const relleno = estilo ? rellenarConEstilo(entrada, estilo, { intactas: antes }).guion : entrada;
+    const r = guionConLexico(conLaCancionGuardada(relleno, fila), cliente);
     avisos = r.avisos;
     if (JSON.stringify(r.guion) !== fila.guion) {
       const estado = estadoTrasEditar(fila.estado);

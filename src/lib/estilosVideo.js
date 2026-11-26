@@ -481,3 +481,63 @@ export function aplicarEstilo(guion, estilo, { conFondos = false } = {}) {
   }
   return { guion: g, cambios };
 }
+
+/**
+ * Lo que NO se escribió de una capa se RELLENA con el estilo del video (YouTube, fase 3: 26-nov-2026). Antes, una escena
+ * escrita con editar_escena en un video con estilo sacaba los valores de siempre en lo que se omitía: la imagen a sangre
+ * a «tam» 0,6, contenida, sin velo y en color; el gigante con «aparece»… y el video dejaba de parecerse al estilo. Sólo
+ * lo que falta (`undefined`): lo que se escribe manda. Por capa:
+ *   · imagen a sangre → tam 1, recorte, oscurecer (0,5 si el estilo no dice) y tratamiento y movimiento del estilo;
+ *   · texto principal (gigante o titular) → entrada (golpe), pulso, mayúsculas, porPalabra (si se dice en su escena) y
+ *     color (claro) del estilo;
+ *   · apoyo → color (claro) y entrada; etiqueta → color (acento).
+ * Lo de entre paréntesis es lo que va si el estilo no lo dice. `intactas`: las escenas que ya estaban guardadas tal
+ * cual (su JSON): no se tocan (el guion guardado omite lo que va por defecto, y un «oscurecer» 0 elegido no se distingue
+ * de uno no escrito). → { guion, n } (n: valores puestos). Pura.
+ */
+export function rellenarConEstilo(guion, estilo, { intactas = null } = {}) {
+  const e = limpiarEstiloVideo(estilo);
+  if (!e || !Array.isArray(guion?.escenas)) return { guion, n: 0 };
+  const f = e.fondo ?? {};
+  const t = e.texto ?? {};
+  let n = 0;
+  const falta = (o, k, v) => {
+    if (o[k] !== undefined || v === undefined) return;
+    o[k] = v;
+    n++;
+  };
+  const anim = (c, entrada) => {
+    if (entrada === undefined) return;
+    if (c.animacion === undefined || c.animacion === null) { c.animacion = { entrada }; n++; return; }
+    if (typeof c.animacion === "object") falta(c.animacion, "entrada", entrada);
+  };
+  const escenas = guion.escenas.map((x) => {
+    if (!x || typeof x !== "object" || !Array.isArray(x.capas)) return x;
+    if (intactas?.has(JSON.stringify(x))) return x;
+    const capas = x.capas.map((c0) => {
+      if (!c0 || typeof c0 !== "object") return c0;
+      const c = { ...c0 };
+      if (c.tipo === "imagen" && c.encuadre === "completo") {
+        falta(c, "tam", 1);
+        falta(c, "recorte", f.recorte ?? "cubrir");
+        falta(c, "oscurecer", f.oscurecer ?? 0.5);
+        falta(c, "tratamiento", f.tratamiento);
+        falta(c, "movimiento", f.movimientos?.[0]);
+      } else if (c.tipo === "texto" && (c.rol === "gigante" || ((c.rol ?? "titular") === "titular" && c.rol === t.rol))) {
+        anim(c, t.entrada ?? "golpe");
+        falta(c, "pulso", t.pulso);
+        falta(c, "mayusculas", t.mayusculas);
+        if (t.porPalabra && c.porPalabra === undefined && seDiceEnElHabla(c.texto, x.habla)) falta(c, "porPalabra", true);
+        falta(c, "color", t.color ?? "claro");
+      } else if (c.tipo === "texto" && c.rol === "apoyo") {
+        falta(c, "color", e.apoyo?.color ?? "claro");
+        anim(c, e.apoyo?.entrada);
+      } else if (c.tipo === "texto" && c.rol === "etiqueta") {
+        falta(c, "color", e.etiqueta?.color ?? "acento");
+      }
+      return c;
+    });
+    return { ...x, capas };
+  });
+  return { guion: { ...guion, escenas }, n };
+}

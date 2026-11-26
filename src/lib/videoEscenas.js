@@ -604,6 +604,9 @@ function validarEstilo(s = {}, errores) {
     ilustracion: validarProp(E(ILUSTRACIONES, "plana"), est.ilustracion, "estilo.ilustracion", errores),
     // La viñeta (0–1): oscurece las esquinas y lleva la mirada al centro. Sólo si la trae.
     ...(Number(est.vineta) > 0 ? { vineta: validarProp(N(0, 1, 0), est.vineta, "estilo.vineta", errores) } : {}),
+    // El FONDO CONTINUO por sección (motorVideo.js, `conFondoContinuo`): con canción va solo; true lo enciende en un video
+    // con voz y false lo apaga. Sólo se escribe si se dice.
+    ...(typeof est.fondoContinuo === "boolean" ? { fondoContinuo: est.fondoContinuo } : {}),
     // El aspecto del personaje (piel, pelo, ropa, accesorio): si no lo trae, sale el del kit del cliente.
     ...(esObjeto(est.personaje) ? { personaje: limpiarPersonaje(est.personaje) } : {}),
   };

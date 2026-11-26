@@ -446,6 +446,23 @@ export const DEFINICIONES_VIDEO = Object.freeze([
     },
   },
   {
+    name: "preparar_youtube",
+    description: "PREPARA un video animado para YOUTUBE: el título, la DESCRIPCIÓN (la letra entera, los CAPÍTULOS sacados de sus tiempos —YouTube los enseña con 3 o más, el primero en 0:00 y de 10 s o más—, las citas bíblicas que enseña y las redes del cliente), la categoría (Música si va con canción), las etiquetas, la hora a la que YouTube lo publica (publicar_el, hora de Panamá: lo deja privado hasta entonces) y la MINIATURA de 1280×720 (la imagen principal del video con el título en la letra del kit; queda en la galería). Con publicacion_id lo deja en esa publicación y el publicador lo usa al subirlo; un Short sale solo si la publicación es un reel vertical de hasta 3 minutos. Sin publicación, devuelve el texto para revisarlo. Enséñale a la persona la descripción y la miniatura antes de programar. No gasta IA.",
+    input_schema: {
+      type: "object",
+      properties: {
+        ...clienteParam, ...videoParam,
+        publicacion_id: { type: "string", description: "Opcional: la publicación del calendario (de YouTube) donde dejarlo." },
+        titulo: { type: "string", description: "Opcional: el título en YouTube (≤ 100). Sin él, el del video." },
+        intro: { type: "string", description: "Opcional: un párrafo de presentación al principio de la descripción (≤ 600)." },
+        etiquetas: { type: "array", items: { type: "string" }, description: "Opcional: las etiquetas (sin #)." },
+        publicar_el: { type: "string", description: "Opcional: «AAAA-MM-DDTHH:mm» en hora de Panamá: YouTube lo publica a esa hora." },
+        miniatura: { type: "boolean", description: "false: sin miniatura (por defecto, se hace)." },
+      },
+      required: ["video_id"],
+    },
+  },
+  {
     name: "identidad_video",
     description: "La IDENTIDAD DE VIDEO del cliente: lo que comparten TODOS sus videos para verse y sonar igual —su estilo de la marca (uno de estilos_video, que se aplica solo a cada video animado nuevo que no pida otro), sus músicas (de musicas: un video nuevo toma una de la lista; escoge tú otra DE LA LISTA según el tono), sus efectos por momento (de efectos_sonido: transicion, impacto, subida, sello, logo, item, cifra; rotan en los automáticos) y el estilo de sus subtítulos (clasico, palabra, placa, limpio; con pos, maxPalabras, acento y mayusculas)—. Sin «guardar»: la que tiene, con sus opciones. Con «guardar»: cambia SÓLO las partes que traigas (null quita una); hazlo cuando la persona lo pida, nunca por tu cuenta. Con muestra=true: un cuadro por estilo de subtítulos con la marca del cliente, para que la persona escoja. Se aplica al CREAR un video: lo ya hecho no cambia. No gasta nada.",
     input_schema: {
@@ -532,7 +549,7 @@ export const DEFINICIONES_VIDEO = Object.freeze([
 ]);
 
 /** Las que escriben (en el MCP van como escritura; las demás, de sólo lectura). */
-export const ESCRIBEN_VIDEO = Object.freeze(["identidad_video", "plantilla_video", "guardar_estructura", "eliminar_estructura", "voz_de_marca", "lexico_de_marca", "guardar_estilo_video", "aplicar_estilo_video", "fondos_video", "video_con_cancion", "derivar_video", "publicar_con_musica", "crear_video", "guardar_video", "editar_escena", "aprobar_video", "renderizar_video", "ligar_video", "sonido_video", "volver_a_version", "personaje_video"]);
+export const ESCRIBEN_VIDEO = Object.freeze(["identidad_video", "plantilla_video", "guardar_estructura", "eliminar_estructura", "voz_de_marca", "lexico_de_marca", "guardar_estilo_video", "aplicar_estilo_video", "fondos_video", "video_con_cancion", "derivar_video", "preparar_youtube", "publicar_con_musica", "crear_video", "guardar_video", "editar_escena", "aprobar_video", "renderizar_video", "ligar_video", "sonido_video", "volver_a_version", "personaje_video"]);
 
 /** Lo que falta para el siguiente paso, en una frase para el modelo. Pura. */
 /** ¿La locución es de la versión aprobada? (un video «aprobado» con voz de esa versión ya no la necesita otra vez). */
@@ -712,6 +729,26 @@ export function crearHerramientasVideo({ env, acceso, resolverCliente, usuario, 
           if (e instanceof ErrorCancion) throw new Fallo(e.message);
           throw e;
         }
+      });
+    },
+
+    async preparar_youtube({ cliente, video_id: id, publicacion_id: postId = "", titulo = "", intro = "", etiquetas = [], publicar_el: publicarEl = "", miniatura = true }) {
+      const c = await resolverCliente(cliente);
+      const { prepararYouTube } = await import("./youtubeVideo.js");
+      return conErrores(async () => {
+        const fila = await proyectoDe(acceso, c.id, id);
+        const r = await prepararYouTube(env, acceso, c, fila, { titulo: String(titulo ?? ""), intro: String(intro ?? "").slice(0, 600), etiquetas, publicarEl: String(publicarEl ?? ""), miniatura: miniatura !== false, postId: String(postId ?? "") });
+        if (r.puesto) avisar(c.id, id);
+        const texto = [
+          `Preparado para YouTube: «${r.titulo}» (categoría ${r.categoria === "10" ? "Música" : "Gente y blogs"}${r.publicarEl ? `, se publica el ${r.publicarEl} UTC` : ""}).`,
+          r.capitulos.length ? `Capítulos (${r.capitulos.length}): ${r.capitulos.map((x) => `${Math.floor(x.desde / 60)}:${String(Math.floor(x.desde % 60)).padStart(2, "0")} ${x.titulo}`).join(" · ")}.` : "",
+          r.citas.length ? `Citas: ${r.citas.join(" · ")}.` : "",
+          r.miniatura ? `Miniatura 1280×720 en la galería (ID ${r.miniatura.id}).` : "",
+          r.puesto ? `Quedó en la publicación ${r.puesto.postId}: el publicador lo usa al subirlo a YouTube.` : "No se dejó en ninguna publicación (publicacion_id): es para revisarlo.",
+          ...r.avisos,
+          "", "DESCRIPCIÓN:", r.descripcion,
+        ].filter((x) => x !== "").join("\n");
+        return { texto, imagenes: [] };
       });
     },
 

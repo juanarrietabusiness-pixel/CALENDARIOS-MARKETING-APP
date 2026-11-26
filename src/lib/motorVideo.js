@@ -890,8 +890,12 @@ function dibujarVideoCompleto(ctx, capa, estado, c) {
 function dibujarImagenCompleta(ctx, capa, estado, c, cuando) {
   const { ancho: W, alto: H, recursos, paleta } = c;
   const img = recursos?.imagen?.(capa.archivo) ?? null;
-  const dura = Math.max(1e-3, (cuando?.hasta ?? 0) - (cuando?.desde ?? 0));
-  const mov = movimientoDeImagen(capa.movimiento, (Number(estado.vida) || 0) / dura);
+  // El FONDO CONTINUO de una sección (`conFondoContinuo`): el movimiento va de punta a punta de la sección, no se
+  // reinicia en cada escena.
+  const sec = capa.continua;
+  const dura = sec ? Math.max(1e-3, sec.hasta - sec.desde) : Math.max(1e-3, (cuando?.hasta ?? 0) - (cuando?.desde ?? 0));
+  const vida = sec ? (cuando?.desde ?? 0) + (Number(estado.vida) || 0) - sec.desde : Number(estado.vida) || 0;
+  const mov = movimientoDeImagen(capa.movimiento, vida / dura);
   ctx.save();
   ctx.globalAlpha *= estado.alfa;
   ctx.translate(W / 2 + estado.dx, H / 2 + estado.dy);
@@ -1868,6 +1872,62 @@ export function cajasDeEscena(ctx, { guion, linea, indice = 0, formato, recursos
   });
 }
 
+// ------------------------------------------------------------
+// El FONDO CONTINUO por sección (YouTube, 26-nov-2026)
+// ------------------------------------------------------------
+
+/** Las transiciones que mueven el cuadro entero: dentro de una sección moverían también su fondo. */
+// (Escritas aquí y no desde TRANSICIONES_CON_MOVIMIENTO, que se declara más abajo: al cargar aún no existe.)
+const MUEVEN_EL_CUADRO = new Set(["barrido", "zoom", "deslizar", "empuje", "golpe", "cortina", "circulo", "persiana", "glitch"]);
+/** La imagen a sangre que hace de fondo de una escena (la primera), o null. */
+const fondoDe = (escena) => (escena?.capas ?? []).find((c) => c?.tipo === "imagen" && c.encuadre === "completo" && (c.archivo || c.pide)) ?? null;
+// La misma IMAGEN (aunque cada escena pida otro movimiento: el diseño alternaba «acercar» y «alejar» en una sección).
+const claveDeFondo = (c) => (c ? `${c.archivo || `pide:${String(c.pide ?? "").trim().toLowerCase()}`}|${c.recorte ?? ""}` : "");
+
+/**
+ * Las escenas seguidas con el MISMO fondo a sangre (la misma imagen) son una SECCIÓN: su fondo se mueve de punta a
+ * punta de la sección, con UN movimiento (el de su primera escena) (antes cada escena reiniciaba su «Ken Burns» y se veía un salto: «brusco»), no
+ * vuelve a entrar en cada escena y, entre dos escenas de la misma sección, una transición que movería el cuadro entero
+ * pasa a fundido (sólo cambia lo de delante). La transición de verdad, al cambiar de sección. Va con una canción o con
+ * `estilo.fondoContinuo: true`; `false` lo apaga. → el guion para dibujar (las capas de fondo llevan `continua`:
+ * { desde, hasta }). Pura (y recordada por línea de tiempo: se llama en cada cuadro).
+ */
+const CACHE_CONTINUO = new WeakMap();
+export function conFondoContinuo(guion, linea) {
+  const activo = guion?.estilo?.fondoContinuo === true || (Boolean(guion?.cancion) && guion?.estilo?.fondoContinuo !== false);
+  if (!activo || !linea?.escenas?.length || !guion?.escenas?.length) return guion;
+  const previo = CACHE_CONTINUO.get(linea);
+  if (previo?.guion === guion) return previo.salida;
+  const escenas = guion.escenas;
+  const claves = escenas.map((e) => claveDeFondo(fondoDe(e)));
+  const salida = { ...guion, escenas: escenas.slice() };
+  for (let i = 0; i < escenas.length;) {
+    let j = i;
+    while (j + 1 < escenas.length && claves[i] && claves[j + 1] === claves[i]) j++;
+    if (j > i) {
+      const seccion = { desde: linea.escenas[i]?.desde ?? 0, hasta: linea.escenas[j]?.hasta ?? 0 };
+      const movimiento = fondoDe(escenas[i]).movimiento;
+      for (let k = i; k <= j; k++) {
+        const e = escenas[k];
+        const f = fondoDe(e);
+        const tr = e.transicion;
+        salida.escenas[k] = {
+          ...e,
+          ...(k > i && tr && MUEVEN_EL_CUADRO.has(tr.tipo) ? { transicion: { ...tr, tipo: "fundido" } } : {}),
+          capas: e.capas.map((c) => (c !== f ? c : {
+            ...c, continua: seccion, ...(movimiento ? { movimiento } : {}),
+            // Sólo entra en la primera escena de la sección; en las demás ya está.
+            ...(k > i ? { animacion: { ...(c.animacion ?? {}), entrada: "ninguna" } } : {}),
+          })),
+        };
+      }
+    }
+    i = j + 1;
+  }
+  CACHE_CONTINUO.set(linea, { guion, salida });
+  return salida;
+}
+
 /**
  * Dibuja el fotograma del instante `t` de un guion.
  *   guion   — validado (`validarGuion().guion`)
@@ -1878,7 +1938,8 @@ export function cajasDeEscena(ctx, { guion, linea, indice = 0, formato, recursos
  *   fuentes — { titular, cuerpo }: familias ya registradas
  * El contexto se escala por fuera: aquí se dibuja en las medidas del formato.
  */
-export function dibujarFrame(ctx, { guion, linea, t = 0, formato, paleta, recursos = {}, fuentes = {} }) {
+export function dibujarFrame(ctx, { guion: entrada, linea, t = 0, formato, paleta, recursos = {}, fuentes = {} }) {
+  const guion = conFondoContinuo(entrada, linea);
   const c = contextoDe({ guion, linea, formato, paleta, recursos, fuentes });
   const { ancho, alto } = c;
   const escenas = guion?.escenas ?? [];
