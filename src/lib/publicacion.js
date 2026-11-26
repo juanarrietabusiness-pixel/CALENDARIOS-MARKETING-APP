@@ -393,8 +393,9 @@ export function descripcionYouTube(post) {
  * caracteres entre todas (YouTube cuenta la coma que las separa).
  */
 export function etiquetasYouTube(post) {
+  // Las etiquetas propias de YouTube («Configuración de YouTube» o preparar_youtube) mandan; sin ellas, los hashtags.
   const propias = Array.isArray(post?.youtube?.etiquetas) ? post.youtube.etiquetas.map((t) => String(t).replace(/^#/, "").trim()).filter(Boolean) : [];
-  const tags = [...new Set([...propias, ...(String(post?.hashtagsFinales ?? "").match(/#[\p{L}\p{N}_]+/gu) ?? []).map((t) => t.slice(1))])];
+  const tags = [...new Set(propias.length ? propias : (String(post?.hashtagsFinales ?? "").match(/#[\p{L}\p{N}_]+/gu) ?? []).map((t) => t.slice(1)))];
   const salida = [];
   let total = 0;
   for (const t of tags) {
@@ -404,6 +405,82 @@ export function etiquetasYouTube(post) {
     total += costo;
   }
   return salida;
+}
+
+// ------------------------------------------------------------
+// La «Configuración de YouTube» de una publicación (`post.youtube`)
+// ------------------------------------------------------------
+
+/** Las categorías de YouTube que tienen sentido para la agencia (su id y su nombre). */
+export const CATEGORIAS_YOUTUBE = Object.freeze([
+  ["10", "Música"], ["22", "Gente y blogs"], ["24", "Entretenimiento"], ["27", "Educación"], ["26", "Consejos y estilo"],
+  ["19", "Viajes y eventos"], ["17", "Deportes"], ["2", "Autos y vehículos"], ["28", "Ciencia y tecnología"], ["29", "ONG y activismo"],
+  ["1", "Cine y animación"], ["23", "Comedia"], ["25", "Noticias y política"], ["15", "Mascotas y animales"], ["20", "Videojuegos"],
+]);
+export const PRIVACIDADES_YOUTUBE_POST = Object.freeze([["public", "Público"], ["unlisted", "No listado"], ["private", "Privado"]]);
+
+/**
+ * Lo que guarda una publicación de YouTube, limpio: { titulo, descripcion (propia; vacía = el mismo texto), etiquetas,
+ * categoria, privacidad, miniatura (/api/media/clientes/…), playlistId, playlist (su nombre), primerComentario, ia
+ * (contenido sintético realista), publicarEl }. Lo vacío no se escribe. Pura.
+ */
+export function limpiarYouTube(y) {
+  if (!y || typeof y !== "object" || Array.isArray(y)) return undefined;
+  const t = (v, max) => String(v ?? "").replace(/\r/g, "").slice(0, max);
+  const etiquetas = (Array.isArray(y.etiquetas) ? y.etiquetas : String(y.etiquetas ?? "").split(","))
+    .map((x) => String(x).replace(/^#/, "").trim()).filter(Boolean).slice(0, 60).map((x) => x.slice(0, 100));
+  const miniatura = /^\/api\/media\/clientes\/[^\s"'<>]{1,300}$/.test(String(y.miniatura ?? "")) && !String(y.miniatura).includes("..") ? String(y.miniatura) : "";
+  const salida = {
+    titulo: t(y.titulo, LIMITES.youtube.titulo).replace(/\s+/g, " ").trim(),
+    descripcion: t(y.descripcion, 10000).trim(),
+    ...(etiquetas.length ? { etiquetas: [...new Set(etiquetas)] } : {}),
+    categoria: CATEGORIAS_YOUTUBE.some(([id]) => id === String(y.categoria)) ? String(y.categoria) : "",
+    privacidad: PRIVACIDADES_YOUTUBE_POST.some(([id]) => id === y.privacidad) ? y.privacidad : "",
+    miniatura,
+    playlistId: /^[\w-]{1,100}$/.test(String(y.playlistId ?? "")) ? String(y.playlistId) : "",
+    playlist: t(y.playlist, 150).trim(),
+    primerComentario: t(y.primerComentario, 10000).trim(),
+    ...(y.ia === true ? { ia: true } : {}),
+    publicarEl: /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{3})?Z$/.test(String(y.publicarEl ?? "")) ? String(y.publicarEl) : "",
+  };
+  const limpio = Object.fromEntries(Object.entries(salida).filter(([, v]) => v !== "" && v !== undefined));
+  return Object.keys(limpio).length ? limpio : undefined;
+}
+
+/**
+ * Los HUECOS sin llenar de un texto: «[COMPLETAR …]», «[PEGAR …]», «[PENDIENTE]», «[ENLACE …]», «[AÑADIR …]»… (lo que deja
+ * quien lo escribió para que otro lo complete). Una publicación con alguno no se programa. → [textos]. Pura.
+ */
+export function huecosSinLlenar(texto) {
+  return [...String(texto ?? "").matchAll(/\[(?:COMPLETAR|PEGAR|PENDIENTE|ENLACE|AÑADIR|AGREGAR|PONER|ESCRIBIR|FALTA|TODO)\b[^\]\n]{0,120}\]/gi)].map((m) => m[0]);
+}
+
+/** Los hashtags que YouTube enseña ENCIMA del título: los tres primeros de la descripción (o del título). Pura. */
+export function hashtagsSobreTitulo(post) {
+  const texto = `${tituloYouTube(post)} ${descripcionYouTube(post)}`;
+  return [...new Set(texto.match(/#[\p{L}\p{N}_]+/gu) ?? [])].filter((h) => h.toLowerCase() !== "#shorts").slice(0, 3);
+}
+
+/** La miniatura del video en YouTube: la de su configuración o la portada de la publicación (una imagen subida). Pura. */
+export function miniaturaYouTube(post) {
+  const m = String(post?.youtube?.miniatura || post?.portada || "");
+  return m.startsWith("/api/media/clientes/") && !/\.(mp4|mov|m4v|webm)(\?|$)/i.test(m) ? m : "";
+}
+
+/** El resumen de la cabecera del plegable: lo que cambia respecto a lo de siempre. Pura. */
+export function resumenYouTube(post) {
+  const y = post?.youtube ?? {};
+  const cat = CATEGORIAS_YOUTUBE.find(([id]) => id === y.categoria)?.[1];
+  const priv = PRIVACIDADES_YOUTUBE_POST.find(([id]) => id === y.privacidad)?.[1];
+  return [
+    esShortYouTube(post) ? "Short" : "video",
+    y.titulo ? "título propio" : null,
+    y.descripcion ? "texto propio" : "mismo texto",
+    cat ?? null,
+    priv ?? null,
+    miniaturaYouTube(post) ? "miniatura" : null,
+    y.playlistId ? "en una lista" : null,
+  ].filter(Boolean).join(" · ");
 }
 
 /** Qué se publica en Instagram según el formato: feed, carrusel, reel o historia. */
@@ -596,13 +673,17 @@ export function revisarPublicacion(post, redes = post?.redes ?? ["instagram"], {
     if (!videos.length) con(errores, "YouTube sólo publica video: esta publicación no tiene ninguno.", quitarRed(redes, "youtube"));
     else {
       if (medios.length > 1) avisos.push("YouTube publica un solo video: sale el primero.");
-      if (!tituloYouTube(post)) errores.push("YouTube necesita un título: escribe el texto de la publicación (su primera línea es el título).");
+      if (!tituloYouTube(post)) errores.push("YouTube necesita un título: escríbelo en «Configuración de YouTube» (o la primera línea del texto lo es).");
+      // Un hueco sin llenar («[COMPLETAR el productor]») no sale: se publicaría tal cual.
+      const huecos = huecosSinLlenar(`${tituloYouTube(post)}\n${descripcionYouTube(post)}\n${post?.youtube?.primerComentario ?? ""}`);
+      if (huecos.length) errores.push(`Hay ${huecos.length === 1 ? "un hueco" : `${huecos.length} huecos`} sin llenar en lo de YouTube (${huecos.slice(0, 3).join(", ")}): complétal${huecos.length === 1 ? "o" : "os"} antes de programarla.`);
+      if (String(post?.youtube?.titulo ?? "").length > L.titulo) errores.push(`El título de YouTube pasa de ${L.titulo} caracteres.`);
       const bytes = bytesDe(descripcionYouTube(post));
       if (bytes > L.descripcionBytes) {
         errores.push(`La descripción de YouTube ocupa ${bytes} bytes; el máximo es ${L.descripcionBytes} (cada tilde o emoji cuenta más de uno).`);
       }
       const primera = String(post?.descripcion || post?.script || "").split("\n").map((l) => l.trim()).find(Boolean) ?? "";
-      if (primera.length > L.titulo) avisos.push(`La primera línea tiene ${primera.length} caracteres: el título de YouTube se corta a ${L.titulo}.`);
+      if (!String(post?.youtube?.titulo ?? "").trim() && primera.length > L.titulo) avisos.push(`La primera línea tiene ${primera.length} caracteres: el título de YouTube se corta a ${L.titulo}.`);
       if (/[<>]/.test(`${post?.descripcion ?? ""}${post?.hashtagsFinales ?? ""}`)) avisos.push("YouTube no admite «<» ni «>»: se cambian por ‹ y ›.");
       if (esShortYouTube(post)) avisos.push("En YouTube sale como Short (vertical y de hasta 3 minutos): se le añade #Shorts si no lo lleva.");
       else if (["reel", "historia"].includes(post?.format)) avisos.push("En YouTube sale como video normal, no como Short: es horizontal o dura más de 3 minutos.");

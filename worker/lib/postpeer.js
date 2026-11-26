@@ -168,6 +168,20 @@ export async function cuentasDeRed(env, profileId = null, red = "tiktok") {
 }
 export const cuentasTikTok = (env, profileId = null) => cuentasDeRed(env, profileId, "tiktok");
 
+/**
+ * GET /youtube/accounts/{accountId}/playlists: las LISTAS DE REPRODUCCIÓN del canal → [{ id, titulo, privacidad }].
+ * Se lee con tolerancia (sin probar contra un canal con listas el 26-nov-2026: los nombres salen de su documentación).
+ */
+export async function listasYouTube(env, accountId) {
+  const r = datosDe(await postpeer(env, `/youtube/accounts/${encodeURIComponent(String(accountId))}/playlists`));
+  const lista = Array.isArray(r) ? r : r?.playlists ?? r?.items ?? [];
+  return lista.map((p) => ({
+    id: String(p?.id ?? p?.playlistId ?? ""),
+    titulo: String(p?.title ?? p?.name ?? p?.snippet?.title ?? "").slice(0, 150),
+    privacidad: String(p?.privacy ?? p?.privacyStatus ?? p?.status?.privacyStatus ?? ""),
+  })).filter((p) => p.id);
+}
+
 /** GET /tiktok/creator-info: qué deja hacer la cuenta (privacidad, duración, comentarios…). */
 export async function infoCreador(env, accountId) {
   const r = datosDe(await postpeer(env, "/tiktok/creator-info", { params: { accountId } }));
@@ -263,7 +277,7 @@ export const VISIBILIDADES_YOUTUBE = Object.freeze(["public", "unlisted", "priva
  * publica para marcas) y la miniatura (`mediaItems[].thumbnail`, JPG o PNG de hasta 2 MB), en lo suyo. `clave`: la de
  * idempotencia (la fila de la cola: un reintento no la sube dos veces). Pura.
  */
-export function cuerpoYouTube({ descripcion, titulo, etiquetas = [], visibilidad = "public", categoria = "22", accountId, urlVideo, urlMiniatura = "", clave = "" }) {
+export function cuerpoYouTube({ descripcion, titulo, etiquetas = [], visibilidad = "public", categoria = "22", accountId, urlVideo, urlMiniatura = "", clave = "", playlistId = "", primerComentario = "", ia = false }) {
   const tags = [];
   let total = 0;
   for (const t of (Array.isArray(etiquetas) ? etiquetas : []).map((x) => String(x).replace(/^#/, "").trim()).filter(Boolean)) {
@@ -282,6 +296,10 @@ export function cuerpoYouTube({ descripcion, titulo, etiquetas = [], visibilidad
         visibility: VISIBILIDADES_YOUTUBE.includes(visibilidad) ? visibilidad : "public",
         categoryId: /^\d{1,3}$/.test(String(categoria)) ? String(categoria) : "22",
         madeForKids: false,
+        // Contenido sintético REALISTA (lo pide YouTube); una letra animada no lo es.
+        ...(ia === true ? { containsSyntheticMedia: true } : {}),
+        ...(/^[\w-]{1,100}$/.test(String(playlistId ?? "")) ? { playlistId: String(playlistId) } : {}),
+        ...(String(primerComentario ?? "").trim() ? { firstComment: String(primerComentario).trim().slice(0, 10000) } : {}),
       },
     }],
     mediaItems: [{ type: "video", url: String(urlVideo), ...(urlMiniatura ? { thumbnail: String(urlMiniatura) } : {}) }],

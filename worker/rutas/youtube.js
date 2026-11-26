@@ -10,6 +10,7 @@
 //     POST /api/redes/youtube/elegir      { cuentaId }             el canal, si llegaron varios
 //     PUT  /api/redes/youtube/privacidad  { cuentaId, privacidad } público, oculto o privado
 //     POST /api/redes/youtube/desconectar { cuentaId }
+//     GET  /api/redes/youtube/listas?cliente=:id   las listas de reproducción del canal del cliente (por PostPeer)
 //
 // LA VUELTA VA SIN SESIÓN, igual que Drive y Meta: el `state` va
 // firmado con GOOGLE_CLIENT_SECRET y atado a la cookie `__Host-youtube-oauth`
@@ -28,6 +29,7 @@ import {
   urlConsentimientoYouTube, canjearCodigoYouTube, filaDeTokensYouTube, canalesYouTube, mensajeYouTube, revocarYouTube,
   descifrarYouTube, PRIVACIDADES_YOUTUBE, extraCuentaYouTube, ErrorYouTube,
 } from "../lib/youtube.js";
+import { listasYouTube, mensajePostPeer, postpeerConfigurado } from "../lib/postpeer.js";
 
 const leerJSON = (t, d) => { try { return JSON.parse(t) ?? d; } catch { return d; } };
 const FIRMA_YOUTUBE = { nombre: "YouTube", color: "#FF0000" };
@@ -171,6 +173,24 @@ export async function rutasYouTube(req, env, { acceso, usuario, partes, metodo }
     await acceso.actualizar("cuentas_sociales", { id: cuenta.id }, { client_id: para, datos: JSON.stringify(datos), updated_at: ahora() });
     avisar();
     return json({ ok: true, ...extraCuentaYouTube({ datos }) });
+  }
+
+  // Las LISTAS de reproducción del canal del cliente, para escoger en qué lista entra un video. Sólo por PostPeer: con la
+  // conexión de Google el permiso es el de subir (youtube.upload) y no alcanza para meter un video en una lista.
+  if (accion === "listas" && metodo === "GET") {
+    const clientId = url.searchParams.get("cliente");
+    if (!(await acceso.leerUno("clients", { id: clientId }))) return noEncontrado("Cliente");
+    const cuenta = (await acceso.leer("cuentas_sociales", { client_id: clientId, red: "youtube" }))[0];
+    if (!cuenta) return json({ listas: [], via: null, nota: "El cliente no tiene un canal de YouTube conectado." });
+    if (leerJSON(cuenta.datos, {})?.via !== "postpeer") {
+      return json({ listas: [], via: "google", nota: "Con la conexión de Google no se puede meter el video en una lista: conecta el canal por PostPeer o añádelo a la lista en YouTube." });
+    }
+    if (!postpeerConfigurado(env)) return error("Falta POSTPEER_API_KEY en el Worker", 503);
+    try {
+      return json({ listas: await listasYouTube(env, cuenta.externo_id), via: "postpeer" });
+    } catch (e) {
+      return error(mensajePostPeer(e), 502);
+    }
   }
 
   if (accion === "privacidad" && metodo === "PUT") {

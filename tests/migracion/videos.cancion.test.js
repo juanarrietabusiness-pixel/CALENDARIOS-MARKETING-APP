@@ -624,6 +624,24 @@ describe("preparar_youtube (YouTube: descripción, capítulos, miniatura)", () =
     expect(descripcionYouTube(post)).toMatch(/Letra:/);
     expect(etiquetasYouTube(post)).toEqual(["bebe", "toallitas"]);
   });
+
+  it("FUSIONA con la configuración de la publicación; respeta una descripción propia o la que ya tiene", async () => {
+    servicios();
+    const posts = [{ id: "y2", format: "post", status: "pending", youtube: { privacidad: "unlisted", playlistId: "PL1", primerComentario: "¡Gracias!", descripcion: "La mía" } }];
+    db.sqlite.prepare("insert into calendars (id, client_id, owner_id, month, year, days) values (?,?,?,?,?,?)").run("cal2", "bc", JEFE, 11, 2026, JSON.stringify([{ date: "2026-12-01", posts }]));
+    const h = herramientas();
+    await h.video_con_cancion({ musica_id: "can1", letra: LETRA, formato: "16:9", confirmado: true });
+    const id = db.sqlite.prepare("select id from videos_proyectos").get().id;
+    const leer = () => JSON.parse(db.sqlite.prepare("select days from calendars where id = 'cal2'").get().days)[0].posts[0].youtube;
+    await h.preparar_youtube({ video_id: id, publicacion_id: "y2", titulo: "Toallitas", conservar_descripcion: true });
+    // Lo que no se prepara aquí se queda; la descripción también, si se pide conservarla.
+    expect(leer()).toMatchObject({ titulo: "Toallitas", privacidad: "unlisted", playlistId: "PL1", primerComentario: "¡Gracias!", descripcion: "La mía", categoria: "10" });
+    await h.preparar_youtube({ video_id: id, publicacion_id: "y2", descripcion: "Escrita por Claude", privacidad: "private" });
+    expect(leer()).toMatchObject({ descripcion: "Escrita por Claude", privacidad: "private", playlistId: "PL1" });
+    // Sin descripción ni conservar: la armada (con la letra).
+    await h.preparar_youtube({ video_id: id, publicacion_id: "y2" });
+    expect(leer().descripcion).toMatch(/Letra:/);
+  });
 });
 
 describe("guardar el guion entero no se lleva la canción", async () => {

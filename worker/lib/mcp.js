@@ -21,7 +21,7 @@ import { difundir } from "./vivo.js";
 import { uuid, ahora } from "./ids.js";
 import { NULO } from "./acceso.js";
 import { programarLote, cancelarPendientes, resincronizarCalendario, filaPublica, filaConResumen, ErrorPublicar, esDePostPeer } from "./publicador.js";
-import { redesPorDefecto, REDES as NOMBRES_REDES } from "../../src/lib/publicacion.js";
+import { redesPorDefecto, REDES as NOMBRES_REDES, limpiarYouTube } from "../../src/lib/publicacion.js";
 import { prepararYProgramar, crearLoteProgramar, avanzarMientras, lotePublico } from "./programarServidor.js";
 import { diasConRespuestas } from "../../src/lib/aprobacion.js";
 import { normalizarHora } from "../../src/lib/horas.js";
@@ -120,6 +120,15 @@ export const HERRAMIENTAS_MCP = Object.freeze([
         texto_pieza: { type: "string", description: "Lo que va escrito encima del diseño (no el caption): titular, apoyo y precio, una línea cada uno." },
         escena: { type: "string", description: "Qué se ve en la pieza (lo lee el director al diseñarla)." },
         referencia: { type: "string", description: "El enlace de la referencia (un video o post de Instagram, TikTok, YouTube… que inspira la pieza; lo ve el cliente). Empieza por https://. \"\" lo quita." },
+        youtube: {
+          type: "object",
+          description: "La CONFIGURACIÓN DE YOUTUBE de la publicación (lo que se ve en su sección del panel). Se fusiona con lo que tenga; \"\" vacía un campo y null la quita entera. titulo (≤ 100; sin él, la primera línea del texto), descripcion (texto PROPIO de YouTube, ≤ 5.000 bytes; vacía = el mismo texto de la publicación), etiquetas (sin #; sin ellas, los hashtags), categoria (id: «10» Música, «22» Gente y blogs, «24» Entretenimiento, «27» Educación…), privacidad (public, unlisted, private), miniatura (/api/media/clientes/… de una imagen de la galería, 1280×720, ≤ 2 MB; sin ella, la portada), playlistId, primerComentario, ia (true sólo si es contenido sintético REALISTA). Un hueco «[COMPLETAR …]» impide programarla.",
+          properties: {
+            titulo: { type: "string" }, descripcion: { type: "string" }, etiquetas: { type: "array", items: { type: "string" } },
+            categoria: { type: "string" }, privacidad: { type: "string", enum: ["public", "unlisted", "private"] }, miniatura: { type: "string" },
+            playlistId: { type: "string" }, primerComentario: { type: "string" }, ia: { type: "boolean" },
+          },
+        },
         forma_gancho: { type: "string", description: "El id de la forma del gancho que dio ficha_de_textos (así el calendario aprende qué forma le rinde al cliente). \"\" la quita." },
         angulo: { type: "string", description: "El id del ángulo de venta que dio ficha_de_textos. \"\" lo quita." },
         anuncio: {
@@ -363,7 +372,7 @@ export function crearHerramientasMCP({ env, acceso, usuario, origen = "" }) {
 
     async editar_publicacion({
       publicacion_id: id, titulo, idea, descripcion, guion, texto_pieza: textoPieza, hashtags, hora: h, formato, redes, nota_interna: nota, pauta: p,
-      escena, forma_gancho: formaGancho, angulo, anuncio: a, referencia,
+      escena, forma_gancho: formaGancho, angulo, anuncio: a, referencia, youtube: yt,
     }) {
       const { cal, days, dia, indice, post } = await buscar(id);
       if (formato !== undefined && !FORMATOS.includes(formato)) throw new ErrorHerramienta(`Formato no válido: ${formato}.`);
@@ -382,6 +391,8 @@ export function crearHerramientasMCP({ env, acceso, usuario, origen = "" }) {
         title: titulo, idea, descripcion, guion, textoPieza, hashtagsFinales: hashtags, publishTime: hora(h), format: formato,
         redes: Array.isArray(redes) ? redes.filter((r) => REDES.includes(r)) : undefined, comment: nota, pauta,
         escena, formaGancho, angulo: angulo === undefined ? undefined : String(angulo), anuncio, referenceLink,
+        // La configuración de YouTube: se fusiona con la que tenga (null la quita).
+        youtube: yt === undefined ? undefined : yt === null ? null : limpiarYouTube({ ...(post.youtube ?? {}), ...yt }) ?? null,
       }).filter(([, v]) => v !== undefined));
       if (!Object.keys(cambios).length) throw new ErrorHerramienta("No indicaste nada que cambiar.");
       dia.posts[indice] = { ...post, ...cambios };

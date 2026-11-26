@@ -119,6 +119,19 @@ describe("YouTube por PostPeer", () => {
     expect(llamadas.every((l) => !String(l.ruta).includes("youtube/v3"))).toBe(true);
   });
 
+  it("la lista, el primer comentario y «contenido sintético» de su configuración llegan a PostPeer", async () => {
+    await sembrar([post({ youtube: { ...post().youtube, playlistId: "PL_oficial", primerComentario: "Únete al canal", ia: true } })]);
+    await programar(env, acceso(), { calendarId: "cal1", postId: "y1", ahoraMismo: true });
+    await procesarPublicacion(env, { id: filas()[0].id, owner_id: DUENO });
+    const envio = llamadas.find((l) => l.metodo === "POST" && l.ruta === "/v1/posts");
+    expect(envio.cuerpo.platforms[0].platformSpecificData).toMatchObject({ playlistId: "PL_oficial", firstComment: "Únete al canal", containsSyntheticMedia: true, visibility: "unlisted" });
+  });
+
+  it("con un hueco sin llenar no se programa", async () => {
+    await sembrar([post({ youtube: { ...post().youtube, descripcion: "Únete: [PEGAR ENLACE COMPLETO DEL CANAL DE WHATSAPP]" } })]);
+    await expect(programar(env, acceso(), { calendarId: "cal1", postId: "y1", ahoraMismo: true })).rejects.toThrow(/hueco/);
+  });
+
   it("sin la llave de PostPeer lo dice; sin video subido, no se programa", async () => {
     await sembrar([post({ medios: [] })]);
     await expect(programar(env, acceso(), { calendarId: "cal1", postId: "y1", ahoraMismo: true })).rejects.toThrow(/video/);

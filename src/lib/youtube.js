@@ -37,3 +37,16 @@ export const PRIVACIDADES = [
   ["unlisted", "Oculto (sólo con el enlace)"],
   ["private", "Privado"],
 ];
+
+/** Las listas de reproducción del canal del cliente (por PostPeer) → { listas: [{ id, titulo }], via, nota? }. */
+export async function listasYouTube(clientId) {
+  return pedir(`/redes/youtube/listas?cliente=${encodeURIComponent(clientId)}`);
+}
+
+/**
+ * Lo que un VIDEO ANIMADO da para YouTube (la descripción con la letra, los capítulos y las citas; con `miniatura`,
+ * la de 1280×720, ya en la galería), sin tocar la publicación → { titulo, descripcion, categoria, capitulos, miniatura, avisos }.
+ */
+export async function youtubeDelVideo(clientId, videoId, { titulo = "", miniatura = false } = {}) {
+  return pedir(`/videos/${encodeURIComponent(clientId)}/${encodeURIComponent(videoId)}/youtube`, conCuerpo("POST", { titulo, miniatura }));
+}

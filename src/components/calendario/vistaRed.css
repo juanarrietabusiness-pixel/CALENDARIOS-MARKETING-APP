@@ -50,3 +50,6 @@
 .vista-previa-mas:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 /* El carrusel se desliza con el dedo: el gesto horizontal es suyo. */
 .vista-red-medio[data-carrusel] { touch-action: pan-y; }
+/* YouTube: tres hashtags ENCIMA del título (como los enseña YouTube) y el título en su línea. */
+.vista-previa-hashtags { display: block; color: var(--accent); font-size: var(--fs-3xs); }
+.vista-previa-titulo { display: block; font-size: var(--fs-sm); margin-bottom: var(--sp-1); }

@@ -82,7 +82,8 @@
 }
 .plegable > summary::-webkit-details-marker { display: none; }
 .plegable-titulo { flex: 0 1 auto; }
-.plegable-resumen { flex: 1; min-width: 0; text-align: right; font-size: var(--fs-3xs); font-weight: 500; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* `contain: inline-size`: su línea sin cortes no cuenta para el ancho mínimo del plegable (en una rejilla lo ensanchaba). */
+.plegable-resumen { flex: 1; min-width: 0; contain: inline-size; text-align: right; font-size: var(--fs-3xs); font-weight: 500; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .plegable-flecha { margin-left: auto; flex-shrink: 0; transition: transform .15s; color: var(--text-dim); }
 .plegable-resumen + .plegable-flecha { margin-left: 0; }
 .plegable[open] > summary .plegable-flecha { transform: rotate(180deg); }
@@ -424,3 +425,9 @@
 .que-quieres-atajos { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-1); }
 .que-quieres-atajos .filter-chip .hint { font-size: var(--fs-3xs); }
 .pieza-mejorar { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+/* «Configuración de YouTube» (configYouTube.jsx). */
+.config-youtube { display: grid; gap: var(--sp-3); }
+.config-youtube .field { margin: 0; }
+.config-youtube-miniatura { width: 160px; aspect-ratio: 16 / 9; border-radius: var(--radius-sm); background: var(--surface-2); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; overflow: hidden; text-align: center; }
+.config-youtube-miniatura img { width: 100%; height: 100%; object-fit: cover; }
+.config-youtube-fijo { margin: 0; display: grid; gap: var(--sp-1); }
