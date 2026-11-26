@@ -127,6 +127,34 @@ describe("YouTube por PostPeer", () => {
     expect(envio.cuerpo.platforms[0].platformSpecificData).toMatchObject({ playlistId: "PL_oficial", firstComment: "Únete al canal", containsSyntheticMedia: true, visibility: "unlisted" });
   });
 
+  it("sin categoría propia: Música si el video es un video animado con canción; al reintentar, otra clave contra duplicados", async () => {
+    const { youtube: { categoria: _c, ...sinCategoria } } = post();
+    await sembrar([post({ youtube: sinCategoria, medios: [{ ...post().medios[0], videoAnimado: "v1" }] })]);
+    db.sqlite.prepare("insert into videos_proyectos (id, owner_id, client_id, titulo, guion, locucion) values (?,?,?,?,?,?)")
+      .run("v1", DUENO, "c1", "BENDECIDOS", "{}", JSON.stringify({ origen: "cancion", estado: "lista" }));
+    await programar(env, acceso(), { calendarId: "cal1", postId: "y1", ahoraMismo: true });
+    const f = filas()[0];
+    await procesarPublicacion(env, { id: f.id, owner_id: DUENO });
+    const envios = () => llamadas.filter((l) => l.metodo === "POST" && l.ruta === "/v1/posts");
+    expect(envios()[0].cuerpo.platforms[0].platformSpecificData.categoryId).toBe("10");
+    expect(envios()[0].cuerpo.idempotencyKey).toBe(f.id);
+    // Una persona la reintenta (worker/rutas/redes.js apunta `carga.reintento` y suelta el envío de antes).
+    const carga = JSON.parse(f.carga);
+    db.sqlite.prepare("update publicaciones_programadas set estado = 'programada', contenedor_id = null, carga = ? where id = ?")
+      .run(JSON.stringify({ ...carga, postpeer: undefined, reintento: 1 }), f.id);
+    await procesarPublicacion(env, { id: f.id, owner_id: DUENO });
+    expect(envios()).toHaveLength(2);
+    expect(envios()[1].cuerpo.idempotencyKey).toBe(`${f.id}-r1`);
+  });
+
+  it("sin categoría y sin canción: Gente y blogs", async () => {
+    const { youtube: { categoria: _c, ...sinCategoria } } = post();
+    await sembrar([post({ youtube: sinCategoria })]);
+    await programar(env, acceso(), { calendarId: "cal1", postId: "y1", ahoraMismo: true });
+    await procesarPublicacion(env, { id: filas()[0].id, owner_id: DUENO });
+    expect(llamadas.find((l) => l.metodo === "POST" && l.ruta === "/v1/posts").cuerpo.platforms[0].platformSpecificData.categoryId).toBe("22");
+  });
+
   it("con un hueco sin llenar no se programa", async () => {
     await sembrar([post({ youtube: { ...post().youtube, descripcion: "Únete: [PEGAR ENLACE COMPLETO DEL CANAL DE WHATSAPP]" } })]);
     await expect(programar(env, acceso(), { calendarId: "cal1", postId: "y1", ahoraMismo: true })).rejects.toThrow(/hueco/);

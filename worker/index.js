@@ -335,8 +335,9 @@ const trabajador = {
       }
       // Lo que Meta descarga al publicar: Meta no tiene sesión. Abre sólo
       // el archivo que dice el testigo firmado. Ver worker/rutas/redes.js.
-      if (partes[0] === "medio-publico" && metodo === "GET") {
-        return rutaMedioPublico(env, partes);
+      // GET y HEAD: PostPeer pregunta el tamaño del video con un HEAD antes de subirlo.
+      if (partes[0] === "medio-publico" && (metodo === "GET" || metodo === "HEAD")) {
+        return rutaMedioPublico(req, env, partes);
       }
       // Lo que oye y ve la vista previa del chat de Claude (un iframe de claude.ai, sin sesión): un audio o un video,
       // por trozos, sólo el que dice su testigo firmado y sólo unas horas. Ver worker/rutas/vistaMedio.js.
