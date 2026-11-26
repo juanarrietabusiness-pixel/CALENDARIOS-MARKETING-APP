@@ -1342,3 +1342,7 @@ contradicen, manda la de más abajo (la más nueva). Una trampa nueva de esta á
   con `colaSuena`, la canción sigue hasta «hasta» + cola (sin pasar del final) y se va con un fundido que dura la cola.
   `ajustar_cancion` cambia también `guion.cancion.duracion` (si no, `estadoDeCancion` deja de dar la canción por buena):
   sube la versión y devuelve el video a borrador.
+  La cola también se pide en el GUION (`cancion: { cola, colaSuena }` en guardar_video): `conColaPedida`
+  (videosProyectos.js) la convierte en la duración de la canción y el recorte de la locución, y `ajustar_cancion` pasa
+  por el mismo camino. Es por si la lista de herramientas del conector de quien edita está vieja (la carga al empezar la
+  conversación y no ve las nuevas: la sesión de 57DMC no veía `ajustar_cancion` ni `derivar_video`).
