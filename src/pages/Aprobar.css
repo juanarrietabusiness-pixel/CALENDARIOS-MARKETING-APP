@@ -276,3 +276,45 @@
 .aprobar-historias img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .aprobar-referencia { margin: 0; }
 .aprobar-referencia a { display: inline-flex; align-items: center; gap: var(--sp-1); min-height: var(--tap-sm); font-weight: 600; font-size: var(--fs-xs); }
+
+/* ============================================================
+   En el TELÉFONO, la publicación manda (Juan, 26-nov: «sale pequeño y es incómodo verlo; todo lo que está arriba y
+   abajo ocupa mucho espacio»). Antes, la barra de vistas, filtros y «Revisión rápida» iba pegada arriba (~110 px) y la de
+   abajo ocupaba tres líneas (~112 px): en un iPhone con el navegador quedaban ~300 px para la imagen. Ahora, como en
+   Instagram: lo de arriba se va al bajar, la barra de abajo es una fila, las publicaciones van de borde a borde y los
+   reels y las historias se ven ENTEROS (sin recortar) y caben en la pantalla.
+   ============================================================ */
+.aprobar-ayuda-envio { padding: 0 var(--sp-4); }
+.aprobar-fija { flex-wrap: nowrap; padding: var(--sp-2) var(--sp-3) calc(var(--sp-2) + var(--safe-bottom)); gap: var(--sp-2) var(--sp-3); }
+.aprobar-progreso { flex: 1 1 auto; min-width: 0; }
+.aprobar-progreso > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.aprobar-acciones-fijas { flex-wrap: nowrap; flex-shrink: 0; }
+.aprobar-acciones-fijas .btn { padding: 0 var(--sp-3); font-size: var(--fs-xs); white-space: nowrap; }
+.aprobar { padding-bottom: calc(72px + var(--safe-bottom)); }
+/* Los verticales, enteros: 9:16 hasta donde deje la pantalla (lo que no llega al ancho, con fondo oscuro a los lados). */
+.aprobar-medios[data-formato="reel"] .aprobar-medio, .aprobar-medios[data-formato="historia"] .aprobar-medio { max-height: calc(100dvh - 150px); }
+.aprobar-medios[data-formato="reel"] .aprobar-medio :is(img, video), .aprobar-medios[data-formato="historia"] .aprobar-medio :is(img, video) { object-fit: contain; }
+/* La barra de vistas y filtros ya no va pegada arriba (tampoco en la computadora: tapaba el principio de la imagen). */
+.aprobar-barra { position: static; padding: var(--sp-2) var(--sp-3); gap: var(--sp-2); }
+.aprobar-post { scroll-margin-top: var(--sp-2); }
+.aprobar-rapida-btn { min-height: var(--tap-sm); font-size: var(--fs-xs); }
+@media (min-width: 768px) {
+  /* A lo ancho, una imagen de 640 px de ancho no cabe en una laptop: entera en el alto que hay. */
+  .aprobar-medio { max-height: calc(100dvh - 150px); }
+  .aprobar-medio :is(img, video) { object-fit: contain; }
+}
+@media (max-width: 599px) {
+  .aprobar-contenido { padding: 0; }
+  .aprobar-feed { gap: var(--sp-3); }
+  .aprobar-post { border-radius: 0; border-left: none; border-right: none; box-shadow: none; }
+  .aprobar-post-cabecera { padding: var(--sp-2) var(--sp-3); }
+  .aprobar-acciones-fijas .btn svg { display: none; }
+  /* «0/5»: la palabra, sólo para el lector de pantalla (cortada, «0/5 revis…» no decía nada). */
+  .aprobar-progreso-palabra { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+}
+/* La revisión rápida: la imagen entera entre su cabecera y sus dos botones. */
+.aprobar-rapida-cuerpo .aprobar-medio { max-height: calc(100dvh - 230px); }
+.aprobar-rapida-cuerpo .aprobar-medio :is(img, video) { object-fit: contain; }
+.aprobar-rapida-cuerpo { padding: var(--sp-2) var(--sp-3); gap: var(--sp-2); }
+.aprobar-rapida-pie { padding: var(--sp-2) var(--sp-3) calc(var(--sp-2) + var(--safe-bottom)); }
+.aprobar-rapida-pie .btn { min-height: var(--tap); font-size: var(--fs-sm); }

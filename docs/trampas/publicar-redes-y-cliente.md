@@ -799,3 +799,13 @@ contradicen, manda la de más abajo (la más nueva). Una trampa nueva de esta á
   mano, sigue fallando entero con su motivo. Lo ya guardado con una lista sin TikTok NO cambia solo (no se sabe si se
   quitó a propósito): se marca en el panel y se vuelve a programar (sólo sale lo que falta). **TikTok con fotos por
   PostPeer no se ha probado contra el servicio real.**
+- **La página del cliente (/aprobar) dejaba ~300 px para la imagen en el teléfono (26-nov-2026).** La barra de vistas,
+  filtros y «Revisión rápida» iba pegada arriba (`position: sticky`, ~110 px) y la de abajo («15 de 29 revisadas», los dos
+  botones y la frase de ayuda) ocupaba tres líneas (~112 px); en un iPhone con el navegador, la publicación quedaba
+  encajonada y los reels, además, recortados (`object-fit: cover` con `max-height`). Ahora, como en Instagram: la barra de
+  arriba no se pega (se va al bajar; también en la computadora, donde tapaba el principio de la imagen), la de abajo es
+  una fila («0/5» en el teléfono: la palabra queda para el lector de pantalla) y la frase de ayuda va al final de la
+  página; en el teléfono las publicaciones van de borde a borde, y los reels y las historias se ven enteros
+  (`object-fit: contain`) en el alto que hay. A lo ancho, toda imagen cabe en el alto de la pantalla. La revisión rápida,
+  igual. Lo comprueba tests/vivo/navegador.test.js a 390×664 (un iPhone con la barra del navegador). Esta página tiene su
+  propia entrada (`vite.publico.config.js`): lo de la aplicación de la agencia no le llega.
