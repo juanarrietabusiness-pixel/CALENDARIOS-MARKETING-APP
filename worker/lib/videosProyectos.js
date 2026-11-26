@@ -21,7 +21,7 @@
 import { uuid, ahora } from "./ids.js";
 import { validarGuion, lineaDeTiempo, estadoTrasEditar, NOMBRE_ESTADO_VIDEO } from "../../src/lib/videoEscenas.js";
 import { textoParaVoz } from "../../src/lib/voces.js";
-import { esCancion, conPalabrasDeCancion, estadoDeCancion } from "../../src/lib/videoCancion.js";
+import { esCancion, conPalabrasDeCancion, estadoDeCancion, COLA_MAX } from "../../src/lib/videoCancion.js";
 import { limpiarSonido, SITIOS_EFECTO } from "../../src/lib/sonidoVideo.js";
 import { aplicarLexicoAlGuion } from "../../src/lib/lexico.js";
 import { sonidoParaVideo, musicaDeLaMarca } from "./estudio/sonidos.js";
@@ -259,10 +259,34 @@ function estiloDelVideo(cliente, fila) {
   return limpiarEstilosVideo(leerJSON(cliente?.kit_marca, {})?.estilosVideo).find((x) => x.id === id) ?? null;
 }
 
-export async function guardarProyecto(acceso, cliente, fila, { guion: entrada, titulo, version, por = null }) {
+/**
+ * La COLA de un fragmento pedida en el guion (`cancion.cola`, 0 a COLA_MAX s; `cancion.colaSuena`): el guion pasa a durar
+ * el tramo más la cola y la locución apunta su recorte nuevo. Así vale con guardar_video y con ajustar_cancion (los dos
+ * pasan por aquí). → { entrada, locucion (la nueva, o null si no se pidió) }.
+ */
+function conColaPedida(entrada, fila) {
+  const crudo = typeof entrada === "string" ? leerJSON(entrada, null) : entrada;
+  const pedida = crudo && typeof crudo === "object" && !Array.isArray(crudo) && crudo.cancion && typeof crudo.cancion === "object" ? crudo.cancion.cola : undefined;
+  if (pedida === undefined || pedida === null) return { entrada, locucion: null };
+  const l = leerJSON(fila.locucion, {});
+  if (!esCancion(l) || !l.recorte) throw new ErrorVideo("«cancion.cola» es para un FRAGMENTO de la canción (desde/hasta): este video no lleva uno.", 409);
+  const n = Number(pedida);
+  if (!Number.isFinite(n) || n < 0 || n > COLA_MAX) throw new ErrorVideo(`«cancion.cola» va de 0 a ${COLA_MAX} s.`, 400);
+  const suena = crudo.cancion.colaSuena === true;
+  const { desde, hasta } = l.recorte;
+  const duracion = Math.round((hasta - desde + n) * 1000) / 1000;
+  const recorte = { desde, hasta, ...(l.recorte.cancion ? { cancion: l.recorte.cancion } : {}), ...(n > 0 ? { cola: n, ...(suena ? { colaSuena: true } : {}) } : {}) };
+  const { cola: _c, colaSuena: _s, ...resto } = crudo.cancion;
+  const guardada = leerJSON(fila.guion, {})?.cancion ?? {};
+  return { entrada: { ...crudo, cancion: { ...guardada, ...resto, duracion } }, locucion: { ...l, recorte, duracion } };
+}
+
+export async function guardarProyecto(acceso, cliente, fila, { guion: pedido, titulo, version, por = null }) {
   comprobarVersion(fila, version);
   const cambios = {};
   let avisos = [];
+  // La cola del cierre, si el guion la pide (cambia lo que dura su canción y la locución).
+  const { entrada, locucion: conCola } = pedido !== undefined ? conColaPedida(pedido, fila) : { entrada: pedido, locucion: null };
   if (entrada !== undefined) {
     // Lo que no se escribió de una capa, con el ESTILO del video (el que se le aplicó al crearlo), no con lo de siempre.
     const estilo = estiloDelVideo(cliente, fila);
@@ -274,6 +298,7 @@ export async function guardarProyecto(acceso, cliente, fila, { guion: entrada, t
       const estado = estadoTrasEditar(fila.estado);
       if (!estado) throw new ErrorVideo("Se está renderizando: no se puede cambiar el guion hasta que termine.", 409);
       Object.assign(cambios, { guion: JSON.stringify(r.guion), version: fila.version + 1, estado });
+      if (conCola) cambios.locucion = JSON.stringify(conPalabrasDeCancion(r.guion, conCola));
     }
   }
   if (titulo !== undefined) {

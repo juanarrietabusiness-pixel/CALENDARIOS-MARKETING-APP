@@ -581,6 +581,15 @@ describe("la cola del cierre (reel de canción: negro con el logo pequeño)", ()
     const MP4 = new Uint8Array([0, 0, 0, 0x18, 0x66, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6f, 0x6d, 0, 0, 2, 0, 1, 2, 3]);
     await ejecutarRender(env, encargos[0], async (ruta, cuerpo) => { recibidos.push(cuerpo); return new Response(MP4); });
     expect(recibidos[0].recorte).toEqual({ desde: 5, hasta: 15, fundidoSalida: 3 });
+    // Con guardar_video también: «cancion.cola» en el guion (el camino de quien no tiene ajustar_cancion en su lista).
+    d = video(id);
+    const g = JSON.parse(d.guion);
+    await h.guardar_video({ video_id: id, version: d.version, guion: { ...g, cancion: { ...g.cancion, cola: 1.5 } } });
+    d = video(id);
+    expect(JSON.parse(d.guion).cancion).toMatchObject({ duracion: 8.5 });
+    expect(JSON.parse(d.guion).cancion.cola).toBeUndefined();
+    expect(JSON.parse(d.locucion)).toMatchObject({ duracion: 8.5, recorte: { desde: 5, hasta: 12, cola: 1.5 } });
+    expect(JSON.parse(d.locucion).recorte.colaSuena).toBeUndefined();
     // Al maestro (la canción entera) no se le pone cola.
     await expect(h.ajustar_cancion({ video_id: maestro, version: 1, cola: 2 })).rejects.toThrow(/FRAGMENTO/);
   });

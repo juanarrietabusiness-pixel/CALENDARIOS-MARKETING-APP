@@ -46,7 +46,7 @@ import { textoCosto } from "../../../src/lib/estudioCatalogo.js";
 import {
   limpiarLetra, leerAlineacion, medirAlineacion, letraEstimada, pedidoDeTiemposCancion, costoDeSincronia, duracionDeAudio,
   extractoCrudo, lineasConTiempos, huecosInstrumentales, guionKaraoke, conDesplazamiento, limpiarDesplazamiento, esCancion,
-  conPalabrasDeCancion, limpiarRecorte, recorteDeSincronia, palabrasDeLaCancion, conLaCancion, ANTES_DE_LA_VOZ, COLA_MAX, MAX_BYTES_CANCION,
+  conPalabrasDeCancion, limpiarRecorte, recorteDeSincronia, palabrasDeLaCancion, conLaCancion, ANTES_DE_LA_VOZ, MAX_BYTES_CANCION,
   COINCIDENCIA_MINIMA, FUENTES_CANCION,
 } from "../../../src/lib/videoCancion.js";
 
@@ -429,21 +429,12 @@ export async function derivarVideo(env, acceso, cliente, fila, { formato = "9:16
  * → { video, avisos }.
  */
 export async function ajustarCola(acceso, cliente, fila, { cola = 0, colaSuena = false, version, por = null }) {
-  const l = leerJSON(fila.locucion, {});
-  if (!esCancion(l)) throw new ErrorVideo("Este video no va con una canción.", 409);
-  if (!l.recorte) throw new ErrorVideo("La cola es para un FRAGMENTO de la canción (desde/hasta): este video lleva la canción entera.", 409);
   if (fila.estado === "renderizando") throw new ErrorVideo("Se está renderizando: espera a que termine.", 409);
-  const c = Number(cola) || 0;
-  if (c < 0 || c > COLA_MAX) throw new ErrorVideo(`«cola» va de 0 a ${COLA_MAX} s.`, 400);
-  const { desde, hasta } = l.recorte;
-  const duracion = Math.round((hasta - desde + c) * 1000) / 1000;
-  const recorte = { desde, hasta, cancion: l.recorte.cancion, ...(c > 0 ? { cola: c, ...(colaSuena === true ? { colaSuena: true } : {}) } : {}) };
+  // Lo hace el guardado del guion (`cancion.cola`): el mismo camino que guardar_video.
   const guion = leerJSON(fila.guion, {});
-  const r = await guardarProyecto(acceso, cliente, fila, { guion: { ...guion, cancion: { ...(guion.cancion ?? {}), duracion } }, version, por });
-  const nueva = conPalabrasDeCancion(r.video.guion, { ...l, recorte, duracion });
-  const momento = ahora();
-  await acceso.actualizar("videos_proyectos", { id: fila.id, client_id: cliente.id }, { locucion: JSON.stringify(nueva), updated_at: momento });
-  const otra = await acceso.leerUno("videos_proyectos", { id: fila.id, client_id: cliente.id });
-  return { video: deFila(otra), avisos: r.avisos };
+  const r = await guardarProyecto(acceso, cliente, fila, {
+    guion: { ...guion, cancion: { ...(guion.cancion ?? {}), cola: Number(cola) || 0, ...(colaSuena === true ? { colaSuena: true } : {}) } }, version, por,
+  });
+  return { video: r.video, avisos: r.avisos };
 }
 
