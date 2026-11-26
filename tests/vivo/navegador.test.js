@@ -413,6 +413,63 @@ describe.skipIf(!disponible.playwright)("la aplicación abierta en Chromium", ()
     }
   }, 120_000);
 
+  it("/aprobar en el TELÉFONO: la publicación se ve entera, sin barras que la tapen (Juan, 26-nov)", async () => {
+    // Arriba iba pegada la barra de vistas, filtros y «Revisión rápida» (~110 px) y abajo, la de enviar en tres líneas
+    // (~112 px): en un iPhone, con el navegador, quedaban ~300 px para la imagen.
+    const CLI = "c0ffee00-0000-4000-8000-0000000000f0";
+    const CAL = "c0ffee00-0000-4000-8000-0000000000f1";
+    const T = "testigo-aprobar-telefono-0123456789";
+    const hoy = fechaEnZona();
+    const [ano, mes] = hoy.split("-").map(Number);
+    await espacio.d1(`insert into clients (id, owner_id, name) values ('${CLI}', '${ANA.id}', 'Cliente Aprobar');`);
+    // La imagen (4:5), subida con la sesión de la agencia.
+    const agencia = await navegador.newContext();
+    const pa = await agencia.newPage();
+    await pa.goto(`${espacio.base}/`);
+    await pa.getByLabel("Correo").fill(ANA.email);
+    await pa.getByLabel("Contraseña").fill("contrasena-de-prueba-larga");
+    await pa.getByRole("button", { name: /Entrar/ }).click();
+    await pa.getByRole("navigation").first().waitFor({ timeout: 20_000 });
+    const clave = await pa.evaluate(async (cli) => {
+      const c = document.createElement("canvas");
+      c.width = 1080; c.height = 1350;
+      c.getContext("2d").fillRect(0, 0, 1080, 1350);
+      const blob = await new Promise((ok) => c.toBlob(ok, "image/png"));
+      const f = new FormData();
+      f.append("archivo", new File([blob], "aprobar.png", { type: "image/png" })); f.append("clientId", cli); f.append("carpeta", "posts");
+      return (await (await fetch("/api/media", { method: "POST", body: f })).json()).clave;
+    }, CLI);
+    await agencia.close();
+    const posts = ["a1", "a2"].map((id, i) => ({ id, format: "post", status: "pending", title: id, descripcion: "Texto del post", publishTime: `0${9 + i}:00`, medios: [{ src: `/api/media/${clave}`, tipo: "imagen", ancho: 1080, alto: 1350 }] }));
+    await espacio.d1(`insert into calendars (id, client_id, owner_id, month, year, days, share_token, share_enabled) values ('${CAL}', '${CLI}', '${ANA.id}', ${mes - 1}, ${ano}, '${JSON.stringify([{ date: hoy, posts }])}', '${T}', 1);`);
+
+    // Un iPhone con el navegador: ~664 px de alto útiles.
+    const contexto = await navegador.newContext({ viewport: { width: 390, height: 664 }, locale: "es-PA", isMobile: true, hasTouch: true });
+    const pagina = await contexto.newPage();
+    const errores = vigilar(pagina);
+    try {
+      await pagina.goto(`${espacio.base}/aprobar?t=${T}`);
+      await pagina.getByLabel(/Tu nombre/i).fill("Cliente de prueba");
+      await pagina.getByRole("button", { name: /Empezar a revisar/ }).click();
+      await pagina.locator(".aprobar-post .aprobar-medio img").first().waitFor({ timeout: 20_000 });
+      // Al llegar a la segunda publicación (como al bajar con el dedo), su imagen cabe entera entre arriba y la barra fija.
+      const medida = await pagina.locator(".aprobar-post").nth(1).evaluate(async (post) => {
+        window.scrollTo(0, post.getBoundingClientRect().top + window.scrollY - 8);
+        await new Promise((ok) => setTimeout(ok, 300));
+        const medio = post.querySelector(".aprobar-medios").getBoundingClientRect();
+        const fija = document.querySelector(".aprobar-fija").getBoundingClientRect();
+        return { arriba: medio.top, abajo: fija.top - medio.bottom, ancho: medio.width, barra: fija.height };
+      });
+      expect(medida.arriba, "nada pegado arriba tapa la imagen").toBeGreaterThanOrEqual(0);
+      expect(medida.abajo, `la barra de abajo tapa ${-medida.abajo}px de la imagen`).toBeGreaterThanOrEqual(0);
+      expect(medida.ancho, "de borde a borde").toBeGreaterThanOrEqual(388);
+      expect(medida.barra, "la barra de abajo, una fila").toBeLessThanOrEqual(72);
+      expect(errores, errores.join("\n")).toEqual([]);
+    } finally {
+      await contexto.close();
+    }
+  }, 120_000);
+
   it("/aprobar abre el mes del cliente final sin sesión", async () => {
     const contexto = await navegador.newContext({ viewport: { width: 390, height: 844 }, locale: "es-PA" });
     const pagina = await contexto.newPage();

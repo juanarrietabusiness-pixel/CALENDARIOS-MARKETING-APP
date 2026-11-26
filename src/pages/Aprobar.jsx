@@ -421,6 +421,8 @@ export default function Aprobar() {
         )}
       </main>
 
+      {/* Antes iba en la barra fija de abajo, y con ella le quitaba tres líneas a la publicación: aquí, al final, basta. */}
+      <p className="aprobar-meta aprobar-ayuda-envio">Cada respuesta ya se guarda al tocarla. «Enviar mi revisión» sólo le avisa a tu agencia de que terminaste.</p>
       <footer className="aprobar-pie">
         <img src={logoMark} alt="" width={32} height={32} />
         Juancito Ads · Calendario de contenido
@@ -428,7 +430,7 @@ export default function Aprobar() {
 
       <div className="aprobar-fija">
         <div className="aprobar-progreso">
-          <span id="aprobar-progreso">{revisadas} de {publicaciones.length} revisadas</span>
+          <span id="aprobar-progreso">{revisadas}/{publicaciones.length}<span className="aprobar-progreso-palabra"> revisadas</span></span>
           <div className="aprobar-progreso-barra" role="progressbar" aria-labelledby="aprobar-progreso"
             aria-valuenow={revisadas} aria-valuemin={0} aria-valuemax={publicaciones.length}>
             <span style={{ width: `${publicaciones.length ? (revisadas / publicaciones.length) * 100 : 0}%` }} />
@@ -460,7 +462,6 @@ export default function Aprobar() {
             >
               <Icon name="send" size={18} /> Enviar mi revisión
             </button>
-            <p className="aprobar-meta aprobar-ayuda-envio">Cada respuesta ya se guarda al tocarla. «Enviar mi revisión» sólo le avisa a tu agencia de que terminaste.</p>
           </div>
         )}
       </div>
