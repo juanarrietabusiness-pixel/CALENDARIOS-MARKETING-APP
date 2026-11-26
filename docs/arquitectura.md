@@ -131,6 +131,9 @@ src/
                           si sigue valiendo, la prueba de sincronía (`guionKaraoke`), `comprobarLetra`, el FRAGMENTO de una
                           canción ya sincronizada (`limpiarRecorte`, `recorteDeSincronia`), lo que dura un audio (MP3, WAV,
                           M4A) y el costo aproximado (puro: Worker, Container y pantalla)
+    youtubeVideo.js       Lo que un video lleva a YOUTUBE: capítulos de sus tiempos (3 o más, de 10 s, el primero en 0:00), las
+                          citas bíblicas que enseña, la descripción (letra, capítulos, citas, redes; ≤ 5.000 bytes), las
+                          líneas de la portada y la hora de Panamá a UTC (puro: worker/lib/estudio/youtubeVideo.js)
     derivarVideo.js       DERIVAR un video de su maestro con canción (derivar_video): las mismas escenas en otro formato y sólo
                           un tramo, el cierre del formato (YouTube: logo y «Suscríbete»; vertical: logo pequeño sobre negro) y
                           el gancho con un solo efecto (puro: lo usa worker/lib/estudio/cancion.js)
@@ -920,6 +923,8 @@ worker/
                           video de ESE cliente medido, el 409 con el costo, el encargo «mejora» y la UNIÓN con el audio original
                           (`pasoUnion` la encarga al Durable Object del render; `ejecutarUnion` es su alarma: clips, /unir por
                           versión, R2, galería), los fotogramas del original, la muestra de un color y los textos de los ganchos
+    estudio/youtubeVideo.js preparar_youtube: la descripción con capítulos, la categoría, la hora y la miniatura 1280×720 (el
+                          Container, /portada-youtube) en la publicación (`post.youtube`, que usa el publicador)
     estudio/fondosVideo.js  Crear las IMÁGENES DE FONDO de un video animado con el director (un encargo del servidor, con su costo) y,
                           al cerrarse, ponerlas en el guion guardado (`ponerFondosEnVideo`)
     estudio/estilosVideo.js  Los ESTILOS DE VIDEO guardados: guardar uno de un video, renombrar, quitar y aplicarlo a otro (el kit, sólo

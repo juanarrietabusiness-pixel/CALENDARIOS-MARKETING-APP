@@ -153,12 +153,14 @@ describe("lo que sale en YouTube (puro)", () => {
     expect(largo.endsWith("palabra…")).toBe(true);
   });
 
-  it("un reel vertical de hasta 60 s es un Short y lleva #Shorts; uno horizontal o largo, no", () => {
+  it("un reel vertical de hasta 3 minutos es un Short y lleva #Shorts; uno horizontal o más largo, no", () => {
     expect(esShortYouTube(post())).toBe(true);
     expect(descripcionYouTube(post())).toMatch(/#cafe #otono\n\n#Shorts$/);
     expect(descripcionYouTube(post({ descripcion: "Hola #shorts" }))).not.toMatch(/\n\n#Shorts$/);
     expect(esShortYouTube(post({ medios: [{ src: VIDEO, tipo: "video", ancho: 1920, alto: 1080, duracion: 30 }] }))).toBe(false);
-    expect(esShortYouTube(post({ medios: [{ src: VIDEO, tipo: "video", duracion: 95 }] }))).toBe(false);
+    // Desde octubre de 2024 un Short dura hasta 3 minutos.
+    expect(esShortYouTube(post({ medios: [{ src: VIDEO, tipo: "video", duracion: 95 }] }))).toBe(true);
+    expect(esShortYouTube(post({ medios: [{ src: VIDEO, tipo: "video", duracion: 200 }] }))).toBe(false);
     expect(esShortYouTube(post({ format: "post" }))).toBe(false);
     // Sin medir, un reel se toma por Short: es vertical por definición.
     expect(esShortYouTube(post({ medios: [{ src: VIDEO, tipo: "video" }] }))).toBe(true);

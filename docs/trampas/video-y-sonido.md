@@ -1315,3 +1315,20 @@ contradicen, manda la de más abajo (la más nueva). Una trampa nueva de esta á
   pudo ser ya un fragmento: se suma su `recorte.desde`) y la selección de palabras se hace SIN el ajuste fino (el mismo
   reloj que la sincronía). El cierre del maestro (`tipo: "cierre"`) se cambia por el del formato. Lo no medido: un render
   de dos formatos de 6 minutos (dos vueltas de 11–14 minutos cada una) y la calidad del director con fondos en 16:9.
+- **YouTube, fase 3: fondo continuo, el estilo rellena y publicar en YouTube (26-nov-2026).** (1) FONDO CONTINUO
+  (`conFondoContinuo`, motorVideo.js): las escenas seguidas con la MISMA imagen a sangre son una sección; su movimiento va
+  de punta a punta (con el de su primera escena: el diseño alternaba «acercar» y «alejar» en una sección y el fondo daba
+  marcha atrás en cada escena), sólo entra en la primera y, dentro, las transiciones que mueven el cuadro pasan a fundido.
+  Va solo con canción (o `estilo.fondoContinuo: true`; `false` lo apaga). Se calcula en `dibujarFrame` y se recuerda por
+  línea de tiempo (WeakMap): cualquier sitio que dibuje sin `dibujarFrame` no lo tiene. La lista de transiciones que
+  mueven el cuadro está escrita a mano: `TRANSICIONES_CON_MOVIMIENTO` se declara más abajo y al cargar el módulo aún no
+  existe (TDZ). (2) EL ESTILO RELLENA (`rellenarConEstilo`, al guardar un video con `origen.estiloId`): lo que no se
+  escribió de una capa sale del estilo, no del valor por defecto del validador; sólo en las escenas NUEVAS o cambiadas
+  (el guion guardado omite lo que va por defecto: un «oscurecer» 0 elegido no se distingue de uno no escrito). (3)
+  `preparar_youtube`: la descripción (letra, capítulos de las secciones, citas, redes del cliente), categoría Música
+  (10) con canción, `publicar_el` en hora de Panamá (UTC−5 fijo → `publishAt`, que YouTube sólo admite con privacidad
+  «private»: lo publica él a esa hora) y la miniatura 1280×720 (la imagen de fondo que más se ve, en 16:9 si la tiene, con
+  el título en la letra del kit, en el Container). Todo en `post.youtube`, que el publicador usa por encima de lo que saca
+  del texto. Los Shorts, hasta 3 minutos (antes 60 s). Sin probar contra YouTube: `publishAt`, la categoría y la
+  miniatura (`thumbnails.set` exige canal verificado; si falla queda un aviso). El recorte de la letra larga por bytes
+  tenía un bucle infinito (quitaba la línea «…» que acababa de añadir): ahora cuenta renglones.

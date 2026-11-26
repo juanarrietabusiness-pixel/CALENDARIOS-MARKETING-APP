@@ -16,8 +16,9 @@ export const LIMITES = Object.freeze({
   tiktok: { caracteres: 2200, videoMaxSeg: 600, fotosMax: 32, tituloFoto: 90, descripcionFoto: 4000, proporcionMin: 1 / 2.13, proporcionMax: 2.13 },
   // El título, en caracteres; la descripción, en BYTES (YouTube cuenta
   // bytes: una tilde o un emoji ocupan más de uno); las etiquetas, 500
-  // caracteres entre todas. Un Short, vertical y de hasta 60 s.
-  youtube: { titulo: 100, descripcionBytes: 5000, etiquetas: 500, shortMaxSeg: 60 },
+  // caracteres entre todas. Un Short, vertical y de hasta 3 minutos.
+  // Shorts de hasta 3 minutos (YouTube los admite desde octubre de 2024).
+  youtube: { titulo: 100, descripcionBytes: 5000, etiquetas: 500, shortMaxSeg: 180 },
 });
 
 export const REDES = Object.freeze({
@@ -368,6 +369,8 @@ export function esShortYouTube(post) {
  * una palabra entera, y sin «<» ni «>».
  */
 export function tituloYouTube(post) {
+  // Lo que preparó preparar_youtube (el video de una canción: su título) manda.
+  if (String(post?.youtube?.titulo ?? "").trim()) return sinAngulos(post.youtube.titulo).replace(/\s+/g, " ").trim().slice(0, LIMITES.youtube.titulo);
   const primera = String(post?.descripcion || post?.script || "").split("\n").map((l) => l.trim()).find(Boolean) ?? "";
   const base = sinAngulos(primera || post?.title || post?.idea || "").replace(/\s+/g, " ").trim();
   const max = LIMITES.youtube.titulo;
@@ -379,7 +382,8 @@ export function tituloYouTube(post) {
 
 /** La descripción: el texto con sus hashtags y, si es un Short, `#Shorts` si no lo lleva ya. */
 export function descripcionYouTube(post) {
-  const texto = sinAngulos(textoPara(post, "youtube"));
+  const preparada = String(post?.youtube?.descripcion ?? "").trim();
+  const texto = sinAngulos(preparada || textoPara(post, "youtube"));
   if (!esShortYouTube(post) || /#shorts\b/i.test(`${texto} ${tituloYouTube(post)}`)) return texto;
   return `${texto}\n\n#Shorts`.trim();
 }
@@ -389,7 +393,8 @@ export function descripcionYouTube(post) {
  * caracteres entre todas (YouTube cuenta la coma que las separa).
  */
 export function etiquetasYouTube(post) {
-  const tags = [...new Set((String(post?.hashtagsFinales ?? "").match(/#[\p{L}\p{N}_]+/gu) ?? []).map((t) => t.slice(1)))];
+  const propias = Array.isArray(post?.youtube?.etiquetas) ? post.youtube.etiquetas.map((t) => String(t).replace(/^#/, "").trim()).filter(Boolean) : [];
+  const tags = [...new Set([...propias, ...(String(post?.hashtagsFinales ?? "").match(/#[\p{L}\p{N}_]+/gu) ?? []).map((t) => t.slice(1))])];
   const salida = [];
   let total = 0;
   for (const t of tags) {
@@ -599,8 +604,8 @@ export function revisarPublicacion(post, redes = post?.redes ?? ["instagram"], {
       const primera = String(post?.descripcion || post?.script || "").split("\n").map((l) => l.trim()).find(Boolean) ?? "";
       if (primera.length > L.titulo) avisos.push(`La primera línea tiene ${primera.length} caracteres: el título de YouTube se corta a ${L.titulo}.`);
       if (/[<>]/.test(`${post?.descripcion ?? ""}${post?.hashtagsFinales ?? ""}`)) avisos.push("YouTube no admite «<» ni «>»: se cambian por ‹ y ›.");
-      if (esShortYouTube(post)) avisos.push("En YouTube sale como Short (vertical y de hasta 60 s): se le añade #Shorts si no lo lleva.");
-      else if (["reel", "historia"].includes(post?.format)) avisos.push("En YouTube sale como video normal, no como Short: es horizontal o dura más de 60 s.");
+      if (esShortYouTube(post)) avisos.push("En YouTube sale como Short (vertical y de hasta 3 minutos): se le añade #Shorts si no lo lleva.");
+      else if (["reel", "historia"].includes(post?.format)) avisos.push("En YouTube sale como video normal, no como Short: es horizontal o dura más de 3 minutos.");
     }
   }
 

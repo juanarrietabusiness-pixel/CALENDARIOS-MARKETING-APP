@@ -221,13 +221,21 @@ export async function canalesYouTube(token) {
 // Publicar
 // ------------------------------------------------------------
 
-/** El recurso del video que se crea: título, descripción, etiquetas y privacidad. */
-export function recursoDeVideo({ titulo, descripcion, etiquetas = [], privacidad = "public" }) {
+/**
+ * El recurso del video que se crea: título, descripción, etiquetas, privacidad, categoría («22», Gente y blogs; «10»,
+ * Música) y, si se programa, `publicarEl` (ISO en UTC, en el futuro): YouTube lo deja PRIVADO y lo publica él a esa hora
+ * (es como lo pide su API: `publishAt` sólo vale con privacidad «private»).
+ */
+export function recursoDeVideo({ titulo, descripcion, etiquetas = [], privacidad = "public", categoria = "22", publicarEl = null, ahoraMs = Date.now() }) {
+  const programado = publicarEl && Date.parse(publicarEl) > ahoraMs + 60_000 ? new Date(Date.parse(publicarEl)).toISOString() : null;
   return {
-    snippet: { title: titulo, description: descripcion, ...(etiquetas.length ? { tags: etiquetas } : {}), categoryId: "22" },
+    snippet: { title: titulo, description: descripcion, ...(etiquetas.length ? { tags: etiquetas } : {}), categoryId: /^\d{1,3}$/.test(String(categoria)) ? String(categoria) : "22" },
     // Hecho para niños: no. Es una declaración obligatoria (COPPA) y la
     // agencia publica para marcas, no para público infantil.
-    status: { privacyStatus: privacidad in PRIVACIDADES_YOUTUBE ? privacidad : "public", selfDeclaredMadeForKids: false },
+    status: {
+      privacyStatus: programado ? "private" : privacidad in PRIVACIDADES_YOUTUBE ? privacidad : "public", selfDeclaredMadeForKids: false,
+      ...(programado ? { publishAt: programado } : {}),
+    },
   };
 }
 

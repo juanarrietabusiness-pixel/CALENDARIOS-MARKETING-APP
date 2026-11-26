@@ -999,7 +999,8 @@ async function pasoYouTube(env, contexto) {
 
   // 3. Ya salió: la portada, sin volver a subir nada.
   if (fila.externo_id) {
-    const portada = String(post.portada ?? "");
+    // La miniatura que preparó preparar_youtube (1280×720) manda sobre la portada de la publicación.
+    const portada = String(post.youtube?.miniatura || post.portada || "");
     if (!yt.portadaHecha && portada.startsWith("/api/media/clientes/") && !/\.(mp4|mov|m4v|webm)/i.test(portada)) {
       yt.portadaHecha = true;
       try {
@@ -1023,7 +1024,11 @@ async function pasoYouTube(env, contexto) {
     const tipo = cabeza.httpMetadata?.contentType || "video/mp4";
     const sesion = await abrirSubidaYouTube(token, {
       tamano: cabeza.size, tipo,
-      recurso: recursoDeVideo({ titulo: tituloYouTube(post), descripcion: descripcionYouTube(post), etiquetas: etiquetasYouTube(post), privacidad }),
+      recurso: recursoDeVideo({
+        titulo: tituloYouTube(post), descripcion: descripcionYouTube(post), etiquetas: etiquetasYouTube(post), privacidad,
+        // Lo que preparó preparar_youtube: la categoría (Música en una canción) y la hora a la que lo publica YouTube.
+        categoria: post.youtube?.categoria ?? "22", publicarEl: post.youtube?.publicarEl ?? null,
+      }),
     });
     carga.youtube = { clave, tamano: cabeza.size, tipo, enviados: 0, privacidad, short: esShortYouTube(post) };
     await guardar({ contenedor_id: sesion });
