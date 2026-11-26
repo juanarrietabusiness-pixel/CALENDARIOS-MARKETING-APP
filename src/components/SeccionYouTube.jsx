@@ -14,6 +14,11 @@ import { urlConectarYouTube, enlaceYouTube, elegirCanalYouTube, privacidadYouTub
 // Y la privacidad con la que sale cada canal. El aviso de Google va
 // siempre a la vista: con el proyecto sin auditar, TODO lo subido por la
 // API queda privado, se pida lo que se pida.
+//
+// POR POSTPEER (26-nov-2026, decisión de Juan): el canal se conecta en
+// PostPeer (con su app ya auditada) y aquí sólo se VINCULA al cliente:
+// «Vincular por PostPeer» trae el canal que haya allí (o el del id que se
+// pegue). Desde entonces ese cliente publica en YouTube por PostPeer.
 // ============================================================
 
 function leerVuelta() {
@@ -34,6 +39,8 @@ export default function SeccionYouTube({ clients = [], pulso = 0 }) {
   const [trabajando, setTrabajando] = useState("");
   const [copiado, setCopiado] = useState(false);
   const [eleccion, setEleccion] = useState({});
+  // Por cliente: el id del canal de PostPeer que se pega (si hay varios).
+  const [idPostPeer, setIdPostPeer] = useState({});
 
   const cargar = useCallback(() => {
     db.estadoRedes().then(setEstado).catch((e) => setFallo(e.message));
@@ -66,6 +73,13 @@ export default function SeccionYouTube({ clients = [], pulso = 0 }) {
   const conectadas = cuentas.filter((c) => c.clientId);
   const deCliente = (id) => cuentas.find((x) => x.clientId === id);
   const porElegir = (id) => cuentas.filter((x) => x.elegirPara === id);
+  // PostPeer: la misma llave que TikTok.
+  const conPostPeer = Boolean(estado?.tiktok?.configurado);
+  const vincular = (c) => {
+    const id = c.dbId || c.id;
+    const accountId = String(idPostPeer[id] ?? "").trim() || null;
+    return hacer(`pp-${id}`, () => db.vincularPostPeer(id, { accountId, red: "youtube" }), `El YouTube de ${c.name} quedó vinculado por PostPeer: sus videos salen por ahí.`);
+  };
 
   return (
     <div className="integracion">
@@ -179,6 +193,36 @@ export default function SeccionYouTube({ clients = [], pulso = 0 }) {
             );
           })}
         </ul>
+      )}
+      {conPostPeer && (
+        <section aria-labelledby={`${ids}-pp`} style={{ marginTop: "var(--sp-3)" }}>
+          <p id={`${ids}-pp`} style={{ fontWeight: 600, fontSize: "var(--fs-xs)" }}>Por PostPeer</p>
+          <p style={{ fontSize: "var(--fs-2xs)", color: "var(--text-dim)" }}>
+            Conecta el canal dentro de PostPeer (con la cuenta de Google del canal) y vincúlalo aquí al cliente: sus videos salen por
+            PostPeer, que publica con su app ya auditada. Si PostPeer tiene varios canales, pega el id del bueno (lo enseña su panel).
+          </p>
+          <ul className="cuentas-sociales" aria-label="YouTube por PostPeer de cada cliente">
+            {clients.map((c) => {
+              const id = c.dbId || c.id;
+              const cuenta = deCliente(id);
+              const porPostPeer = cuenta?.via === "postpeer";
+              return (
+                <li key={`pp-${c.id}`} className="youtube-fila">
+                  <span className="cuentas-sociales-nombre">
+                    <strong>{c.name}</strong>
+                    <span> · {porPostPeer ? `por PostPeer: ${cuenta.nombre || cuenta.usuario || cuenta.externoId || "canal vinculado"}` : cuenta ? "por Google" : "sin vincular"}</span>
+                  </span>
+                  <label className="sr-only" htmlFor={`${ids}-ppid-${c.id}`}>Id del canal de {c.name} en PostPeer (opcional)</label>
+                  <input id={`${ids}-ppid-${c.id}`} className="input cuentas-sociales-cliente" placeholder="id en PostPeer (opcional)" value={idPostPeer[id] ?? ""}
+                    onChange={(e) => setIdPostPeer((x) => ({ ...x, [id]: e.target.value }))} disabled={!!trabajando} />
+                  <button type="button" className="btn btn-secondary btn-sm" disabled={!!trabajando} onClick={() => vincular(c)}>
+                    {trabajando === `pp-${id}` ? "Vinculando…" : porPostPeer ? "Volver a vincular" : "Vincular por PostPeer"}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
       )}
       {yt?.configurado && (
         <p style={{ fontSize: "var(--fs-3xs)", color: "var(--text-faint)" }}>

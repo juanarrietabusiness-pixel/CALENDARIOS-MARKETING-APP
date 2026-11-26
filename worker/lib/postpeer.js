@@ -1,5 +1,16 @@
 // ============================================================
-// TikTok por PostPeer (postpeer.dev)
+// TikTok y YouTube por PostPeer (postpeer.dev)
+//
+// YOUTUBE (26-nov-2026, decisión de Juan): desde que conectó su canal en
+// PostPeer, YouTube también sale por ahí (la app propia de Google, sin
+// auditar, deja PRIVADO todo lo que sube). Igual que TikTok: la cuenta es
+// `cuentas_sociales` red «youtube» con `datos.via` = «postpeer»; a su hora
+// el cron la manda con `publishNow`, con el título, la descripción, las
+// etiquetas, la privacidad, la categoría, «hecho para niños: no» y la
+// miniatura (`mediaItems[].thumbnail`). Un vertical o cuadrado de hasta 3
+// minutos lo cuenta YouTube como Short. Documentado en
+// https://www.postpeer.dev/docs/platforms/youtube y /docs/posts/create-post
+// (leído el 26-nov-2026); SIN probar contra PostPeer de verdad.
 //
 // La app propia de TikTok nunca pasó la auditoría: en Sandbox todo caía
 // en el BORRADOR del cliente (o salía en «solo yo»), y alguien tenía que
@@ -125,13 +136,17 @@ export async function crearPerfil(env, nombre) {
   return String(id);
 }
 
-/** GET /connect/tiktok: la dirección donde se autoriza la cuenta. */
-export async function urlConexionTikTok(env, profileId) {
-  const r = datosDe(await postpeer(env, "/connect/tiktok", { params: { profileId } }));
+/** Las redes que van por PostPeer, con su nombre. */
+export const REDES_POSTPEER = Object.freeze({ tiktok: "TikTok", youtube: "YouTube" });
+
+/** GET /connect/{red}: la dirección donde se autoriza la cuenta (TikTok o YouTube). */
+export async function urlConexion(env, profileId, red = "tiktok") {
+  const r = datosDe(await postpeer(env, `/connect/${red === "youtube" ? "youtube" : "tiktok"}`, { params: { profileId } }));
   const url = r?.url ?? r?.authUrl ?? "";
-  if (!/^https:\/\//.test(String(url))) throw new ErrorPostPeer("PostPeer no devolvió la dirección para conectar TikTok.", 502);
+  if (!/^https:\/\//.test(String(url))) throw new ErrorPostPeer(`PostPeer no devolvió la dirección para conectar ${REDES_POSTPEER[red] ?? "la cuenta"}.`, 502);
   return String(url);
 }
+export const urlConexionTikTok = (env, profileId) => urlConexion(env, profileId, "tiktok");
 
 /** Lo que se sabe de una integración, con los nombres que traiga. */
 export function cuentaDeIntegracion(i = {}) {
@@ -144,12 +159,14 @@ export function cuentaDeIntegracion(i = {}) {
   };
 }
 
-/** GET /connect/integrations: las cuentas de TikTok conectadas (de un perfil, si se da). */
-export async function cuentasTikTok(env, profileId = null) {
+/** GET /connect/integrations: las cuentas de una red conectadas (de un perfil, si se da). */
+export async function cuentasDeRed(env, profileId = null, red = "tiktok") {
   const r = datosDe(await postpeer(env, "/connect/integrations", { params: { profileId } }));
   const lista = Array.isArray(r) ? r : r?.integrations ?? [];
-  return lista.map(cuentaDeIntegracion).filter((c) => c.id && (!c.plataforma || c.plataforma === "tiktok"));
+  // Una integración sin plataforma dicha cuenta como TikTok (lo único que había antes).
+  return lista.map(cuentaDeIntegracion).filter((c) => c.id && (c.plataforma === red || (!c.plataforma && red === "tiktok")));
 }
+export const cuentasTikTok = (env, profileId = null) => cuentasDeRed(env, profileId, "tiktok");
 
 /** GET /tiktok/creator-info: qué deja hacer la cuenta (privacidad, duración, comentarios…). */
 export async function infoCreador(env, accountId) {
@@ -237,6 +254,42 @@ export function cuerpoFotos({ titulo, descripcion, accountId, urls = [], info = 
   };
 }
 
+/** Las privacidades de YouTube en PostPeer (`visibility`). */
+export const VISIBILIDADES_YOUTUBE = Object.freeze(["public", "unlisted", "private"]);
+
+/**
+ * El cuerpo de POST /posts para un video a YOUTUBE, en el acto. `content` es la DESCRIPCIÓN; el título, las etiquetas,
+ * la privacidad (`visibility`), la categoría («10» Música, «22» por defecto), `madeForKids` (siempre false: la agencia
+ * publica para marcas) y la miniatura (`mediaItems[].thumbnail`, JPG o PNG de hasta 2 MB), en lo suyo. `clave`: la de
+ * idempotencia (la fila de la cola: un reintento no la sube dos veces). Pura.
+ */
+export function cuerpoYouTube({ descripcion, titulo, etiquetas = [], visibilidad = "public", categoria = "22", accountId, urlVideo, urlMiniatura = "", clave = "" }) {
+  const tags = [];
+  let total = 0;
+  for (const t of (Array.isArray(etiquetas) ? etiquetas : []).map((x) => String(x).replace(/^#/, "").trim()).filter(Boolean)) {
+    if (total + t.length + (tags.length ? 1 : 0) > 500) break;
+    tags.push(t);
+    total += t.length + (tags.length > 1 ? 1 : 0);
+  }
+  return {
+    content: String(descripcion ?? ""),
+    platforms: [{
+      platform: "youtube",
+      accountId: String(accountId),
+      platformSpecificData: {
+        title: String(titulo ?? "").replace(/[<>]/g, "").slice(0, 100),
+        ...(tags.length ? { tags } : {}),
+        visibility: VISIBILIDADES_YOUTUBE.includes(visibilidad) ? visibilidad : "public",
+        categoryId: /^\d{1,3}$/.test(String(categoria)) ? String(categoria) : "22",
+        madeForKids: false,
+      },
+    }],
+    mediaItems: [{ type: "video", url: String(urlVideo), ...(urlMiniatura ? { thumbnail: String(urlMiniatura) } : {}) }],
+    publishNow: true,
+    ...(clave ? { idempotencyKey: String(clave).slice(0, 200) } : {}),
+  };
+}
+
 /** POST /posts. Devuelve la respuesta tal cual: el id y el estado se leen con `leerPublicacion`. */
 export const crearPublicacion = (env, cuerpo) => postpeer(env, "/posts", { metodo: "POST", cuerpo });
 
@@ -255,13 +308,13 @@ const ESTADOS_FALLIDOS = new Set(["failed", "error", "rejected", "cancelled", "c
  * Manda lo de la PLATAFORMA (`platforms[]` de TikTok) sobre lo del post:
  * «partial» del post no dice nada si sólo va a una red.
  */
-export function leerPublicacion(r) {
+export function leerPublicacion(r, red = "tiktok") {
   const d = datosDe(r);
   const post = d?.post && typeof d.post === "object" ? d.post : d;
   const primero = [d?.posts, d?.items].find(Array.isArray)?.[0];
   const postId = String(post?.id ?? post?.postId ?? post?._id ?? d?.postId ?? d?.post_id ?? r?.postId ?? r?.id ?? primero?.id ?? primero?.postId ?? "") || null;
   const plataformas = [d?.platforms, post?.platforms, d?.results, post?.results].find(Array.isArray) ?? [];
-  const tiktok = plataformas.find((p) => String(p?.platform ?? "").toLowerCase() === "tiktok") ?? plataformas[0] ?? null;
+  const tiktok = plataformas.find((p) => String(p?.platform ?? "").toLowerCase() === red) ?? plataformas[0] ?? null;
   const estadoPost = String(post?.status ?? d?.status ?? "").toLowerCase();
   const estadoRed = String(tiktok?.status ?? "").toLowerCase();
   const estado = estadoRed || estadoPost;

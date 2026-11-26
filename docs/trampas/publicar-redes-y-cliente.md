@@ -809,3 +809,15 @@ contradicen, manda la de más abajo (la más nueva). Una trampa nueva de esta á
   (`object-fit: contain`) en el alto que hay. A lo ancho, toda imagen cabe en el alto de la pantalla. La revisión rápida,
   igual. Lo comprueba tests/vivo/navegador.test.js a 390×664 (un iPhone con la barra del navegador). Esta página tiene su
   propia entrada (`vite.publico.config.js`): lo de la aplicación de la agencia no le llega.
+- **YouTube por PostPeer (26-nov-2026, decisión de Juan).** Juan conectó el canal de YouTube DENTRO de PostPeer, y desde
+  entonces YouTube sale por ahí: la app propia de Google, sin auditar, deja PRIVADO todo lo que sube. Funciona como TikTok:
+  la cuenta es `cuentas_sociales` red «youtube» con `datos.via` = «postpeer» y sin token (se vincula en Ajustes →
+  Integraciones → YouTube → «Por PostPeer»; si PostPeer tiene varios canales, se pega el id). `esDePostPeer` ya no es
+  sólo de TikTok. A su hora la cola manda `publishNow` con la DESCRIPCIÓN en `content` y en `platformSpecificData` el
+  título, las etiquetas, `visibility`, `categoryId` y `madeForKids: false`; la miniatura va en `mediaItems[].thumbnail`
+  (JPG/PNG ≤ 2 MB); un vertical o cuadrado de hasta 3 minutos lo cuenta YouTube como Short; `idempotencyKey` = la fila de
+  la cola. Manda lo de `post.youtube` (preparar_youtube) y, si no, lo del texto. La fecha la pone la cola (como TikTok, no
+  se usa `scheduledFor`): `post.youtube.publicarEl` no se usa por aquí. Los campos salen de su documentación
+  (www.postpeer.dev/docs/platforms/youtube, /docs/posts/create-post, leída el 26-nov-2026); NADA probado contra PostPeer de
+  verdad. Sus cifras no se leen desde la aplicación (no hay token de Google). Nada sale sin aprobar: la publicación
+  espera en el calendario como cualquier otra.

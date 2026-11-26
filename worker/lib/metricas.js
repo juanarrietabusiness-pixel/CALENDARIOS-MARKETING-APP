@@ -201,6 +201,8 @@ async function publicacionesFB(env, token, pagina, desde) {
 export async function fotografiarCuenta(env, acceso, cuenta, fecha = fechaDeFoto()) {
   // TikTok se publica por PostPeer: no hay token propio con el que leer sus cifras.
   if (cuenta.red === "tiktok") throw new Error("Las cifras de TikTok no se leen desde la aplicación.");
+  // Un YouTube por PostPeer tampoco tiene token de Google: sus cifras no se leen desde aquí.
+  if (cuenta.red === "youtube" && !cuenta.token_cifrado) throw new Error("Las cifras de un YouTube por PostPeer no se leen desde la aplicación.");
   const token = cuenta.red === "youtube" ? await tokenYouTube(env, acceso, cuenta)
       : await descifrarMeta(env, cuenta.token_cifrado);
   const desde = Date.now() - DIAS_PUBLICACIONES * 86400_000;

@@ -31,7 +31,7 @@ import {
 import { aprobadasDelEspacio } from "../../src/lib/aprobacion.js";
 import { programar, programarLote, procesarPublicacion, filaPublica, filaConResumen, ErrorPublicar, aplicarAvisoPostPeer } from "../lib/publicador.js";
 import {
-  postpeerConfigurado, comprobarLlave, crearPerfil, urlConexionTikTok, cuentasTikTok, infoCreador, mensajePostPeer,
+  postpeerConfigurado, comprobarLlave, crearPerfil, urlConexion, cuentasDeRed, infoCreador, mensajePostPeer,
   leerPublicacion, firmaWebhook, marcaEnMs, DESFASE_MAX_MS,
 } from "../lib/postpeer.js";
 import { youtubeConfigurado, urlVueltaYouTube, extraCuentaYouTube } from "../lib/youtube.js";
@@ -44,6 +44,8 @@ const cuentaPublica = (c) => ({
   avatar: c.avatar, paginaId: c.pagina_id, clientId: c.client_id, actualizada: c.updated_at,
   // TikTok: por PostPeer, o de la app anterior (que ya no publica).
   ...(c.red === "tiktok" ? { via: leerJSON(c.datos, {})?.via === "postpeer" ? "postpeer" : "anterior" } : {}),
+  // YouTube: por PostPeer (desde que Juan conectó su canal allí) o por la conexión propia de Google.
+  ...(c.red === "youtube" ? { via: leerJSON(c.datos, {})?.via === "postpeer" ? "postpeer" : "google" } : {}),
   ...(c.red === "youtube" ? extraCuentaYouTube(c) : {}),
 });
 
@@ -244,12 +246,13 @@ export async function rutasRedes(req, env, { acceso, usuario, partes, metodo }) 
   // Hay que entrar con la cuenta DEL CLIENTE.
   if (grupo === "postpeer" && accion === "conectar" && metodo === "POST") {
     if (!postpeerConfigurado(env)) return error("Falta POSTPEER_API_KEY en el Worker", 503);
-    const { clientId, profileId } = (await cuerpo(req)) ?? {};
+    const { clientId, profileId, red: pedida } = (await cuerpo(req)) ?? {};
+    const red = pedida === "youtube" ? "youtube" : "tiktok";
     const cliente = await acceso.leerUno("clients", { id: clientId });
     if (!cliente) return noEncontrado("Cliente");
     try {
       const perfil = typeof profileId === "string" && profileId.trim() ? profileId.trim() : await crearPerfil(env, cliente.name);
-      return json({ url: await urlConexionTikTok(env, perfil), profileId: perfil });
+      return json({ url: await urlConexion(env, perfil, red), profileId: perfil, red });
     } catch (e) {
       return error(mensajePostPeer(e), 502);
     }
@@ -260,7 +263,9 @@ export async function rutasRedes(req, env, { acceso, usuario, partes, metodo }) 
   // pegado a mano, que se comprueba preguntándole a PostPeer por ella.
   if (grupo === "postpeer" && accion === "vincular" && metodo === "POST") {
     if (!postpeerConfigurado(env)) return error("Falta POSTPEER_API_KEY en el Worker", 503);
-    const { clientId, profileId = null, accountId = null } = (await cuerpo(req)) ?? {};
+    const { clientId, profileId = null, accountId = null, red: pedida } = (await cuerpo(req)) ?? {};
+    const red = pedida === "youtube" ? "youtube" : "tiktok";
+    const nombreRed = red === "youtube" ? "YouTube" : "TikTok";
     const cliente = await acceso.leerUno("clients", { id: clientId });
     if (!cliente) return noEncontrado("Cliente");
     let elegida;
@@ -268,28 +273,36 @@ export async function rutasRedes(req, env, { acceso, usuario, partes, metodo }) 
       if (accountId) {
         const id = String(accountId).trim();
         if (!/^[\w.:-]{1,200}$/.test(id)) return error("Ese id no parece de una cuenta de PostPeer.");
-        const info = await infoCreador(env, id);
-        elegida = { id, usuario: info.usuario, nombre: info.nombre };
+        if (red === "youtube") {
+          // YouTube no tiene «creator-info»: se busca entre las integraciones de la cuenta de PostPeer.
+          const todas = await cuentasDeRed(env, null, "youtube");
+          const hallada = todas.find((c) => c.id === id);
+          if (!hallada) return error(`PostPeer no tiene ningún canal de YouTube con el id ${id}. Los que tiene: ${todas.map((c) => `${c.nombre || c.usuario || "sin nombre"}: ${c.id}`).join("; ") || "ninguno"}.`, 404);
+          elegida = hallada;
+        } else {
+          const info = await infoCreador(env, id);
+          elegida = { id, usuario: info.usuario, nombre: info.nombre };
+        }
       } else {
-        if (typeof profileId !== "string" || !profileId) return error("Falta el perfil de PostPeer o el id de la cuenta.");
-        const lista = await cuentasTikTok(env, profileId);
-        if (!lista.length) return error("PostPeer todavía no tiene un TikTok conectado para este cliente. Termina el permiso en la pestaña de PostPeer y vuelve a pulsar.", 409);
+        // Sin perfil: los de toda la cuenta de PostPeer (el canal pudo conectarse desde su panel).
+        const lista = await cuentasDeRed(env, typeof profileId === "string" && profileId ? profileId : null, red);
+        if (!lista.length) return error(`PostPeer todavía no tiene un ${nombreRed} conectado${profileId ? " para este cliente" : ""}. Termina el permiso en la pestaña de PostPeer y vuelve a pulsar.`, 409);
         if (lista.length > 1) {
-          return error(`Hay ${lista.length} cuentas de TikTok en este perfil de PostPeer (${lista.map((c) => `${c.usuario || c.nombre || "sin nombre"}: ${c.id}`).join("; ")}). Pega el id de la buena.`, 409);
+          return error(`Hay ${lista.length} cuentas de ${nombreRed} en PostPeer (${lista.map((c) => `${c.usuario || c.nombre || "sin nombre"}: ${c.id}`).join("; ")}). Pega el id de la buena.`, 409);
         }
         elegida = lista[0];
       }
     } catch (e) {
       return error(mensajePostPeer(e), 502);
     }
-    const id = `${acceso.ownerId}:tiktok:${elegida.id}`;
+    const id = `${acceso.ownerId}:${red}:${elegida.id}`;
     const previa = await acceso.leerUno("cuentas_sociales", { id });
-    // Una cuenta de TikTok por cliente: la que ocupaba el sitio (también una de la app anterior) queda libre.
-    for (const o of await acceso.leer("cuentas_sociales", { client_id: cliente.id, red: "tiktok" })) {
+    // Una cuenta de cada red por cliente: la que ocupaba el sitio (la de la app anterior, o el YouTube por Google) queda libre.
+    for (const o of await acceso.leer("cuentas_sociales", { client_id: cliente.id, red })) {
       if (o.id !== id) await acceso.actualizar("cuentas_sociales", { id: o.id }, { client_id: null, updated_at: ahora() });
     }
     const fila = {
-      id, red: "tiktok", externo_id: elegida.id, nombre: elegida.nombre ?? "", usuario: elegida.usuario ?? "", avatar: "",
+      id, red, externo_id: elegida.id, nombre: elegida.nombre ?? "", usuario: elegida.usuario ?? "", avatar: "",
       pagina_id: null, token_cifrado: null, refresh_cifrado: null, expira: null, client_id: cliente.id,
       // `origen`: la cola manda a PostPeer la dirección firmada del video, y no tiene petición delante para saber el dominio.
       datos: JSON.stringify({ via: "postpeer", profileId: profileId || leerJSON(previa?.datos, {})?.profileId || null, origen: new URL(req.url).origin }),

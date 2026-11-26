@@ -892,14 +892,14 @@ export async function comprobarPostPeer() {
   return pedir("/redes/postpeer/llave");
 }
 
-/** El perfil del cliente en PostPeer y la dirección donde se autoriza su TikTok: `{ url, profileId }`. */
-export async function conectarPostPeer(clientId, profileId = null) {
-  return pedir("/redes/postpeer/conectar", conCuerpo("POST", { clientId, profileId }));
+/** El perfil del cliente en PostPeer y la dirección donde se autoriza su TikTok (o su YouTube): `{ url, profileId }`. */
+export async function conectarPostPeer(clientId, profileId = null, red = "tiktok") {
+  return pedir("/redes/postpeer/conectar", conCuerpo("POST", { clientId, profileId, red }));
 }
 
-/** Ya autorizado en PostPeer: su cuenta pasa a ser la del cliente (por el perfil o por el id pegado). */
-export async function vincularPostPeer(clientId, { profileId = null, accountId = null } = {}) {
-  return pedir("/redes/postpeer/vincular", conCuerpo("POST", { clientId, profileId, accountId }));
+/** Ya autorizado en PostPeer: su cuenta (de TikTok o de YouTube) pasa a ser la del cliente (por el perfil o por el id pegado). */
+export async function vincularPostPeer(clientId, { profileId = null, accountId = null, red = "tiktok" } = {}) {
+  return pedir("/redes/postpeer/vincular", conCuerpo("POST", { clientId, profileId, accountId, red }));
 }
 
 export async function desconectarTikTok(cuentaId) {
