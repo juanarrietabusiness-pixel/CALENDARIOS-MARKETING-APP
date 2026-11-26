@@ -155,7 +155,7 @@ export async function vistaDeVideo(env, { video, clienteId, cliente = null }) {
     const d = await firmada(env, loc.clave);
     audios.push(medioDe({
       id: `cancion-${video.id}`, url: d?.url ?? "", caduca: d?.caduca ?? null, titulo: `La canción «${loc.nombre ?? "del video"}»`, duracion: loc.duracion,
-      nota: loc.revisar ? "Ojo: la letra no se encontró bien en la canción; revisa la vista previa." : "Es el audio del video: no se genera voz.",
+      nota: [loc.revisar ? "Ojo: la letra no se encontró bien en la canción; revisa la vista previa." : "Es el audio del video: no se genera voz.", loc.recorte ? `Es la canción ENTERA: el video usa del segundo ${loc.recorte.desde} al ${loc.recorte.hasta}.` : ""].filter(Boolean).join(" "),
     }));
   } else if (loc.estado === "lista" && loc.clave) {
     audios.push(await medioDeArchivo(env, { id: loc.archivoId || `voz-${video.id}`, clave: loc.clave, client_id: clienteId, mime: loc.mime || "audio/mpeg" }, {

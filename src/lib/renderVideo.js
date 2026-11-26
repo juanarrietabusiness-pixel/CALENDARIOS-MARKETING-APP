@@ -16,8 +16,42 @@
 import { tieneHabla } from "./videoEscenas.js";
 import { esCancion, estadoDeCancion } from "./videoCancion.js";
 
-/** Lo fijo del render. -14 LUFS integrados, el pico verdadero a -1,5 dB y el rango que admite la voz hablada. */
-export const RENDER = Object.freeze({ fps: 30, lufs: -14, pico: -1.5, rango: 11, muestreo: 48000, kbpsAudio: 192, crf: 20, kbpsVideoMax: 12000 });
+/**
+ * Lo fijo del render. -14 LUFS integrados, el pico verdadero a -1,5 dB y el rango que admite la voz hablada. El audio en
+ * AAC a 320 kbps (lo que recomienda YouTube para estéreo; antes 192).
+ */
+export const RENDER = Object.freeze({ fps: 30, lufs: -14, pico: -1.5, rango: 11, muestreo: 48000, kbpsAudio: 320, crf: 21, kbpsVideoMax: 10000 });
+
+/**
+ * La CALIDAD del mp4 (H.264 con crf y tope de bitrate: VBR). «normal», la de siempre: alrededor de 8 Mbps con tope de 10
+ * (buffer de 16), lo que pide YouTube para 1080p a 30 y lo que un reel aguanta de sobra; un video de 6 minutos son unos
+ * 350 MB. Antes era crf 20 con tope de 12 Mbps, y con fondos de imagen y grano iba pegado al tope: «BENDECIDOS», 162 s
+ * en 226 MB. «alta»: más bits para lo que se vaya a volver a editar o tenga mucho detalle (tope 16 Mbps: Instagram
+ * admite 25 en un reel).
+ */
+export const CALIDADES_RENDER = Object.freeze({
+  normal: Object.freeze({ nombre: "Normal (hasta 10 Mbps)", crf: RENDER.crf, kbpsMax: RENDER.kbpsVideoMax, kbpsBuffer: 16000 }),
+  alta: Object.freeze({ nombre: "Alta (hasta 16 Mbps)", crf: 19, kbpsMax: 16000, kbpsBuffer: 32000 }),
+});
+
+/** La calidad pedida, o «normal». Pura. */
+export const limpiarCalidad = (c) => (Object.hasOwn(CALIDADES_RENDER, String(c ?? "")) ? String(c) : "normal");
+
+/** Los argumentos de ffmpeg del video según la calidad (crf, tope y buffer). Pura. */
+export function argumentosDeCalidad(calidad) {
+  const q = CALIDADES_RENDER[limpiarCalidad(calidad)];
+  return ["-crf", String(q.crf), "-maxrate", `${q.kbpsMax}k`, "-bufsize", `${q.kbpsBuffer}k`];
+}
+
+/**
+ * Lo que tarda el render de un video de `segundos`, en minutos (redondeado hacia arriba). Medido en el Container: de 55
+ * a 75 ms por cuadro con fondos de imagen (BENDECIDOS, 4.864 cuadros: 267 s de video y 17 de audio), más el audio y la
+ * subida. Para avisar de lo que va a tardar un video largo: la alarma del objeto del render tiene 15 minutos. Pura.
+ */
+export function minutosDeRender(segundos) {
+  const cuadros = cuadrosDelVideo(segundos);
+  return Math.max(1, Math.ceil((cuadros * 0.075 + 30) / 60));
+}
 
 /** Lo que tarda como mucho un render antes de darlo por perdido (el Durable Object pudo morir a la mitad). */
 export const PLAZO_RENDER_MS = 15 * 60 * 1000;
@@ -78,6 +112,40 @@ export function armarPcm(toma, tramos, total, muestreo = RENDER.muestreo) {
   }
   return salida;
 }
+
+/**
+ * El FRAGMENTO de una canción (src/lib/videoCancion.js, `recorte`): de la toma ya decodificada (PCM s16le estéreo) sólo
+ * lo que va de `desde` a `hasta` (segundos de la canción entera), con un fundido de entrada si no empieza en el 0 (sin
+ * él, el corte hace «clic») y uno de salida si no acaba en el final. Sin recorte, la toma tal cual. → Uint8Array. Puro.
+ */
+export function recortarPcm(toma, recorte, muestreo = RENDER.muestreo) {
+  const fuente = toma instanceof Uint8Array ? toma : new Uint8Array(0);
+  if (!recorte || !(Number(recorte.hasta) > Number(recorte.desde))) return fuente;
+  const total = Math.floor(fuente.length / BYTES_MUESTRA);
+  const a = Math.min(total, Math.max(0, Math.round(Number(recorte.desde) * muestreo)));
+  const b = Math.min(total, Math.max(a, Math.round(Number(recorte.hasta) * muestreo)));
+  const salida = fuente.slice(a * BYTES_MUESTRA, b * BYTES_MUESTRA);
+  const n = b - a;
+  const vista = new DataView(salida.buffer, salida.byteOffset, salida.byteLength);
+  const fundir = (desdeMuestra, cuantas, sube) => {
+    for (let i = 0; i < cuantas; i++) {
+      const k = sube ? i / cuantas : 1 - (i + 1) / cuantas;
+      const m = desdeMuestra + i;
+      for (let c = 0; c < 2; c++) {
+        const o = m * BYTES_MUESTRA + c * 2;
+        vista.setInt16(o, Math.round(vista.getInt16(o, true) * k), true);
+      }
+    }
+  };
+  const entra = a > 0 ? Math.min(n, Math.round((Number(recorte.fundidoEntrada) || FUNDIDO_RECORTE.entrada) * muestreo)) : 0;
+  const sale = b < total ? Math.min(n - entra, Math.round((Number(recorte.fundidoSalida) || FUNDIDO_RECORTE.salida) * muestreo)) : 0;
+  if (entra > 0) fundir(0, entra, true);
+  if (sale > 0) fundir(n - sale, sale, false);
+  return salida;
+}
+
+/** Los fundidos del fragmento de una canción, en segundos: cortos (el de entrada sólo quita el clic). */
+export const FUNDIDO_RECORTE = Object.freeze({ entrada: 0.08, salida: 0.6 });
 
 /** El `-af` de la primera pasada: loudnorm sólo MIDE (imprime sus medidas en JSON). Puro. */
 export const FILTRO_MEDIR = `loudnorm=I=${RENDER.lufs}:TP=${RENDER.pico}:LRA=${RENDER.rango}:print_format=json`;

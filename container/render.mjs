@@ -23,7 +23,7 @@ import { Buffer } from "node:buffer";
 import { createCanvas } from "@napi-rs/canvas";
 import { FORMATOS_VIDEO } from "../src/lib/videoEscenas.js";
 import { dibujarFrame, videosEnInstante, usosDeVideo } from "../src/lib/motorVideo.js";
-import { RENDER, cuadrosDelVideo, FILTRO_MEDIR, filtroDeNormalizar, leerLoudnorm } from "../src/lib/renderVideo.js";
+import { RENDER, cuadrosDelVideo, FILTRO_MEDIR, filtroDeNormalizar, leerLoudnorm, argumentosDeCalidad } from "../src/lib/renderVideo.js";
 import { Decodificador } from "./clips.mjs";
 import { sonidoPorPistas } from "./efectos.mjs";
 
@@ -97,9 +97,9 @@ export async function medirPcm(carpeta, pcm, nombre = "medir.pcm") {
  * reinitializing filters! | Failed to inject frame into filter network: Invalid argument» cada vez que no podía ir en
  * lineal y pasaba a su modo dinámico: con una voz de verdad, casi siempre.
  */
-export async function audioDelVideo(carpeta, { audio, linea, total, salida, guion = null, efectos = false, musica = null, clips = [], colocados = [], propios = {}, libreria = {}, efectosMarca = null }) {
+export async function audioDelVideo(carpeta, { audio, recorte = null, linea, total, salida, guion = null, efectos = false, musica = null, clips = [], colocados = [], propios = {}, libreria = {}, efectosMarca = null }) {
   const muestreo = String(RENDER.muestreo);
-  const s = await sonidoPorPistas({ audio, linea, total, guion, efectos, colocados, propios, libreria, efectosMarca, musica, clips, decodificar: decodificadorEn(carpeta) });
+  const s = await sonidoPorPistas({ audio, recorte, linea, total, guion, efectos, colocados, propios, libreria, efectosMarca, musica, clips, decodificar: decodificadorEn(carpeta) });
   const { toma, conClips } = s;
   const pcm = s.mezcla;
   const resumenEfectos = { cuantos: s.medidas.length, automaticos: s.efectos.automaticos, sinSitio: s.efectos.sinSitio.length, avisos: s.efectos.avisos };
@@ -134,7 +134,7 @@ export async function audioDelVideo(carpeta, { audio, linea, total, salida, guio
  * `base`: lo de `preparar()` del servidor (guion, linea, formato, paleta, recursos, fuentes). `audio`: los bytes de la
  * toma (o null: silencio).
  */
-export async function renderizar(base, { audio = null, musica = null, efectos = false, colocados = [], propios = {}, libreria = {}, efectosMarca = null, fps = RENDER.fps } = {}) {
+export async function renderizar(base, { audio = null, recorte = null, musica = null, efectos = false, colocados = [], propios = {}, libreria = {}, efectosMarca = null, fps = RENDER.fps, calidad = "normal" } = {}) {
   const inicio = Date.now();
   const { ancho: W, alto: H } = FORMATOS_VIDEO[base.formato];
   const total = base.linea.total;
@@ -145,7 +145,7 @@ export async function renderizar(base, { audio = null, musica = null, efectos = 
     const sonido = join(carpeta, "audio.m4a");
     const usos = usosDeVideo(base.guion, base.linea).filter((u) => base.infoVideos?.has(u.archivo));
     const clips = usos.filter((u) => u.sonido && base.infoVideos.get(u.archivo)?.audio);
-    const medidas = await audioDelVideo(carpeta, { audio, linea: base.linea, total: duracion, salida: sonido, guion: base.guion, efectos, musica, clips, colocados, propios, libreria, efectosMarca });
+    const medidas = await audioDelVideo(carpeta, { audio, recorte, linea: base.linea, total: duracion, salida: sonido, guion: base.guion, efectos, musica, clips, colocados, propios, libreria, efectosMarca });
     const tAudio = Date.now() - inicio;
 
     const salida = join(carpeta, "video.mp4");
@@ -157,10 +157,9 @@ export async function renderizar(base, { audio = null, musica = null, efectos = 
       // adivina y los colores del kit salen corridos.
       "-vf", "scale=out_color_matrix=bt709:out_range=tv,format=yuv420p",
       "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
-      "-c:v", "libx264", "-preset", "veryfast", "-crf", String(RENDER.crf),
-      // Tope de bitrate: con fondos de imagen y grano, el crf solo subía a decenas de Mbps (más de 100 MB en 100 s) y
-      // Instagram admite como mucho 25 Mbps en un reel.
-      "-maxrate", `${RENDER.kbpsVideoMax}k`, "-bufsize", `${RENDER.kbpsVideoMax * 2}k`,
+      // crf con tope de bitrate (VBR), según la calidad (src/lib/renderVideo.js, CALIDADES_RENDER): con fondos de imagen
+      // y grano, el crf solo subía a decenas de Mbps (más de 100 MB en 100 s) y Instagram admite como mucho 25 en un reel.
+      "-c:v", "libx264", "-preset", "veryfast", ...argumentosDeCalidad(calidad),
       "-profile:v", "high", "-r", String(fps),
       "-c:a", "copy", "-t", duracion.toFixed(3), "-movflags", "+faststart", salida,
     ], { conEntrada: true });

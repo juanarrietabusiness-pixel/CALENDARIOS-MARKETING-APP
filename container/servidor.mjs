@@ -10,8 +10,9 @@
 //   POST /hoja      { …, ancho? }            → una hoja con un cuadro de cada escena en su instante «lleno», numerados
 //   POST /revisar   { …, formatos? }         → JSON { problemas, texto }: la revisión con las fuentes reales
 //   POST /golpes    { audio (base64) }        → JSON { bpm, confianza, golpes, duracion }: el ritmo de una canción
-//   POST /render    { …, audio? (base64), musica? { audio (base64), volumen }, efectos? (bool), efectosPropios? { whoosh?,
-//                   pop? } (base64: los efectos de la biblioteca de sonido, en vez de los sintetizados) }
+//   POST /render    { …, audio? (base64), recorte? { desde, hasta } (el fragmento de una canción), calidad? («normal» |
+//                   «alta»), musica? { audio (base64), volumen }, efectos? (bool), efectosPropios? { whoosh?, pop? }
+//                   (base64: los efectos de la biblioteca de sonido, en vez de los sintetizados) }
 //                                           → el MP4 entero (voz con los silencios, -14 LUFS, subtítulos), y en
 //                                              cabeceras lo que tardó, la duración y el volumen medido
 //   POST /miniatura { imagen (base64), lado? }  → JSON { datos (base64), mime, ancho, alto, original }: una COPIA
@@ -57,7 +58,8 @@ import { encajarEn, reducirEn } from "../src/lib/encajarLienzo.js";
 import { LADO_PUBLICAR } from "../src/lib/prepararRedes.js";
 import { renderizar } from "./render.mjs";
 import { escuchar } from "./escuchar.mjs";
-import { propiosDelPedido, libreriaDelPedido, efectosMarcaDelPedido } from "./efectos.mjs";
+import { propiosDelPedido, libreriaDelPedido, efectosMarcaDelPedido, recorteDelPedido } from "./efectos.mjs";
+import { limpiarCalidad } from "../src/lib/renderVideo.js";
 import { unir, muestraDeColor, fotograma } from "./unir.mjs";
 import { golpesDeCancion } from "./golpes.mjs";
 import { conGolpes, limpiarGolpes } from "../src/lib/golpes.js";
@@ -272,7 +274,9 @@ async function atender(ruta, p) {
     // Los efectos: la lista colocada (o los automáticos), los de la biblioteca de sonido (sus bytes en base64) y los que
     // sustituyen a los automáticos.
     const sonido = { colocados: Array.isArray(p.colocados) ? p.colocados : [], propios: propiosDelPedido(p), libreria: libreriaDelPedido(p), efectosMarca: efectosMarcaDelPedido(p) };
-    const turno = renderEnCurso.then(() => renderizar(base, { audio, musica, efectos, ...sonido }));
+    // El fragmento de una canción (se corta de la toma) y la calidad del mp4.
+    const recorte = recorteDelPedido(p.recorte);
+    const turno = renderEnCurso.then(() => renderizar(base, { audio, recorte, musica, efectos, ...sonido, calidad: limpiarCalidad(p.calidad) }));
     renderEnCurso = turno.catch(() => {});
     const r = await turno;
     const fx = r.audio?.efectos;

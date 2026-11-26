@@ -437,15 +437,19 @@ function VistaPrevia({ guion, locucion, kit, archivos }) {
   const repintar = useRef(() => {});
   repintar.current = () => pintar(tAhora.current);
 
+  // El FRAGMENTO de una canción: el archivo es la canción entera y el video empieza en su segundo `desde`.
+  const inicioAudio = cancion ? Number(locucion?.recorte?.desde) || 0 : 0;
+  const finAudio = cancion && locucion?.recorte ? Number(locucion.recorte.hasta) || 0 : 0;
+
   /** Pone el audio en el segundo que toca para el instante `x` del video y lo hace sonar (o lo calla en un silencio). */
   const sonarDesde = useCallback((x) => {
     const au = audio.current;
     if (!au || !voz) return;
     const r = tramoDeAudio(linea, x);
     if (r.mudo) { au.pause(); return; }
-    au.currentTime = r.a;
+    au.currentTime = r.a + inicioAudio;
     au.play().catch(() => {});
-  }, [linea, voz]);
+  }, [linea, voz, inicioAudio]);
 
   // Reproducir: con voz, el reloj del audio mientras habla; sin ella (o en un silencio), el del navegador.
   useEffect(() => {
@@ -461,13 +465,13 @@ function VistaPrevia({ guion, locucion, kit, archivos }) {
       const au = audio.current;
       if (au && voz) {
         const r = tramoDeAudio(linea, n);
-        if (r.mudo || (au.duration && r.a >= au.duration)) { if (!au.paused) au.pause(); }
+        if (r.mudo || (au.duration && r.a + inicioAudio >= au.duration) || (finAudio && r.a + inicioAudio >= finAudio)) { if (!au.paused) au.pause(); }
         else if (au.paused) sonarDesde(n);
         else if (au.readyState < 3) n = x; // el audio se está cargando: la animación lo espera
         else {
-          const segunAudio = au.currentTime + r.desplazado;
-          if (Math.abs(segunAudio - n) > 0.25) au.currentTime = r.a;
-          else if (au.currentTime < r.finTramo) n = Math.max(x, segunAudio);
+          const segunAudio = au.currentTime - inicioAudio + r.desplazado;
+          if (Math.abs(segunAudio - n) > 0.25) au.currentTime = r.a + inicioAudio;
+          else if (au.currentTime - inicioAudio < r.finTramo) n = Math.max(x, segunAudio);
         }
       }
       if (n >= linea.total) { setT(linea.total); setReproduciendo(false); return; }
@@ -477,7 +481,7 @@ function VistaPrevia({ guion, locucion, kit, archivos }) {
     };
     pedido = requestAnimationFrame(paso);
     return () => { cancelAnimationFrame(pedido); el?.pause(); };
-  }, [reproduciendo, linea, voz, sonarDesde]);
+  }, [reproduciendo, linea, voz, sonarDesde, inicioAudio, finAudio]);
 
   // Repintar si cambia el ancho (girar el teléfono, abrir el panel).
   useEffect(() => {

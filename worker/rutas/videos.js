@@ -404,7 +404,7 @@ async function rutasDelCliente(req, env, { acceso, usuario, partes, metodo }) {
         const r = await crearVideoConCancion(env, acceso, cliente, {
           huella: texto(b.huella), modo: b.modo === "ia" ? "ia" : "karaoke", formato: texto(b.formato) || "9:16", titulo: texto(b.titulo),
           postId: texto(b.postId), calendarId: texto(b.calendarId), desplazamiento: b.desplazamiento, indicacion: texto(b.indicacion),
-          conFondos: b.conFondos === true, estiloId: texto(b.estiloId), usuario,
+          conFondos: b.conFondos === true, estiloId: texto(b.estiloId), desde: b.desde ?? null, hasta: b.hasta ?? null, usuario,
         });
         avisar(env, acceso, usuario, req, clienteId, r.video.id);
         return json(r, 201);
@@ -538,7 +538,7 @@ async function rutasDelCliente(req, env, { acceso, usuario, partes, metodo }) {
   }
 
   if (accion === "render" && metodo === "POST") {
-    const r = await pedirRender(env, acceso, cliente, fila, { version: b.version, usuario, por: firma(usuario, req) });
+    const r = await pedirRender(env, acceso, cliente, fila, { version: b.version, usuario, por: firma(usuario, req), calidad: texto(b.calidad) });
     return json(r, 202);
   }
 

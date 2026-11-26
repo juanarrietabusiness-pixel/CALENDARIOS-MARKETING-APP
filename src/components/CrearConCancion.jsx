@@ -1,8 +1,10 @@
 // ============================================================
 // «Con tu canción» de «Video nuevo» (lazy: el chunk de VideoAnimado está cerca de su tope)
 //
-// La agencia sube el MP3 TERMINADO de una canción (voz e instrumental; el fragmento del reel ya recortado, hasta 3 min) a
-// la biblioteca de sonido —o escoge una que ya esté, del cliente o de la agencia—, pega su letra y escoge el formato.
+// La agencia sube el MP3 TERMINADO de una canción (voz e instrumental; entera, hasta 6 min, o el fragmento del reel) a la
+// biblioteca de sonido —o escoge una que ya esté, del cliente o de la agencia—, pega su letra y escoge el formato. Con
+// «Sólo un fragmento», el video es un tramo (desde/hasta) de la canción sincronizada entera: sin subirla otra vez ni
+// pagar otra sincronía (el reel de la canción de YouTube).
 // «Sincronizar la letra» pregunta el costo (409, no crea nada) y sólo con el segundo toque lo paga: ElevenLabs alinea la
 // letra con la canción (y aísla la voz si la música la tapa) o Gemini la oye. El resultado enseña cada línea con su
 // tiempo, de dónde salió, la coincidencia (con un aviso si es baja) y el AJUSTE FINO (±1,5 s, gratis). Luego «Prueba de
@@ -37,6 +39,10 @@ export default function CrearConCancion({ client, publicacion = null, onCreado, 
   const [precio, setPrecio] = useState(null);
   const [sincronia, setSincronia] = useState(null);
   const [desplazamiento, setDesplazamiento] = useState(0);
+  // «Sólo un fragmento»: de qué segundo a qué segundo de la canción (vacío: el principio / el final).
+  const [fragmento, setFragmento] = useState(false);
+  const [desde, setDesde] = useState("");
+  const [hasta, setHasta] = useState("");
   // «Con imágenes de fondo» al diseñar con IA: un fondo por sección (lo crea el director después, con su costo).
   const [conFondos, setConFondos] = useState(false);
   // El estilo guardado del cliente (null: aún sin escoger; "": ninguno) y el estilo escogido (su resumen y si lleva fondos).
@@ -59,7 +65,7 @@ export default function CrearConCancion({ client, publicacion = null, onCreado, 
   useEffect(() => { cargar(); }, [cargar]);
 
   // Otra canción u otra letra: el precio y la sincronía de antes ya no valen.
-  useEffect(() => { setPrecio(null); setSincronia(null); setDesplazamiento(0); }, [musicaId, letra]);
+  useEffect(() => { setPrecio(null); setSincronia(null); setDesplazamiento(0); setFragmento(false); setDesde(""); setHasta(""); }, [musicaId, letra]);
 
   const escogida = canciones?.find((c) => c.id === musicaId) ?? null;
   const delCliente = (canciones ?? []).filter((c) => c.de !== "agencia");
@@ -71,7 +77,7 @@ export default function CrearConCancion({ client, publicacion = null, onCreado, 
     const archivo = e.target.files?.[0];
     e.target.value = "";
     if (!archivo) return;
-    if (archivo.size > MAX_BYTES_CANCION) { setError("La canción pesa más de 15 MB: sube sólo el fragmento del reel."); return; }
+    if (archivo.size > MAX_BYTES_CANCION) { setError("La canción pesa más de 15 MB: súbela en MP3 (6 minutos a 320 kbps son 14,4 MB)."); return; }
     setOcupado("subir"); setError(""); setAviso("");
     try {
       const r = await subirSonido(client.id, archivo, { categoria: "musica" });
@@ -98,6 +104,7 @@ export default function CrearConCancion({ client, publicacion = null, onCreado, 
       const r = await crearVideoConCancion(client.id, {
         huella: sincronia.huella, modo, formato, titulo, postId, calendarId: destino?.calendarId ?? publicacion?.calendarId ?? "", desplazamiento,
         conFondos: modo === "ia" && conFondos, estiloId: estiloId || "",
+        ...(fragmento ? { desde: desde === "voz" ? "voz" : desde === "" ? null : Number(desde), hasta: hasta === "" ? null : Number(hasta) } : {}),
       });
       const partes = [
         modo === "ia" ? "Escenas diseñadas por la IA sobre la letra." : "Prueba de sincronía creada: una escena por línea.",
@@ -118,7 +125,7 @@ export default function CrearConCancion({ client, publicacion = null, onCreado, 
 
   return (
     <div className="va-cancion">
-      <p className="hint">Sube la canción YA TERMINADA (voz e instrumental mezclados, sólo el fragmento del reel, hasta 3 minutos) y pega su letra tal cual se canta. No se genera voz: la canción es el audio y la letra sale palabra por palabra, sincronizada.</p>
+      <p className="hint">Sube la canción YA TERMINADA (voz e instrumental mezclados; entera, hasta 6 minutos, o el fragmento del reel) y pega su letra tal cual se canta. No se genera voz: la canción es el audio y la letra sale palabra por palabra, sincronizada. Para el reel de una canción entera, usa la misma canción y la misma letra y marca «Sólo un fragmento».</p>
 
       <label htmlFor={`${ids}-cancion`}>La canción</label>
       <div className="va-cancion-fila">
@@ -142,7 +149,7 @@ export default function CrearConCancion({ client, publicacion = null, onCreado, 
         <input ref={archivoRef} type="file" accept={ACEPTA} hidden onChange={subir} aria-label="Subir una canción (MP3, WAV o M4A, hasta 15 MB)" />
       </div>
       {escogida && <audio controls preload="none" src={escogida.src} className="va-cancion-audio" aria-label={`Escuchar ${escogida.nombre}`} />}
-      {larga && <p className="va-msg va-error" role="alert">Dura {mmss(escogida.duracion)}: el video admite 3 minutos. Sube sólo el fragmento del reel.</p>}
+      {larga && <p className="va-msg va-error" role="alert">Dura {mmss(escogida.duracion)}: el video admite {MAX_SEGUNDOS_CANCION / 60} minutos. Sube una versión más corta.</p>}
 
       <label htmlFor={`${ids}-letra`}>La letra (tal cual se canta, un renglón por línea; las marcas «[Coro]» se quitan solas)</label>
       <textarea id={`${ids}-letra`} className="input" rows={8} maxLength={MAX_LETRA} value={letra} onChange={(e) => setLetra(e.target.value)} disabled={Boolean(ocupado)}
@@ -212,6 +219,23 @@ export default function CrearConCancion({ client, publicacion = null, onCreado, 
           </label>
           <input id={`${ids}-ajuste`} type="range" className="va-cancion-ajuste" min={-DESPLAZAMIENTO_MAX} max={DESPLAZAMIENTO_MAX} step={0.05} value={desplazamiento}
             onChange={(e) => setDesplazamiento(Number(e.target.value))} disabled={Boolean(ocupado)} />
+          <label className="va-check">
+            <input type="checkbox" checked={fragmento} disabled={Boolean(ocupado)} onChange={(e) => setFragmento(e.target.checked)} />
+            Sólo un fragmento de la canción (el reel de la canción entera: sin subirla otra vez ni pagar otra sincronía)
+          </label>
+          {fragmento && (
+            <div className="va-cancion-fila">
+              <label htmlFor={`${ids}-desde`}>Desde (s)</label>
+              <input id={`${ids}-desde`} className="input" inputMode="decimal" style={{ maxWidth: "7rem" }} value={desde === "voz" ? "" : desde}
+                placeholder={desde === "voz" ? "la voz" : "0"} onChange={(e) => setDesde(e.target.value.replace(",", "."))} disabled={Boolean(ocupado)} />
+              <label htmlFor={`${ids}-hasta`}>Hasta (s)</label>
+              <input id={`${ids}-hasta`} className="input" inputMode="decimal" style={{ maxWidth: "7rem" }} value={hasta}
+                placeholder={String(Math.round(sincronia.duracion))} onChange={(e) => setHasta(e.target.value.replace(",", "."))} disabled={Boolean(ocupado)} />
+              <button type="button" className="filter-chip" aria-pressed={desde === "voz"} disabled={Boolean(ocupado)} onClick={() => setDesde((d) => (d === "voz" ? "" : "voz"))}>
+                Empezar en la voz
+              </button>
+            </div>
+          )}
           <label className="va-check">
             <input type="checkbox" checked={conFondos || fondosDelEstilo} disabled={Boolean(ocupado) || fondosDelEstilo} onChange={(e) => setConFondos(e.target.checked)} />
             {fondosDelEstilo
