@@ -63,6 +63,15 @@ describe("clasificar un archivo del repositorio", () => {
     expect(c("X/03_Redes_Sociales/Auditorias/2026-07-26_ideas.md")).toMatchObject({ tipo: "borrador", interna: 1 });
     expect(c("X/03_Redes_Sociales/Instagram_TikTok/2026-08-17_prompt_maestro_meta_ai_semana.md")).toMatchObject({ tipo: "borrador", interna: 1 });
   });
+  it("un archivo de pautas del repositorio es «pautas» (la IA lo lee siempre); uno que sólo las nombra, no", () => {
+    expect(c("Roca de Vida/01_ADN_y_Memoria/00_pautas_fuente_cerrada.md")).toMatchObject({ tipo: "pautas", interna: 0 });
+    expect(c("X/01_ADN_y_Memoria/pautas.md")).toMatchObject({ tipo: "pautas" });
+    expect(c("X/01_ADN_y_Memoria/Fuentes/Doctrina_Espiritu_Santo.md")).toMatchObject({ tipo: "documento" });
+    expect(c("X/01_ADN_y_Memoria/notas_sobre_pautas.md")).toMatchObject({ tipo: "documento" });
+    const notas = dividirEnNotas("R/01_ADN_y_Memoria/00_pautas_fuente_cerrada.md", "# Pautas\n\n## Fuente cerrada\nSólo las fuentes.\n\n## Sin opinión\nNada propio.");
+    expect(notas.length).toBeGreaterThan(1);
+    expect(notas.every((n) => n.tipo === "pautas" && !n.interna)).toBe(true);
+  });
   it("lo demás es un documento", () => {
     expect(c("X/02_Web_y_SEO/brief.md")).toMatchObject({ tipo: "documento", interna: 0 });
   });

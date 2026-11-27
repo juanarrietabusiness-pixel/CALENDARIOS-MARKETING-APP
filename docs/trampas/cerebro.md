@@ -345,3 +345,10 @@ contradicen, manda la de más abajo (la más nueva). Una trampa nueva de esta á
   sacar el contacto de la nota de datos del negocio y avisar si no coincide, y `guia_de_edicion` (Fase 4 del editor) no se
   fiará del resumen: leerá esa nota y dirá la diferencia. Arreglo de fondo, pendiente: rehacer la ficha (o al menos avisar
   en el MCP, no sólo en la pantalla) cuando cambia una nota de las que la alimentan.
+- **Un archivo de pautas en GitHub entra como «pautas»** (`clasificarArchivo` en notas.js, 27-nov-2026, para la «fuente
+  cerrada» de Roca de Vida). Antes, una regla escrita en el repositorio era un «documento» más: sólo llegaba a la IA si la
+  búsqueda la encontraba, y una pieza cuya consulta no se pareciera a la regla salía sin ella. Ahora un `.md` que se llama
+  `pautas…` (con o sin número delante: `00_pautas_fuente_cerrada.md`) es tipo `pautas`, como las que se escriben en la
+  pantalla: va en TODO pedido (la ficha de textos, el director, los guiones, el chat) hasta `MAX_PAUTAS` (8.000
+  caracteres entre todas). Que sean cortas: lo que pase de ahí se corta. Ojo con las palabras de `SECCION_INTERNA` en sus
+  títulos («interno», «márgenes»…): marcarían la sección como interna y no llegaría a lo que se publica.
