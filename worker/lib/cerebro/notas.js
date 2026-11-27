@@ -190,6 +190,9 @@ export function clasificarArchivo(ruta) {
   if (/(^|\/)05_receta\.json$/i.test(r)) return { tipo: "maquetacion", interna: 0, forma: "receta" };
   if (/(^|\/)05_prompt_maestro_meta_ai\.md$/i.test(r)) return { tipo: "marca", interna: 0, forma: "prompt-maestro" };
   if (/(^|\/)(01_brand_guidelines\.md|02_buyer_personas\.md|03_diccionario_seo\.json)$/i.test(r)) return { tipo: "marca", interna: 0, forma: "texto" };
+  // Las PAUTAS escritas en GitHub («00_pautas_fuente_cerrada.md», «pautas.md»): reglas que la IA sigue SIEMPRE, como las
+  // que se escriben en la pantalla (van en todo pedido, sin depender de la búsqueda). Cortas: entran hasta MAX_PAUTAS.
+  if (/(^|\/)(\d+[_-])?pautas[^/]*\.md$/i.test(r)) return { tipo: "pautas", interna: 0, forma: "texto" };
   return { tipo: "documento", interna: 0, forma: "texto" };
 }
 
